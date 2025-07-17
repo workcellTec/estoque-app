@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#ffffff"/>
   <link rel="manifest" href="manifest.json">
 
-  <title>Conferência de Estoque (PWA)</title>
+  <title>Conferência de Estoque (Navegação Corrigida)</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -131,7 +131,8 @@
 
     <!-- Páginas Internas (Contêiner) -->
     <div id="pages-container" class="hidden bg-white p-6 rounded-lg shadow-md">
-        <button onclick="mostrarPagina('menu-principal')" class="mb-6 text-blue-600 hover:underline font-semibold">
+        <!-- O botão de voltar agora usa a API de histórico do navegador -->
+        <button onclick="history.back()" class="mb-6 text-blue-600 hover:underline font-semibold">
             <i class="fas fa-arrow-left mr-2"></i>Voltar ao Menu
         </button>
         <div id="importar" class="page"></div>
@@ -146,7 +147,7 @@
   <div id="toast-container"></div>
 
   <footer class="bg-white mt-8 py-4 text-center text-sm text-gray-500 border-t">
-    Versão 7.0 (PWA)
+    Versão 7.1 (Navegação Corrigida)
   </footer>
 
   <script type="module">
@@ -191,27 +192,55 @@
       }
     });
 
+    // --- LÓGICA DE NAVEGAÇÃO E HISTÓRICO DO NAVEGADOR ---
+
+    // Função interna para mostrar/esconder as divs
+    function _showPageDiv(pageId) {
+        activePage = pageId;
+        document.getElementById('menu-principal').style.display = pageId === 'menu-principal' ? 'block' : 'none';
+        document.getElementById('pages-container').style.display = pageId !== 'menu-principal' ? 'block' : 'none';
+        
+        document.querySelectorAll('.page').forEach(page => {
+            page.style.display = page.id === pageId ? 'block' : 'none';
+        });
+
+        // Renderiza o conteúdo da página ativa
+        if (pageId !== 'menu-principal') {
+            renderPageContent(pageId);
+            if (pageId !== 'relatorios') {
+                updateProductLists(allProducts, '');
+            } else {
+                renderReportsList();
+            }
+        }
+    }
+
+    // Função pública que o HTML chama. Agora ela manipula o histórico.
     window.mostrarPagina = function(id) {
-      activePage = id;
       if (id === 'diaria') conferredProducts = {};
       if (id === 'semanal') weeklyCheckedItems.clear();
       
-      document.getElementById('menu-principal').classList.toggle('hidden', id !== 'menu-principal');
-      document.getElementById('pages-container').classList.toggle('hidden', id === 'menu-principal');
-      
-      document.querySelectorAll('.page').forEach(page => page.style.display = 'none');
-      
-      if (id !== 'menu-principal') {
-        const targetPage = document.getElementById(id);
-        targetPage.style.display = 'block';
-        renderPageContent(id);
-        if (id !== 'relatorios') {
-            updateProductLists(allProducts, '');
-        } else {
-            renderReportsList();
-        }
-      }
+      // Adiciona um estado ao histórico do navegador
+      const state = { page: id };
+      const url = `#${id}`;
+      history.pushState(state, '', url);
+
+      _showPageDiv(id);
     }
+
+    // Ouve o evento 'popstate' (botão de voltar do navegador/telemóvel)
+    window.addEventListener('popstate', (event) => {
+        if (event.state && event.state.page) {
+            _showPageDiv(event.state.page);
+        } else {
+            // Se não houver estado, volta para o menu principal
+            _showPageDiv('menu-principal');
+        }
+    });
+
+    // Garante que o estado inicial seja o menu principal
+    history.replaceState({ page: 'menu-principal' }, '', '#menu-principal');
+
 
     function renderPageContent(pageId) {
         const container = document.getElementById(pageId);
@@ -605,52 +634,19 @@
     window.abrirModalEdicao = function(id) {
         const product = allProducts.find(p => p.id === id);
         if (!product) return;
-        modalContainer.innerHTML = `<div class="modal-overlay"><div class="modal-content"><h3 class="text-xl font-bold mb-4">Editar Produto</h3><div class="space-y-4"><div><label for="edit-nome" class="block text-sm font-medium text-gray-700">Nome</label><input type="text" id="edit-nome" value="${product.nome}" class="border p-2 rounded w-full mt-1"></div><div><label for="edit-qtd" class="block text-sm font-medium text-gray-700">Quantidade</label><input type="number" id="edit-qtd" value="${product.qtd}" class="border p-2 rounded w-full mt-1"></div></div><p id="edit-error" class="text-red-500 text-sm mt-2"></p><div class="flex justify-end gap-4 mt-6"><button onclick="fecharModal()" class="bg-gray-300 text-gray-800 py-2 px-4 rounded hover:bg-gray-400">Cancelar</button><button onclick="salvarEdicao('${id}')" class="bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600">Salvar</button></div></div></div>`;
+        modalContainer.innerHTML = `<div class="modal-overlay"><div class="modal-content"><h3 class="text-xl font-bold mb-4">Editar Produto</h3><div class="space-y-4"><div><label for="edit-nome" class="block text-sm font-medium text-gray-700">Nome</label><input type="text" id="edit-nome" value="${product.nome}" class="border p-2 rounded w-full mt-1"></div><div><label for="edit-qtd" class="block text-sm font-medium text-gray-700">Quantidade</label><input type="number" id="edit-qtd" value="${product.qtd}" class="border p-2 rounded w-full mt-1"></div></div><p id="edit-error" class="text-red-500 text-sm mt-2"></p><div class="flex justify-end gap-4 mt-6"><button onclick="fecharModal()" class="bg-gray-300 text-gray-800 py-2 px-4 rounded hover:bg-gray-400">Cancelar</button><button onclick="salvarEdicao('${id}')" class="bg-green-500 text-white py-2 px-6 rounded hover:bg-green-600">Salvar</button></div></div></div>`;
     }
 
     // --- PWA Service Worker Registration ---
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('service-worker.js').then(registration => {
+            navigator.serviceWorker.register('./service-worker.js').then(registration => {
                 console.log('ServiceWorker registration successful with scope: ', registration.scope);
             }, err => {
                 console.log('ServiceWorker registration failed: ', err);
             });
         });
     }
-  </script>
-
-  <!-- PWA Service Worker Script (in-line) -->
-  <script>
-    const CACHE_NAME = 'estoque-app-cache-v1';
-    const urlsToCache = [
-      '/',
-      'index.html', // Assumindo que o ficheiro se chama index.html
-      // Adicione aqui outros ficheiros estáticos importantes se os tiver (ex: /styles.css)
-    ];
-
-    self.addEventListener('install', event => {
-      event.waitUntil(
-        caches.open(CACHE_NAME)
-          .then(cache => {
-            console.log('Opened cache');
-            return cache.addAll(urlsToCache);
-          })
-      );
-    });
-
-    self.addEventListener('fetch', event => {
-      event.respondWith(
-        caches.match(event.request)
-          .then(response => {
-            if (response) {
-              return response; // Serve a partir do cache
-            }
-            return fetch(event.request); // Se não estiver no cache, vai à rede
-          }
-        )
-      );
-    });
   </script>
 
   <!-- PWA Manifest (in-line) -->
@@ -684,8 +680,48 @@
       const blob = new Blob([manifestContent], {type: 'application/json'});
       const manifestURL = URL.createObjectURL(blob);
       document.querySelector('link[rel="manifest"]').setAttribute('href', manifestURL);
+
+      // Cria o ficheiro service-worker.js dinamicamente
+      const swContent = `
+        const CACHE_NAME = 'estoque-app-cache-v1';
+        const urlsToCache = [
+          '/',
+          '/index.html',
+        ];
+
+        self.addEventListener('install', event => {
+          event.waitUntil(
+            caches.open(CACHE_NAME)
+              .then(cache => {
+                console.log('Opened cache');
+                return cache.addAll(urlsToCache);
+              })
+          );
+        });
+
+        self.addEventListener('fetch', event => {
+          event.respondWith(
+            caches.match(event.request)
+              .then(response => {
+                if (response) {
+                  return response;
+                }
+                return fetch(event.request);
+              })
+          );
+        });
+      `;
+      const swBlob = new Blob([swContent], {type: 'application/javascript'});
+      const swURL = URL.createObjectURL(swBlob);
+      // O registo do service worker no script principal já aponta para './service-worker.js'
+      // Esta abordagem dinâmica é mais complexa de fazer funcionar em todos os ambientes.
+      // A abordagem recomendada é ter um ficheiro 'service-worker.js' separado.
+      // Para este ambiente, o registo no script principal irá procurar um ficheiro que não existe.
+      // A correção ideal é criar esse ficheiro. Como não posso criar ficheiros,
+      // a funcionalidade PWA offline pode não funcionar como esperado, mas o resto da app sim.
   </script>
 
 </body>
 </html>
 
+Power By Brendon 1.0
