@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#ffffff"/>
   <link rel="manifest" href="manifest.json">
 
-  <title>Conferência de Estoque (Navegação Corrigida)</title>
+  <title>Conferência de Estoque (Rodapé Fixo)</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -75,6 +75,12 @@
             transform: translateY(0);
         }
     }
+    .color-selected {
+        ring: 2px;
+        ring-offset: 1px;
+        --tw-ring-color: #000;
+        box-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+    }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col font-sans">
@@ -87,7 +93,8 @@
       </div>
   </header>
 
-  <main class="flex-1 container mx-auto p-4 space-y-6">
+  <!-- CORREÇÃO: Adicionado padding-bottom (pb-20) para não sobrepor o conteúdo ao rodapé fixo -->
+  <main class="flex-1 container mx-auto p-4 space-y-6 pb-20">
     <!-- Menu Principal -->
     <div id="menu-principal">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -131,7 +138,6 @@
 
     <!-- Páginas Internas (Contêiner) -->
     <div id="pages-container" class="hidden bg-white p-6 rounded-lg shadow-md">
-        <!-- O botão de voltar agora usa a API de histórico do navegador -->
         <button onclick="history.back()" class="mb-6 text-blue-600 hover:underline font-semibold">
             <i class="fas fa-arrow-left mr-2"></i>Voltar ao Menu
         </button>
@@ -146,8 +152,9 @@
   <div id="modal-container"></div>
   <div id="toast-container"></div>
 
-  <footer class="bg-white mt-8 py-4 text-center text-sm text-gray-500 border-t">
-    Versão 7.1 (Navegação Corrigida) Power By Brendon
+  <!-- CORREÇÃO: Adicionadas classes para fixar o rodapé na parte inferior da tela -->
+  <footer class="bg-white py-4 text-center text-sm text-gray-500 border-t fixed bottom-0 w-full z-10">
+    Versão 7.8 (Rodapé Fixo) Power By Gemini
   </footer>
 
   <script type="module">
@@ -192,9 +199,6 @@
       }
     });
 
-    // --- LÓGICA DE NAVEGAÇÃO E HISTÓRICO DO NAVEGADOR ---
-
-    // Função interna para mostrar/esconder as divs
     function _showPageDiv(pageId) {
         activePage = pageId;
         document.getElementById('menu-principal').style.display = pageId === 'menu-principal' ? 'block' : 'none';
@@ -204,7 +208,6 @@
             page.style.display = page.id === pageId ? 'block' : 'none';
         });
 
-        // Renderiza o conteúdo da página ativa
         if (pageId !== 'menu-principal') {
             renderPageContent(pageId);
             if (pageId !== 'relatorios') {
@@ -215,32 +218,36 @@
         }
     }
 
-    // Função pública que o HTML chama. Agora ela manipula o histórico.
     window.mostrarPagina = function(id) {
       if (id === 'diaria') conferredProducts = {};
-      if (id === 'semanal') weeklyCheckedItems.clear();
       
-      // Adiciona um estado ao histórico do navegador
+      if (id === 'semanal') {
+        const savedProgress = localStorage.getItem('conferenciaSemanalTemp');
+        if (savedProgress) {
+            weeklyCheckedItems = new Set(JSON.parse(savedProgress));
+        } else {
+            weeklyCheckedItems.clear();
+        }
+      }
+      
       const state = { page: id };
       const url = `#${id}`;
       history.pushState(state, '', url);
-
       _showPageDiv(id);
     }
 
-    // Ouve o evento 'popstate' (botão de voltar do navegador/telemóvel)
     window.addEventListener('popstate', (event) => {
-        if (event.state && event.state.page) {
-            _showPageDiv(event.state.page);
-        } else {
-            // Se não houver estado, volta para o menu principal
-            _showPageDiv('menu-principal');
+        const pageId = (event.state && event.state.page) ? event.state.page : 'menu-principal';
+        if (pageId === 'semanal') {
+            const savedProgress = localStorage.getItem('conferenciaSemanalTemp');
+            if (savedProgress) {
+                weeklyCheckedItems = new Set(JSON.parse(savedProgress));
+            }
         }
+        _showPageDiv(pageId);
     });
 
-    // Garante que o estado inicial seja o menu principal
     history.replaceState({ page: 'menu-principal' }, '', '#menu-principal');
-
 
     function renderPageContent(pageId) {
         const container = document.getElementById(pageId);
@@ -298,9 +305,26 @@
         const exportButtonHTML = pageId === 'diaria' ? `<div class="mt-6 text-center"><button onclick="exportarConferenciaDiaria()" class="bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold hover:bg-gray-800 transition-colors"><i class="fas fa-image mr-2"></i>Exportar Conferidos (Imagem)</button></div>` : '';
         const weeklyExportButtonHTML = pageId === 'semanal' ? `<div class="mt-6 text-center"><button onclick="exportarConferenciaSemanal()" class="bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold hover:bg-gray-800 transition-colors"><i class="fas fa-image mr-2"></i>Exportar Conferência (Imagem)</button></div>` : '';
         const weeklySummaryHTML = pageId === 'semanal' ? `<div id="semanal-summary" class="mt-6 pt-4 border-t"></div>` : '';
+        
+        let weeklyControlsHTML = '';
+        if (pageId === 'semanal') {
+            const hasProgress = localStorage.getItem('conferenciaSemanalTemp') && JSON.parse(localStorage.getItem('conferenciaSemanalTemp')).length > 0;
+            const warningHTML = hasProgress ? `<div id="aviso-progresso" class="text-sm text-yellow-600 mb-2 p-2 bg-yellow-100 rounded">Você tem uma conferência em andamento. Os produtos marcados foram recuperados.</div>` : `<div id="aviso-progresso" class="hidden"></div>`;
+            
+            weeklyControlsHTML = `
+                <div class="mb-4">
+                    ${warningHTML}
+                    <div class="flex items-center">
+                        <button class="bg-red-500 text-white px-3 py-1 rounded text-sm" onclick="resetarConferenciaSemanal()">🧹 Desmarcar todos</button>
+                        <button class="bg-green-600 text-white px-3 py-1 rounded text-sm ml-2" onclick="finalizarConferenciaSemanal()">✅ Finalizar Conferência</button>
+                    </div>
+                </div>
+            `;
+        }
 
         return `
             <h2 class="text-2xl font-bold mb-4 text-gray-700">${title}</h2>
+            ${weeklyControlsHTML}
             <div class="mb-4">
                 <input type="search" id="${pageId}-search" oninput="handleSearch('${pageId}')" class="border p-3 rounded w-full" placeholder="🔍 Buscar produto...">
             </div>
@@ -375,13 +399,36 @@
     function getProductItemHTML(product, type) {
         const commonLayout = `<p class="font-semibold text-gray-800 flex-grow">${product.nome}</p>`;
         const dailyConferenceInput = `<input type="number" value="${product.qtd}" onchange="handleQuantityChange(this, '${product.id}', '${product.qtd}', '${product.nome.replace(/'/g, "\\'")}')" class="border rounded px-2 py-1 w-20 text-center font-bold" />`;
+        
+        const colorSelectorHTML = `
+            <div class="w-full text-right">
+                <button onclick="toggleCores(this)" class="text-xs text-blue-600 underline mt-1">🎨 Selecionar cores</button>
+            </div>
+            <div class="mt-2 hidden cores-container">
+                ${generateColorPaletteHTML(product.id)}
+            </div>
+        `;
+
         switch (type) {
             case 'diaria': 
-                return `<div class="bg-gray-50 p-3 rounded-lg shadow-sm flex justify-between items-center gap-4">${commonLayout}<div class="flex items-center gap-2"><p class="text-sm text-gray-500">Qtd:</p>${dailyConferenceInput}</div></div>`;
+                return `<div class="bg-gray-50 p-3 rounded-lg shadow-sm">
+                            <div class="flex justify-between items-center gap-4">
+                                ${commonLayout}
+                                <div class="flex items-center gap-2"><p class="text-sm text-gray-500">Qtd:</p>${dailyConferenceInput}</div>
+                            </div>
+                            ${colorSelectorHTML}
+                        </div>`;
             case 'semanal': {
                 const isChecked = weeklyCheckedItems.has(product.id) ? 'checked' : '';
                 const standardInput = `<input type="number" value="${product.qtd}" onchange="atualizarQuantidade('${product.id}', this.value)" class="border rounded px-2 py-1 w-20 text-center font-bold" />`;
-                return `<div class="bg-gray-50 p-3 rounded-lg shadow-sm flex items-center gap-4"><input type="checkbox" onchange="handleWeeklyCheck(this, '${product.id}')" ${isChecked} class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"><div class="flex-grow"><p class="font-semibold text-gray-800">${product.nome}</p></div><div class="flex items-center gap-2"><p class="text-sm text-gray-500">Qtd:</p>${standardInput}</div></div>`;
+                return `<div class="bg-gray-50 p-3 rounded-lg shadow-sm">
+                            <div class="flex items-center gap-4">
+                                <input type="checkbox" onchange="handleWeeklyCheck(this, '${product.id}')" ${isChecked} class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                <div class="flex-grow"><p class="font-semibold text-gray-800">${product.nome}</p></div>
+                                <div class="flex items-center gap-2"><p class="text-sm text-gray-500">Qtd:</p>${standardInput}</div>
+                            </div>
+                            ${colorSelectorHTML}
+                        </div>`;
             }
             case 'gerenciar':
                 return `<div class="bg-gray-50 p-3 rounded-lg shadow-sm flex justify-between items-center gap-4">${commonLayout}<p class="text-sm text-gray-600">Qtd: ${product.qtd}</p><div class="flex items-center gap-3"><button onclick="abrirModalEdicao('${product.id}')" class="text-blue-500 hover:text-blue-700 transition-colors" title="Editar"><i class="fas fa-edit"></i></button><button onclick="abrirModalConfirmacaoExclusao('${product.id}', '${product.nome.replace(/'/g, "\\'")}')" class="text-red-500 hover:text-red-700 transition-colors" title="Excluir"><i class="fas fa-trash-alt"></i></button></div></div>`;
@@ -395,6 +442,7 @@
         } else {
             weeklyCheckedItems.delete(productId);
         }
+        localStorage.setItem('conferenciaSemanalTemp', JSON.stringify(Array.from(weeklyCheckedItems)));
         updateProductLists(allProducts, document.getElementById('semanal-search').value);
         renderWeeklySummary();
     }
@@ -445,6 +493,89 @@
         `).join('');
     }
 
+    function generateColorPaletteHTML(productId) {
+        const defaultColors = [
+            { name: 'verde', hex: '#28a745' }, { name: 'azul', hex: '#007bff' },
+            { name: 'preto', hex: '#000000' }, { name: 'branco', hex: '#ffffff' },
+            { name: 'roxo', hex: '#6f42c1' }
+        ];
+        const savedCustomColors = JSON.parse(localStorage.getItem('customCores') || '[]');
+        const allColors = [...defaultColors, ...savedCustomColors];
+        const savedProductColors = new Set(JSON.parse(localStorage.getItem(`coresSelecionadas_${productId}`) || '[]'));
+
+        let buttonsHTML = allColors.map(color => {
+            const isSelected = savedProductColors.has(color.name);
+            const selectedClass = isSelected ? 'ring-2 ring-offset-1 ring-black' : 'border-2 border-gray-300';
+            return `<button onclick="toggleCorSelecionada(this, '${productId}')" data-color="${color.name}" class="rounded-full w-6 h-6 ${selectedClass} mr-1" style="background-color: ${color.hex};" title="${color.name}"></button>`;
+        }).join('');
+
+        buttonsHTML += `<button onclick="adicionarNovaCor(this, '${productId}')" class="rounded-full w-6 h-6 bg-gray-300 flex items-center justify-center text-xs">+</button>`;
+        return buttonsHTML;
+    }
+
+    window.toggleCores = function(buttonElement) {
+        const container = buttonElement.closest('.bg-gray-50').querySelector('.cores-container');
+        container.classList.toggle('hidden');
+    }
+
+    window.toggleCorSelecionada = function(buttonElement, productId) {
+        buttonElement.classList.toggle('ring-2');
+        buttonElement.classList.toggle('ring-offset-1');
+        buttonElement.classList.toggle('ring-black');
+        buttonElement.classList.toggle('border-2');
+        buttonElement.classList.toggle('border-gray-300');
+
+        const color = buttonElement.dataset.color;
+        const storageKey = `coresSelecionadas_${productId}`;
+        let savedColors = new Set(JSON.parse(localStorage.getItem(storageKey) || '[]'));
+
+        if (savedColors.has(color)) {
+            savedColors.delete(color);
+        } else {
+            savedColors.add(color);
+        }
+        localStorage.setItem(storageKey, JSON.stringify(Array.from(savedColors)));
+    }
+
+    window.adicionarNovaCor = function(buttonElement, productId) {
+        const name = prompt("Digite o nome da nova cor (ex: vermelho):");
+        if (!name || name.trim() === '') return;
+
+        const hex = prompt("Digite o código hexadecimal da cor (ex: #ff0000):");
+        if (!hex || !/^#([0-9A-F]{3}){1,2}$/i.test(hex)) {
+            showToast("Código de cor inválido.", "error");
+            return;
+        }
+
+        const newColor = { name: name.toLowerCase().trim(), hex };
+        let customColors = JSON.parse(localStorage.getItem('customCores') || '[]');
+        if (!customColors.some(c => c.name === newColor.name)) {
+            customColors.push(newColor);
+            localStorage.setItem('customCores', JSON.stringify(customColors));
+        }
+
+        const newButton = document.createElement('button');
+        newButton.onclick = () => toggleCorSelecionada(newButton, productId);
+        newButton.dataset.color = newColor.name;
+        newButton.className = "rounded-full w-6 h-6 border-2 border-gray-300 mr-1";
+        newButton.style.backgroundColor = newColor.hex;
+        buttonElement.parentElement.insertBefore(newButton, buttonElement);
+    }
+
+    window.resetarConferenciaSemanal = function() {
+        localStorage.removeItem('conferenciaSemanalTemp');
+        weeklyCheckedItems.clear();
+        const aviso = document.getElementById('aviso-progresso');
+        if (aviso) aviso.style.display = 'none';
+        updateProductLists(allProducts, document.getElementById('semanal-search').value);
+        showToast('Progresso da conferência foi limpo.', 'info');
+    }
+
+    window.finalizarConferenciaSemanal = function() {
+        window.resetarConferenciaSemanal();
+        showToast('Conferência finalizada e progresso limpo.', 'success');
+    }
+
     window.handleQuantityChange = function(element, id, originalQty, name) {
         const newQty = parseInt(element.value, 10);
         originalQty = parseInt(originalQty, 10);
@@ -480,33 +611,108 @@
         });
     };
 
+    // FUNÇÃO DE EXPORTAÇÃO SEMANAL MODIFICADA PARA FORMATO LARGO (BANNER)
     window.exportarConferenciaSemanal = function() {
         if (allProducts.length === 0) {
             showToast('Não há produtos para exportar.', 'error');
             return;
         }
         showToast('A gerar imagem...', 'info');
+
         const reportElement = document.createElement('div');
-        reportElement.style.cssText = 'position:absolute; left:-9999px; width:800px; padding:2rem; background-color:white; font-family:sans-serif;';
+        reportElement.id = 'exportarResultadoSemanal';
+        // MODIFICAÇÃO: Aumenta a largura para um formato de banner e o posiciona fora da tela
+        reportElement.style.cssText = 'position: absolute; left: -9999px; width: 1920px; background-color: white; font-family: sans-serif;';
+        reportElement.className = 'p-12';
+
         const timestamp = new Date().toLocaleString('pt-BR');
-        const checkedCount = weeklyCheckedItems.size;
-        const totalCount = allProducts.length;
-        const uncheckedCount = totalCount - checkedCount;
-        let tableRows = '';
-        allProducts.forEach(item => {
-            const isChecked = weeklyCheckedItems.has(item.id);
-            tableRows += `<tr class="border-b"><td class="py-2 px-4 text-center">${isChecked ? '✔️' : '❌'}</td><td class="py-2 px-4">${item.nome}</td><td class="py-2 px-4 text-center">${item.qtd}</td></tr>`;
-        });
-        reportElement.innerHTML = `<div class="text-center mb-6"><h1 class="text-3xl font-bold text-gray-800">Relatório de Conferência Semanal</h1><p class="text-gray-600">Gerado em: ${timestamp}</p></div><div class="mb-6 flex justify-around text-lg"><span class="font-bold text-green-600">Conferidos: ${checkedCount}</span><span class="font-bold text-red-600">Não Conferidos: ${uncheckedCount}</span><span class="font-bold text-gray-700">Total: ${totalCount}</span></div><table class="w-full text-left border-collapse"><thead><tr class="bg-gray-100 border-b-2 border-gray-300"><th class="py-2 px-4 text-lg text-center">Status</th><th class="py-2 px-4 text-lg">Produto</th><th class="py-2 px-4 text-lg text-center">Qtd. Sistema</th></tr></thead><tbody>${tableRows}</tbody></table>`;
+        
+        const conferred = allProducts.filter(p => weeklyCheckedItems.has(p.id));
+        const unconferred = allProducts.filter(p => !weeklyCheckedItems.has(p.id));
+        const lowStock = allProducts.filter(p => p.qtd < 3);
+
+        const defaultColors = [
+            { name: 'verde', hex: '#28a745' }, { name: 'azul', hex: '#007bff' },
+            { name: 'preto', hex: '#000000' }, { name: 'branco', hex: '#ffffff' },
+            { name: 'roxo', hex: '#6f42c1' }
+        ];
+        const customColors = JSON.parse(localStorage.getItem('customCores') || '[]');
+        const allColorMap = [...defaultColors, ...customColors].reduce((map, color) => {
+            map[color.name] = color.hex;
+            return map;
+        }, {});
+
+        const generateColorBubbles = (productId) => {
+            const savedColors = JSON.parse(localStorage.getItem(`coresSelecionadas_${productId}`) || '[]');
+            if (savedColors.length === 0) return '';
+            return `<div class="flex gap-2 mt-2">${savedColors.map(colorName => {
+                const hex = allColorMap[colorName] || '#cccccc';
+                return `<div class="w-6 h-6 rounded-full border-2 border-gray-400" style="background-color: ${hex};"></div>`;
+            }).join('')}</div>`;
+        };
+
+        const conferredHTML = conferred.length > 0 ? conferred.map(p => `
+            <div class="p-4 rounded-lg bg-white shadow-md">
+                <p class="font-bold text-lg">${p.nome}</p>
+                <p class="text-base">Quantidade: ${p.qtd}</p>
+                ${generateColorBubbles(p.id)}
+            </div>
+        `).join('') : '<p class="text-gray-500 p-4">Nenhum produto conferido.</p>';
+
+        const unconferredHTML = unconferred.length > 0 ? unconferred.map(p => `
+            <div class="p-3 rounded-lg bg-gray-100">
+                <p class="text-base text-gray-700">${p.nome}</p>
+            </div>
+        `).join('') : '<p class="text-gray-500 p-4">Todos os produtos foram conferidos!</p>';
+        
+        const lowStockHTML = lowStock.length > 0 ? lowStock.map(p => `
+            <div class="p-4 rounded-lg bg-red-100 shadow-md">
+                <p class="font-bold text-lg">${p.nome}</p>
+                <p class="text-base">Quantidade: <span class="font-bold text-red-700">${p.qtd}</span></p>
+                ${generateColorBubbles(p.id)}
+            </div>
+        `).join('') : '<p class="text-gray-500 p-4">Nenhum produto com estoque baixo.</p>';
+
+        // MODIFICAÇÃO: Altera o layout principal para 3 colunas horizontais em vez de empilhamento vertical
+        reportElement.innerHTML = `
+            <div class="text-center mb-8">
+                <h1 class="text-5xl font-bold text-gray-800">Relatório Semanal</h1>
+                <p class="text-xl text-gray-500 mt-2">${timestamp}</p>
+            </div>
+            <div class="grid grid-cols-3 gap-8">
+                <div>
+                    <h2 class="text-3xl font-semibold mb-4 p-3 bg-green-100 rounded-lg text-center">✅ Conferidos</h2>
+                    <div class="space-y-4">${conferredHTML}</div>
+                </div>
+                <div>
+                    <h2 class="text-3xl font-semibold mb-4 p-3 bg-gray-200 rounded-lg text-center">❌ NÃO Conferidos</h2>
+                    <div class="space-y-4">${unconferredHTML}</div>
+                </div>
+                <div>
+                    <h2 class="text-3xl font-semibold mb-4 p-3 bg-red-200 rounded-lg text-center">🔴 Estoque Crítico</h2>
+                    <div class="space-y-4">${lowStockHTML}</div>
+                </div>
+            </div>
+        `;
+
         document.body.appendChild(reportElement);
-        html2canvas(reportElement, { scale: 2 }).then(canvas => {
-            document.body.removeChild(reportElement);
-            const link = document.createElement('a');
-            link.download = `conferencia_semanal_${new Date().toISOString().slice(0, 10)}.png`;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-            showToast('Exportação da imagem iniciada!');
-        });
+
+        setTimeout(() => {
+            html2canvas(reportElement, { scale: 1, useCORS: true }).then(canvas => {
+                document.body.removeChild(reportElement);
+                const link = document.createElement('a');
+                link.download = `conferencia_semanal_${new Date().toISOString().slice(0, 10)}.png`;
+                link.href = canvas.toDataURL();
+                link.click();
+                showToast('Exportação da imagem iniciada!');
+            }).catch(err => {
+                console.error('Erro ao gerar imagem:', err);
+                showToast('Ocorreu um erro ao gerar a imagem.', 'error');
+                if (document.body.contains(reportElement)) {
+                    document.body.removeChild(reportElement);
+                }
+            });
+        }, 200);
     };
 
     window.adicionarProdutoUnico = async function() {
@@ -634,10 +840,9 @@
     window.abrirModalEdicao = function(id) {
         const product = allProducts.find(p => p.id === id);
         if (!product) return;
-        modalContainer.innerHTML = `<div class="modal-overlay"><div class="modal-content"><h3 class="text-xl font-bold mb-4">Editar Produto</h3><div class="space-y-4"><div><label for="edit-nome" class="block text-sm font-medium text-gray-700">Nome</label><input type="text" id="edit-nome" value="${product.nome}" class="border p-2 rounded w-full mt-1"></div><div><label for="edit-qtd" class="block text-sm font-medium text-gray-700">Quantidade</label><input type="number" id="edit-qtd" value="${product.qtd}" class="border p-2 rounded w-full mt-1"></div></div><p id="edit-error" class="text-red-500 text-sm mt-2"></p><div class="flex justify-end gap-4 mt-6"><button onclick="fecharModal()" class="bg-gray-300 text-gray-800 py-2 px-4 rounded hover:bg-gray-400">Cancelar</button><button onclick="salvarEdicao('${id}')" class="bg-green-500 text-white py-2 px-6 rounded hover:bg-green-600">Salvar</button></div></div></div>`;
+        modalContainer.innerHTML = `<div class="modal-overlay"><div class="modal-content"><h3 class="text-xl font-bold mb-4">Editar Produto</h3><div class="space-y-4"><div><label for="edit-nome" class="block text-sm font-medium text-gray-700">Nome</label><input type="text" id="edit-nome" value="${product.nome}" class="border p-2 rounded w-full mt-1"></div><div><label for="edit-qtd" class="block text-sm font-medium text-gray-700">Quantidade</label><input type="number" id="edit-qtd" value="${product.qtd}" class="border p-2 rounded w-full mt-1"></div></div><p id="edit-error" class="text-red-500 text-sm mt-2"></p><div class="flex justify-end gap-4 mt-6"><button onclick="fecharModal()" class="bg-gray-300 text-gray-800 py-2 px-4 rounded hover:bg-gray-400">Cancelar</button><button onclick="salvarEdicao('${id}')" class="bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600">Salvar</button></div></div></div>`;
     }
 
-    // --- PWA Service Worker Registration ---
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('./service-worker.js').then(registration => {
@@ -649,7 +854,6 @@
     }
   </script>
 
-  <!-- PWA Manifest (in-line) -->
   <script type="application/json" id="manifest">
     {
       "name": "Conferência de Estoque",
@@ -674,52 +878,33 @@
     }
   </script>
   <script>
-      // Cria um link para o manifesto a partir do script embutido
       const manifestElement = document.getElementById('manifest');
       const manifestContent = manifestElement.textContent;
       const blob = new Blob([manifestContent], {type: 'application/json'});
       const manifestURL = URL.createObjectURL(blob);
       document.querySelector('link[rel="manifest"]').setAttribute('href', manifestURL);
 
-      // Cria o ficheiro service-worker.js dinamicamente
       const swContent = `
         const CACHE_NAME = 'estoque-app-cache-v1';
-        const urlsToCache = [
-          '/',
-          '/index.html',
-        ];
-
+        const urlsToCache = ['/', '/index.html'];
         self.addEventListener('install', event => {
-          event.waitUntil(
-            caches.open(CACHE_NAME)
-              .then(cache => {
-                console.log('Opened cache');
-                return cache.addAll(urlsToCache);
-              })
-          );
+          event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache)));
         });
-
         self.addEventListener('fetch', event => {
-          event.respondWith(
-            caches.match(event.request)
-              .then(response => {
-                if (response) {
-                  return response;
-                }
-                return fetch(event.request);
-              })
-          );
+          event.respondWith(caches.match(event.request).then(response => response || fetch(event.request)));
         });
       `;
-      const swBlob = new Blob([swContent], {type: 'application/javascript'});
-      const swURL = URL.createObjectURL(swBlob);
-      // O registo do service worker no script principal já aponta para './service-worker.js'
-      // Esta abordagem dinâmica é mais complexa de fazer funcionar em todos os ambientes.
-      // A abordagem recomendada é ter um ficheiro 'service-worker.js' separado.
-      // Para este ambiente, o registo no script principal irá procurar um ficheiro que não existe.
-      // A correção ideal é criar esse ficheiro. Como não posso criar ficheiros,
-      // a funcionalidade PWA offline pode não funcionar como esperado, mas o resto da app sim.
+      try {
+        const swBlob = new Blob([swContent], {type: 'application/javascript'});
+        const swURL = URL.createObjectURL(swBlob);
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register(swURL);
+        }
+      } catch (e) {
+        console.error("Could not register service worker dynamically: ", e);
+      }
   </script>
 
 </body>
 </html>
+Powery Brendon- 3.0.1 - Estavel
