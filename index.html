@@ -7,12 +7,12 @@
   <meta name="theme-color" content="#ffffff"/>
   <link rel="manifest" href="manifest.json">
 
-  <title>Conferência de Estoque (Rodapé Fixo)</title>
+  <title>Conferência de Estoque (Exportação Corrigida)</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <style>
-    /* Estilos para o loader, modais e toasts */
+    /* Estilos para o loader, modais e toasts (inalterados) */
     .loader {
       border: 4px solid #f3f3f3;
       border-top: 4px solid #3b82f6;
@@ -93,7 +93,6 @@
       </div>
   </header>
 
-  <!-- CORREÇÃO: Adicionado padding-bottom (pb-20) para não sobrepor o conteúdo ao rodapé fixo -->
   <main class="flex-1 container mx-auto p-4 space-y-6 pb-20">
     <!-- Menu Principal -->
     <div id="menu-principal">
@@ -152,9 +151,8 @@
   <div id="modal-container"></div>
   <div id="toast-container"></div>
 
-  <!-- CORREÇÃO: Adicionadas classes para fixar o rodapé na parte inferior da tela -->
   <footer class="bg-white py-4 text-center text-sm text-gray-500 border-t fixed bottom-0 w-full z-10">
-    Versão 7.8 (Rodapé Fixo) Power By Gemini
+    Versão 8.2 (Exportação Corrigida) Power By Gemini
   </footer>
 
   <script type="module">
@@ -180,11 +178,13 @@
     let activePage = 'menu-principal';
     let conferredProducts = {}; 
     let weeklyCheckedItems = new Set(); 
+    let targetColorInfo = { productId: null, container: null, addButton: null };
 
     const app = initializeApp(firebaseConfig);
     db = getDatabase(app);
     auth = getAuth(app);
     
+    // O restante do código de inicialização e navegação permanece o mesmo.
     onAuthStateChanged(auth, async (user) => {
       const authStatus = document.getElementById('auth-status');
       if (user) {
@@ -509,7 +509,7 @@
             return `<button onclick="toggleCorSelecionada(this, '${productId}')" data-color="${color.name}" class="rounded-full w-6 h-6 ${selectedClass} mr-1" style="background-color: ${color.hex};" title="${color.name}"></button>`;
         }).join('');
 
-        buttonsHTML += `<button onclick="adicionarNovaCor(this, '${productId}')" class="rounded-full w-6 h-6 bg-gray-300 flex items-center justify-center text-xs">+</button>`;
+        buttonsHTML += `<button onclick="abrirModalPaletaCores(this, '${productId}')" class="rounded-full w-6 h-6 bg-gray-300 flex items-center justify-center text-xs" title="Adicionar nova cor">+</button>`;
         return buttonsHTML;
     }
 
@@ -537,17 +537,63 @@
         localStorage.setItem(storageKey, JSON.stringify(Array.from(savedColors)));
     }
 
-    window.adicionarNovaCor = function(buttonElement, productId) {
-        const name = prompt("Digite o nome da nova cor (ex: vermelho):");
-        if (!name || name.trim() === '') return;
+    window.abrirModalPaletaCores = function(buttonElement, productId) {
+        targetColorInfo = {
+            productId: productId,
+            container: buttonElement.parentElement,
+            addButton: buttonElement
+        };
 
-        const hex = prompt("Digite o código hexadecimal da cor (ex: #ff0000):");
-        if (!hex || !/^#([0-9A-F]{3}){1,2}$/i.test(hex)) {
-            showToast("Código de cor inválido.", "error");
+        const modalContainer = document.getElementById('modal-container');
+        
+        const paletaDeCores = [
+            { nome: 'Vermelho', hex: '#ef4444' }, { nome: 'Laranja', hex: '#f97316' },
+            { nome: 'Amarelo', hex: '#eab308' }, { nome: 'Verde Lima', hex: '#84cc16' },
+            { nome: 'Verde', hex: '#22c55e' }, { nome: 'Esmeralda', hex: '#10b981' },
+            { nome: 'Ciano', hex: '#06b6d4' }, { nome: 'Azul Claro', hex: '#3b82f6' },
+            { nome: 'Índigo', hex: '#6366f1' }, { nome: 'Violeta', hex: '#8b5cf6' },
+            { nome: 'Roxo', hex: '#a855f7' }, { nome: 'Fúcsia', hex: '#d946ef' },
+            { nome: 'Rosa', hex: '#ec4899' }, { nome: 'Vinho', hex: '#be123c' },
+            { nome: 'Cinza', hex: '#6b7280' }, { nome: 'Preto', hex: '#000000' },
+            { nome: 'Branco', hex: '#ffffff' }, { nome: 'Marrom', hex: '#78350f' }
+        ];
+
+        const coresHtml = paletaDeCores.map(cor => {
+            const borderClass = cor.hex === '#ffffff' ? 'border-gray-400' : 'border-transparent';
+            return `
+                <button 
+                    onclick="selecionarCorDaPaleta('${cor.nome}', '${cor.hex}')" 
+                    title="${cor.nome}"
+                    class="w-12 h-12 rounded-lg border-2 ${borderClass} transform hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2" 
+                    style="background-color: ${cor.hex};"
+                ></button>
+            `;
+        }).join('');
+
+        modalContainer.innerHTML = `
+            <div class="modal-overlay" onclick="fecharModal()">
+                <div class="modal-content" onclick="event.stopPropagation()">
+                    <h3 class="text-xl font-bold mb-4">Escolha uma Nova Cor</h3>
+                    <div class="grid grid-cols-6 sm:grid-cols-8 gap-3">
+                        ${coresHtml}
+                    </div>
+                    <div class="text-right mt-6">
+                        <button onclick="fecharModal()" class="bg-gray-300 text-gray-800 py-2 px-6 rounded hover:bg-gray-400">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    window.selecionarCorDaPaleta = function(nome, hex) {
+        if (!targetColorInfo.productId || !targetColorInfo.container) {
+            console.error("Contexto do produto não encontrado para adicionar a cor.");
             return;
         }
 
-        const newColor = { name: name.toLowerCase().trim(), hex };
+        const { productId, container, addButton } = targetColorInfo;
+        const newColor = { name: nome.toLowerCase().trim(), hex };
+        
         let customColors = JSON.parse(localStorage.getItem('customCores') || '[]');
         if (!customColors.some(c => c.name === newColor.name)) {
             customColors.push(newColor);
@@ -557,11 +603,228 @@
         const newButton = document.createElement('button');
         newButton.onclick = () => toggleCorSelecionada(newButton, productId);
         newButton.dataset.color = newColor.name;
-        newButton.className = "rounded-full w-6 h-6 border-2 border-gray-300 mr-1";
+        const borderClass = newColor.hex === '#ffffff' ? 'border-2 border-gray-300' : '';
+        newButton.className = `rounded-full w-6 h-6 mr-1 ${borderClass}`;
         newButton.style.backgroundColor = newColor.hex;
-        buttonElement.parentElement.insertBefore(newButton, buttonElement);
+        newButton.title = newColor.name;
+        
+        container.insertBefore(newButton, addButton);
+        toggleCorSelecionada(newButton, productId);
+        fecharModal();
+        showToast(`Cor '${nome}' adicionada e selecionada!`, 'success');
+        targetColorInfo = { productId: null, container: null, addButton: null };
     }
 
+    // ====================================================================================
+    // FUNÇÕES DE EXPORTAÇÃO CORRIGIDAS E COM CORES
+    // ====================================================================================
+
+    /**
+     * Função auxiliar para obter o mapa de todas as cores disponíveis.
+     * @returns {Object} Um mapa de nome da cor para seu código hexadecimal.
+     */
+    function _getColorMap() {
+        const defaultColors = [
+            { name: 'verde', hex: '#28a745' }, { name: 'azul', hex: '#007bff' },
+            { name: 'preto', hex: '#000000' }, { name: 'branco', hex: '#ffffff' },
+            { name: 'roxo', hex: '#6f42c1' }
+        ];
+        const customColors = JSON.parse(localStorage.getItem('customCores') || '[]');
+        return [...defaultColors, ...customColors].reduce((map, color) => {
+            map[color.name] = color.hex;
+            return map;
+        }, {});
+    }
+
+    /**
+     * Função auxiliar para gerar o HTML das bolhas de cores para os relatórios.
+     * @param {string} productId - O ID do produto.
+     * @param {Object} allColorMap - O mapa de cores gerado por _getColorMap.
+     * @returns {string} O HTML das bolhas de cores.
+     */
+    function _generateReportColorBubblesHTML(productId, allColorMap) {
+        const savedColors = JSON.parse(localStorage.getItem(`coresSelecionadas_${productId}`) || '[]');
+        if (savedColors.length === 0) {
+            return '<span class="text-gray-400 text-xs">N/A</span>';
+        }
+        return `<div class="flex gap-1 items-center justify-center">${savedColors.map(colorName => {
+            const hex = allColorMap[colorName] || '#cccccc';
+            const borderClass = hex === '#ffffff' ? 'border-2 border-gray-400' : '';
+            return `<div class="w-4 h-4 rounded-full ${borderClass}" style="background-color: ${hex};"></div>`;
+        }).join('')}</div>`;
+    }
+
+    /**
+     * CORRIGIDO: Exporta a conferência diária, agora incluindo as cores selecionadas.
+     */
+    window.exportarConferenciaDiaria = function() {
+        if (Object.keys(conferredProducts).length === 0) {
+            showToast('Nenhum produto foi alterado para exportar.', 'error');
+            return;
+        }
+        showToast('A gerar imagem...', 'info');
+        const reportElement = document.createElement('div');
+        reportElement.style.cssText = 'position:absolute; left:-9999px; width:900px; padding:2rem; background-color:white; font-family:sans-serif;';
+        const timestamp = new Date().toLocaleString('pt-BR');
+        
+        const allColorMap = _getColorMap();
+        let tableRows = '';
+
+        for (const id in conferredProducts) {
+            const item = conferredProducts[id];
+            const colorsHTML = _generateReportColorBubblesHTML(id, allColorMap);
+            tableRows += `<tr class="border-b">
+                            <td class="py-2 px-4">${item.name}</td>
+                            <td class="py-2 px-4 text-center">${item.originalQty}</td>
+                            <td class="py-2 px-4 text-center font-bold">${item.newQty}</td>
+                            <td class="py-2 px-4">${colorsHTML}</td>
+                          </tr>`;
+        }
+
+        reportElement.innerHTML = `<div class="text-center mb-6">
+                                    <h1 class="text-3xl font-bold text-gray-800">Relatório de Conferência Diária</h1>
+                                    <p class="text-gray-600">Gerado em: ${timestamp}</p>
+                                   </div>
+                                   <table class="w-full text-left border-collapse">
+                                     <thead>
+                                       <tr class="bg-gray-100 border-b-2 border-gray-300">
+                                         <th class="py-2 px-4 text-lg">Produto</th>
+                                         <th class="py-2 px-4 text-lg text-center">Qtd. Ant.</th>
+                                         <th class="py-2 px-4 text-lg text-center">Qtd. Conf.</th>
+                                         <th class="py-2 px-4 text-lg text-center">Cores</th>
+                                       </tr>
+                                     </thead>
+                                     <tbody>${tableRows}</tbody>
+                                   </table>`;
+        document.body.appendChild(reportElement);
+
+        setTimeout(() => {
+            html2canvas(reportElement, { scale: 2, useCORS: true }).then(canvas => {
+                document.body.removeChild(reportElement);
+                const link = document.createElement('a');
+                link.download = `conferencia_diaria_${new Date().toISOString().slice(0, 10)}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                showToast('Exportação da imagem iniciada!', 'success');
+            }).catch(err => {
+                console.error('Erro ao gerar imagem diária:', err);
+                showToast('Ocorreu um erro ao gerar a imagem.', 'error');
+                if (document.body.contains(reportElement)) {
+                    document.body.removeChild(reportElement);
+                }
+            });
+        }, 200);
+    };
+    
+    /**
+     * CORRIGIDO: Exporta a conferência semanal, com layout horizontal, cores e correção de bug.
+     */
+    window.exportarConferenciaSemanal = function() {
+        if (allProducts.length === 0) {
+            showToast('Não há produtos para exportar.', 'error');
+            return;
+        }
+        showToast('A gerar imagem... Por favor, aguarde.', 'info');
+
+        const reportElement = document.createElement('div');
+        reportElement.id = 'exportarResultadoSemanal';
+        reportElement.style.cssText = 'position: absolute; left: -9999px; width: 1920px; background-color: #f9fafb; font-family: sans-serif;';
+        reportElement.className = 'p-10';
+
+        const timestamp = new Date().toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' });
+        
+        const conferred = allProducts.filter(p => weeklyCheckedItems.has(p.id));
+        const unconferred = allProducts.filter(p => !weeklyCheckedItems.has(p.id));
+        const lowStock = allProducts.filter(p => p.qtd < 3);
+
+        const allColorMap = _getColorMap();
+
+        const generateColorBubbles = (productId) => {
+            const savedColors = JSON.parse(localStorage.getItem(`coresSelecionadas_${productId}`) || '[]');
+            if (savedColors.length === 0) return '';
+            return `<div class="flex gap-1 mt-2">${savedColors.map(colorName => {
+                const hex = allColorMap[colorName] || '#cccccc';
+                const borderClass = hex === '#ffffff' ? 'border border-gray-300' : '';
+                return `<div class="w-5 h-5 rounded-full ${borderClass}" style="background-color: ${hex};" title="${colorName}"></div>`;
+            }).join('')}</div>`;
+        };
+        
+        const renderProductGrid = (products, config) => {
+            if (products.length === 0) {
+                return `<p class="text-gray-500 p-4 col-span-full">${config.emptyMessage}</p>`;
+            }
+            return products.map(p => `
+                <div class="${config.cardClass}">
+                    <p class="font-bold text-gray-800">${p.nome}</p>
+                    <p class="text-sm text-gray-600">Qtd: <span class="${config.qtyClass}">${p.qtd}</span></p>
+                    ${generateColorBubbles(p.id)}
+                </div>
+            `).join('');
+        };
+
+        const conferredHTML = renderProductGrid(conferred, {
+            emptyMessage: 'Nenhum produto conferido.',
+            cardClass: 'p-3 rounded-lg bg-white shadow',
+            qtyClass: 'font-semibold'
+        });
+
+        const unconferredHTML = unconferred.length > 0 
+            ? unconferred.map(p => `<div class="p-2 rounded-md bg-gray-200 text-sm text-gray-700">${p.nome} (Qtd: ${p.qtd})</div>`).join('')
+            : '<p class="text-gray-500 p-4">Todos os produtos foram conferidos!</p>';
+
+        const lowStockHTML = renderProductGrid(lowStock, {
+            emptyMessage: 'Nenhum produto com estoque baixo.',
+            cardClass: 'p-3 rounded-lg bg-red-100 border border-red-200',
+            qtyClass: 'font-bold text-red-700'
+        });
+
+        // CORREÇÃO: Removido 'sticky top-0' das classes dos títulos h2 para evitar problemas com html2canvas.
+        reportElement.innerHTML = `
+            <div class="text-center mb-8 border-b pb-6">
+                <h1 class="text-5xl font-bold text-gray-800">Relatório Semanal de Conferência</h1>
+                <p class="text-xl text-gray-500 mt-2">Gerado em: ${timestamp}</p>
+            </div>
+            <div class="grid grid-cols-3 gap-8">
+                <div class="flex flex-col">
+                    <h2 class="text-3xl font-semibold mb-4 p-3 bg-green-200 text-green-800 rounded-lg text-center">✅ Conferidos (${conferred.length})</h2>
+                    <div class="grid grid-cols-2 gap-3">${conferredHTML}</div>
+                </div>
+                <div class="flex flex-col">
+                    <h2 class="text-3xl font-semibold mb-4 p-3 bg-yellow-200 text-yellow-800 rounded-lg text-center">❌ Não Conferidos (${unconferred.length})</h2>
+                    <div class="grid grid-cols-2 gap-2">${unconferredHTML}</div>
+                </div>
+                <div class="flex flex-col">
+                    <h2 class="text-3xl font-semibold mb-4 p-3 bg-red-200 text-red-800 rounded-lg text-center">🔴 Estoque Crítico (${lowStock.length})</h2>
+                    <div class="grid grid-cols-2 gap-3">${lowStockHTML}</div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(reportElement);
+
+        setTimeout(() => {
+            html2canvas(reportElement, { 
+                scale: 1, 
+                useCORS: true,
+                backgroundColor: '#f9fafb'
+            }).then(canvas => {
+                document.body.removeChild(reportElement);
+                const link = document.createElement('a');
+                link.download = `relatorio_semanal_${new Date().toISOString().slice(0, 10)}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                showToast('Relatório exportado com sucesso!', 'success');
+            }).catch(err => {
+                console.error('Erro ao gerar imagem semanal:', err);
+                showToast('Ocorreu um erro ao gerar a imagem.', 'error');
+                if (document.body.contains(reportElement)) {
+                    document.body.removeChild(reportElement);
+                }
+            });
+        }, 500);
+    };
+
+    // O restante do código (adição, edição, exclusão, modais, etc.) permanece o mesmo.
     window.resetarConferenciaSemanal = function() {
         localStorage.removeItem('conferenciaSemanalTemp');
         weeklyCheckedItems.clear();
@@ -583,136 +846,6 @@
         if (newQty !== originalQty) conferredProducts[id] = { name, originalQty, newQty };
         else delete conferredProducts[id];
         window.atualizarQuantidade(id, newQty);
-    };
-
-    window.exportarConferenciaDiaria = function() {
-        if (Object.keys(conferredProducts).length === 0) {
-            showToast('Nenhum produto foi alterado para exportar.', 'error');
-            return;
-        }
-        showToast('A gerar imagem...', 'info');
-        const reportElement = document.createElement('div');
-        reportElement.style.cssText = 'position:absolute; left:-9999px; width:800px; padding:2rem; background-color:white; font-family:sans-serif;';
-        const timestamp = new Date().toLocaleString('pt-BR');
-        let tableRows = '';
-        for (const id in conferredProducts) {
-            const item = conferredProducts[id];
-            tableRows += `<tr class="border-b"><td class="py-2 px-4">${item.name}</td><td class="py-2 px-4 text-center">${item.originalQty}</td><td class="py-2 px-4 text-center font-bold">${item.newQty}</td></tr>`;
-        }
-        reportElement.innerHTML = `<div class="text-center mb-6"><h1 class="text-3xl font-bold text-gray-800">Relatório de Conferência Diária</h1><p class="text-gray-600">Gerado em: ${timestamp}</p></div><table class="w-full text-left border-collapse"><thead><tr class="bg-gray-100 border-b-2 border-gray-300"><th class="py-2 px-4 text-lg">Produto</th><th class="py-2 px-4 text-lg text-center">Qtd. Anterior</th><th class="py-2 px-4 text-lg text-center">Qtd. Conferida</th></tr></thead><tbody>${tableRows}</tbody></table>`;
-        document.body.appendChild(reportElement);
-        html2canvas(reportElement, { scale: 2 }).then(canvas => {
-            document.body.removeChild(reportElement);
-            const link = document.createElement('a');
-            link.download = `conferencia_diaria_${new Date().toISOString().slice(0, 10)}.png`;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-            showToast('Exportação da imagem iniciada!');
-        });
-    };
-
-    // FUNÇÃO DE EXPORTAÇÃO SEMANAL MODIFICADA PARA FORMATO LARGO (BANNER)
-    window.exportarConferenciaSemanal = function() {
-        if (allProducts.length === 0) {
-            showToast('Não há produtos para exportar.', 'error');
-            return;
-        }
-        showToast('A gerar imagem...', 'info');
-
-        const reportElement = document.createElement('div');
-        reportElement.id = 'exportarResultadoSemanal';
-        // MODIFICAÇÃO: Aumenta a largura para um formato de banner e o posiciona fora da tela
-        reportElement.style.cssText = 'position: absolute; left: -9999px; width: 1920px; background-color: white; font-family: sans-serif;';
-        reportElement.className = 'p-12';
-
-        const timestamp = new Date().toLocaleString('pt-BR');
-        
-        const conferred = allProducts.filter(p => weeklyCheckedItems.has(p.id));
-        const unconferred = allProducts.filter(p => !weeklyCheckedItems.has(p.id));
-        const lowStock = allProducts.filter(p => p.qtd < 3);
-
-        const defaultColors = [
-            { name: 'verde', hex: '#28a745' }, { name: 'azul', hex: '#007bff' },
-            { name: 'preto', hex: '#000000' }, { name: 'branco', hex: '#ffffff' },
-            { name: 'roxo', hex: '#6f42c1' }
-        ];
-        const customColors = JSON.parse(localStorage.getItem('customCores') || '[]');
-        const allColorMap = [...defaultColors, ...customColors].reduce((map, color) => {
-            map[color.name] = color.hex;
-            return map;
-        }, {});
-
-        const generateColorBubbles = (productId) => {
-            const savedColors = JSON.parse(localStorage.getItem(`coresSelecionadas_${productId}`) || '[]');
-            if (savedColors.length === 0) return '';
-            return `<div class="flex gap-2 mt-2">${savedColors.map(colorName => {
-                const hex = allColorMap[colorName] || '#cccccc';
-                return `<div class="w-6 h-6 rounded-full border-2 border-gray-400" style="background-color: ${hex};"></div>`;
-            }).join('')}</div>`;
-        };
-
-        const conferredHTML = conferred.length > 0 ? conferred.map(p => `
-            <div class="p-4 rounded-lg bg-white shadow-md">
-                <p class="font-bold text-lg">${p.nome}</p>
-                <p class="text-base">Quantidade: ${p.qtd}</p>
-                ${generateColorBubbles(p.id)}
-            </div>
-        `).join('') : '<p class="text-gray-500 p-4">Nenhum produto conferido.</p>';
-
-        const unconferredHTML = unconferred.length > 0 ? unconferred.map(p => `
-            <div class="p-3 rounded-lg bg-gray-100">
-                <p class="text-base text-gray-700">${p.nome}</p>
-            </div>
-        `).join('') : '<p class="text-gray-500 p-4">Todos os produtos foram conferidos!</p>';
-        
-        const lowStockHTML = lowStock.length > 0 ? lowStock.map(p => `
-            <div class="p-4 rounded-lg bg-red-100 shadow-md">
-                <p class="font-bold text-lg">${p.nome}</p>
-                <p class="text-base">Quantidade: <span class="font-bold text-red-700">${p.qtd}</span></p>
-                ${generateColorBubbles(p.id)}
-            </div>
-        `).join('') : '<p class="text-gray-500 p-4">Nenhum produto com estoque baixo.</p>';
-
-        // MODIFICAÇÃO: Altera o layout principal para 3 colunas horizontais em vez de empilhamento vertical
-        reportElement.innerHTML = `
-            <div class="text-center mb-8">
-                <h1 class="text-5xl font-bold text-gray-800">Relatório Semanal</h1>
-                <p class="text-xl text-gray-500 mt-2">${timestamp}</p>
-            </div>
-            <div class="grid grid-cols-3 gap-8">
-                <div>
-                    <h2 class="text-3xl font-semibold mb-4 p-3 bg-green-100 rounded-lg text-center">✅ Conferidos</h2>
-                    <div class="space-y-4">${conferredHTML}</div>
-                </div>
-                <div>
-                    <h2 class="text-3xl font-semibold mb-4 p-3 bg-gray-200 rounded-lg text-center">❌ NÃO Conferidos</h2>
-                    <div class="space-y-4">${unconferredHTML}</div>
-                </div>
-                <div>
-                    <h2 class="text-3xl font-semibold mb-4 p-3 bg-red-200 rounded-lg text-center">🔴 Estoque Crítico</h2>
-                    <div class="space-y-4">${lowStockHTML}</div>
-                </div>
-            </div>
-        `;
-
-        document.body.appendChild(reportElement);
-
-        setTimeout(() => {
-            html2canvas(reportElement, { scale: 1, useCORS: true }).then(canvas => {
-                document.body.removeChild(reportElement);
-                const link = document.createElement('a');
-                link.download = `conferencia_semanal_${new Date().toISOString().slice(0, 10)}.png`;
-                link.href = canvas.toDataURL();
-                link.click();
-                showToast('Exportação da imagem iniciada!');
-            }).catch(err => {
-                console.error('Erro ao gerar imagem:', err);
-                showToast('Ocorreu um erro ao gerar a imagem.', 'error');
-                if (document.body.contains(reportElement)) {
-                    document.body.removeChild(reportElement);
-                }
-            });
-        }, 200);
     };
 
     window.adicionarProdutoUnico = async function() {
@@ -907,4 +1040,4 @@
 
 </body>
 </html>
-Powery Brendon- 3.0.1 - Estavel
+
