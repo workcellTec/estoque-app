@@ -11,6 +11,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
   <style>
     /* Estilos para o loader, modais e toasts (inalterados) */
     .loader {
@@ -152,7 +154,7 @@
   <div id="toast-container"></div>
 
   <footer class="bg-white py-4 text-center text-sm text-gray-500 border-t fixed bottom-0 w-full z-10">
-    Versão 8.0 (Relatório Horizontal) Power By Gemini
+    Versão 2.1 (Correção de cores PDF) Power By Brendon
   </footer>
 
   <script type="module">
@@ -183,9 +185,6 @@
     const app = initializeApp(firebaseConfig);
     db = getDatabase(app);
     auth = getAuth(app);
-    
-    // O restante do seu JavaScript inicial (listeners, navegação, etc.) permanece o mesmo.
-    // Nenhuma alteração necessária aqui.
     
     onAuthStateChanged(auth, async (user) => {
       const authStatus = document.getElementById('auth-status');
@@ -305,7 +304,7 @@
         }
         
         const exportButtonHTML = pageId === 'diaria' ? `<div class="mt-6 text-center"><button onclick="exportarConferenciaDiaria()" class="bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold hover:bg-gray-800 transition-colors"><i class="fas fa-image mr-2"></i>Exportar Conferidos (Imagem)</button></div>` : '';
-        const weeklyExportButtonHTML = pageId === 'semanal' ? `<div class="mt-6 text-center"><button onclick="exportarConferenciaSemanal()" class="bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold hover:bg-gray-800 transition-colors"><i class="fas fa-image mr-2"></i>Exportar Conferência (Imagem)</button></div>` : '';
+        const weeklyExportButtonHTML = pageId === 'semanal' ? `<div class="mt-6 text-center"><button onclick="exportarConferenciaSemanal()" class="bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold hover:bg-gray-800 transition-colors"><i class="fas fa-file-pdf mr-2"></i>Exportar Conferência (PDF)</button></div>` : '';
         const weeklySummaryHTML = pageId === 'semanal' ? `<div id="semanal-summary" class="mt-6 pt-4 border-t"></div>` : '';
         
         let weeklyControlsHTML = '';
@@ -413,7 +412,7 @@
 
         switch (type) {
             case 'diaria': 
-                return `<div class="bg-gray-50 p-3 rounded-lg shadow-sm">
+                return `<div id="product-${product.id}" class="bg-gray-50 p-3 rounded-lg shadow-sm">
                             <div class="flex justify-between items-center gap-4">
                                 ${commonLayout}
                                 <div class="flex items-center gap-2"><p class="text-sm text-gray-500">Qtd:</p>${dailyConferenceInput}</div>
@@ -423,7 +422,7 @@
             case 'semanal': {
                 const isChecked = weeklyCheckedItems.has(product.id) ? 'checked' : '';
                 const standardInput = `<input type="number" value="${product.qtd}" onchange="atualizarQuantidade('${product.id}', this.value)" class="border rounded px-2 py-1 w-20 text-center font-bold" />`;
-                return `<div class="bg-gray-50 p-3 rounded-lg shadow-sm">
+                return `<div id="product-${product.id}" class="bg-gray-50 p-3 rounded-lg shadow-sm">
                             <div class="flex items-center gap-4">
                                 <input type="checkbox" onchange="handleWeeklyCheck(this, '${product.id}')" ${isChecked} class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
                                 <div class="flex-grow"><p class="font-semibold text-gray-800">${product.nome}</p></div>
@@ -433,7 +432,7 @@
                         </div>`;
             }
             case 'gerenciar':
-                return `<div class="bg-gray-50 p-3 rounded-lg shadow-sm flex justify-between items-center gap-4">${commonLayout}<p class="text-sm text-gray-600">Qtd: ${product.qtd}</p><div class="flex items-center gap-3"><button onclick="abrirModalEdicao('${product.id}')" class="text-blue-500 hover:text-blue-700 transition-colors" title="Editar"><i class="fas fa-edit"></i></button><button onclick="abrirModalConfirmacaoExclusao('${product.id}', '${product.nome.replace(/'/g, "\\'")}')" class="text-red-500 hover:text-red-700 transition-colors" title="Excluir"><i class="fas fa-trash-alt"></i></button></div></div>`;
+                return `<div id="product-${product.id}" class="bg-gray-50 p-3 rounded-lg shadow-sm flex justify-between items-center gap-4">${commonLayout}<p class="text-sm text-gray-600">Qtd: ${product.qtd}</p><div class="flex items-center gap-3"><button onclick="abrirModalEdicao('${product.id}')" class="text-blue-500 hover:text-blue-700 transition-colors" title="Editar"><i class="fas fa-edit"></i></button><button onclick="abrirModalConfirmacaoExclusao('${product.id}', '${product.nome.replace(/'/g, "\\'")}')" class="text-red-500 hover:text-red-700 transition-colors" title="Excluir"><i class="fas fa-trash-alt"></i></button></div></div>`;
             default: return '';
         }
     }
@@ -507,8 +506,8 @@
 
         let buttonsHTML = allColors.map(color => {
             const isSelected = savedProductColors.has(color.name);
-            const selectedClass = isSelected ? 'ring-2 ring-offset-1 ring-black' : 'border-2 border-gray-300';
-            return `<button onclick="toggleCorSelecionada(this, '${productId}')" data-color="${color.name}" class="rounded-full w-6 h-6 ${selectedClass} mr-1" style="background-color: ${color.hex};" title="${color.name}"></button>`;
+            const selectedClass = isSelected ? 'color-selected' : '';
+            return `<button onclick="toggleCorSelecionada(this, '${productId}')" data-color="${color.name}" class="color-button rounded-full w-6 h-6 border-2 border-gray-300 mr-1 ${selectedClass}" style="background-color: ${color.hex};" title="${color.name}"></button>`;
         }).join('');
 
         buttonsHTML += `<button onclick="adicionarNovaCor(this, '${productId}')" class="rounded-full w-6 h-6 bg-gray-300 flex items-center justify-center text-xs">+</button>`;
@@ -516,17 +515,13 @@
     }
 
     window.toggleCores = function(buttonElement) {
-        const container = buttonElement.closest('.bg-gray-50').querySelector('.cores-container');
+        const container = buttonElement.closest('div[id^="product-"]').querySelector('.cores-container');
         container.classList.toggle('hidden');
     }
 
     window.toggleCorSelecionada = function(buttonElement, productId) {
-        buttonElement.classList.toggle('ring-2');
-        buttonElement.classList.toggle('ring-offset-1');
-        buttonElement.classList.toggle('ring-black');
-        buttonElement.classList.toggle('border-2');
-        buttonElement.classList.toggle('border-gray-300');
-
+        buttonElement.classList.toggle('color-selected');
+        
         const color = buttonElement.dataset.color;
         const storageKey = `coresSelecionadas_${productId}`;
         let savedColors = new Set(JSON.parse(localStorage.getItem(storageKey) || '[]'));
@@ -540,29 +535,33 @@
     }
 
     window.adicionarNovaCor = function(buttonElement, productId) {
-        const name = prompt("Digite o nome da nova cor (ex: vermelho):");
-        if (!name || name.trim() === '') return;
+        const picker = document.createElement("input");
+        picker.type = "color";
+        picker.style.display = "none";
+        document.body.appendChild(picker);
 
-        const hex = prompt("Digite o código hexadecimal da cor (ex: #ff0000):");
-        if (!hex || !/^#([0-9A-F]{3}){1,2}$/i.test(hex)) {
-            showToast("Código de cor inválido.", "error");
-            return;
-        }
+        picker.onchange = () => {
+            const hex = picker.value;
+            const name = hex;
 
-        const newColor = { name: name.toLowerCase().trim(), hex };
-        let customColors = JSON.parse(localStorage.getItem('customCores') || '[]');
-        if (!customColors.some(c => c.name === newColor.name)) {
-            customColors.push(newColor);
-            localStorage.setItem('customCores', JSON.stringify(customColors));
-        }
+            let customColors = JSON.parse(localStorage.getItem('customCores') || '[]');
+            if (!customColors.some(c => c.hex === hex)) {
+                customColors.push({ name, hex });
+                localStorage.setItem('customCores', JSON.stringify(customColors));
+            }
 
-        const newButton = document.createElement('button');
-        newButton.onclick = () => toggleCorSelecionada(newButton, productId);
-        newButton.dataset.color = newColor.name;
-        newButton.className = "rounded-full w-6 h-6 border-2 border-gray-300 mr-1";
-        newButton.style.backgroundColor = newColor.hex;
-        buttonElement.parentElement.insertBefore(newButton, buttonElement);
-    }
+            const newButton = document.createElement('button');
+            newButton.onclick = () => toggleCorSelecionada(newButton, productId);
+            newButton.dataset.color = name;
+            newButton.className = "color-button rounded-full w-6 h-6 border-2 border-gray-300 mr-1";
+            newButton.style.backgroundColor = hex;
+            buttonElement.parentElement.insertBefore(newButton, buttonElement);
+            
+            document.body.removeChild(picker);
+        };
+
+        picker.click();
+    };
 
     window.resetarConferenciaSemanal = function() {
         localStorage.removeItem('conferenciaSemanalTemp');
@@ -613,32 +612,40 @@
         });
     };
 
-    // ====================================================================================
-    // AQUI ESTÁ A FUNÇÃO MODIFICADA PARA GERAR O RELATÓRIO HORIZONTAL
-    // ====================================================================================
+    function hexToRgb(hex) {
+        if (!hex) return [0, 0, 0]; // fallback seguro
+        hex = hex.replace(/^#/, '');
+        const bigint = parseInt(hex, 16);
+        const r = (bigint >> 16) & 255;
+        const g = (bigint >> 8) & 255;
+        const b = bigint & 255;
+        return [r, g, b];
+    }
+
     window.exportarConferenciaSemanal = function() {
         if (allProducts.length === 0) {
             showToast('Não há produtos para exportar.', 'error');
             return;
         }
-        showToast('A gerar imagem... Por favor, aguarde.', 'info');
 
-        const reportElement = document.createElement('div');
-        reportElement.id = 'exportarResultadoSemanal';
-        // MODIFICAÇÃO: Define a largura para 1920px e posiciona fora da tela
-        reportElement.style.cssText = 'position: absolute; left: -9999px; width: 1920px; background-color: #f9fafb; font-family: sans-serif;';
-        // Adiciona padding geral para a imagem
-        reportElement.className = 'p-10';
+        showToast('A gerar PDF... Por favor, aguarde.', 'info');
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+        const pageWidth = doc.internal.pageSize.getWidth();
 
         const timestamp = new Date().toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' });
-        
-        // Separa os produtos nas três categorias
+
+        doc.setFontSize(20);
+        doc.text("Relatório Semanal de Conferência", pageWidth / 2, 40, { align: "center" });
+        doc.setFontSize(12);
+        doc.text(`Gerado em: ${timestamp}`, pageWidth / 2, 60, { align: "center" });
+
         const conferred = allProducts.filter(p => weeklyCheckedItems.has(p.id));
         const unconferred = allProducts.filter(p => !weeklyCheckedItems.has(p.id));
         const lowStock = allProducts.filter(p => p.qtd < 3);
 
-        // Função auxiliar para buscar o mapa de cores (evita re-processamento)
-        const getColorMap = () => {
+        function getAllColorsMap() {
             const defaultColors = [
                 { name: 'verde', hex: '#28a745' }, { name: 'azul', hex: '#007bff' },
                 { name: 'preto', hex: '#000000' }, { name: 'branco', hex: '#ffffff' },
@@ -649,105 +656,64 @@
                 map[color.name] = color.hex;
                 return map;
             }, {});
-        };
+        }
+        const allColorsMap = getAllColorsMap();
 
-        const allColorMap = getColorMap();
+        const addTable = (title, items, color) => {
+            const bodyData = items.length > 0 
+                ? items.map(p => [p.nome, p.qtd, p.id]) // Passa o ID na terceira coluna
+                : [["Nenhum produto", "", []]]; // Estrutura vazia
 
-        // Função auxiliar para gerar as bolhas de cores
-        const generateColorBubbles = (productId) => {
-            const savedColors = JSON.parse(localStorage.getItem(`coresSelecionadas_${productId}`) || '[]');
-            if (savedColors.length === 0) return '';
-            return `<div class="flex gap-1 mt-2">${savedColors.map(colorName => {
-                const hex = allColorMap[colorName] || '#cccccc';
-                // Adicionado um contorno sutil para cores claras como o branco
-                const borderClass = hex === '#ffffff' ? 'border-gray-300' : 'border-transparent';
-                return `<div class="w-5 h-5 rounded-full border ${borderClass}" style="background-color: ${hex};" title="${colorName}"></div>`;
-            }).join('')}</div>`;
-        };
-        
-        // Função para renderizar uma lista de produtos em um grid
-        const renderProductGrid = (products, config) => {
-            if (products.length === 0) {
-                return `<p class="text-gray-500 p-4 col-span-full">${config.emptyMessage}</p>`;
-            }
-            return products.map(p => `
-                <div class="${config.cardClass}">
-                    <p class="font-bold text-gray-800">${p.nome}</p>
-                    <p class="text-sm text-gray-600">Qtd: <span class="${config.qtyClass}">${p.qtd}</span></p>
-                    ${generateColorBubbles(p.id)}
-                </div>
-            `).join('');
-        };
+            doc.autoTable({
+                head: [[title, "Qtd", "Cores"]],
+                body: bodyData,
+                startY: doc.lastAutoTable ? doc.lastAutoTable.finalY + 20 : 90,
+                theme: "grid",
+                styles: { fontSize: 10, cellPadding: 8, valign: 'middle' },
+                headStyles: { fillColor: color, textColor: [255,255,255], halign: "center" },
+                columnStyles: { 
+                    0: { cellWidth: 250 }, 
+                    1: { halign: "center" },
+                    2: { cellWidth: 150 }
+                },
+                didParseCell: function (data) {
+                    // Limpa o conteúdo da célula de cores para que o ID não seja desenhado
+                    if (data.column.index === 2) {
+                        data.cell.text = '';
+                    }
+                },
+                didDrawCell: (data) => {
+                    if (data.column.index === 2 && data.row.raw && data.row.raw[2]) {
+                        const productId = data.row.raw[2];
+                        const savedColorNames = [...new Set(JSON.parse(localStorage.getItem(`coresSelecionadas_${productId}`) || '[]'))];
 
-        // Gera o HTML para cada coluna
-        const conferredHTML = renderProductGrid(conferred, {
-            emptyMessage: 'Nenhum produto conferido.',
-            cardClass: 'p-3 rounded-lg bg-white shadow',
-            qtyClass: 'font-semibold'
-        });
+                        if (savedColorNames.length === 0) return;
 
-        const unconferredHTML = unconferred.length > 0 
-            ? unconferred.map(p => `<div class="p-2 rounded-md bg-gray-200 text-sm text-gray-700">${p.nome} (Qtd: ${p.qtd})</div>`).join('')
-            : '<p class="text-gray-500 p-4">Todos os produtos foram conferidos!</p>';
-
-        const lowStockHTML = renderProductGrid(lowStock, {
-            emptyMessage: 'Nenhum produto com estoque baixo.',
-            cardClass: 'p-3 rounded-lg bg-red-100 border border-red-200',
-            qtyClass: 'font-bold text-red-700'
-        });
-
-        // MODIFICAÇÃO: Layout principal com 3 colunas usando grid
-        reportElement.innerHTML = `
-            <div class="text-center mb-8 border-b pb-6">
-                <h1 class="text-5xl font-bold text-gray-800">Relatório Semanal de Conferência</h1>
-                <p class="text-xl text-gray-500 mt-2">Gerado em: ${timestamp}</p>
-            </div>
-            <div class="grid grid-cols-3 gap-8">
-                <!-- Coluna Conferidos -->
-                <div class="flex flex-col">
-                    <h2 class="text-3xl font-semibold mb-4 p-3 bg-green-200 text-green-800 rounded-lg text-center sticky top-0">✅ Conferidos (${conferred.length})</h2>
-                    <div class="grid grid-cols-2 gap-3">${conferredHTML}</div>
-                </div>
-                <!-- Coluna Não Conferidos -->
-                <div class="flex flex-col">
-                    <h2 class="text-3xl font-semibold mb-4 p-3 bg-yellow-200 text-yellow-800 rounded-lg text-center sticky top-0">❌ Não Conferidos (${unconferred.length})</h2>
-                    <div class="grid grid-cols-2 gap-2">${unconferredHTML}</div>
-                </div>
-                <!-- Coluna Estoque Crítico -->
-                <div class="flex flex-col">
-                    <h2 class="text-3xl font-semibold mb-4 p-3 bg-red-200 text-red-800 rounded-lg text-center sticky top-0">🔴 Estoque Crítico (${lowStock.length})</h2>
-                    <div class="grid grid-cols-2 gap-3">${lowStockHTML}</div>
-                </div>
-            </div>
-        `;
-
-        document.body.appendChild(reportElement);
-
-        // Pequeno delay para garantir que o DOM foi renderizado antes da captura
-        setTimeout(() => {
-            html2canvas(reportElement, { 
-                scale: 1, // Escala 1 para 1920px de largura
-                useCORS: true,
-                backgroundColor: '#f9fafb' // Garante que o fundo da imagem seja o mesmo do elemento
-            }).then(canvas => {
-                document.body.removeChild(reportElement);
-                const link = document.createElement('a');
-                link.download = `relatorio_semanal_${new Date().toISOString().slice(0, 10)}.png`;
-                link.href = canvas.toDataURL('image/png');
-                link.click();
-                showToast('Relatório exportado com sucesso!', 'success');
-            }).catch(err => {
-                console.error('Erro ao gerar imagem:', err);
-                showToast('Ocorreu um erro ao gerar a imagem.', 'error');
-                if (document.body.contains(reportElement)) {
-                    document.body.removeChild(reportElement);
+                        let x = data.cell.x + 10;
+                        const y = data.cell.y + data.cell.height / 2;
+                        
+                        savedColorNames.forEach(name => {
+                            const hex = allColorsMap[name] || '#cccccc';
+                            const [r, g, b] = hexToRgb(hex);
+                            doc.setFillColor(r, g, b);
+                            doc.circle(x, y, 6, 'F');
+                            x += 15;
+                        });
+                    }
                 }
             });
-        }, 500); // Aumentei o timeout para garantir a renderização completa
-    };
+        };
 
-    // O restante do seu JavaScript (adição, edição, exclusão de produtos, modais, etc.) permanece o mesmo.
-    // Nenhuma alteração necessária aqui.
+        addTable(`Conferidos (${conferred.length})`, conferred, [40,167,69]);
+        addTable(`Não Conferidos (${unconferred.length})`, unconferred, [201,147,0]);
+        addTable(`Estoque Crítico (${lowStock.length})`, lowStock, [200,0,0]);
+
+        doc.setFontSize(10);
+        doc.text("Power by Brendon", pageWidth / 2, doc.internal.pageSize.getHeight() - 20, { align: "center" });
+
+        doc.save(`relatorio_semanal_${new Date().toISOString().slice(0, 10)}.pdf`);
+        showToast('Relatório em PDF exportado com sucesso!', 'success');
+    };
 
     window.adicionarProdutoUnico = async function() {
         const nomeInput = document.getElementById("produtoNome");
