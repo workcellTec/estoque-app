@@ -1,0 +1,134 @@
+/* ============================================== */
+/* DESIGN & UX - YOUTUBE MUSIC REFINED            */
+/* ============================================== */
+
+/* 1. VARIÁVEIS DE COR E TEMA */
+:root {
+    --primary-color: #EF5350; /* Vermelho mais vibrante */
+    --primary-color-rgb: 239, 83, 80;
+    --tertiary-color: #030303; /* Preto profundo */
+    --text-color: #F1F1F1;
+    --text-color-strong: #FFFFFF;
+    --text-secondary: #AAAAAA;
+    --text-success: #81C784; 
+    --glass-bg: rgba(28, 28, 28, 0.65);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --shadow-color: rgba(0, 0, 0, 0.3);
+    --input-bg: rgba(44, 44, 46, 0.7);
+    --input-border: rgba(255, 255, 255, 0.1);
+    --border-radius: 16px;
+    --transition-duration: 0.3s;
+    --glow-1: #8A2BE2;
+    --glow-2: #B71C1C;
+}
+
+[data-theme="light"] {
+    --primary-color: #B71C1C;
+    --primary-color-rgb: 183, 28, 28;
+    --secondary-color: #f4f4f5;
+    --tertiary-color: #ffffff;
+    --text-color: #18181b;
+    --text-color-strong: #000000;
+    --text-secondary: #52525b;
+    --text-success: #16a34a; /* Verde mais forte para o modo claro */
+    --glass-bg: rgba(255, 255, 255, 0.75);
+    --glass-border: rgba(0, 0, 0, 0.1);
+    --shadow-color: rgba(183, 28, 28, 0.15);
+    --input-bg: #f4f4f5;
+    --input-border: #d4d4d8;
+    --glow-1: #D1C4E9;
+    --glow-2: #FFCDD2;
+}
+
+/* ... (Todo o restante do seu CSS que estava no arquivo HTML original vai aqui) ... */
+
+/* LAYOUT DE ESTOQUE (CARD STYLE) */
+#stockContainer {
+    max-width: 100%;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+.stock-list-container {
+    width: 100%;
+}
+.stock-item-card {
+    background-color: rgba(var(--primary-color-rgb), 0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--border-radius);
+    padding: 15px;
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: all var(--transition-duration) ease;
+}
+.stock-item-card.is-checked {
+    opacity: 0.6;
+    background-color: transparent;
+}
+.stock-item-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 15px;
+}
+.product-info {
+    flex-grow: 1;
+}
+.product-name {
+    font-weight: 500;
+    color: var(--text-color-strong);
+}
+.stock-item-card:not(.is-checked) .product-name {
+    color: var(--primary-color);
+}
+.stock-item-main .form-check.form-switch .form-check-input {
+    width: 3.5em;
+    height: 1.75em;
+    cursor: pointer;
+    margin-left: auto;
+}
+.stock-item-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap; 
+    gap: 15px;
+    padding-top: 12px;
+    border-top: 1px solid var(--glass-border);
+}
+.ignore-toggle-btn i {
+    font-size: 1.2rem;
+    transition: color 0.2s ease;
+}
+.ignore-toggle-btn .bi-eye-fill {
+    color: var(--text-success);
+}
+.ignore-toggle-btn .bi-eye-slash-fill {
+    color: var(--primary-color);
+}
+
+@media (max-width: 400px) {
+    .stock-item-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+     .stock-item-controls .input-group {
+        width: 100%;
+        justify-content: center;
+     }
+     .stock-item-controls .d-flex {
+        width: 100%;
+        justify-content: space-around;
+     }
+}
+
+/* IMPRESSÃO */
+@media print {
+  html, body { background: #FFF !important; }
+  body::before { display: none !important; }
+  body > *:not(#contractPreview):not(#reportPreview) { display: none !important; }
+  #contractPreview, #reportPreview { display: block !important; position: static !important; margin: 0 auto; padding: 20mm; width: 210mm; min-height: 297mm; box-sizing: border-box; box-shadow: none; border: none; }
+  body.print-only-contract #reportPreview { display: none !important; }
+  body.print-only-report #contractPreview { display: none !important; }
+}
