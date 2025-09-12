@@ -261,7 +261,6 @@
         .custom-modal-overlay.active { opacity: 1; visibility: visible; }
         .custom-modal-content { background-color: var(--secondary-color); color: var(--text-color); padding: 30px; border-radius: var(--border-radius); text-align: center; max-width: 400px; width: 90%; box-shadow: 0 10px 40px var(--shadow-color); transform: scale(0.9); transition: transform var(--transition-duration) ease; border: 1px solid var(--glass-border); }
         .custom-modal-overlay.active .custom-modal-content { transform: scale(1); }
-        .custom-modal-content.wide { max-width: 600px; }
 
         #contractContainer .content-card { max-width: 800px; margin: 0 auto; }
         .form-section-title { color: var(--primary-color); border-bottom: 1px solid var(--glass-border); }
@@ -311,6 +310,7 @@
         .remove-favorito-btn:hover { color: #fff; background-color: rgba(220, 53, 69, 0.7); }
         .btn-flag { display: flex; align-items: center; justify-content: flex-start; gap: 15px; font-weight: 500; font-size: 1.1rem; border-radius: 10px; padding: 15px 20px; border: 1px solid var(--glass-border); background-color: var(--input-bg); color: var(--text-color); transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease, border-color var(--transition-duration) ease; width: 100%; }
         .btn-flag:hover { background-color: var(--primary-color); border-color: var(--primary-color); color: #FFF; transform: translateY(-2px); }
+        .btn-flag i { font-size: 1.5rem; width: 30px; }
         .btn-flag-display { background-color: var(--input-bg); color: var(--text-color); border: 1px solid var(--input-border); border-radius: 10px !important; padding: 12px 15px; width: 100%; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 8px; }
         .btn-flag-display:hover { border-color: var(--primary-color); }
         .btn-flag-display i { font-size: 1.2rem; }
@@ -605,26 +605,6 @@
         .ignore-toggle-btn .bi-eye-slash-fill {
             color: var(--primary-color);
         }
-        
-        /* Botão Adicionar a Agenda */
-        .btn-add-agenda {
-            background: #2563EB;
-            color: #fff;
-            border: 1px solid #1D4ED8;
-            border-radius: 12px;
-            padding: 12px 20px;
-            transition: all 0.3s ease;
-            font-weight: 500;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        
-        .btn-add-agenda:hover {
-            background: #1D4ED8;
-            transform: translateY(-1px);
-        }
 
         @media (max-width: 400px) {
             .stock-item-controls {
@@ -837,7 +817,7 @@
                 <div class="extra-value-container mx-auto" id="valorExtraContainer" style="max-width: 400px;">
                     <div class="mb-3">
                         <label class="form-label" for="valorExtraAparelho"><i class="bi bi-plus-circle"></i> Valor adicional</label>
-                        <input type="number" class="form-control" id="valorExtraAparelho" min="0" placeholder="Ex: 40,00" step="0.01"/>
+                        <input class="form-control" id="valorExtraAparelho" min="0" placeholder="Ex: 40,00" step="0.01" type="number"/>
                     </div>
                 </div>
                 
@@ -849,7 +829,7 @@
 
                 <div class="row my-3 w-100 justify-content-center">
                     <div class="col-12 col-md-6 mb-3"><label class="form-label">Maquininha</label><select class="form-select" id="machine3"><option value="pagbank">PagBank</option><option value="infinity">InfinityPay</option><option value="valorante">Valorante</option></select></div>
-                <div class="col-12 col-md-6 mb-3" id="flagDisplayContainer3" style="display: none;"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton3"></button></div>
+                    <div class="col-12 col-md-6 mb-3" id="flagDisplayContainer3" style="display: none;"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton3"></button></div>
                 </div>
                 <div id="brand3Container" class="hidden"><select id="brand3"><option value="visa">Visa</option><option value="mastercard">Mastercard</option><option value="hiper">Hiper</option><option value="hipercard">Hipercard</option><option value="elo">Elo</option><option value="amex">Amex</option></select></div>
 
@@ -1178,20 +1158,6 @@
        <!-- Notifications will be inserted here -->
     </div>
   </div>
-</div>
-
-<!-- Modal para agendar boletos na agenda -->
-<div class="custom-modal-overlay" id="scheduleBoletoModalOverlay">
-    <div class="custom-modal-content wide">
-        <h4 class="mb-3">Adicionar Boletos à Agenda</h4>
-        <div id="scheduleBoletoContent">
-            <!-- Conteúdo dinâmico das parcelas será inserido aqui -->
-        </div>
-        <div class="mt-4 text-center">
-            <button type="button" class="btn btn-primary" id="addAllToAgendaBtn"><i class="bi bi-calendar-check me-2"></i>Adicionar Todas as Parcelas</button>
-            <button type="button" class="btn btn-secondary ms-2" id="closeScheduleModalBtn">Cancelar</button>
-        </div>
-    </div>
 </div>
 
 <script type="application/json" id="manifest-data">
@@ -1530,7 +1496,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
         const foneDescontado = document.getElementById('descontarFoneCheckbox')?.checked || false, valorDesconto = 15;
         let checkboxHtml = '';
         if (tax === undefined || tax === null) { resultDiv.innerHTML = `<div class="alert alert-warning d-flex align-items-center"><i class="bi bi-exclamation-triangle-fill me-3"></i>Taxa não disponível.</div>`; return; } 
-        if (isProdutoMode && fecharVendaPrecoBase > 0) checkboxHtml = `<div class="form-check form-check-inline mt-3 w-100" style="max-width: 400px; margin-left: auto; margin-right: auto; text-align: left; padding-left: 2.5em;"><input class="form-check-input" type="checkbox" role="switch" id="descontarFoneCheckbox" ${foneDescontado ? 'checked' : ''}><label class="form-check-label" for="descontarFoneCheckbox">Descontar fone Bluetooth (${valorDesconto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})</label></div>`;
+        if (isProdutoMode && fecharVendaPrecoBase > 0) checkboxHtml = `<div class="form-check form-check-inline mt-3 w-100" style="max-width: 400px; margin-left: auto; margin-right: auto; text-align: left; padding-left: 2.5em;"><input class="form-check-input" type="checkbox" id="descontarFoneCheckbox" ${foneDescontado ? 'checked' : ''}><label class="form-check-label" for="descontarFoneCheckbox">Descontar fone Bluetooth (${valorDesconto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})</label></div>`;
         if (isProdutoMode && isEntradaAVista) {
             const valorEntrada = parseFloat(document.getElementById('valorEntradaAVista').value) || 0, valorCartao = parseFloat(document.getElementById('valorPassadoNoCartao').value) || 0;
             if (fecharVendaPrecoBase <= 0) { resultDiv.innerHTML = `<div class="alert alert-info d-flex align-items-center"><i class="bi bi-info-circle-fill me-3"></i>Selecione um produto.</div>`; return; }
@@ -2520,11 +2486,6 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
             const whatsappLink = telefoneLimpo ? `https://wa.me/55${telefoneLimpo}` : '';
             const telefoneHtml = whatsappLink ? `<a href="${whatsappLink}" target="_blank" class="btn btn-sm btn-success"><i class="bi bi-whatsapp"></i> ${escapeHtml(boleto.compradorTelefone)}</a>` : '(Não informado)';
             
-            const temVencimento = !!boleto.primeiroVencimento && boleto.numeroParcelas > 0;
-            const addAgendaButton = temVencimento
-                ? `<button class="btn btn-sm btn-info add-agenda-btn" data-boleto-data='${JSON.stringify(boleto).replace(/'/g, '&#039;')}'><i class="bi bi-calendar-event me-2"></i>Adicionar à Agenda</button>`
-                : '';
-
             return `
             <div class="accordion-item">
                 <h2 class="accordion-header" id="heading-${boleto.id}">
@@ -2543,8 +2504,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
                         <strong>Entrada:</strong> R$ ${escapeHtml(boleto.valorEntrada.toLocaleString('pt-BR', {minimumFractionDigits: 2}))}<br>
                         <strong>Parcelas:</strong> ${boleto.numeroParcelas}x de R$ ${boleto.valorParcela}</p>
                         <hr style="border-color: var(--glass-border);">
-                        <div class="text-end d-flex justify-content-end gap-2">
-                            ${addAgendaButton}
+                        <div class="text-end">
                             <button class="btn btn-sm btn-outline-danger delete-boleto-btn" data-id="${boleto.id}"><i class="bi bi-trash"></i> Excluir</button>
                         </div>
                     </div>
@@ -2569,13 +2529,6 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
                     },
                     onCancel: () => {}
                 });
-            });
-        });
-        // Adiciona listener para os novos botões de agenda
-        historyContainer.querySelectorAll('.add-agenda-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const boleto = JSON.parse(e.currentTarget.dataset.boletoData);
-                openScheduleModal(boleto);
             });
         });
     }
@@ -3384,146 +3337,6 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-<script>
-    
-    let currentBoletoData = null;
-
-    // Função para abrir o modal de agendamento com os dados do boleto
-    function openScheduleModal(boletoData) {
-        currentBoletoData = boletoData;
-        const modal = document.getElementById('scheduleBoletoModalOverlay');
-        const modalContent = document.getElementById('scheduleBoletoContent');
-        const addAllBtn = document.getElementById('addAllToAgendaBtn');
-        const closeBtn = document.getElementById('closeScheduleModalBtn');
-        
-        modalContent.innerHTML = ''; // Limpa o conteúdo anterior
-
-        if (!boletoData || !boletoData.primeiroVencimento || !boletoData.numeroParcelas) {
-            modalContent.innerHTML = `<p class="text-center text-secondary mt-3">Dados de vencimento insuficientes para agendar.</p>`;
-            addAllBtn.classList.add('hidden');
-            modal.classList.add('active');
-            return;
-        }
-        
-        const parcelas = [];
-        const baseDate = new Date(boletoData.primeiroVencimento + 'T09:00:00'); // Adiciona horário para evitar fusos
-        
-        for (let i = 0; i < boletoData.numeroParcelas; i++) {
-            const dueDate = new Date(baseDate);
-            if (boletoData.tipoParcela === 'mensais') {
-                dueDate.setMonth(baseDate.getMonth() + i);
-            } else { // semanais
-                dueDate.setDate(baseDate.getDate() + (i * 7));
-            }
-            parcelas.push(dueDate);
-        }
-
-        const parcelasHtml = parcelas.map((date, index) => {
-            const formattedDate = date.toLocaleDateString('pt-BR');
-            return `<div class="d-flex justify-content-between align-items-center mb-2">
-                        <span>${index + 1}ª Parcela: <strong>${formattedDate}</strong></span>
-                        <button class="btn btn-sm btn-outline-info btn-add-single-event" data-index="${index}"><i class="bi bi-calendar-plus"></i></button>
-                    </div>`;
-        }).join('');
-        
-        modalContent.innerHTML = `
-            <p class="text-secondary small mb-3">Selecione as parcelas para adicionar à sua agenda. Você pode adicionar todas de uma vez.</p>
-            <div class="p-3 bg-dark bg-opacity-25 rounded-3 mb-3 text-start">
-                ${parcelasHtml}
-            </div>
-        `;
-        
-        // Adiciona listener para botões de parcela individual
-        modalContent.querySelectorAll('.btn-add-single-event').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const index = e.currentTarget.dataset.index;
-                const date = parcelas[index];
-                addEventToCalendar(currentBoletoData, date, index + 1);
-            });
-        });
-
-        addAllBtn.classList.remove('hidden');
-        modal.classList.add('active');
-    }
-
-    // Função para fechar o modal de agendamento
-    function closeScheduleModal() {
-        const modal = document.getElementById('scheduleBoletoModalOverlay');
-        modal.classList.remove('active');
-    }
-
-    // Função para gerar o URL do Google Agenda
-    function generateGoogleCalendarUrl(boletoData, date, installmentNumber) {
-        const title = encodeURIComponent(`Boleto ${boletoData.compradorNome} - Parcela ${installmentNumber}`);
-        const description = encodeURIComponent(`Vencimento da parcela ${installmentNumber}/${boletoData.numeroParcelas} do boleto de ${boletoData.compradorNome}.`);
-        const formattedDate = date.toISOString().split('T')[0].replace(/-/g, '');
-        const dateTimeStart = formattedDate + 'T090000'; // 9:00 AM
-        const dateTimeEnd = formattedDate + 'T100000'; // 10:00 AM
-
-        return `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dateTimeStart}/${dateTimeEnd}&details=${description}&ctz=America/Sao_Paulo&sf=true&output=xml`;
-    }
-
-    // Função para adicionar um único evento à agenda
-    function addEventToCalendar(boletoData, date, installmentNumber) {
-        const url = generateGoogleCalendarUrl(boletoData, date, installmentNumber);
-        window.open(url, '_blank');
-    }
-    
-    // Função para adicionar TODAS as parcelas
-    function addAllToCalendar() {
-        if (!currentBoletoData) return;
-        
-        const baseDate = new Date(currentBoletoData.primeiroVencimento + 'T09:00:00');
-        const numParcelas = currentBoletoData.numeroParcelas;
-        
-        let i = 0;
-        const addNextEvent = () => {
-            if (i < numParcelas) {
-                const dueDate = new Date(baseDate);
-                if (currentBoletoData.tipoParcela === 'mensais') {
-                    dueDate.setMonth(baseDate.getMonth() + i);
-                } else { // semanais
-                    dueDate.setDate(baseDate.getDate() + (i * 7));
-                }
-                
-                addEventToCalendar(currentBoletoData, dueDate, i + 1);
-                i++;
-                setTimeout(addNextEvent, 500); // Intervalo de 500ms
-            } else {
-                closeScheduleModal();
-                showCustomModal({
-                    message: "Todos os eventos foram gerados! Verifique sua agenda.",
-                    onConfirm: () => {}
-                });
-            }
-        };
-
-        addNextEvent();
-    }
-    
-    document.addEventListener('DOMContentLoaded', () => {
-        const scheduleModal = document.getElementById('scheduleBoletoModalOverlay');
-        const addAllBtn = document.getElementById('addAllToAgendaBtn');
-        const closeBtn = document.getElementById('closeScheduleModalBtn');
-
-        if(closeBtn) {
-            closeBtn.addEventListener('click', closeScheduleModal);
-        }
-        if(addAllBtn) {
-            addAllBtn.addEventListener('click', addAllToCalendar);
-        }
-
-        // Fecha o modal ao clicar fora
-        if(scheduleModal) {
-            scheduleModal.addEventListener('click', (e) => {
-                if (e.target === scheduleModal) {
-                    closeScheduleModal();
-                }
-            });
-        }
-    });
-
-</script>
-
 </body>
 </html>
+
