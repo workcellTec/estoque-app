@@ -20,132 +20,314 @@
     <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js"></script>
     <!-- Library for exporting to image -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-<div id="loadingOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: var(--tertiary-color); z-index: 10000; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.5s ease;">
-    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
-        <span class="visually-hidden">Loading...</span>
-    </div>
-    <p class="mt-3" style="color: var(--text-secondary);">Carregando sistema...</p>
-</div>
+    <style>
+        /* ============================================== */
+        /* DESIGN & UX - YOUTUBE MUSIC REFINED            */
+        /* ============================================== */
 
-<div id="top-right-controls" class="hidden">
-    <div class="toggle-switch-theme">
-        <input type="checkbox" id="theme-toggle-checkbox">
-        <label for="theme-toggle-checkbox">
-            <span><i class="bi bi-moon-fill"></i></span>
-            <span><i class="bi bi-sun-fill"></i></span>
-        </label>
-    </div>
-    <div id="notification-bell">
-        <i class="bi bi-bell-fill"></i>
-        <span class="notification-badge hidden"></span>
-    </div>
-</div>
+        /* 1. VARIÁVEIS DE COR E TEMA */
+        :root {
+            --primary-color: #EF5350; /* Vermelho mais vibrante */
+            --primary-color-rgb: 239, 83, 80;
+            --tertiary-color: #030303; /* Preto profundo */
+            --text-color: #F1F1F1;
+            --text-color-strong: #FFFFFF;
+            --text-secondary: #AAAAAA;
+            --text-success: #81C784; 
+            --glass-bg: rgba(28, 28, 28, 0.65); /* Fundo de vidro mais escuro e translúcido */
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --shadow-color: rgba(0, 0, 0, 0.3);
+            --input-bg: rgba(44, 44, 46, 0.7);
+            --input-border: rgba(255, 255, 255, 0.1);
+            --border-radius: 16px; /* Bordas um pouco mais suaves */
+            --transition-duration: 0.3s;
+            --glow-1: #8A2BE2; /* Roxo/Azul */
+            --glow-2: #B71C1C; /* Vermelho Workcell */
+        }
+        
+        [data-theme="light"] {
+            --primary-color: #B71C1C;
+            --primary-color-rgb: 183, 28, 28;
+            --secondary-color: #f4f4f5;
+            --tertiary-color: #ffffff;
+            --text-color: #18181b;
+            --text-color-strong: #000000;
+            --text-secondary: #52525b;
+            --text-success: #16a34a; /* Verde mais forte para o modo claro */
+            --glass-bg: rgba(255, 255, 255, 0.75);
+            --glass-border: rgba(0, 0, 0, 0.1);
+            --shadow-color: rgba(183, 28, 28, 0.15);
+            --input-bg: #f4f4f5;
+            --input-border: #d4d4d8;
+            --glow-1: #D1C4E9;
+            --glow-2: #FFCDD2;
+        }
 
-<!-- MENU PRINCIPAL NOVO -->
-<div class="container text-center" id="mainMenu">
-    <h2 class="mb-4">Bem-vindo(a) à Central Workcell,<br/>O que você quer fazer?</h2>
-    <div class="d-grid gap-2">
-        <button class="btn-menu" id="goToCalculator"><i class="bi bi-calculator-fill"></i> Calculadora de Taxa</button>
-        <button class="btn-menu" id="goToContract"><i class="bi bi-file-earmark-text-fill"></i> Boletos</button>
-        <button class="btn-menu" id="goToStock"><i class="bi bi-box-seam"></i> Controle de Estoque</button>
-        <button class="btn-menu" id="goToAdmin"><i class="bi bi-gear"></i> Administração</button>
-    </div>
-</div>
+        /* 2. ESTILOS GERAIS E FUNDO ANIMADO */
+        html { box-sizing: border-box; }
+        *, *:before, *:after { box-sizing: inherit; }
 
-<!-- CONTAINER PARA A APLICAÇÃO DE CALCULADORA ORIGINAL -->
-<div id="calculatorContainer" class="hidden">
-    <div class="container text-center" id="calculatorHome">
-        <h2 class="mb-4">Calculadora de Taxas,<br/>O que você quer fazer?</h2>
-        <div class="d-grid gap-2">
-            <button class="btn-menu" id="openFecharVenda"><i class="bi bi-cash-coin"></i> Fechar uma venda</button>
-            <button class="btn-menu" id="openRepassarValores"><i class="bi bi-arrow-left-right"></i> Repassar valores</button>
-            <button class="btn-menu" id="openCalcularEmprestimo"><i class="bi bi-bank"></i> Calcular Empréstimo</button>
-            <button class="btn-menu" id="openCalcularPorAparelho"><i class="bi bi-phone"></i> Calcular por aparelho</button>
-        </div>
-    </div>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: var(--tertiary-color);
+            color: var(--text-color);
+            margin: 0; padding: 0; 
+            width: 100%; overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            transition: background-color var(--transition-duration), color var(--transition-duration);
+            position: relative;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: 
+                radial-gradient(circle at 20% 25%, var(--glow-1), transparent 40%),
+                radial-gradient(circle at 80% 75%, var(--glow-2), transparent 40%),
+                var(--tertiary-color);
+            background-size: 200% 200%;
+            opacity: 0.25;
+            animation: moveGlow 40s ease infinite; /* Otimização: animação mais lenta */
+            will-change: background-position; /* Otimização: dica de performance */
+        }
 
-    <div class="container" id="fecharVenda" style="display: none;">
-        <div class="section-header">
-            <h3>Fechar Venda</h3>
-            <button aria-label="Voltar" class="btn-back" id="backFromFecharVenda"><i class="bi bi-arrow-left"></i></button>
-        </div>
-        <div class="content-card w-100">
-            <div class="row mb-3 w-100 justify-content-center">
-                <div class="col-12 col-md-4 mb-3"><label class="form-label">Maquininha</label><select class="form-select" id="machine1"><option value="pagbank">PagBank</option><option value="infinity" selected>InfinityPay</option><option value="valorante">Valorante</option></select></div>
-                <div class="col-12 col-md-4 mb-3" id="flagDisplayContainer1" style="display: none;"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton1"></button></div>
-                <div class="col-12 col-md-4 mb-3">
-                    <label for="installments1" class="form-label d-flex justify-content-between">
-                        <span>Parcelas</span>
-                        <span id="installments1Value" class="fw-bold">Débito</span>
-                    </label>
-                    <div id="quickInstallmentsContainer" class="quick-installments">
-                        <!-- Botões de atalho serão inseridos aqui -->
-                    </div>
-                    <input type="range" class="form-range" id="installments1" min="0" max="18" step="1" value="0">
-                </div>
-            </div>
-            
-            <div id="brand1Container" class="hidden"><select id="brand1"><option value="visa">Visa</option><option value="mastercard">Mastercard</option><option value="hiper">Hiper</option><option value="hipercard">Hipercard</option><option value="elo">Elo</option><option value="amex">Amex</option></select></div>
+        @keyframes moveGlow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
 
-            <div class="toggle-switch">
-                <input type="checkbox" id="vendaModeToggle">
-                <label for="vendaModeToggle">
-                    <span><i class="bi bi-pencil-alt"></i> Entrada Manual</span>
-                    <span><i class="bi bi-box-seam"></i> Venda por Produto</span>
-                </label>
-            </div>
+        .container {
+            width: 100%; max-width: 550px; margin: 0 auto; padding: 20px 15px;
+            display: flex; flex-direction: column; align-items: center; 
+            min-height: 100vh; justify-content: flex-start;
+            position: relative; z-index: 1;
+            will-change: transform, opacity; /* Otimização: dica de performance para transições */
+        }
 
-            <div class="mb-3 d-flex justify-content-center flex-wrap" id="manualModeContainer">
-                <label class="me-3"><input checked="" name="manualMode" type="radio" value="total"/> Valor Total</label>
-                <label><input name="manualMode" type="radio" value="parcela"/> Valor da Parcela</label>
-            </div>
+        h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color); }
+        .section-header { width: 100%; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--glass-border); }
+        .section-header h3 { margin-bottom: 0; font-size: 1.5rem; }
 
-            <div class="w-100 hidden" id="vendaPorProdutoContainer" style="max-width: 400px; margin: 0 auto;">
-                <div class="mb-3 search-wrapper">
-                    <label class="form-label" for="vendaProdutoSearch"><i class="bi bi-search"></i> Pesquisar Produto</label>
-                    <input autocomplete="off" class="form-control" id="vendaProdutoSearch" placeholder="Carregando..." type="text"/>
-                    <div class="search-results-container list-group" id="vendaSearchResultsContainer"></div>
-                </div>
-                <div class="mb-3"><label class="form-label" for="fecharVendaPrecoBase"><i class="bi bi-tag"></i> Preço Base (R$)</label><input class="form-control" id="fecharVendaPrecoBase" readonly="" type="text"/></div>
-                
-                <div class="form-check form-switch my-3 hidden" id="entradaAVistaToggleContainer">
-                    <input class="form-check-input" type="checkbox" role="switch" id="entradaAVistaCheckbox">
-                    <label class="form-check-label" for="entradaAVistaCheckbox">Entrada à vista?</label>
-                </div>
-                
-                <div id="entradaAVistaContainer" class="hidden">
-                    <div class="mb-3">
-                        <label class="form-label" for="valorEntradaAVista"><i class="bi bi-cash"></i> Valor da entrada (à vista, sem taxa)</label>
-                        <input class="form-control" id="valorEntradaAVista" type="number" step="0.01" min="0" placeholder="Ex: 500,00">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label" for="valorPassadoNoCartao"><i class="bi bi-credit-card"></i> Valor passado no cartão (com taxa)</label>
-                        <input class="form-control" id="valorPassadoNoCartao" type="number" step="0.01" min="0" placeholder="Ex: 1849,00">
-                    </div>
-                </div>
-            </div>
-            
-            <div class="w-100 d-flex justify-content-center" id="fecharVendaInputs">
-                <div class="mb-3" style="width: 100%; max-width: 400px;"><label class="form-label" for="fecharVendaValue" id="fecharVendaValueLabel"><i class="bi bi-currency-dollar"></i> Valor Total da Venda (R$)</label><input class="form-control form-control-lg" id="fecharVendaValue" min="0" placeholder="Digite o valor" step="0.01" type="number"/></div>
-            </div>
-            <div class="w-100 d-flex flex-column justify-content-center mt-3" id="resultFecharVenda"></div>
-        </div>
-    </div>
+        /* 3. MENU PRINCIPAL - ESTILO LIQUID GLASS */
+        #mainMenu, #calculatorHome {
+            padding-top: 80px; justify-content: flex-start;
+        }
+        #mainMenu h2, #calculatorHome h2 { 
+            text-shadow: 0 1px 3px rgba(0,0,0,0.3); 
+            margin-bottom: 30px; 
+            color: var(--text-color);
+        }
+        .btn-menu {
+            display: flex; align-items: center; justify-content: center; gap: 12px;
+            font-weight: 500; border-radius: var(--border-radius); padding: 16px 24px;
+            margin-bottom: 15px !important; 
+            background-color: var(--glass-bg);
+            color: var(--text-color); 
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(5px); /* Otimização: blur reduzido */
+            -webkit-backdrop-filter: blur(5px); /* Otimização: blur reduzido */
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            transition: all var(--transition-duration) ease;
+            width: 100%; max-width: 320px; 
+        }
+        .btn-menu:hover {
+             background-color: rgba(255, 255, 255, 0.1);
+             transform: translateY(-3px) scale(1.02); 
+             box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.45);
+             border-color: rgba(255, 255, 255, 0.2);
+        }
+      
+        /* 4. CARDS DE CONTEÚDO - ESTILO LIQUID GLASS */
+        .content-card {
+            background-color: var(--glass-bg);
+            border-radius: var(--border-radius);
+            padding: 25px; margin-bottom: 20px; width: 100%;
+            border: 1px solid var(--glass-border); 
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            backdrop-filter: blur(5px); /* Otimização: blur reduzido */
+            -webkit-backdrop-filter: blur(5px); /* Otimização: blur reduzido */
+            transition: background-color var(--transition-duration) ease, border-color var(--transition-duration) ease;
+        }
+        
+        .container:not(#mainMenu):not(#calculatorHome) { 
+            padding-top: 20px; align-items: stretch;
+        }
 
-    <div class="container" id="repassarValores" style="display: none;">
-        <div class="section-header">
-            <h3>Repassar Valores</h3>
-            <button aria-label="Voltar" class="btn-back" id="backFromRepassarValores"><i class="bi bi-arrow-left"></i></button>
-        </div>
-        <div class="content-card w-100">
-            <div class="row mb-3 w-100 justify-content-center">
-                <div class="col-12 col-md-6 mb-3"><label class="form-label">Maquininha</label><select class="form-select" id="machine2"><option value="pagbank">PagBank</option><option value="infinity">InfinityPay</option><option value="valorante">Valorante</option></select></div>
-                <div class="col-12 col-md-6 mb-3" id="flagDisplayContainer2" style="display: none;"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton2"></button></div>
-            </div>
-            <div id="brand2Container" class="hidden"><select id="brand2"><option value="visa">Visa</option><option value="mastercard">Mastercard</option><option value="hiper">Hiper</option><option value="hipercard">Hipercard</option><option value="elo">Elo</option><option value="amex">Amex</option></select></div>
+        /* 5. FORMULÁRIOS E BOTÕES */
+        .form-label { color: var(--text-secondary); margin-bottom: 8px; font-weight: 400; }
+        .form-control, .form-select {
+            background-color: var(--input-bg); color: var(--text-color);
+            border: 1px solid var(--input-border); border-radius: 12px !important;
+            padding: 12px 15px; transition: all var(--transition-duration) ease;
+            backdrop-filter: blur(2px); /* Otimização: blur bem reduzido para inputs */
+        }
+        .form-control::placeholder { color: var(--text-secondary); opacity: 0.7; }
+        .form-control:focus, .form-select:focus {
+            background-color: var(--input-bg); color: var(--text-color);
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.2rem rgba(var(--primary-color-rgb), 0.25), 0 0 10px rgba(var(--primary-color-rgb), 0.4);
+            outline: none;
+        }
+        .btn {
+            transition: all var(--transition-duration) ease; font-weight: 500;
+            border-radius: 12px; padding: 12px 20px;
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #EF5350, #D32F2F);
+            color: #FFF;
+            border: none; box-shadow: 0 4px 12px var(--shadow-color);
+        }
+        .btn-primary:hover { 
+            background: linear-gradient(135deg, #D32F2F, #B71C1C);
+            box-shadow: 0 6px 16px var(--shadow-color);
+            transform: translateY(-1px);
+        }
+        .btn-back { background: none; color: var(--text-secondary); border: none; font-size: 1.2rem; padding: 5px; }
+        .btn-back:hover { color: var(--text-color); }
+        
+        /* 6. NOVO SELETOR DE ABAS (TOGGLE SWITCH) */
+        .toggle-switch {
+            background-color: rgba(0,0,0,0.25);
+            border-radius: var(--border-radius);
+            padding: 4px;
+            display: flex;
+            justify-content: center;
+            border: 1px solid var(--input-border);
+            max-width: 400px;
+            margin: 0 auto 1.5rem auto;
+            position: relative;
+        }
+        .toggle-switch input[type="checkbox"] {
+            display: none;
+        }
+        .toggle-switch label {
+            width: 100%;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            text-align: center;
+            position: relative;
+            cursor: pointer;
+            margin: 0;
+            color: var(--text-secondary);
+        }
+        .toggle-switch label span {
+            padding: 8px 15px;
+            border-radius: calc(var(--border-radius) - 4px);
+            transition: color var(--transition-duration);
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        .toggle-switch label::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 50%;
+            height: 100%;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            border-radius: calc(var(--border-radius) - 4px);
+            transition: transform var(--transition-duration) cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            z-index: 1;
+        }
+        .toggle-switch input:checked + label::before {
+            transform: translateX(100%);
+        }
+        .toggle-switch input:not(:checked) + label span:first-of-type,
+        .toggle-switch input:checked + label span:last-of-type {
+            color: var(--text-color);
+            font-weight: 600;
+        }
+
+        /* 7. ESTILOS FUNCIONAIS E DE IMPRESSÃO (INTACTOS E CORRIGIDOS) */
+        
+        .hidden { display: none !important; }
+
+        .custom-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); display: flex; justify-content: center; align-items: center; z-index: 1056; opacity: 0; visibility: hidden; transition: opacity var(--transition-duration) ease, visibility var(--transition-duration) ease; }
+        .custom-modal-overlay.active { opacity: 1; visibility: visible; }
+        .custom-modal-content { background-color: var(--secondary-color); color: var(--text-color); padding: 30px; border-radius: var(--border-radius); text-align: center; max-width: 400px; width: 90%; box-shadow: 0 10px 40px var(--shadow-color); transform: scale(0.9); transition: transform var(--transition-duration) ease; border: 1px solid var(--glass-border); }
+        .custom-modal-overlay.active .custom-modal-content { transform: scale(1); }
+        .custom-modal-content.wide { max-width: 600px; }
+
+        #contractContainer .content-card { max-width: 800px; margin: 0 auto; }
+        .form-section-title { color: var(--primary-color); border-bottom: 1px solid var(--glass-border); }
+        #contractPreview { position: absolute; left: -9999px; top: auto; font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; color: #000; background: #FFF; padding: 1cm; width: 21cm; box-sizing: border-box; }
+        #contractPreview h4 { font-size: 14pt; text-align: center; margin-bottom: 24pt; font-weight: bold; color: #000; }
+        #contractPreview p, #contractPreview div { margin-bottom: 12pt; text-align: justify; color: #000;}
+        #contractPreview .section-title { font-weight: bold; margin-bottom: 6pt; text-transform: uppercase; color: #000;}
+        #contractPreview .signature-line { border-bottom: 1px solid #000; width: 80%; margin: 40px auto 5px auto; }
+        #administracao { max-width: 900px; }
+        #administracao .admin-section { margin-bottom: 30px; padding: 25px; background-color: var(--glass-bg); border-radius: var(--border-radius); border: 1px solid var(--glass-border); backdrop-filter: blur(5px); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37); }
+        
+        .user-id-display { position: fixed; bottom: 15px; left: 15px; background-color: var(--glass-bg); color: var(--text-secondary); padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; z-index: 1000; backdrop-filter: blur(5px); border: 1px solid var(--glass-border); }
+        .spinner-border.text-primary { color: var(--primary-color) !important; }
+        .results-table { --bs-table-color: var(--text-color); --bs-table-bg: transparent; --bs-table-border-color: var(--glass-border); --bs-table-hover-bg: rgba(var(--primary-color-rgb), 0.1); --bs-table-hover-color: var(--text-color); }
+        .results-table thead th { color: var(--text-secondary); }
+        [data-theme="light"] .results-table { --bs-table-border-color: var(--input-border); }
+        .lucro-display { color: var(--text-success); }
+        
+        @keyframes fadeInAndUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .content-card, .admin-section { animation: fadeInAndUp 0.5s ease-out forwards; }
+        .btn:active, .btn-menu:active { transform: scale(0.97); transition: transform 0.1s ease; }
+        .lucro-extra-valor { color: #0d6efd; font-weight: bold; text-shadow: 0 0 4px rgba(0, 217, 255, 0.7); }
+        [data-theme="light"] .lucro-extra-valor { color: #0056b3; text-shadow: none; }
+        .product-data-row.is-active { background-color: rgba(var(--primary-color-rgb), 0.1); }
+        .product-separator-row td { padding: 0 !important; border: none; text-align: center; }
+        .btn-toggle-menu { background: transparent; border: none; border-top: 1px dashed var(--glass-border); color: var(--text-secondary); cursor: pointer; padding: 4px; width: 100%; line-height: 1; }
+        .btn-toggle-menu i { transition: transform 0.3s ease; }
+        .product-separator-row.is-active .btn-toggle-menu i { transform: rotate(180deg); }
+        .acoes-produto { display: none; }
+        .acoes-produto.is-active { display: table-row; }
+        .acoes-produto td { padding: 0 1rem 1rem 1rem !important; border: none !important; background-color: transparent; }
+        .acoes-produto .action-menu-content { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        #productsTableBody .form-control { background-color: var(--input-bg) !important; border: 1px solid var(--input-border) !important; }
+        .extra-value-toggle { text-align: center; padding: 8px 0; margin: 8px auto; max-width: 400px; }
+        .btn-toggle-extra { background: none; border: none; border-top: 1px dashed rgba(var(--primary-color-rgb), 0.3); border-bottom: 1px dashed rgba(var(--primary-color-rgb), 0.3); color: var(--text-secondary); cursor: pointer; width: 100%; padding: 6px; opacity: 0.7; transition: opacity 0.3s ease; }
+        .btn-toggle-extra:hover { opacity: 1; }
+        .btn-toggle-extra i { transition: transform 0.3s ease; }
+        .btn-toggle-extra.is-active i { transform: rotate(180deg); }
+        .extra-value-container { max-height: 0; overflow: hidden; transition: max-height 0.35s ease-in-out, margin-top 0.35s ease-in-out; margin-top: 0; }
+        .extra-value-container.is-active { max-height: 100px; margin-top: 1rem; }
+        .favoritos { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 15px; }
+        .favorito { display: flex; align-items: center; background-color: var(--input-bg); border-radius: 20px; border: 1px solid var(--input-border); overflow: hidden; transition: all 0.2s ease; }
+        .favorito:hover { box-shadow: 0 0 8px rgba(var(--primary-color-rgb), 0.3); }
+        .favorito-btn { background: none; border: none; color: var(--text-color); padding: 6px 12px; cursor: pointer; transition: background-color 0.2s; font-size: 0.9rem; }
+        .favorito-btn:hover { background-color: rgba(var(--primary-color-rgb), 0.2); }
+        .remove-favorito-btn { color: var(--text-secondary); cursor: pointer; padding: 6px 10px; font-size: 0.9rem; border-left: 1px solid var(--input-border); transition: all 0.2s ease; }
+        .remove-favorito-btn:hover { color: #fff; background-color: rgba(220, 53, 69, 0.7); }
+        .btn-flag { display: flex; align-items: center; justify-content: flex-start; gap: 15px; font-weight: 500; font-size: 1.1rem; border-radius: 10px; padding: 15px 20px; border: 1px solid var(--glass-border); background-color: var(--input-bg); color: var(--text-color); transition: background-color var(--transition-duration) ease, transform var(--transition-duration) ease, border-color var(--transition-duration) ease; width: 100%; }
+        .btn-flag:hover { background-color: var(--primary-color); border-color: var(--primary-color); color: #FFF; transform: translateY(-2px); }
+        .btn-flag-display { background-color: var(--input-bg); color: var(--text-color); border: 1px solid var(--input-border); border-radius: 10px !important; padding: 12px 15px; width: 100%; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        .btn-flag-display:hover { border-color: var(--primary-color); }
+        .btn-flag-display i { font-size: 1.2rem; }
+        .stock-qty-input { font-weight: bold; }
+        .stock-qty-input::-webkit-outer-spin-button, .stock-qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .stock-qty-input[type=number] { -moz-appearance: textfield; }
+        .product-colors-display { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+        .color-swatch-sm { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); }
+        #reportPreview { display: none; font-family: Arial, sans-serif; color: #000; background: #FFF; }
+        #reportPreview h3 { color: #000; font-size: 16pt; text-align: center; font-weight: bold; margin-bottom: 5px;}
+        #reportPreview p { color: #555; font-size: 10pt; text-align: center; margin-bottom: 20px;}
+        #reportPreview table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        #reportPreview th, #reportPreview td { border: 1px solid #ccc; padding: 8px; text-align: left; color: #000;}
+        #reportPreview th { background-color: #f2f2f2; font-weight: bold; }
+        #colorPickerModalContent { max-width: 500px; }
+        #colorPickerProductName { font-weight: 600; color: var(--primary-color); }
+        .color-palette { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 10px; margin-top: 15px; padding: 15px; background-color: var(--input-bg); border-radius: 10px; max-heighption value="mastercard">Mastercard</option><option value="hiper">Hiper</option><option value="hipercard">Hipercard</option><option value="elo">Elo</option><option value="amex">Amex</option></select></div>
 
             <div class="mb-3" style="max-width: 400px; margin: 0 auto 1rem;">
                 <label class="form-label" for="repassarValue"><i class="bi bi-calculator"></i> Valor Desejado (líquido)</label>
