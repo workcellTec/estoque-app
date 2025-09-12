@@ -594,8 +594,14 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 
-    <script src="app.js"></script>
-    <script src="sw.js" defer></script>
+<script src="app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js')
+      .then(() => console.log("Service Worker registrado"))
+      .catch(err => console.error("Erro ao registrar Service Worker:", err));
+  }
+</script>
 </body>
 </html>
 
