@@ -5,7 +5,6 @@
     <meta content="width=device-width, initial-scale=1" name="viewport"/>
     <title>Central Workcell</title>
     
-    <!-- PWA Meta Tags -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#000000"/>
@@ -18,7 +17,6 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js"></script>
-    <!-- Library for exporting to image -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         /* ============================================== */
@@ -261,6 +259,31 @@
         .custom-modal-overlay.active { opacity: 1; visibility: visible; }
         .custom-modal-content { background-color: var(--secondary-color); color: var(--text-color); padding: 30px; border-radius: var(--border-radius); text-align: center; max-width: 400px; width: 90%; box-shadow: 0 10px 40px var(--shadow-color); transform: scale(0.9); transition: transform var(--transition-duration) ease; border: 1px solid var(--glass-border); }
         .custom-modal-overlay.active .custom-modal-content { transform: scale(1); }
+        
+        /* NOVO ESTILO PARA NOTIFICAÇÃO TOAST */
+        #toastNotification {
+            position: fixed;
+            top: -100px; /* Começa fora da tela */
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: var(--glass-bg);
+            color: var(--text-color);
+            padding: 12px 20px;
+            border-radius: var(--border-radius);
+            z-index: 10001; /* Acima de outros elementos */
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(5px);
+            box-shadow: 0 4px 15px var(--shadow-color);
+            transition: top 0.4s ease-in-out, opacity 0.4s ease-in-out;
+            opacity: 0;
+            font-size: 0.9rem;
+            pointer-events: none; /* Não bloqueia cliques */
+        }
+        #toastNotification.show {
+            top: 30px; /* Anima para esta posição */
+            opacity: 1;
+        }
+
 
         #contractContainer .content-card { max-width: 800px; margin: 0 auto; }
         .form-section-title { color: var(--primary-color); border-bottom: 1px solid var(--glass-border); }
@@ -276,6 +299,8 @@
         .spinner-border.text-primary { color: var(--primary-color) !important; }
         .results-table { --bs-table-color: var(--text-color); --bs-table-bg: transparent; --bs-table-border-color: var(--glass-border); --bs-table-hover-bg: rgba(var(--primary-color-rgb), 0.1); --bs-table-hover-color: var(--text-color); }
         .results-table thead th { color: var(--text-secondary); }
+        /* MODIFICAÇÃO: Adiciona cursor pointer para linhas de resultado copiáveis */
+        .results-table tbody tr.copyable-row { cursor: pointer; }
         [data-theme="light"] .results-table { --bs-table-border-color: var(--input-border); }
         .lucro-display { color: var(--text-success); }
         
@@ -653,7 +678,6 @@
     </div>
 </div>
 
-<!-- MENU PRINCIPAL NOVO -->
 <div class="container text-center" id="mainMenu">
     <h2 class="mb-4">Bem-vindo(a) à Central Workcell,<br/>O que você quer fazer?</h2>
     <div class="d-grid gap-2">
@@ -664,7 +688,6 @@
     </div>
 </div>
 
-<!-- CONTAINER PARA A APLICAÇÃO DE CALCULADORA ORIGINAL -->
 <div id="calculatorContainer" class="hidden">
     <div class="container text-center" id="calculatorHome">
         <h2 class="mb-4">Calculadora de Taxas,<br/>O que você quer fazer?</h2>
@@ -691,8 +714,7 @@
                         <span id="installments1Value" class="fw-bold">Débito</span>
                     </label>
                     <div id="quickInstallmentsContainer" class="quick-installments">
-                        <!-- Botões de atalho serão inseridos aqui -->
-                    </div>
+                        </div>
                     <input type="range" class="form-range" id="installments1" min="0" max="18" step="1" value="0">
                 </div>
             </div>
@@ -852,7 +874,6 @@
     </div>
 </div>
 
-<!-- CONTAINER ADMINISTRAÇÃO -->
 <div class="container" id="administracao" style="display: none;">
     <div class="section-header">
         <h3>Administração</h3>
@@ -861,12 +882,10 @@
 
     <div class="admin-section w-100">
         <h5 class="text-center mb-3">Selecione o que deseja gerenciar</h5>
-        <div class="toggle-switch">
-            <input type="checkbox" id="adminModeToggle">
-            <label for="adminModeToggle">
-                <span><i class="bi bi-box-seam-fill me-2"></i>Produtos</span>
-                <span><i class="bi bi-percent me-2"></i>Taxas</span>
-            </label>
+         <div class="btn-group w-100 mb-3" id="admin-nav-buttons" role="group">
+            <button type="button" class="btn btn-outline-secondary active" data-admin-section="adminProductsContent">Produtos</button>
+            <button type="button" class="btn btn-outline-secondary" data-admin-section="adminRatesContent">Taxas</button>
+            <button type="button" class="btn btn-outline-secondary" data-admin-section="adminTextContent">Texto</button>
         </div>
     </div>
 
@@ -883,12 +902,21 @@
                     <input type="text" class="form-control" id="newProductValue" required placeholder="Ex: 2499,90">
                 </div>
                 <div class="row">
+                     <div class="col-md-6 mb-3">
+                        <label for="newProductTag" class="form-label">Etiqueta</label>
+                        <select class="form-select" id="newProductTag" required>
+                            <option value="Chinês" selected>Chinês</option>
+                            <option value="Samsung / Apple">Samsung / Apple</option>
+                            <option value="Seminovo Iphone">Seminovo Iphone</option>
+                            <option value="Seminovo android">Seminovo android</option>
+                        </select>
+                    </div>
                     <div class="col-md-6 mb-3">
                         <label for="newProductQuantity" class="form-label">Quantidade (Opcional)</label>
                         <input type="number" class="form-control" id="newProductQuantity" placeholder="1" min="0">
                     </div>
-                    <div class="col-md-6 mb-3">
-                        <label for="newProductColors" class="form-label">Cores (Opcional)</label>
+                    <div class="col-md-12 mb-3">
+                        <label for="newProductColors" class="form-label">Cores (Separadas por vírgula)</label>
                         <input type="text" class="form-control" id="newProductColors" placeholder="Azul, Preto...">
                     </div>
                 </div>
@@ -901,14 +929,26 @@
                 <h4 class="mb-0"><i class="bi bi-list-ul"></i> Produtos</h4>
                 <input class="form-control" id="adminSearchInput" placeholder="Filtrar..." style="width: 200px;" type="text">
             </div>
-            <div class="table-responsive"><table class="table align-middle"><thead><tr><th style="width: 50%;">Nome do Produto</th><th style="width: 30%;">Valor</th><th style="width: 20%;" class="text-center">Qtd.</th></tr></thead><tbody id="productsTableBody"></tbody></table></div>
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th style="width: 40%;">Nome do Produto</th>
+                            <th style="width: 20%;">Valor</th>
+                            <th style="width: 10%;" class="text-center">Qtd.</th>
+                            <th style="width: 30%;">Etiqueta</th>
+                        </tr>
+                    </thead>
+                    <tbody id="productsTableBody"></tbody>
+                </table>
+            </div>
         </div>
         <div class="admin-section text-center w-100 pt-3">
              <button class="btn btn-danger" id="deleteAllProductsBtn"><i class="bi bi-trash-fill"></i> Excluir todos os produtos</button>
         </div>
     </div>
 
-    <div id="adminRatesContent" class="w-100" style="display: none;">
+    <div id="adminRatesContent" class="hidden">
         <div class="admin-section">
             <h4 class="text-start"><i class="bi bi-eye-fill"></i> Maquininhas Visíveis</h4>
             <p class="text-start text-secondary">Desative as maquininhas que você não utiliza para simplificar as telas de cálculo.</p>
@@ -942,9 +982,34 @@
             </button>
         </div>
     </div>
+
+    <div id="adminTextContent" class="admin-section w-100 hidden">
+        <h4 class="text-start"><i class="bi bi-fonts"></i> Editar Textos por Etiqueta</h4>
+        <p class="text-start text-secondary">Estes textos serão adicionados ao final da simulação copiada.</p>
+        <form id="tagTextsForm">
+            <div class="mb-3">
+                <label for="text-chines" class="form-label">Chinês</label>
+                <textarea class="form-control" id="text-chines" rows="3" data-tag="Chinês" placeholder="Digite o texto para produtos com a etiqueta 'Chinês'"></textarea>
+            </div>
+            <div class="mb-3">
+                <label for="text-samsung-apple" class="form-label">Samsung / Apple</label>
+                <textarea class="form-control" id="text-samsung-apple" rows="3" data-tag="Samsung / Apple" placeholder="Digite o texto para produtos com a etiqueta 'Samsung / Apple'"></textarea>
+            </div>
+            <div class="mb-3">
+                <label for="text-seminovo-iphone" class="form-label">Seminovo Iphone</label>
+                <textarea class="form-control" id="text-seminovo-iphone" rows="3" data-tag="Seminovo Iphone" placeholder="Digite o texto para produtos com a etiqueta 'Seminovo Iphone'"></textarea>
+            </div>
+            <div class="mb-3">
+                <label for="text-seminovo-android" class="form-label">Seminovo android</label>
+                <textarea class="form-control" id="text-seminovo-android" rows="3" data-tag="Seminovo android" placeholder="Digite o texto para produtos com a etiqueta 'Seminovo android'"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary w-100 mt-3" id="saveTagTextsBtn">
+                <i class="bi bi-save-fill"></i> Salvar Textos
+            </button>
+        </form>
+    </div>
 </div>
 
-<!-- CONTAINER PARA O NOVO FORMULÁRIO DE CONTRATO -->
 <div id="contractContainer" class="container hidden">
     <div class="section-header">
         <h3>Boletos</h3>
@@ -1043,11 +1108,9 @@
         </div>
     </div>
     <div id="historyBoletoContent" class="hidden w-100">
-        <!-- O histórico de boletos será renderizado aqui pelo JavaScript -->
-    </div>
+        </div>
 </div>
 
-<!-- CONTAINER PARA ESTOQUE -->
 <div id="stockContainer" class="container hidden">
     <div class="section-header">
         <h3>Controle de Estoque</h3>
@@ -1062,18 +1125,14 @@
                 <button class="btn btn-info btn-sm" id="generateReportBtn"><i class="bi bi-printer"></i> Relatório</button>
             </div>
         </div>
-        <!-- O container da lista de estoque agora é um div, não mais uma tabela -->
         <div class="stock-list-container" id="stockTableBody">
-            <!-- Os cards de produto serão inseridos aqui dinamicamente -->
-        </div>
+            </div>
     </div>
 </div>
 
 
-<!-- Div de preview do contrato para renderização do PDF e Impressão -->
 <div id="contractPreview">
 </div>
-<!-- Div de preview do relatório de estoque para impressão -->
 <div id="reportPreview"></div>
 
 
@@ -1089,6 +1148,8 @@
         </div>
     </div>
 </div>
+
+<div id="toastNotification"></div>
 
 <div class="custom-modal-overlay" id="lucroModalOverlay">
     <div class="custom-modal-content">
@@ -1147,7 +1208,6 @@
     </div>
 </div>
 
-<!-- Notification Panel -->
 <div class="offcanvas offcanvas-end" tabindex="-1" id="notificationPanel" aria-labelledby="notificationPanelLabel">
   <div class="offcanvas-header">
     <h5 class="offcanvas-title" id="notificationPanelLabel"><i class="bi bi-bell-fill me-2"></i>Notificações</h5>
@@ -1155,8 +1215,7 @@
   </div>
   <div class="offcanvas-body">
     <div id="notificationList" class="list-group list-group-flush">
-       <!-- Notifications will be inserted here -->
-    </div>
+       </div>
   </div>
 </div>
 
@@ -1213,6 +1272,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
     let onlyShowIgnored = false;
     let checkedItems = {};
     let modificationTracker = {}; // Para rastrear mudanças de contagem
+    let tagTexts = {}; // NOVA: para armazenar os textos das etiquetas
     const APARELHO_FAVORITES_KEY = 'ctwAparelhoFavoritos';
     const CHECKED_ITEMS_KEY = 'ctwCheckedItems';
     const MAX_FAVORITES = 5;
@@ -1655,13 +1715,14 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
         const debitTax = getRate(machine, brand, 0);
         if (debitTax !== null && debitTax !== undefined) { 
             const valorBrutoDebito = valorBaseParaCalculo / (1 - debitTax / 100); 
-            tableRows += `<tr class="debit-row"><td>Débito</td><td>-</td><td>${valorBrutoDebito.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td></tr>`; 
+            tableRows += `<tr class="debit-row copyable-row" data-installments="Débito" data-parcela="${valorBrutoDebito.toFixed(2)}" data-total="${valorBrutoDebito.toFixed(2)}"><td>Débito</td><td>-</td><td>${valorBrutoDebito.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td></tr>`; 
         }
         for (let i = 1; i <= maxInstallments; i++) { 
             const creditTax = getRate(machine, brand, i); 
             if (creditTax !== undefined) { 
                 const valorBrutoCredit = valorBaseParaCalculo / (1 - creditTax / 100), valorParcela = valorBrutoCredit / i; 
-                tableRows += `<tr><td>${i}x</td><td>${valorParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td>${valorBrutoCredit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td></tr>`; 
+                // MODIFICAÇÃO: Adicionada classe 'copyable-row' e data-attributes para a função de copiar
+                tableRows += `<tr class="copyable-row" data-installments="${i}" data-parcela="${valorParcela.toFixed(2)}" data-total="${valorBrutoCredit.toFixed(2)}"><td>${i}x</td><td>${valorParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td>${valorBrutoCredit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td></tr>`; 
             } 
         }
         
@@ -1788,7 +1849,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
         container.innerHTML = '';
     }
 
-    function loadRatesFromDB() { const ratesRef = ref(db, 'rates'); onValue(ratesRef, (snapshot) => { if (snapshot.exists()) { rates = snapshot.val(); areRatesLoaded = true; updateInstallmentsOptions(); console.log("Taxas carregadas."); if (currentCalculatorSectionId === 'administracao' && document.getElementById('adminModeToggle').checked) renderRatesEditor(); } else { console.error("ERRO: As taxas não foram encontradas."); showCustomModal({ message: "Erro crítico: Não foi possível carregar as taxas." }); } }, (error) => { console.error("Erro ao carregar taxas:", error); showCustomModal({ message: `Erro ao carregar taxas: ${error.message}` }); }); }
+    function loadRatesFromDB() { const ratesRef = ref(db, 'rates'); onValue(ratesRef, (snapshot) => { if (snapshot.exists()) { rates = snapshot.val(); areRatesLoaded = true; updateInstallmentsOptions(); console.log("Taxas carregadas."); if (currentMainSectionId === 'administracao' && document.getElementById('adminModeToggle').checked) renderRatesEditor(); } else { console.error("ERRO: As taxas não foram encontradas."); showCustomModal({ message: "Erro crítico: Não foi possível carregar as taxas." }); } }, (error) => { console.error("Erro ao carregar taxas:", error); showCustomModal({ message: `Erro ao carregar taxas: ${error.message}` }); }); }
     const getProductsRef = () => ref(db, 'products');
     function loadProductsFromDB() { 
         if (!db || !isAuthReady) return; 
@@ -1833,29 +1894,34 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
         if (filteredList.length === 0) {
             tableBody.innerHTML = `
                 <tr>
-                    <td colspan="3" class="text-center p-5">
+                    <td colspan="4" class="text-center p-5">
                         <i class="bi bi-journal-x" style="font-size: 4rem; color: var(--text-secondary);"></i>
                         <h5 class="mt-3">Nenhum produto encontrado</h5>
-                        <p class="text-secondary">Adicione um novo produto abaixo para começar a gerir a sua lista.</p>
+                        <p class="text-secondary">Adicione um novo produto para começar.</p>
                     </td>
                 </tr>
             `;
         } else {
-             tableBody.innerHTML = filteredList.flatMap(product => [
+             tableBody.innerHTML = filteredList.flatMap(product => {
+                const tagOptions = ['Chinês', 'Samsung / Apple', 'Seminovo Iphone', 'Seminovo android']
+                    .map(tag => `<option value="${escapeHtml(tag)}" ${product.tag === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('');
+
+                return [
                 `<tr class="product-data-row" data-id="${product.id}">
                     <td><input type="text" class="form-control form-control-sm" value="${escapeHtml(product.nome)}" data-field="nome"></td>
                     <td><input type="text" class="form-control form-control-sm" value="${(product.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}" data-field="valor"></td>
                     <td><input type="number" class="form-control form-control-sm text-center" value="${product.quantidade || 0}" data-field="quantidade" min="0" step="1"></td>
+                    <td><select class="form-select form-select-sm" data-field="tag">${tagOptions}</select></td>
                 </tr>`,
                 `<tr class="product-separator-row" data-id="${product.id}">
-                    <td colspan="3">
+                    <td colspan="4">
                          <button class="btn-toggle-menu" data-id="${product.id}" aria-label="Abrir menu de ações">
                             <i class="bi bi-chevron-down"></i>
                          </button>
                     </td>
                 </tr>`,
                 `<tr class="acoes-produto" data-id="${product.id}">
-                    <td colspan="3">
+                    <td colspan="4">
                         <div class="action-menu-content">
                             <div class="form-check form-switch">
                               <input class="form-check-input ignore-toggle-switch-admin" type="checkbox" role="switch" id="ignore-admin-${product.id}" data-id="${product.id}" ${product.ignorarContagem ? 'checked' : ''}>
@@ -1865,7 +1931,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
                         </div>
                     </td>
                 </tr>`
-            ]).join('');
+            ]}).join('');
         }
     }
     function filterAdminProducts() { const searchTerm = document.getElementById('adminSearchInput').value; renderAdminTable(!fuse || !searchTerm ? products : fuse.search(searchTerm).map(r => r.item)); }
@@ -1879,7 +1945,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
                 const quantidade = parts.length > 2 ? parseInt(parts[2], 10) : 1;
                 
                 if (nome && !isNaN(valor) && !isNaN(quantidade)) {
-                    return { nome, valor, quantidade, cores: [], ignorarContagem: false };
+                    return { nome, valor, quantidade, cores: [], ignorarContagem: false, tag: 'Chinês' };
                 }
             }
             return null;
@@ -1903,18 +1969,32 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
     }
     function exportProducts(format) { const dataStr = format === 'txt' ? products.map(p => `${p.nome} - ${(p.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`).join('\n') : JSON.stringify(products.map(({id, ...rest}) => rest), null, 2); const blob = new Blob([dataStr], { type: `text/${format === 'txt' ? 'plain' : 'json'}` }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `products.${format}`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href); }
     
+    // MODIFICAÇÃO: Função de modal agora prioriza um "toast" para mensagens informativas
     function showCustomModal({ message, onConfirm, onCancel, showPassword = false, confirmText = 'OK', cancelText = 'Cancelar' }) {
+        const isInformational = typeof onConfirm !== 'function' && typeof onCancel !== 'function' && !showPassword;
+
+        if (isInformational) {
+            const toast = document.getElementById('toastNotification');
+            // Limpa qualquer timeout anterior para evitar que o toast suma antes da hora se for chamado em sequência
+            if (toast.currentTimeout) {
+                clearTimeout(toast.currentTimeout);
+            }
+            toast.textContent = message;
+            toast.classList.add('show');
+            // Define um novo timeout para esconder o toast
+            toast.currentTimeout = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000); // Sumir após 2 segundos
+            return; // Encerra a função aqui para não mostrar o modal grande
+        }
+        
+        // Lógica original para modais de confirmação/senha
         const overlay = document.getElementById('customModalOverlay');
         const messageEl = document.getElementById('customModalMessage');
         const passInput = document.getElementById('customModalPasswordInput');
         const okBtn = overlay.querySelector('.btn-ok');
         const cancelBtn = overlay.querySelector('.btn-cancel');
         const buttonsContainer = document.getElementById('customModalButtons');
-
-        if (overlay.dataset.timerId) {
-            clearTimeout(parseInt(overlay.dataset.timerId));
-            delete overlay.dataset.timerId;
-        }
 
         const closeModal = () => {
             overlay.classList.remove('active');
@@ -1924,36 +2004,28 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
         passInput.value = '';
         passInput.classList.toggle('hidden', !showPassword);
 
-        const isInformational = typeof onConfirm !== 'function' && typeof onCancel !== 'function';
-
-        if (isInformational) {
-            buttonsContainer.classList.add('hidden');
-            const timerId = setTimeout(closeModal, 3000);
-            overlay.dataset.timerId = timerId;
+        buttonsContainer.classList.remove('hidden');
+        
+        if (typeof onConfirm === 'function') {
+            okBtn.textContent = confirmText;
+            okBtn.style.display = 'inline-flex';
+            okBtn.onclick = () => {
+                closeModal();
+                onConfirm(passInput.value);
+            };
         } else {
-            buttonsContainer.classList.remove('hidden');
-            
-            if (typeof onConfirm === 'function') {
-                okBtn.textContent = confirmText;
-                okBtn.style.display = 'inline-flex';
-                okBtn.onclick = () => {
-                    closeModal();
-                    onConfirm(passInput.value);
-                };
-            } else {
-                okBtn.style.display = 'none';
-            }
+            okBtn.style.display = 'none';
+        }
 
-            if (typeof onCancel === 'function') {
-                cancelBtn.textContent = cancelText;
-                cancelBtn.style.display = 'inline-flex';
-                cancelBtn.onclick = () => {
-                    closeModal();
-                    onCancel();
-                };
-            } else {
-                cancelBtn.style.display = 'none';
-            }
+        if (typeof onCancel === 'function') {
+            cancelBtn.textContent = cancelText;
+            cancelBtn.style.display = 'inline-flex';
+            cancelBtn.onclick = () => {
+                closeModal();
+                onCancel();
+            };
+        } else {
+            cancelBtn.style.display = 'none';
         }
 
         overlay.classList.add('active');
@@ -1961,6 +2033,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
             passInput.focus();
         }
     }
+
 
     async function deleteAllProducts() { showCustomModal({ message: "Para excluir TODOS os produtos, digite 'excluir'.", showPassword: true, confirmText: "Excluir", onConfirm: async (password) => { if (password === "excluir") { showCustomModal({ message: "Ação IRREVERSÍVEL. Apagar TUDO?", confirmText: 'SIM, EXCLUIR', onConfirm: async () => { try { await remove(getProductsRef()); showCustomModal({message: 'Todos os produtos foram excluídos.'}); } catch (error) { showCustomModal({ message: `Erro: ${error.message}` }); } }, onCancel: () => {} }); } else showCustomModal({ message: "Senha incorreta." }); }, onCancel: () => {} }); }
     function displayDynamicSearchResults(searchTerm, resultsContainerId, onItemClick) { const resultsContainer = document.getElementById(resultsContainerId); resultsContainer.innerHTML = ''; if (!fuse || !searchTerm || searchTerm.length < 2) return; const results = fuse.search(searchTerm); results.slice(0, 10).forEach(result => { const product = result.item; const a = document.createElement('a'); a.href = '#'; a.className = 'list-group-item list-group-item-action'; a.textContent = `${product.nome} - ${(product.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`; a.onclick = (e) => { e.preventDefault(); onItemClick(product); }; resultsContainer.appendChild(a); }); }
@@ -2615,6 +2688,25 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
         }
     }
 
+    // NOVA FUNÇÃO para carregar os textos das etiquetas do Firebase
+    function loadTagTextsFromDB() {
+        const textsRef = ref(db, 'tagTexts');
+        onValue(textsRef, (snapshot) => {
+            tagTexts = snapshot.exists() ? snapshot.val() : {};
+            populateTagTextsForm(); // Popula o formulário com os textos carregados
+        });
+    }
+
+    // NOVA FUNÇÃO para popular os campos de texto no admin
+    function populateTagTextsForm() {
+        document.querySelectorAll('#tagTextsForm textarea').forEach(textarea => {
+            const tag = textarea.dataset.tag;
+            if (tagTexts[tag]) {
+                textarea.value = tagTexts[tag];
+            }
+        });
+    }
+
 
     // --- FUNÇÃO PRINCIPAL E INICIALIZAÇÃO ---
     async function main() {
@@ -2628,6 +2720,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
                     isAuthReady = true; 
                     loadRatesFromDB(); 
                     loadProductsFromDB();
+                    loadTagTextsFromDB(); // Carrega os textos das etiquetas
                     checkForDueInstallments();
 
                     const loadingOverlay = document.getElementById('loadingOverlay');
@@ -2780,6 +2873,64 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
             }
         });
 
+        // MODIFICAÇÃO: Listener para copiar simulação ao clicar na linha do resultado
+        document.getElementById('resultCalcularPorAparelho').addEventListener('click', (e) => {
+            const row = e.target.closest('.copyable-row');
+            if (!row) return;
+
+            const installments = row.dataset.installments;
+            const parcelaValue = parseFloat(row.dataset.parcela);
+            const totalValue = parseFloat(row.dataset.total);
+            const produtoNome = document.getElementById('aparelhoSearch').value.trim() || 'Produto';
+            const entradaValue = parseFloat(document.getElementById('entradaAparelho').value) || 0;
+
+            const parcelaFormatted = parcelaValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            const totalFormatted = totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+            // Verifica se há valor de entrada para adicioná-lo à mensagem
+            let entradaText = '';
+            if (entradaValue > 0) {
+                const entradaFormatted = entradaValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                entradaText = `\n"+${entradaFormatted} no dinheiro ou pix"`;
+            }
+
+            // NOVA LÓGICA: Busca o texto personalizado da etiqueta
+            let customText = '';
+            const product = products.find(p => p.nome === produtoNome);
+            if (product && product.tag && tagTexts[product.tag]) {
+                customText = `\n\n${tagTexts[product.tag]}`;
+            }
+
+            // Monta o texto final no formato solicitado
+            const textToCopy = `${installments}x ${parcelaFormatted}\n_(Total: ${totalFormatted})_${entradaText}\n🔵 ${produtoNome}${customText}`;
+
+            // Usa um textarea temporário para garantir compatibilidade
+            const textArea = document.createElement("textarea");
+            textArea.value = textToCopy;
+            textArea.style.position = "fixed";
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.opacity = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showCustomModal({ message: 'Simulação copiada!' });
+                } else {
+                    showCustomModal({ message: 'Falha ao copiar.' });
+                }
+            } catch (err) {
+                console.error('Erro ao copiar:', err);
+                showCustomModal({ message: 'Erro ao copiar.' });
+            }
+
+            document.body.removeChild(textArea);
+        });
+
+
         const favoriteNameModal = document.getElementById('favoriteNameModalOverlay');
         const favoriteNameInput = document.getElementById('favoriteNameInput');
         const confirmSaveFavoriteBtn = document.getElementById('confirmSaveFavoriteBtn');
@@ -2863,6 +3014,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
             const valorStr = document.getElementById('newProductValue').value;
             const quantidade = parseInt(document.getElementById('newProductQuantity').value) || 1;
             const coresStr = document.getElementById('newProductColors').value.trim();
+            const tag = document.getElementById('newProductTag').value; // Captura a etiqueta
 
             if (!nome || !valorStr) {
                 showCustomModal({ message: "Nome e Valor são obrigatórios." });
@@ -2883,7 +3035,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
                     return paletaCor || { nome: nomeCor, hex: '#cccccc' };
                 });
 
-            const newProduct = { nome, valor, quantidade, cores, ignorarContagem: false };
+            const newProduct = { nome, valor, quantidade, cores, ignorarContagem: false, tag: tag };
 
             try {
                 await push(getProductsRef(), newProduct);
@@ -2926,7 +3078,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
         });
 
         productsTableBody.addEventListener('change', e => {
-            if (e.target.matches('input.form-control')) {
+            if (e.target.matches('input.form-control, select.form-select')) {
                 const dataRow = e.target.closest('.product-data-row');
                 if (dataRow) {
                     const { field } = e.target.dataset;
@@ -2953,13 +3105,46 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
             }
         });
         
-        document.getElementById('adminModeToggle').addEventListener('change', (e) => {
-            const showRates = e.target.checked;
-            document.getElementById('adminProductsContent').style.display = showRates ? 'none' : 'block';
-            document.getElementById('adminRatesContent').style.display = showRates ? 'block' : 'none';
-            if (showRates) renderRatesEditor();
+        // NOVA LÓGICA para navegação na tela de Administração
+        document.getElementById('admin-nav-buttons').addEventListener('click', e => {
+            if (e.target.tagName === 'BUTTON') {
+                const targetId = e.target.dataset.adminSection;
+                
+                // Esconde todas as seções
+                document.getElementById('adminProductsContent').classList.add('hidden');
+                document.getElementById('adminRatesContent').classList.add('hidden');
+                document.getElementById('adminTextContent').classList.add('hidden');
+                
+                // Remove a classe 'active' de todos os botões
+                document.querySelectorAll('#admin-nav-buttons button').forEach(btn => btn.classList.remove('active'));
+                
+                // Mostra a seção alvo e ativa o botão
+                document.getElementById(targetId).classList.remove('hidden');
+                e.target.classList.add('active');
+
+                 if (targetId === 'adminRatesContent') {
+                    renderRatesEditor();
+                }
+            }
         });
-        document.getElementById('saveRatesBtn').addEventListener('click', saveRates);
+
+        // NOVA LÓGICA para salvar os textos das etiquetas
+        document.getElementById('tagTextsForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newTexts = {};
+            document.querySelectorAll('#tagTextsForm textarea').forEach(textarea => {
+                const tag = textarea.dataset.tag;
+                newTexts[tag] = textarea.value;
+            });
+
+            try {
+                await update(ref(db, 'tagTexts'), newTexts);
+                showCustomModal({ message: 'Textos salvos com sucesso!' });
+            } catch (error) {
+                showCustomModal({ message: `Erro ao salvar: ${error.message}` });
+                console.error("Erro ao salvar textos:", error);
+            }
+        });
 
         const flagModalOverlay = document.getElementById('flagSelectorModalOverlay');
         document.getElementById('closeFlagModalBtn').addEventListener('click', closeFlagModal);
@@ -3339,4 +3524,3 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
 
 </body>
 </html>
-
