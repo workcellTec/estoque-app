@@ -573,57 +573,91 @@ color: var(--text-success);
 .ignore-toggle-btn .bi-eye-slash-fill {
 color: var(--primary-color);
 }
-/* NOVO DESIGN PARA ADMIN PRODUTOS */
+/* NOVO DESIGN PARA ADMIN PRODUTOS (Accordion) */
 #productsListContainer {
-display: flex;
-flex-direction: column;
-gap: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
-.admin-product-card {
-background-color: rgba(var(--primary-color-rgb), 0.05);
-border: 1px solid var(--glass-border);
-border-radius: var(--border-radius);
-padding: 20px;
-display: flex;
-flex-direction: column;
-gap: 15px;
+.admin-product-accordion {
+    background-color: rgba(var(--primary-color-rgb), 0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    transition: all var(--transition-duration) ease;
 }
-.admin-product-card .form-group {
-display: flex;
-flex-direction: column;
-gap: 5px;
+.admin-product-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    cursor: pointer;
+    user-select: none;
 }
-.admin-product-card .form-label {
-font-size: 0.8rem;
-font-weight: 500;
-color: var(--text-secondary);
-margin-bottom: 0;
+.admin-product-header .product-name-title {
+    font-weight: 500;
+    font-size: 1rem;
+    color: var(--text-color);
 }
-.admin-product-card .form-control,
-.admin-product-card .form-select {
-font-size: 0.95rem;
-padding: 10px 12px;
+.admin-product-accordion.is-open .admin-product-header .product-name-title {
+    color: var(--primary-color);
+}
+.admin-product-header i {
+    transition: transform 0.3s ease;
+    color: var(--text-secondary);
+}
+.admin-product-accordion.is-open .admin-product-header i {
+    transform: rotate(180deg);
+}
+.admin-product-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease-in-out, padding 0.4s ease-in-out;
+    padding: 0 20px;
+}
+.admin-product-accordion.is-open .admin-product-body {
+    max-height: 500px; /* Adjust if content is larger */
+    padding-bottom: 20px;
+}
+.admin-product-body .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.admin-product-body .form-label {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 0;
+}
+.admin-product-body .form-control,
+.admin-product-body .form-select {
+    font-size: 0.95rem;
+    padding: 10px 12px;
 }
 .admin-product-card-grid {
-display: grid;
-grid-template-columns: 1fr 1fr;
-gap: 15px;
+    padding-top: 15px;
+    margin-top: 15px;
+    border-top: 1px solid var(--glass-border);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
 }
 .admin-product-card-grid .full-width {
-grid-column: 1 / -1;
+    grid-column: 1 / -1;
 }
 .admin-product-actions {
-display: flex;
-justify-content: space-between;
-align-items: center;
-padding-top: 15px;
-margin-top: 10px;
-border-top: 1px solid var(--glass-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 15px;
+    margin-top: 15px;
+    border-top: 1px solid var(--glass-border);
 }
 @media (max-width: 480px) {
-.admin-product-card-grid {
-grid-template-columns: 1fr;
-}
+    .admin-product-card-grid {
+        grid-template-columns: 1fr;
+    }
 }
 @media (max-width: 400px) {
 .stock-item-controls {
@@ -1725,49 +1759,55 @@ searchContainers.forEach(c => hideSkeletonLoader(c));
 }
 async function updateProductInDB(id, data) { try { await update(ref(db, `products/${id}`), data); } catch (error) { console.error(`Erro ao atualizar: ${error.message}`); } }
 function renderAdminProductList(filteredList = products) {
-const container = document.getElementById('productsListContainer');
-if (!container) return;
-const tags = getTagList();
-if (filteredList.length === 0) {
-container.innerHTML = `
-<div class="text-center p-5">
-<i class="bi bi-journal-x" style="font-size: 4rem; color: var(--text-secondary);"></i>
-<h5 class="mt-3">Nenhum produto encontrado</h5>
-<p class="text-secondary">Adicione um novo produto para começar.</p>
-</div>`;
-} else {
-container.innerHTML = filteredList.map(product => {
-const tagOptions = tags.map(tag => `<option value="${escapeHtml(tag)}" ${product.tag === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('');
-return `
-<div class="admin-product-card" data-id="${product.id}">
-<div class="admin-product-card-grid">
-<div class="form-group full-width">
-<label class="form-label">Nome do Produto</label>
-<input type="text" class="form-control" value="${escapeHtml(product.nome)}" data-field="nome">
-</div>
-<div class="form-group">
-<label class="form-label">Valor</label>
-<input type="text" class="form-control" value="${(product.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}" data-field="valor">
-</div>
-<div class="form-group">
-<label class="form-label">Qtd.</label>
-<input type="number" class="form-control text-center" value="${product.quantidade || 0}" data-field="quantidade" min="0" step="1">
-</div>
-<div class="form-group full-width">
-<label class="form-label">Etiqueta</label>
-<select class="form-select" data-field="tag">${tagOptions}</select>
-</div>
-</div>
-<div class="admin-product-actions">
-<div class="form-check form-switch">
-<input class="form-check-input ignore-toggle-switch-admin" type="checkbox" role="switch" id="ignore-admin-${product.id}" data-id="${product.id}" ${product.ignorarContagem ? 'checked' : ''}>
-<label class="form-check-label" for="ignore-admin-${product.id}">Ignorar</label>
-</div>
-<button class="btn btn-sm btn-outline-danger delete-product-btn" data-id="${product.id}"><i class="bi bi-trash"></i> Apagar</button>
-</div>
-</div>`;
-}).join('');
-}
+    const container = document.getElementById('productsListContainer');
+    if (!container) return;
+    const tags = getTagList();
+    if (filteredList.length === 0) {
+        container.innerHTML = `
+        <div class="text-center p-5">
+            <i class="bi bi-journal-x" style="font-size: 4rem; color: var(--text-secondary);"></i>
+            <h5 class="mt-3">Nenhum produto encontrado</h5>
+            <p class="text-secondary">Adicione um novo produto para começar.</p>
+        </div>`;
+    } else {
+        container.innerHTML = filteredList.map(product => {
+            const tagOptions = tags.map(tag => `<option value="${escapeHtml(tag)}" ${product.tag === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('');
+            return `
+            <div class="admin-product-accordion" data-id="${product.id}">
+                <div class="admin-product-header">
+                    <h6 class="product-name-title mb-0">${escapeHtml(product.nome)}</h6>
+                    <i class="bi bi-chevron-down"></i>
+                </div>
+                <div class="admin-product-body">
+                    <div class="admin-product-card-grid">
+                        <div class="form-group full-width">
+                            <label class="form-label">Nome do Produto</label>
+                            <input type="text" class="form-control" value="${escapeHtml(product.nome)}" data-field="nome">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Valor</label>
+                            <input type="text" class="form-control" value="${(product.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}" data-field="valor">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Qtd.</label>
+                            <input type="number" class="form-control text-center" value="${product.quantidade || 0}" data-field="quantidade" min="0" step="1">
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label">Etiqueta</label>
+                            <select class="form-select" data-field="tag">${tagOptions}</select>
+                        </div>
+                    </div>
+                    <div class="admin-product-actions">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input ignore-toggle-switch-admin" type="checkbox" role="switch" id="ignore-admin-${product.id}" data-id="${product.id}" ${product.ignorarContagem ? 'checked' : ''}>
+                            <label class="form-check-label" for="ignore-admin-${product.id}">Ignorar</label>
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger delete-product-btn" data-id="${product.id}"><i class="bi bi-trash"></i> Apagar</button>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    }
 }
 function filterAdminProducts() { const searchTerm = document.getElementById('adminSearchInput').value; renderAdminProductList(!fuse || !searchTerm ? products : fuse.search(searchTerm).map(r => r.item)); }
 async function importFromPasteOrFile(content) {
@@ -2684,7 +2724,7 @@ let customText = '';
 if (currentlySelectedProductForCalc && currentlySelectedProductForCalc.tag && currentlySelectedProductForCalc.tag !== 'Nenhuma' && tagTexts[currentlySelectedProductForCalc.tag]) {
 customText = `\n\n${tagTexts[currentlySelectedProductForCalc.tag]}`;
 }
-const textToCopy = `${installments}x ${parcelaFormatted}\n_(Total: ${totalFormatted})_${entradaText}\n🔵 ${produtoNome}${customText}`;
+const textToCopy = `${installments}x ${parcelaFormatted}\n_(Total: ${totalFormatted})_${entradaText}\n ${produtoNome}${customText}`;
 const textArea = document.createElement("textarea");
 textArea.value = textToCopy;
 textArea.style.position = "fixed";
@@ -2808,17 +2848,34 @@ showCustomModal({ message: `Erro ao adicionar produto: ${error.message}` });
 document.getElementById('deleteAllProductsBtn').addEventListener('click', deleteAllProducts);
 const productsListContainer = document.getElementById('productsListContainer');
 productsListContainer.addEventListener('click', e => {
-const deleteBtn = e.target.closest('.delete-product-btn');
-if (deleteBtn) {
-e.preventDefault();
-const id = deleteBtn.dataset.id;
-showCustomModal({ message: "Excluir este produto?", onConfirm: async () => await remove(ref(db, `products/${id}`)), onCancel: () => {} });
-return;
-}
+    const header = e.target.closest('.admin-product-header');
+    if (header) {
+        e.preventDefault();
+        const accordionItem = header.parentElement;
+        // Fecha outros itens abertos para uma melhor UX
+        if (!accordionItem.classList.contains('is-open')) {
+            const openItems = productsListContainer.querySelectorAll('.admin-product-accordion.is-open');
+            openItems.forEach(item => {
+                if (item !== accordionItem) {
+                    item.classList.remove('is-open');
+                }
+            });
+        }
+        accordionItem.classList.toggle('is-open');
+        return;
+    }
+
+    const deleteBtn = e.target.closest('.delete-product-btn');
+    if (deleteBtn) {
+        e.preventDefault();
+        const id = deleteBtn.dataset.id;
+        showCustomModal({ message: "Excluir este produto?", onConfirm: async () => await remove(ref(db, `products/${id}`)), onCancel: () => {} });
+        return;
+    }
 });
 productsListContainer.addEventListener('change', e => {
 if (e.target.matches('.form-control, .form-select')) {
-const card = e.target.closest('.admin-product-card');
+const card = e.target.closest('.admin-product-accordion');
 if (card) {
 const { field } = e.target.dataset;
 const id = card.dataset.id;
@@ -3274,4 +3331,3 @@ updateMachineVisibility();
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
-
