@@ -709,19 +709,11 @@ body.print-only-report #contractPreview { display: none !important; }
 </div>
 <div class="container text-center" id="mainMenu">
 <h2 class="mb-4">Bem-vindo(a) à Central Workcell,<br/>O que você quer fazer?</h2>
-<div class="row row-cols-2 g-3 mx-auto" style="max-width: 450px;">
-    <div class="col">
-        <button class="btn-menu w-100" id="goToCalculator"><i class="bi bi-calculator-fill"></i> Calculadora de Taxa</button>
-    </div>
-    <div class="col">
-        <button class="btn-menu w-100" id="goToContract"><i class="bi bi-file-earmark-text-fill"></i> Boletos</button>
-    </div>
-    <div class="col">
-        <button class="btn-menu w-100" id="goToStock"><i class="bi bi-box-seam"></i> Controle de Estoque</button>
-    </div>
-    <div class="col">
-        <button class="btn-menu w-100" id="goToAdmin"><i class="bi bi-gear"></i> Administração</button>
-    </div>
+<div class="d-grid gap-2">
+<button class="btn-menu" id="goToCalculator"><i class="bi bi-calculator-fill"></i> Calculadora de Taxa</button>
+<button class="btn-menu" id="goToContract"><i class="bi bi-file-earmark-text-fill"></i> Boletos</button>
+<button class="btn-menu" id="goToStock"><i class="bi bi-box-seam"></i> Controle de Estoque</button>
+<button class="btn-menu" id="goToAdmin"><i class="bi bi-gear"></i> Administração</button>
 </div>
 </div>
 <div id="calculatorContainer" class="hidden">
@@ -900,11 +892,19 @@ Vá à secção de <strong style="color: var(--text-color);">Administração</st
 </div>
 <div class="admin-section w-100">
 <h5 class="text-center mb-3">Selecione o que deseja gerenciar</h5>
-<div class="d-grid gap-2 mb-3" id="admin-nav-buttons" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
-    <button type="button" class="btn btn-outline-secondary active" data-admin-section="adminProductsContent">Produtos</button>
-    <button type="button" class="btn btn-outline-secondary" data-admin-section="adminNotificationsContent">Notificações</button>
-    <button type="button" class="btn btn-outline-secondary" data-admin-section="adminRatesContent">Taxas</button>
-    <button type="button" class="btn btn-outline-secondary" data-admin-section="adminTagsContent">Etiquetas</button>
+<div class="row row-cols-2 g-2 mb-3" id="admin-nav-buttons">
+    <div class="col d-grid">
+        <button type="button" class="btn btn-outline-secondary active" data-admin-section="adminProductsContent">Produtos</button>
+    </div>
+    <div class="col d-grid">
+        <button type="button" class="btn btn-outline-secondary" data-admin-section="adminNotificationsContent">Notificações</button>
+    </div>
+    <div class="col d-grid">
+        <button type="button" class="btn btn-outline-secondary" data-admin-section="adminRatesContent">Taxas</button>
+    </div>
+    <div class="col d-grid">
+        <button type="button" class="btn btn-outline-secondary" data-admin-section="adminTagsContent">Etiquetas</button>
+    </div>
 </div>
 </div>
 <div id="adminProductsContent">
