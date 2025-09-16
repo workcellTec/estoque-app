@@ -1822,7 +1822,14 @@ document.addEventListener('DOMContentLoaded', () => {
         updateFecharVendaUI();
     });
 
-    document.getElementById('machine1').addEventListener('change', () => { updateInstallmentsOptions(); updateFecharVendaUI(); if(document.getElementById('machine1').value !== 'pagbank') openFlagModal(document.getElementById('machine1')); });
+    document.getElementById('machine1').addEventListener('change', (event) => { // Adicionamos o 'event'
+    updateInstallmentsOptions(); 
+    updateFecharVendaUI(); 
+    // Adicionamos a checagem 'event.isTrusted'
+    if(event.isTrusted && document.getElementById('machine1').value !== 'pagbank') {
+        openFlagModal(document.getElementById('machine1'));
+    } 
+});
     document.getElementById('brand1').addEventListener('change', updateFecharVendaUI);
     document.getElementById('vendaModeToggle').addEventListener('change', updateFecharVendaUI);
     document.querySelectorAll('input[name="manualMode"]').forEach(radio => radio.addEventListener('change', updateFecharVendaUI));
@@ -1849,7 +1856,13 @@ document.addEventListener('DOMContentLoaded', () => {
         container.classList.toggle('is-active');
     });
 
-    document.getElementById('machine3').addEventListener('change', () => { updateCalcularPorAparelhoUI(); if(document.getElementById('machine3').value !== 'pagbank') openFlagModal(document.getElementById('machine3')); });
+    document.getElementById('machine3').addEventListener('change', (event) => { // Adicionamos o 'event'
+    updateCalcularPorAparelhoUI(); 
+    // Adicionamos a checagem 'event.isTrusted'
+    if(event.isTrusted && document.getElementById('machine3').value !== 'pagbank') {
+        openFlagModal(document.getElementById('machine3'));
+    }
+});
     document.getElementById('brand3').addEventListener('change', updateCalcularPorAparelhoUI);
 
     document.getElementById('aparelhoFavoritosContainer').addEventListener('click', e => {
@@ -1950,12 +1963,24 @@ document.addEventListener('DOMContentLoaded', () => {
     cancelSaveFavoriteBtn.addEventListener('click', closeFavoriteNameModal);
     favoriteNameModal.addEventListener('click', (e) => { if (e.target === favoriteNameModal) closeFavoriteNameModal(); });
 
-    document.getElementById('machine2').addEventListener('change', () => { updateRepassarValoresUI(); if(document.getElementById('machine2').value !== 'pagbank') openFlagModal(document.getElementById('machine2')); });
+   document.getElementById('machine2').addEventListener('change', (event) => { // Adicionamos o 'event'
+    updateRepassarValoresUI(); 
+    // Adicionamos a checagem 'event.isTrusted'
+    if(event.isTrusted && document.getElementById('machine2').value !== 'pagbank') {
+        openFlagModal(document.getElementById('machine2'));
+    }
+});
     document.getElementById('brand2').addEventListener('change', updateRepassarValoresUI);
     document.getElementById('repassarValue').addEventListener('input', calculateRepassarValores);
 
     document.getElementById('emprestimoValue').addEventListener('input', calculateEmprestimo);
-    document.getElementById('machine4').addEventListener('change', () => { updateCalcularEmprestimoUI(); if(document.getElementById('machine4').value !== 'pagbank') openFlagModal(document.getElementById('machine4')); });
+    document.getElementById('machine4').addEventListener('change', (event) => { // Adicionamos o 'event'
+    updateCalcularEmprestimoUI(); 
+    // Adicionamos a checagem 'event.isTrusted'
+    if(event.isTrusted && document.getElementById('machine4').value !== 'pagbank') {
+        openFlagModal(document.getElementById('machine4'));
+    }
+});
     document.getElementById('brand4').addEventListener('change', updateCalcularEmprestimoUI);
     
     const lucroModalOverlay = document.getElementById('lucroModalOverlay');
