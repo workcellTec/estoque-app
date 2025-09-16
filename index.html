@@ -573,6 +573,58 @@ color: var(--text-success);
 .ignore-toggle-btn .bi-eye-slash-fill {
 color: var(--primary-color);
 }
+/* NOVO DESIGN PARA ADMIN PRODUTOS */
+#productsListContainer {
+display: flex;
+flex-direction: column;
+gap: 15px;
+}
+.admin-product-card {
+background-color: rgba(var(--primary-color-rgb), 0.05);
+border: 1px solid var(--glass-border);
+border-radius: var(--border-radius);
+padding: 20px;
+display: flex;
+flex-direction: column;
+gap: 15px;
+}
+.admin-product-card .form-group {
+display: flex;
+flex-direction: column;
+gap: 5px;
+}
+.admin-product-card .form-label {
+font-size: 0.8rem;
+font-weight: 500;
+color: var(--text-secondary);
+margin-bottom: 0;
+}
+.admin-product-card .form-control,
+.admin-product-card .form-select {
+font-size: 0.95rem;
+padding: 10px 12px;
+}
+.admin-product-card-grid {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 15px;
+}
+.admin-product-card-grid .full-width {
+grid-column: 1 / -1;
+}
+.admin-product-actions {
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding-top: 15px;
+margin-top: 10px;
+border-top: 1px solid var(--glass-border);
+}
+@media (max-width: 480px) {
+.admin-product-card-grid {
+grid-template-columns: 1fr;
+}
+}
 @media (max-width: 400px) {
 .stock-item-controls {
 flex-direction: column;
@@ -843,18 +895,7 @@ Vá à secção de <strong style="color: var(--text-color);">Administração</st
 <h4 class="mb-0"><i class="bi bi-list-ul"></i> Produtos</h4>
 <input class="form-control" id="adminSearchInput" placeholder="Filtrar..." style="width: 200px;" type="text">
 </div>
-<div class="table-responsive">
-<table class="table align-middle">
-<thead>
-<tr>
-<th style="width: 40%;">Nome do Produto</th>
-<th style="width: 20%;">Valor</th>
-<th style="width: 10%;" class="text-center">Qtd.</th>
-<th style="width: 30%;">Etiqueta</th>
-</tr>
-</thead>
-<tbody id="productsTableBody"></tbody>
-</table>
+<div id="productsListContainer">
 </div>
 </div>
 <div class="admin-section text-center w-100 pt-3">
@@ -1678,53 +1719,52 @@ searchContainers.forEach(c => hideSkeletonLoader(c));
 });
 }
 async function updateProductInDB(id, data) { try { await update(ref(db, `products/${id}`), data); } catch (error) { console.error(`Erro ao atualizar: ${error.message}`); } }
-function renderAdminTable(filteredList = products) {
-const tableBody = document.getElementById('productsTableBody');
-if (!tableBody) return;
+function renderAdminProductList(filteredList = products) {
+const container = document.getElementById('productsListContainer');
+if (!container) return;
 const tags = getTagList();
 if (filteredList.length === 0) {
-tableBody.innerHTML = `
-<tr>
-<td colspan="4" class="text-center p-5">
+container.innerHTML = `
+<div class="text-center p-5">
 <i class="bi bi-journal-x" style="font-size: 4rem; color: var(--text-secondary);"></i>
 <h5 class="mt-3">Nenhum produto encontrado</h5>
 <p class="text-secondary">Adicione um novo produto para começar.</p>
-</td>
-</tr>
-`;
+</div>`;
 } else {
-tableBody.innerHTML = filteredList.flatMap(product => {
-const tagOptions = tags
-.map(tag => `<option value="${escapeHtml(tag)}" ${product.tag === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('');
-return [
-`<tr class="product-data-row" data-id="${product.id}">
-<td><input type="text" class="form-control form-control-sm" value="${escapeHtml(product.nome)}" data-field="nome"></td>
-<td><input type="text" class="form-control form-control-sm" value="${(product.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}" data-field="valor"></td>
-<td><input type="number" class="form-control form-control-sm text-center" value="${product.quantidade || 0}" data-field="quantidade" min="0" step="1"></td>
-<td><select class="form-select form-select-sm" data-field="tag">${tagOptions}</select></td>
-</tr>`,
-`<tr class="product-separator-row" data-id="${product.id}">
-<td colspan="4">
-<button class="btn-toggle-menu" data-id="${product.id}" aria-label="Abrir menu de ações">
-<i class="bi bi-chevron-down"></i>
-</button>
-</td>
-</tr>`,
-`<tr class="acoes-produto" data-id="${product.id}">
-<td colspan="4">
-<div class="action-menu-content">
+container.innerHTML = filteredList.map(product => {
+const tagOptions = tags.map(tag => `<option value="${escapeHtml(tag)}" ${product.tag === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('');
+return `
+<div class="admin-product-card" data-id="${product.id}">
+<div class="admin-product-card-grid">
+<div class="form-group full-width">
+<label class="form-label">Nome do Produto</label>
+<input type="text" class="form-control" value="${escapeHtml(product.nome)}" data-field="nome">
+</div>
+<div class="form-group">
+<label class="form-label">Valor</label>
+<input type="text" class="form-control" value="${(product.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}" data-field="valor">
+</div>
+<div class="form-group">
+<label class="form-label">Qtd.</label>
+<input type="number" class="form-control text-center" value="${product.quantidade || 0}" data-field="quantidade" min="0" step="1">
+</div>
+<div class="form-group full-width">
+<label class="form-label">Etiqueta</label>
+<select class="form-select" data-field="tag">${tagOptions}</select>
+</div>
+</div>
+<div class="admin-product-actions">
 <div class="form-check form-switch">
 <input class="form-check-input ignore-toggle-switch-admin" type="checkbox" role="switch" id="ignore-admin-${product.id}" data-id="${product.id}" ${product.ignorarContagem ? 'checked' : ''}>
-<label class="form-check-label" for="ignore-admin-${product.id}">Ignorar na contagem</label>
+<label class="form-check-label" for="ignore-admin-${product.id}">Ignorar</label>
 </div>
-<button class="btn btn-sm btn-danger delete-product-btn" data-id="${product.id}"><i class="bi bi-trash"></i> Apagar</button>
+<button class="btn btn-sm btn-outline-danger delete-product-btn" data-id="${product.id}"><i class="bi bi-trash"></i> Apagar</button>
 </div>
-</td>
-</tr>`
-]}).join('');
+</div>`;
+}).join('');
 }
 }
-function filterAdminProducts() { const searchTerm = document.getElementById('adminSearchInput').value; renderAdminTable(!fuse || !searchTerm ? products : fuse.search(searchTerm).map(r => r.item)); }
+function filterAdminProducts() { const searchTerm = document.getElementById('adminSearchInput').value; renderAdminProductList(!fuse || !searchTerm ? products : fuse.search(searchTerm).map(r => r.item)); }
 async function importFromPasteOrFile(content) {
 const lines = content.split('\n').filter(line => line.trim());
 const productsToImport = lines.map(line => {
@@ -2459,6 +2499,10 @@ if (tagsListener) off(tagsRef, 'value', tagsListener);
 tagsListener = onValue(tagsRef, (snapshot) => {
 if (snapshot.exists()) {
 tags = snapshot.val();
+if (!Array.isArray(tags) || !tags.includes('Nenhuma')) {
+tags = [...initialDefaultTags];
+update(ref(db), { 'tags': tags });
+}
 } else {
 tags = [...initialDefaultTags];
 update(ref(db), { 'tags': tags });
@@ -2469,7 +2513,7 @@ renderTagManagementUI();
 }
 }, (error) => {
 console.error("Firebase Read Error (Tags):", error);
-tags = []; 
+tags = [];
 showCustomModal({ message: `Erro ao carregar etiquetas da nuvem. Verifique as permissões do Firebase.` });
 });
 }
@@ -2752,8 +2796,8 @@ showCustomModal({ message: `Erro ao adicionar produto: ${error.message}` });
 }
 });
 document.getElementById('deleteAllProductsBtn').addEventListener('click', deleteAllProducts);
-const productsTableBody = document.getElementById('productsTableBody');
-productsTableBody.addEventListener('click', e => {
+const productsListContainer = document.getElementById('productsListContainer');
+productsListContainer.addEventListener('click', e => {
 const deleteBtn = e.target.closest('.delete-product-btn');
 if (deleteBtn) {
 e.preventDefault();
@@ -2761,27 +2805,13 @@ const id = deleteBtn.dataset.id;
 showCustomModal({ message: "Excluir este produto?", onConfirm: async () => await remove(ref(db, `products/${id}`)), onCancel: () => {} });
 return;
 }
-const toggleBtn = e.target.closest('.btn-toggle-menu');
-if (toggleBtn) {
-e.preventDefault();
-const separatorRow = toggleBtn.closest('.product-separator-row');
-const dataRow = separatorRow.previousElementSibling;
-const actionRow = separatorRow.nextElementSibling;
-const wasActive = separatorRow.classList.contains('is-active');
-productsTableBody.querySelectorAll('.is-active').forEach(el => el.classList.remove('is-active'));
-if (!wasActive) {
-dataRow.classList.add('is-active');
-separatorRow.classList.add('is-active');
-actionRow.classList.add('is-active');
-}
-}
 });
-productsTableBody.addEventListener('change', e => {
-if (e.target.matches('input.form-control, select.form-select')) {
-const dataRow = e.target.closest('.product-data-row');
-if (dataRow) {
+productsListContainer.addEventListener('change', e => {
+if (e.target.matches('.form-control, .form-select')) {
+const card = e.target.closest('.admin-product-card');
+if (card) {
 const { field } = e.target.dataset;
-const id = dataRow.dataset.id;
+const id = card.dataset.id;
 let value;
 if (field === 'valor') {
 value = parseBrazilianCurrencyToFloat(e.target.value);
@@ -2851,10 +2881,10 @@ return;
 showCustomModal({
 message: `Tem certeza que quer remover a etiqueta "${tagToDelete}"?`,
 confirmText: 'Remover',
-onConfirm: () => {
+onConfirm: async () => {
 let currentTags = getTagList();
 currentTags = currentTags.filter(t => t !== tagToDelete);
-saveTagList(currentTags);
+await saveTagList(currentTags);
 delete tagTexts[tagToDelete];
 safeStorage.setItem(TAG_TEXTS_KEY, JSON.stringify(tagTexts));
 },
@@ -2869,7 +2899,6 @@ const originalName = saveBtn.dataset.tag;
 const container = saveBtn.closest('div.p-3');
 const newNameInput = container.querySelector('.tag-name-input');
 const newName = newNameInput.value.trim();
-
 if(originalName !== newName) {
 showCustomModal({
 message: "Digite a senha de administrador para editar o nome.",
@@ -2878,12 +2907,13 @@ confirmText: "Confirmar",
 onConfirm: (password) => {
 if (password !== "220390") {
 showCustomModal({ message: "Senha incorreta." });
+newNameInput.value = originalName; 
 return;
 }
 saveTagChanges(originalName, container);
 },
 onCancel: () => {
-newNameInput.value = originalName; 
+newNameInput.value = originalName;
 }
 });
 } else {
@@ -2891,8 +2921,7 @@ saveTagChanges(originalName, container);
 }
 }
 });
-
-function saveTagChanges(originalName, container) {
+async function saveTagChanges(originalName, container) {
 const newName = container.querySelector('.tag-name-input').value.trim();
 const newText = container.querySelector('.tag-text-input').value.trim();
 if (!newName) {
@@ -2910,15 +2939,14 @@ currentTags[index] = newName;
 }
 delete tagTexts[originalName];
 tagTexts[newName] = newText;
-saveTagList(currentTags);
+await saveTagList(currentTags);
 safeStorage.setItem(TAG_TEXTS_KEY, JSON.stringify(tagTexts));
 if (originalName !== newName) {
-updateTagNameInProducts(originalName, newName);
+await updateTagNameInProducts(originalName, newName);
 } else {
 showCustomModal({ message: 'Etiqueta salva!' });
 }
 }
-
 const flagModalOverlay = document.getElementById('flagSelectorModalOverlay');
 document.getElementById('closeFlagModalBtn').addEventListener('click', closeFlagModal);
 flagModalOverlay.addEventListener('click', (e) => { if (e.target === flagModalOverlay) closeFlagModal(); });
