@@ -45,7 +45,6 @@ body {
     margin: 0; padding: 0;
     width: 100%; overflow-x: hidden;
     height: 100%;
-    overflow-y: hidden;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     transition: background-color var(--transition-duration), color var(--transition-duration);
