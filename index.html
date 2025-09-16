@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1" name="viewport"/>
+    <title>Central Workcell</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#000000"/>
+    <link rel="apple-touch-icon" href="https://placehold.co/192x192/B71C1C/ffffff?text=CW">
+    <link rel="manifest" href="manifest.json">
+    <link href="https://fonts.googleapis.com" rel="preconnect"/>
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <link rel="stylesheet" href="css/style.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+    <div id="loadingOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: var(--tertiary-color); z-index: 10000; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.5s ease;">
+        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-3" style="color: var(--text-secondary);">Carregando sistema...</p>
+    </div>
+    
+    <div id="top-right-controls" class="hidden">
+        <div class="toggle-switch-theme">
+            <input type="checkbox" id="theme-toggle-checkbox">
+            <label for="theme-toggle-checkbox">
+                <span><i class="bi bi-moon-fill"></i></span>
+                <span><i class="bi bi-sun-fill"></i></span>
+            </label>
+        </div>
+        <div id="notification-bell">
+            <i class="bi bi-bell-fill"></i>
+            <span class="notification-badge hidden"></span>
+        </div>
+    </div>
+    
+    <div class="container text-center" id="mainMenu">
+        <h2 class="mb-4">Bem-vindo(a) à Central Workcell,<br/>O que você quer fazer?</h2>
+        <div class="d-grid gap-2">
+            <button class="btn-menu" id="goToCalculator"><i class="bi bi-calculator-fill"></i> Calculadora de Taxa</button>
+            <button class="btn-menu" id="goToContract"><i class="bi bi-file-earmark-text-fill"></i> Boletos</button>
+            <button class="btn-menu" id="goToStock"><i class="bi bi-box-seam"></i> Controle de Estoque</button>
+            <button class="btn-menu" id="goToAdmin"><i class="bi bi-gear"></i> Administração</button>
+        </div>
+    </div>
+    
+    <div id="calculatorContainer" class="hidden">
+        <div class="container text-center" id="calculatorHome">
+            <h2 class="mb-4">Calculadora de Taxas,<br/>O que você quer fazer?</h2>
+            <div class="d-grid gap-2">
+                <button class="btn-menu" id="openFecharVenda"><i class="bi bi-cash-coin"></i> Fechar uma venda</button>
+                <button class="btn-menu" id="openRepassarValores"><i class="bi bi-arrow-left-right"></i> Repassar valores</button>
+                <button class="btn-menu" id="openCalcularEmprestimo"><i class="bi bi-bank"></i> Calcular Empréstimo</button>
+                <button class="btn-menu" id="openCalcularPorAparelho"><i class="bi bi-phone"></i> Calcular por aparelho</button>
+            </div>
+        </div>
+        <div class="container" id="fecharVenda" style="display: none;">
+            <div class="section-header">
+                <h3>Fechar Venda</h3>
+                <button aria-label="Voltar" class="btn-back" id="backFromFecharVenda"><i class="bi bi-arrow-left"></i></button>
+            </div>
+            <div class="content-card w-100">
+                <div class="row mb-3 w-100 justify-content-center">
+                    <div class="col-12 col-md-4 mb-3"><label class="form-label">Maquininha</label><select class="form-select" id="machine1"><option value="pagbank">PagBank</option><option value="infinity" selected>InfinityPay</option><option value="valorante">Valorante</option></select></div>
+                    <div class="col-12 col-md-4 mb-3" id="flagDisplayContainer1" style="display: none;"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton1"></button></div>
+                    <div class="col-12 col-md-4 mb-3">
+                        <label for="installments1" class="form-label d-flex justify-content-between">
+                            <span>Parcelas</span>
+                            <span id="installments1Value" class="fw-bold">Débito</span>
+                        </label>
+                        <div id="quickInstallmentsContainer" class="quick-installments"></div>
+                        <input type="range" class="form-range" id="installments1" min="0" max="18" step="1" value="0">
+                    </div>
+                </div>
+                <div id="brand1Container" class="hidden"><select id="brand1"><option value="visa">Visa</option><option value="mastercard">Mastercard</option><option value="hiper">Hiper</option><option value="hipercard">Hipercard</option><option value="elo">Elo</option><option value="amex">Amex</option></select></div>
+                <div class="toggle-switch">
+                    <input type="checkbox" id="vendaModeToggle">
+                    <label for="vendaModeToggle">
+                        <span><i class="bi bi-pencil-alt"></i> Entrada Manual</span>
+                        <span><i class="bi bi-box-seam"></i> Venda por Produto</span>
+                    </label>
+                </div>
+                <div class="mb-3 d-flex justify-content-center flex-wrap" id="manualModeContainer">
+                    <label class="me-3"><input checked="" name="manualMode" type="radio" value="total"/> Valor Total</label>
+                    <label><input name="manualMode" type="radio" value="parcela"/> Valor da Parcela</label>
+                </div>
+                <div class="w-100 hidden" id="vendaPorProdutoContainer" style="max-width: 400px; margin: 0 auto;">
+                    <div class="mb-3 search-wrapper">
+                        <label class="form-label" for="vendaProdutoSearch"><i class="bi bi-search"></i> Pesquisar Produto</label>
+                        <input autocomplete="off" class="form-control" id="vendaProdutoSearch" placeholder="Carregando..." type="text"/>
+                        <div class="search-results-container list-group" id="vendaSearchResultsContainer"></div>
+                    </div>
+                    <div class="mb-3"><label class="form-label" for="fecharVendaPrecoBase"><i class="bi bi-tag"></i> Preço Base (R$)</label><input class="form-control" id="fecharVendaPrecoBase" readonly="" type="text"/></div>
+                    <div class="form-check form-switch my-3 hidden" id="entradaAVistaToggleContainer">
+                        <input class="form-check-input" type="checkbox" role="switch" id="entradaAVistaCheckbox">
+                        <label class="form-check-label" for="entradaAVistaCheckbox">Entrada à vista?</label>
+                    </div>
+                    <div id="entradaAVistaContainer" class="hidden">
+                        <div class="mb-3">
+                            <label class="form-label" for="valorEntradaAVista"><i class="bi bi-cash"></i> Valor da entrada (à vista, sem taxa)</label>
+                            <input class="form-control" id="valorEntradaAVista" type="number" step="0.01" min="0" placeholder="Ex: 500,00">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="valorPassadoNoCartao"><i class="bi bi-credit-card"></i> Valor passado no cartão (com taxa)</label>
+                            <input class="form-control" id="valorPassadoNoCartao" type="number" step="0.01" min="0" placeholder="Ex: 1849,00">
+                        </div>
+                    </div>
+                </div>
+                <div class="w-100 d-flex justify-content-center" id="fecharVendaInputs">
+                    <div class="mb-3" style="width: 100%; max-width: 400px;"><label class="form-label" for="fecharVendaValue" id="fecharVendaValueLabel"><i class="bi bi-currency-dollar"></i> Valor Total da Venda (R$)</label><input class="form-control form-control-lg" id="fecharVendaValue" min="0" placeholder="Digite o valor" step="0.01" type="number"/></div>
+                </div>
+                <div class="w-100 d-flex flex-column justify-content-center mt-3" id="resultFecharVenda"></div>
+            </div>
+        </div>
+        <div class="container" id="repassarValores" style="display: none;">
+            <div class="section-header">
+                <h3>Repassar Valores</h3>
+                <button aria-label="Voltar" class="btn-back" id="backFromRepassarValores"><i class="bi bi-arrow-left"></i></button>
+            </div>
+            <div class="content-card w-100">
+                <div class="row mb-3 w-100 justify-content-center">
+                    <div class="col-12 col-md-6 mb-3"><label class="form-label">Maquininha</label><select class="form-select" id="machine2"><option value="pagbank">PagBank</option><option value="infinity">InfinityPay</option><option value="valorante">Valorante</option></select></div>
+                    <div class="col-12 col-md-6 mb-3" id="flagDisplayContainer2" style="display: none;"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton2"></button></div>
+                </div>
+                <div id="brand2Container" class="hidden"><select id="brand2"><option value="visa">Visa</option><option value="mastercard">Mastercard</option><option value="hiper">Hiper</option><option value="hipercard">Hipercard</option><option value="elo">Elo</option><option value="amex">Amex</option></select></div>
+                <div class="mb-3" style="max-width: 400px; margin: 0 auto 1rem;">
+                    <label class="form-label" for="repassarValue"><i class="bi bi-calculator"></i> Valor Desejado (líquido)</label>
+                    <input class="form-control form-control-lg" id="repassarValue" min="0" placeholder="Digite o valor desejado" step="0.01" type="number"/>
+                </div>
+                <div class="w-100 d-flex flex-column align-items-center" id="resultRepassarValores"></div>
+                <div class="text-center mt-3 w-100" id="exportRepassarContainer" style="display: none;">
+                    <button class="btn btn-info" id="exportRepassarBtn"><i class="bi bi-camera-fill"></i> Exportar Imagem</button>
+                </div>
+            </div>
+        </div>
+        <div class="container" id="calcularEmprestimo" style="display: none;">
+            <div class="section-header">
+                <h3>Calcular Empréstimo</h3>
+                <button aria-label="Voltar" class="btn-back" id="backFromCalcularEmprestimo"><i class="bi bi-arrow-left"></i></button>
+            </div>
+            <div class="content-card w-100">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="lucro-display" id="emprestimoLucroDisplay"></div>
+                    <button id="openLucroModalBtn" class="btn btn-sm btn-back" aria-label="Configurar Lucro" style="font-size: 1.4rem;"><i class="bi bi-gear-fill"></i></button>
+                </div>
+                <div id="valorLiquidoDisplay" class="mb-3"></div>
+                <div class="mb-3" style="max-width: 400px; margin: 0 auto 1rem;">
+                    <label class="form-label" for="emprestimoValue"><i class="bi bi-cash-coin"></i> Valor Base do Empréstimo</label>
+                    <input class="form-control form-control-lg" id="emprestimoValue" min="0" placeholder="Ex: 10000" step="0.01" type="number"/>
+                </div>
+                <div class="row mb-3 w-100 justify-content-center">
+                    <div class="col-12 col-md-6 mb-3"><label class="form-label">Maquininha</label><select class="form-select" id="machine4"><option value="pagbank">PagBank</option><option value="infinity">InfinityPay</option><option value="valorante" selected>Valorante</option></select></div>
+                    <div class="col-12 col-md-6 mb-3" id="flagDisplayContainer4" style="display: none;"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton4"></button></div>
+                </div>
+                <div id="brand4Container" class="hidden"><select id="brand4"><option value="visa">Visa</option><option value="mastercard">Mastercard</option><option value="hiper">Hiper</option><option value="hipercard">Hipercard</option><option value="elo">Elo</option><option value="amex">Amex</option></select></div>
+                <div class="w-100 d-flex flex-column align-items-center" id="resultCalcularEmprestimo"></div>
+                <div class="text-center mt-3 w-100" id="exportEmprestimoContainer" style="display: none;">
+                    <button class="btn btn-info" id="exportEmprestimoBtn"><i class="bi bi-camera-fill"></i> Exportar Imagem</button>
+                </div>
+            </div>
+        </div>
+        <div class="container" id="calcularPorAparelho" style="display: none;">
+            <div class="section-header">
+                <h3>Calcular por Aparelho</h3>
+                <button aria-label="Voltar" class="btn-back" id="backFromCalcularPorAparelho"><i class="bi bi-arrow-left"></i></button>
+            </div>
+            <div class="content-card w-100">
+                <div id="aparelhoContentWrapper">
+                    <div class="favoritos" id="aparelhoFavoritosContainer"></div>
+                    <div class="mb-3 search-wrapper mx-auto"><label class="form-label" for="aparelhoSearch"><i class="bi bi-search"></i> Pesquisar Aparelho</label><input autocomplete="off" class="form-control" id="aparelhoSearch" placeholder="Carregando..." type="text"/><div class="search-results-container list-group" id="aparelhoResultsContainer"></div></div>
+                    <div id="aparelhoInfoNote" class="text-center text-secondary small my-2 hidden" style="max-width: 400px; margin-left: auto; margin-right: auto; padding: 8px; background-color: var(--input-bg); border-radius: 8px;"></div>
+                    <div class="mb-3 mx-auto" style="max-width: 400px;">
+                        <label class="form-label" for="entradaAparelho"><i class="bi bi-wallet2"></i> Valor de entrada (opcional)</label>
+                        <input class="form-control" id="entradaAparelho" min="0" placeholder="Digite o valor da entrada" step="0.01" type="number"/>
+                    </div>
+                    <div class="extra-value-toggle mx-auto">
+                        <button class="btn-toggle-extra" id="toggleValorExtraBtn" aria-label="Adicionar valor extra">
+                            <i class="bi bi-chevron-down"></i>
+                        </button>
+                    </div>
+                    <div class="extra-value-container mx-auto" id="valorExtraContainer" style="max-width: 400px;">
+                        <div class="mb-3">
+                            <label class="form-label" for="valorExtraAparelho"><i class="bi bi-plus-circle"></i> Valor adicional</label>
+                            <input class="form-control" id="valorExtraAparelho" min="0" placeholder="Ex: 40,00" step="0.01" type="number"/>
+                        </div>
+                    </div>
+                    <div class="text-center mt-3">
+                        <button class="btn btn-sm hidden" id="saveAparelhoFavoriteBtn" style="background-color: rgba(var(--primary-color-rgb), 0.15); color: var(--primary-color);">
+                            <i class="bi bi-star-fill"></i> Salvar como favorito
+                        </button>
+                    </div>
+                    <div class="row my-3 w-100 justify-content-center">
+                        <div class="col-12 col-md-6 mb-3"><label class="form-label">Maquininha</label><select class="form-select" id="machine3"><option value="pagbank">PagBank</option><option value="infinity">InfinityPay</option><option value="valorante">Valorante</option></select></div>
+                        <div class="col-12 col-md-6 mb-3" id="flagDisplayContainer3" style="display: none;"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton3"></button></div>
+                    </div>
+                    <div id="brand3Container" class="hidden"><select id="brand3"><option value="visa">Visa</option><option value="mastercard">Mastercard</option><option value="hiper">Hiper</option><option value="hipercard">Hipercard</option><option value="elo">Elo</option><option value="amex">Amex</option></select></div>
+                    <div class="w-100 d-flex flex-column align-items-center" id="resultCalcularPorAparelho"></div>
+                    <div class="text-center mt-3 w-100" id="exportAparelhoContainer" style="display: none;">
+                        <button class="btn btn-info" id="exportAparelhoBtn"><i class="bi bi-camera-fill"></i> Exportar Imagem</button>
+                    </div>
+                </div>
+                <div id="aparelhoEmptyStateWrapper" class="hidden text-center" style="padding: 2rem 0;">
+                    <i class="bi bi-box2-heart" style="font-size: 4rem; color: var(--primary-color);"></i>
+                    <h4 class="mt-4">A sua lista de produtos está vazia</h4>
+                    <p class="text-secondary">
+                        Vá à secção de <strong style="color: var(--text-color);">Administração</strong> para adicionar os seus produtos.
+                    </p>
+                    <button class="btn btn-primary mt-3" id="goToAdminFromEmptyState">
+                        <i class="bi bi-gear"></i> Ir para Administração
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container" id="administracao" style="display: none;">
+        <div class="section-header">
+            <h3>Administração</h3>
+            <button aria-label="Voltar" class="btn-back" id="backFromAdmin"><i class="bi bi-arrow-left"></i></button>
+        </div>
+        <div class="admin-section w-100">
+            <h5 class="text-center mb-3">Selecione o que deseja gerenciar</h5>
+            <div class="row row-cols-2 g-2 mb-3" id="admin-nav-buttons">
+                <div class="col d-grid">
+                    <button type="button" class="btn btn-outline-secondary active" data-admin-section="adminProductsContent">Produtos</button>
+                </div>
+                <div class="col d-grid">
+                    <button type="button" class="btn btn-outline-secondary" data-admin-section="adminNotificationsContent">Notificações</button>
+                </div>
+                <div class="col d-grid">
+                    <button type="button" class="btn btn-outline-secondary" data-admin-section="adminRatesContent">Taxas</button>
+                </div>
+                <div class="col d-grid">
+                    <button type="button" class="btn btn-outline-secondary" data-admin-section="adminTagsContent">Etiquetas</button>
+                </div>
+            </div>
+        </div>
+        <div id="adminProductsContent">
+            <div class="admin-section text-start w-100">
+                <h4 class="mb-3"><i class="bi bi-plus-circle-fill"></i> Adicionar Novo Produto</h4>
+                <form id="addProductForm">
+                    <div class="mb-3">
+                        <label for="newProductName" class="form-label">Nome do Produto</label>
+                        <input type="text" class="form-control" id="newProductName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="newProductValue" class="form-label">Valor (R$)</label>
+                        <input type="text" class="form-control" id="newProductValue" required placeholder="Ex: 2499,90">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="newProductTag" class="form-label">Etiqueta</label>
+                            <select class="form-select" id="newProductTag" required></select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="newProductQuantity" class="form-label">Quantidade (Opcional)</label>
+                            <input type="number" class="form-control" id="newProductQuantity" placeholder="1" min="0">
+                        </div>
+                        <div class="col-md-12 mb-3">
+                            <label for="newProductColors" class="form-label">Cores (Separadas por vírgula)</label>
+                            <input type="text" class="form-control" id="newProductColors" placeholder="Azul, Preto...">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100"><i class="bi bi-plus-lg"></i> Adicionar Produto</button>
+                </form>
+            </div>
+            <div class="admin-section text-start w-100">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4 class="mb-0"><i class="bi bi-list-ul"></i> Produtos</h4>
+                    <input class="form-control" id="adminSearchInput" placeholder="Filtrar..." style="width: 200px;" type="text">
+                </div>
+                <div id="productsListContainer"></div>
+            </div>
+            <div class="admin-section text-center w-100 pt-3">
+                <button class="btn btn-danger" id="deleteAllProductsBtn"><i class="bi bi-trash-fill"></i> Excluir todos os produtos</button>
+            </div>
+        </div>
+        <div id="adminNotificationsContent" class="hidden">
+            <div class="admin-section w-100">
+                <h4 class="mb-3"><i class="bi bi-send-fill"></i> Agendar Notificação</h4>
+                <form id="scheduleNotificationForm">
+                    <div class="mb-3">
+                        <label for="notificationText" class="form-label">Texto da Notificação</label>
+                        <textarea class="form-control" id="notificationText" rows="3" required placeholder="Escreva as novidades para os usuários..."></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="notificationDate" class="form-label">Data de Exibição</label>
+                            <input type="date" class="form-control" id="notificationDate" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100"><i class="bi bi-calendar-check"></i> Agendar Notificação</button>
+                </form>
+            </div>
+            <div class="admin-section w-100">
+                 <h4 class="mb-3"><i class="bi bi-list-task"></i> Notificações Agendadas</h4>
+                 <div id="scheduledNotificationsList"></div>
+            </div>
+        </div>
+        <div id="adminRatesContent" class="hidden">
+            <div class="admin-section">
+                <h4 class="text-start"><i class="bi bi-eye-fill"></i> Maquininhas Visíveis</h4>
+                <p class="text-start text-secondary">Desative as maquininhas que você não utiliza para simplificar as telas de cálculo.</p>
+                <div id="machineVisibilityToggles">
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input visibility-toggle" type="checkbox" role="switch" id="toggle-pagbank-visibility" data-machine="pagbank" checked>
+                        <label class="form-check-label" for="toggle-pagbank-visibility">PagBank</label>
+                    </div>
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input visibility-toggle" type="checkbox" role="switch" id="toggle-infinity-visibility" data-machine="infinity" checked>
+                        <label class="form-check-label" for="toggle-infinity-visibility">InfinityPay</label>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input visibility-toggle" type="checkbox" role="switch" id="toggle-valorante-visibility" data-machine="valorante" checked>
+                        <label class="form-check-label" for="toggle-valorante-visibility">Valorante</label>
+                    </div>
+                </div>
+            </div>
+            <div class="admin-section">
+                <h4 class="text-start"><i class="bi bi-pencil-square"></i> Editar Taxas do Sistema</h4>
+                <p class="text-start text-secondary">Altere os valores e clique em salvar. As mudanças serão aplicadas para todos os usuários.</p>
+                <div class="form-check form-switch bg-dark p-3 rounded-3 mb-4 d-flex justify-content-between align-items-center">
+                    <label class="form-check-label" for="arredondarToggle">
+                        <strong class="fs-5">Arredondar Parcelas para R$ xx,90</strong>
+                        <p class="text-secondary small mb-0">Aplica um arredondamento para cima em todas as simulações de parcelamento.</p>
+                    </label>
+                    <input class="form-check-input" type="checkbox" role="switch" id="arredondarToggle" style="width: 4em; height: 2em;">
+                </div>
+                <div class="accordion" id="ratesAccordion">
+                    <div class="text-center p-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Carregando...</span>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-primary w-100 mt-4" id="saveRatesBtn">
+                    <i class="bi bi-save-fill"></i> Salvar Alterações de Taxas
+                </button>
+            </div>
+        </div>
+        <div id="adminTagsContent" class="hidden"></div>
+    </div>
+    
+    <div id="contractContainer" class="container hidden">
+        <div class="section-header">
+            <h3>Boletos</h3>
+            <button aria-label="Voltar" class="btn-back" id="backFromContract"><i class="bi bi-arrow-left"></i></button>
+        </div>
+        <div class="toggle-switch">
+            <input type="checkbox" id="boletoModeToggle">
+            <label for="boletoModeToggle">
+                <span><i class="bi bi-file-earmark-plus-fill"></i> Novo Formulário</span>
+                <span><i class="bi bi-clock-history"></i> Histórico</span>
+            </label>
+        </div>
+        <div id="newBoletoContent">
+            <div class="content-card w-100">
+                <form id="contractForm">
+                    <h5 class="form-section-title">Dados do Comprador</h5>
+                    <div class="row">
+                        <div class="col-md-12 mb-3"><label for="compradorNome" class="form-label">Nome Completo</label><input type="text" class="form-control" id="compradorNome" required></div>
+                        <div class="col-md-6 mb-3"><label for="compradorCpf" class="form-label">CPF</label><input type="text" class="form-control" id="compradorCpf" required></div>
+                        <div class="col-md-6 mb-3"><label for="compradorRg" class="form-label">RG</label><input type="text" class="form-control" id="compradorRg"></div>
+                        <div class="col-md-6 mb-3"><label for="compradorTelefone" class="form-label">Telefone (WhatsApp)</label><input type="tel" class="form-control" id="compradorTelefone" placeholder="(XX) XXXXX-XXXX"></div>
+                        <div class="col-md-6 mb-3"><label for="compradorEndereco" class="form-label">Endereço Completo</label><input type="text" class="form-control" id="compradorEndereco" required></div>
+                    </div>
+                    <h5 class="form-section-title">Dados do Produto</h5>
+                    <div class="row">
+                        <div class="col-md-12 mb-3"><label for="produtoModelo" class="form-label">Modelo(s) do Smartphone</label><input type="text" class="form-control" id="produtoModelo" required></div>
+                        <div class="col-md-12 mb-3"><label for="produtoImei" class="form-label">IMEI(s)</label><input type="text" class="form-control" id="produtoImei" required></div>
+                    </div>
+                    <h5 class="form-section-title">Condições de Pagamento</h5>
+                    <div class="row">
+                        <div class="col-md-6 mb-3"><label for="valorTotal" class="form-label">Valor Total (R$)</label><input type="number" step="0.01" class="form-control" id="valorTotal" required></div>
+                        <div class="col-md-6 mb-3"><label for="valorEntrada" class="form-label">Valor da Entrada (R$)</label><input type="number" step="0.01" class="form-control" id="valorEntrada" required></div>
+                        <div class="col-md-6 mb-3"><label for="numeroParcelas" class="form-label">Nº de Parcelas</label><input type="number" step="1" class="form-control" id="numeroParcelas" required></div>
+                        <div class="col-md-6 mb-3"><label for="tipoParcela" class="form-label">Frequência</label><select class="form-select" id="tipoParcela"><option value="mensais" selected>Mensais</option><option value="semanais">Semanais</option></select></div>
+                        <div class="col-md-6 mb-3"><label for="primeiroVencimento" class="form-label">Dia do 1º Vencimento <span style="color: var(--primary-color); font-size: 0.8em;">(Opcional)</span></label><input type="date" class="form-control" id="primeiroVencimento"></div>
+                        <div class="col-md-6 mb-3"><label for="valorParcela" class="form-label">Valor da Parcela (R$)</label><input type="text" class="form-control" id="valorParcela" readonly></div>
+                        <div class="col-12"><label for="saldoRestante" class="form-label">Saldo Restante (R$)</label><input type="text" class="form-control" id="saldoRestante" readonly></div>
+                    </div>
+                    <div class="text-center mt-4 d-flex justify-content-center gap-2 flex-wrap">
+                        <button type="button" id="btnImprimir" class="btn btn-primary"><i class='bi bi-printer'></i> Imprimir e Salvar</button>
+                        <button type="button" id="btnLimparCampos" class="btn btn-secondary"><i class='bi bi-eraser'></i> Limpar Campos</button>
+                        <button type="button" id="btnApagarRascunho" class="btn btn-outline-danger"><i class='bi bi-trash'></i> Apagar Rascunho</button>
+                    </div>
+                    <div id="draftStatus" class="text-secondary small mt-2 text-center" style="height: 1.2em;"></div>
+                </form>
+            </div>
+        </div>
+        <div id="historyBoletoContent" class="hidden w-100"></div>
+    </div>
+    
+    <div id="stockContainer" class="container hidden">
+        <div class="section-header">
+            <h3>Controle de Estoque</h3>
+            <button aria-label="Voltar" class="btn-back" id="backFromStock"><i class="bi bi-arrow-left"></i></button>
+        </div>
+        <div class="content-card w-100">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <input class="form-control" id="stockSearchInput" placeholder="Filtrar produtos..." style="flex: 1; min-width: 180px;" type="text">
+                <div class="btn-group">
+                    <button class="btn btn-outline-secondary btn-sm" id="toggleIgnoredBtn" title="Mostrar produtos ignorados"><i class="bi bi-eye-slash-fill"></i></button>
+                    <button class="btn btn-outline-danger btn-sm" id="resetCountBtn" title="Resetar Contagem"><i class="bi bi-arrow-counterclockwise"></i></button>
+                    <button class="btn btn-info btn-sm" id="generateReportBtn"><i class="bi bi-printer"></i> Relatório</button>
+                </div>
+            </div>
+            <div class="stock-list-container" id="stockTableBody"></div>
+        </div>
+    </div>
+    
+    <div id="contractPreview"></div>
+    <div id="reportPreview"></div>
+    <div class="user-id-display" id="userIdDisplay" style="display: none;"></div>
+    
+    <div class="custom-modal-overlay" id="customModalOverlay">
+        <div class="custom-modal-content">
+            <h4 id="customModalMessage"></h4>
+            <input class="hidden form-control" id="customModalPasswordInput" placeholder="Digite a senha" type="password"/>
+            <div id="customModalButtons" class="mt-3">
+                <button class="btn btn-primary btn-ok">OK</button>
+                <button class="btn btn-secondary btn-cancel">Cancelar</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="toastNotification"></div>
+    
+    <div class="custom-modal-overlay" id="lucroModalOverlay">
+        <div class="custom-modal-content">
+            <h4>Alterar Lucro (%)</h4>
+            <input class="form-control mt-3" id="lucroPercentInput" type="number" step="1" min="0" placeholder="Ex: 15"/>
+            <div class="mt-3">
+                <button class="btn btn-primary" id="saveLucroBtn">Salvar</button>
+                <button class="btn btn-secondary" id="cancelLucroBtn">Cancelar</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="custom-modal-overlay" id="favoriteNameModalOverlay">
+        <div class="custom-modal-content">
+            <h4>Salvar Favorito</h4>
+            <p class="text-secondary small mb-3">Digite um nome para esta configuração.</p>
+            <input class="form-control" id="favoriteNameInput" placeholder="Ex: iPhone com entrada" type="text"/>
+            <div class="mt-3">
+                <button class="btn btn-primary" id="confirmSaveFavoriteBtn">Salvar</button>
+                <button class="btn btn-secondary" id="cancelSaveFavoriteBtn">Cancelar</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="custom-modal-overlay" id="flagSelectorModalOverlay">
+        <div class="custom-modal-content" id="flagSelectorModalContent">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 id="flagSelectorTitle" class="mb-0">Selecione a Bandeira</h4>
+                <button aria-label="Fechar" class="btn-back" id="closeFlagModalBtn"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="d-grid gap-2" id="flagSelectorButtons"></div>
+        </div>
+    </div>
+    
+    <div class="custom-modal-overlay" id="colorPickerModalOverlay">
+        <div class="custom-modal-content" id="colorPickerModalContent">
+            <h5 class="mb-1">Editar Cores</h5>
+            <p id="colorPickerProductName" class="text-secondary mb-3"></p>
+            <div id="colorPalette" class="color-palette"></div>
+            <div id="selectedColorsContainer">
+                <p class="text-start text-secondary small mb-2">Cores Selecionadas:</p>
+                <div id="selectedColors" class="d-flex flex-wrap gap-2"></div>
+            </div>
+            <div class="mt-3 pt-3 border-top border-secondary border-opacity-25">
+                <p class="text-start text-secondary small mb-2">Adicionar Cor Personalizada:</p>
+                <div class="d-flex gap-2 align-items-center">
+                    <input type="text" class="form-control form-control-sm" id="customColorNameInput" placeholder="Nome da Cor">
+                    <input type="color" id="customColorHexInput" value="#CCCCCC" title="Selecione a cor">
+                    <button class="btn btn-sm btn-success" id="addCustomColorBtn">Add</button>
+                </div>
+            </div>
+            <div class="mt-4 d-flex justify-content-end gap-2">
+                <button class="btn btn-secondary" id="cancelColorPicker">Cancelar</button>
+                <button class="btn btn-primary" id="saveColorPicker">Salvar</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="notificationPanel" aria-labelledby="notificationPanelLabel">
+        <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="notificationPanelLabel"><i class="bi bi-bell-fill me-2"></i>Notificações</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body">
+            <div id="notificationList" class="list-group list-group-flush"></div>
+        </div>
+    </div>
+
+    <script type="application/json" id="manifest-data">
+        {
+            "name": "Centrar Workcell",
+            "short_name": "CentrarWorkcell",
+            "description": "Calculadora de taxas e gerador de contratos para facilitar suas vendas.",
+            "start_url": ".",
+            "display": "standalone",
+            "background_color": "#000000",
+            "theme_color": "#B71C1C",
+            "orientation": "portrait-primary",
+            "icons": [
+                { "src": "https://placehold.co/192x192/B71C1C/ffffff?text=CW", "type": "image/png", "sizes": "192x192" },
+                { "src": "https://placehold.co/512x512/B71C1C/ffffff?text=CW", "type": "image/png", "sizes": "512x512" }
+            ]
+        }
+    </script>
+    <script type="text/plain" id="sw-script">
+        const CACHE_NAME = 'centrar-workcell-cache-v1';
+        const urlsToCache = [ '/', '/index.html', 'https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap', 'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css', 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css', 'https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js', 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js', 'https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js', 'https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js', 'https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js' ];
+        self.addEventListener('install', event => { event.waitUntil( caches.open(CACHE_NAME).then(cache => { console.log('Cache aberto'); return cache.addAll(urlsToCache); }) ); });
+        self.addEventListener('fetch', event => { event.respondWith( caches.match(event.request).then(response => { if (response) { return response; } return fetch(event.request).then( response => { if(!response || response.status !== 200 || response.type !== 'basic') { return response; } const responseToCache = response.clone(); caches.open(CACHE_NAME).then(cache => { cache.put(event.request, responseToCache); }); return response; } ); }) ); });
+        self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]; event.waitUntil( caches.keys().then(cacheNames => { return Promise.all( cacheNames.map(cacheName => { if (cacheWhitelist.indexOf(cacheName) === -1) { return caches.delete(cacheName); } }) ); }) ); });
+    </script>
+    
+    <script src="js/app.js" type="module"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+
