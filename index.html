@@ -1179,6 +1179,7 @@ let modificationTracker = {};
 let tagTexts = {};
 let tags = [];
 let tagsListener = null;
+let currentlySelectedProductForCalc = null;
 const APARELHO_FAVORITES_KEY = 'ctwAparelhoFavoritos';
 const CHECKED_ITEMS_KEY = 'ctwCheckedItems';
 const MAX_FAVORITES = 5;
@@ -1323,6 +1324,9 @@ if (!sectionId || !document.getElementById(sectionId)) sectionId = 'calculatorHo
 const el = document.getElementById(id);
 if (el) el.style.display = 'none';
 });
+if (sectionId !== 'calcularPorAparelho') {
+currentlySelectedProductForCalc = null;
+}
 document.getElementById(sectionId).style.display = 'flex';
 currentCalculatorSectionId = sectionId;
 const sectionInitializers = {
@@ -1589,6 +1593,7 @@ resultDiv.innerHTML = finalHtml;
 exportContainer.style.display = tableRows.trim() !== "" ? 'block' : 'none';
 }
 function handleProductSelectionForAparelho(product) {
+currentlySelectedProductForCalc = product;
 document.getElementById('saveAparelhoFavoriteBtn').classList.remove('hidden');
 selectedAparelhoValue = parseFloat(product.valor);
 document.getElementById('aparelhoSearch').value = `${product.nome}`;
@@ -2634,7 +2639,13 @@ document.getElementById('resultFecharVenda').addEventListener('change', e => { i
 document.getElementById('entradaAVistaCheckbox').addEventListener('change', toggleEntradaAVistaUI);
 document.getElementById('valorEntradaAVista').addEventListener('input', calculateFecharVenda);
 document.getElementById('valorPassadoNoCartao').addEventListener('input', calculateFecharVenda);
-document.getElementById('aparelhoSearch').addEventListener('input', () => displayDynamicSearchResults(document.getElementById('aparelhoSearch').value, 'aparelhoResultsContainer', handleProductSelectionForAparelho));
+document.getElementById('aparelhoSearch').addEventListener('input', () => {
+    const searchTerm = document.getElementById('aparelhoSearch').value;
+    if (currentlySelectedProductForCalc && searchTerm !== currentlySelectedProductForCalc.nome) {
+        currentlySelectedProductForCalc = null;
+    }
+    displayDynamicSearchResults(searchTerm, 'aparelhoResultsContainer', handleProductSelectionForAparelho);
+});
 document.getElementById('entradaAparelho').addEventListener('input', calculateAparelho);
 document.getElementById('valorExtraAparelho').addEventListener('input', calculateAparelho);
 document.getElementById('toggleValorExtraBtn').addEventListener('click', (e) => {
@@ -2660,7 +2671,7 @@ if (!row) return;
 const installments = row.dataset.installments;
 const parcelaValue = parseFloat(row.dataset.parcela);
 const totalValue = parseFloat(row.dataset.total);
-const produtoNome = document.getElementById('aparelhoSearch').value.trim() || 'Produto';
+const produtoNome = currentlySelectedProductForCalc ? currentlySelectedProductForCalc.nome : (document.getElementById('aparelhoSearch').value.trim() || 'Produto');
 const entradaValue = parseFloat(document.getElementById('entradaAparelho').value) || 0;
 const parcelaFormatted = parcelaValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const totalFormatted = totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -2670,9 +2681,8 @@ const entradaFormatted = entradaValue.toLocaleString('pt-BR', { style: 'currency
 entradaText = `\n"+${entradaFormatted} no dinheiro ou pix"`;
 }
 let customText = '';
-const product = products.find(p => p.nome === produtoNome);
-if (product && product.tag && product.tag !== 'Nenhuma' && tagTexts[product.tag]) {
-customText = `\n\n${tagTexts[product.tag]}`;
+if (currentlySelectedProductForCalc && currentlySelectedProductForCalc.tag && currentlySelectedProductForCalc.tag !== 'Nenhuma' && tagTexts[currentlySelectedProductForCalc.tag]) {
+customText = `\n\n${tagTexts[currentlySelectedProductForCalc.tag]}`;
 }
 const textToCopy = `${installments}x ${parcelaFormatted}\n_(Total: ${totalFormatted})_${entradaText}\n🔵 ${produtoNome}${customText}`;
 const textArea = document.createElement("textarea");
@@ -2907,7 +2917,7 @@ confirmText: "Confirmar",
 onConfirm: (password) => {
 if (password !== "220390") {
 showCustomModal({ message: "Senha incorreta." });
-newNameInput.value = originalName; 
+newNameInput.value = originalName;
 return;
 }
 saveTagChanges(originalName, container);
