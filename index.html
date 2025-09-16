@@ -160,6 +160,9 @@
 
         /* 5. FORMULÁRIOS E BOTÕES */
         .form-label { color: var(--text-secondary); margin-bottom: 8px; font-weight: 400; }
+        /* CORREÇÃO MODO NOTURNO */
+        [data-theme="dark"] .form-label { color: var(--text-color); }
+        
         .form-control, .form-select {
             background-color: var(--input-bg); color: var(--text-color);
             border: 1px solid var(--input-border); border-radius: 12px !important;
@@ -885,7 +888,7 @@
          <div class="btn-group w-100 mb-3" id="admin-nav-buttons" role="group">
             <button type="button" class="btn btn-outline-secondary active" data-admin-section="adminProductsContent">Produtos</button>
             <button type="button" class="btn btn-outline-secondary" data-admin-section="adminRatesContent">Taxas</button>
-            <button type="button" class="btn btn-outline-secondary" data-admin-section="adminTextContent">Texto</button>
+            <button type="button" class="btn btn-outline-secondary" data-admin-section="adminTagsContent">Etiquetas</button>
         </div>
     </div>
 
@@ -905,10 +908,7 @@
                      <div class="col-md-6 mb-3">
                         <label for="newProductTag" class="form-label">Etiqueta</label>
                         <select class="form-select" id="newProductTag" required>
-                            <option value="Chinês" selected>Chinês</option>
-                            <option value="Samsung / Apple">Samsung / Apple</option>
-                            <option value="Seminovo Iphone">Seminovo Iphone</option>
-                            <option value="Seminovo android">Seminovo android</option>
+                            <!-- Populado dinamicamente via JS -->
                         </select>
                     </div>
                     <div class="col-md-6 mb-3">
@@ -982,31 +982,9 @@
             </button>
         </div>
     </div>
-
-    <div id="adminTextContent" class="admin-section w-100 hidden">
-        <h4 class="text-start"><i class="bi bi-fonts"></i> Editar Textos por Etiqueta</h4>
-        <p class="text-start text-secondary">Estes textos serão adicionados ao final da simulação copiada.</p>
-        <form id="tagTextsForm">
-            <div class="mb-3">
-                <label for="text-chines" class="form-label">Chinês</label>
-                <textarea class="form-control" id="text-chines" rows="3" data-tag="Chinês" placeholder="Digite o texto para produtos com a etiqueta 'Chinês'"></textarea>
-            </div>
-            <div class="mb-3">
-                <label for="text-samsung-apple" class="form-label">Samsung / Apple</label>
-                <textarea class="form-control" id="text-samsung-apple" rows="3" data-tag="Samsung / Apple" placeholder="Digite o texto para produtos com a etiqueta 'Samsung / Apple'"></textarea>
-            </div>
-            <div class="mb-3">
-                <label for="text-seminovo-iphone" class="form-label">Seminovo Iphone</label>
-                <textarea class="form-control" id="text-seminovo-iphone" rows="3" data-tag="Seminovo Iphone" placeholder="Digite o texto para produtos com a etiqueta 'Seminovo Iphone'"></textarea>
-            </div>
-            <div class="mb-3">
-                <label for="text-seminovo-android" class="form-label">Seminovo android</label>
-                <textarea class="form-control" id="text-seminovo-android" rows="3" data-tag="Seminovo android" placeholder="Digite o texto para produtos com a etiqueta 'Seminovo android'"></textarea>
-            </div>
-            <button type="submit" class="btn btn-primary w-100 mt-3" id="saveTagTextsBtn">
-                <i class="bi bi-save-fill"></i> Salvar Textos
-            </button>
-        </form>
+    
+    <div id="adminTagsContent" class="hidden">
+        <!-- Conteúdo gerado dinamicamente pelo JavaScript -->
     </div>
 </div>
 
@@ -1272,11 +1250,13 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
     let onlyShowIgnored = false;
     let checkedItems = {};
     let modificationTracker = {}; // Para rastrear mudanças de contagem
-    let tagTexts = {}; // NOVA: para armazenar os textos das etiquetas
+    let tagTexts = {}; // Objeto para armazenar os textos das etiquetas (carregado do localStorage)
     const APARELHO_FAVORITES_KEY = 'ctwAparelhoFavoritos';
     const CHECKED_ITEMS_KEY = 'ctwCheckedItems';
     const MAX_FAVORITES = 5;
     const CONTRACT_DRAFT_KEY = 'ctwContractDraft';
+    const TAG_TEXTS_KEY = 'ctwTagTexts'; // Chave para os textos no localStorage
+    const TAG_LIST_KEY = 'ctwTagList';   // Chave para a lista de etiquetas no localStorage
     let draftSaveTimeout;
 
     // --- UTILITÁRIO DE ARMAZENAMENTO SEGURO ---
@@ -1375,7 +1355,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
                 const navTabs = brands.map((brand, i) => `<li class="nav-item"><a class="nav-link ${i === 0 ? 'active' : ''}" id="tab-${machine}-${brand}" data-bs-toggle="tab" href="#content-${machine}-${brand}" role="tab">${brand.charAt(0).toUpperCase() + brand.slice(1)}</a></li>`).join('');
                 const tabContent = brands.map((brand, i) => {
                     const brandData = machineData[brand];
-                    const creditInputs = (brandData.credito || []).map((idx, rate) => `<div class="col-md-4 col-6"><label class="form-label small">${idx + 1}x</label><div class="input-group mb-2"><input type="number" step="0.01" class="form-control form-control-sm" value="${rate}" data-machine="${machine}" data-brand="${brand}" data-type="credito" data-installments="${idx + 1}"><span class="input-group-text">%</span></div></div>`).join('');
+                    const creditInputs = (brandData.credito || []).map((rate, idx) => `<div class="col-md-4 col-6"><label class="form-label small">${idx + 1}x</label><div class="input-group mb-2"><input type="number" step="0.01" class="form-control form-control-sm" value="${rate}" data-machine="${machine}" data-brand="${brand}" data-type="credito" data-installments="${idx + 1}"><span class="input-group-text">%</span></div></div>`).join('');
                     return `<div class="tab-pane fade ${i === 0 ? 'show active' : ''}" id="content-${machine}-${brand}" role="tabpanel"><div class="row mt-3"><div class="col-md-4 col-6"><label class="form-label fw-bold">Débito</label><div class="input-group mb-3"><input type="number" step="0.01" class="form-control" value="${brandData.debito || 0}" data-machine="${machine}" data-brand="${brand}" data-type="debito"><span class="input-group-text">%</span></div></div></div><h5>Crédito</h5><div class="row">${creditInputs}</div></div>`;
                 }).join('');
                 machineContent = `<ul class="nav nav-tabs" role="tablist">${navTabs}</ul><div class="tab-content">${tabContent}</div>`;
@@ -1721,7 +1701,6 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
             const creditTax = getRate(machine, brand, i); 
             if (creditTax !== undefined) { 
                 const valorBrutoCredit = valorBaseParaCalculo / (1 - creditTax / 100), valorParcela = valorBrutoCredit / i; 
-                // MODIFICAÇÃO: Adicionada classe 'copyable-row' e data-attributes para a função de copiar
                 tableRows += `<tr class="copyable-row" data-installments="${i}" data-parcela="${valorParcela.toFixed(2)}" data-total="${valorBrutoCredit.toFixed(2)}"><td>${i}x</td><td>${valorParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td>${valorBrutoCredit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td></tr>`; 
             } 
         }
@@ -1849,7 +1828,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
         container.innerHTML = '';
     }
 
-    function loadRatesFromDB() { const ratesRef = ref(db, 'rates'); onValue(ratesRef, (snapshot) => { if (snapshot.exists()) { rates = snapshot.val(); areRatesLoaded = true; updateInstallmentsOptions(); console.log("Taxas carregadas."); if (currentMainSectionId === 'administracao' && document.getElementById('adminModeToggle').checked) renderRatesEditor(); } else { console.error("ERRO: As taxas não foram encontradas."); showCustomModal({ message: "Erro crítico: Não foi possível carregar as taxas." }); } }, (error) => { console.error("Erro ao carregar taxas:", error); showCustomModal({ message: `Erro ao carregar taxas: ${error.message}` }); }); }
+    function loadRatesFromDB() { const ratesRef = ref(db, 'rates'); onValue(ratesRef, (snapshot) => { if (snapshot.exists()) { rates = snapshot.val(); areRatesLoaded = true; updateInstallmentsOptions(); console.log("Taxas carregadas."); if (currentMainSectionId === 'administracao' && document.getElementById('adminModeToggle')?.checked) renderRatesEditor(); } else { console.error("ERRO: As taxas não foram encontradas."); showCustomModal({ message: "Erro crítico: Não foi possível carregar as taxas." }); } }, (error) => { console.error("Erro ao carregar taxas:", error); showCustomModal({ message: `Erro ao carregar taxas: ${error.message}` }); }); }
     const getProductsRef = () => ref(db, 'products');
     function loadProductsFromDB() { 
         if (!db || !isAuthReady) return; 
@@ -1891,6 +1870,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
     function renderAdminTable(filteredList = products) {
         const tableBody = document.getElementById('productsTableBody');
         if (!tableBody) return;
+        const tags = getTagList();
         if (filteredList.length === 0) {
             tableBody.innerHTML = `
                 <tr>
@@ -1903,7 +1883,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
             `;
         } else {
              tableBody.innerHTML = filteredList.flatMap(product => {
-                const tagOptions = ['Chinês', 'Samsung / Apple', 'Seminovo Iphone', 'Seminovo android']
+                const tagOptions = tags
                     .map(tag => `<option value="${escapeHtml(tag)}" ${product.tag === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('');
 
                 return [
@@ -1945,7 +1925,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
                 const quantidade = parts.length > 2 ? parseInt(parts[2], 10) : 1;
                 
                 if (nome && !isNaN(valor) && !isNaN(quantidade)) {
-                    return { nome, valor, quantidade, cores: [], ignorarContagem: false, tag: 'Chinês' };
+                    return { nome, valor, quantidade, cores: [], ignorarContagem: false, tag: 'Nenhuma' };
                 }
             }
             return null;
@@ -1969,26 +1949,22 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
     }
     function exportProducts(format) { const dataStr = format === 'txt' ? products.map(p => `${p.nome} - ${(p.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`).join('\n') : JSON.stringify(products.map(({id, ...rest}) => rest), null, 2); const blob = new Blob([dataStr], { type: `text/${format === 'txt' ? 'plain' : 'json'}` }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `products.${format}`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href); }
     
-    // MODIFICAÇÃO: Função de modal agora prioriza um "toast" para mensagens informativas
     function showCustomModal({ message, onConfirm, onCancel, showPassword = false, confirmText = 'OK', cancelText = 'Cancelar' }) {
         const isInformational = typeof onConfirm !== 'function' && typeof onCancel !== 'function' && !showPassword;
 
         if (isInformational) {
             const toast = document.getElementById('toastNotification');
-            // Limpa qualquer timeout anterior para evitar que o toast suma antes da hora se for chamado em sequência
             if (toast.currentTimeout) {
                 clearTimeout(toast.currentTimeout);
             }
             toast.textContent = message;
             toast.classList.add('show');
-            // Define um novo timeout para esconder o toast
             toast.currentTimeout = setTimeout(() => {
                 toast.classList.remove('show');
-            }, 2000); // Sumir após 2 segundos
-            return; // Encerra a função aqui para não mostrar o modal grande
+            }, 2000);
+            return;
         }
         
-        // Lógica original para modais de confirmação/senha
         const overlay = document.getElementById('customModalOverlay');
         const messageEl = document.getElementById('customModalMessage');
         const passInput = document.getElementById('customModalPasswordInput');
@@ -2034,7 +2010,6 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
         }
     }
 
-
     async function deleteAllProducts() { showCustomModal({ message: "Para excluir TODOS os produtos, digite 'excluir'.", showPassword: true, confirmText: "Excluir", onConfirm: async (password) => { if (password === "excluir") { showCustomModal({ message: "Ação IRREVERSÍVEL. Apagar TUDO?", confirmText: 'SIM, EXCLUIR', onConfirm: async () => { try { await remove(getProductsRef()); showCustomModal({message: 'Todos os produtos foram excluídos.'}); } catch (error) { showCustomModal({ message: `Erro: ${error.message}` }); } }, onCancel: () => {} }); } else showCustomModal({ message: "Senha incorreta." }); }, onCancel: () => {} }); }
     function displayDynamicSearchResults(searchTerm, resultsContainerId, onItemClick) { const resultsContainer = document.getElementById(resultsContainerId); resultsContainer.innerHTML = ''; if (!fuse || !searchTerm || searchTerm.length < 2) return; const results = fuse.search(searchTerm); results.slice(0, 10).forEach(result => { const product = result.item; const a = document.createElement('a'); a.href = '#'; a.className = 'list-group-item list-group-item-action'; a.textContent = `${product.nome} - ${(product.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`; a.onclick = (e) => { e.preventDefault(); onItemClick(product); }; resultsContainer.appendChild(a); }); }
     function setupFuse() {
@@ -2068,16 +2043,16 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
     }
 
     function renderStockList(list) {
-        const container = document.getElementById('stockTableBody'); // Agora é um div
+        const container = document.getElementById('stockTableBody');
         if (!container) return;
         
         const sortedList = [...list].sort((a, b) => {
             const aIsChecked = checkedItems[a.id]?.checked || false;
             const bIsChecked = checkedItems[b.id]?.checked || false;
             if (aIsChecked !== bIsChecked) {
-                return aIsChecked ? 1 : -1; // Itens não checados primeiro
+                return aIsChecked ? 1 : -1;
             }
-            return a.nome.localeCompare(b.nome); // Depois ordena por nome
+            return a.nome.localeCompare(b.nome);
         });
 
         if (sortedList.length === 0) {
@@ -2687,24 +2662,98 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
             notificationList.innerHTML = '<div class="list-group-item text-center">Nenhuma notificação hoje.</div>';
         }
     }
+    
+    // --- FUNÇÕES PARA GERENCIAR ETIQUETAS E TEXTOS (UNIFICADO) ---
+    const defaultTags = ['Nenhuma', 'Chinês', 'Samsung / Apple', 'Seminovo Iphone', 'Seminovo android'];
 
-    // NOVA FUNÇÃO para carregar os textos das etiquetas do Firebase
-    function loadTagTextsFromDB() {
-        const textsRef = ref(db, 'tagTexts');
-        onValue(textsRef, (snapshot) => {
-            tagTexts = snapshot.exists() ? snapshot.val() : {};
-            populateTagTextsForm(); // Popula o formulário com os textos carregados
-        });
+    function getTagList() {
+        const stored = safeStorage.getItem(TAG_LIST_KEY);
+        return stored ? JSON.parse(stored) : [...defaultTags];
     }
 
-    // NOVA FUNÇÃO para popular os campos de texto no admin
-    function populateTagTextsForm() {
-        document.querySelectorAll('#tagTextsForm textarea').forEach(textarea => {
-            const tag = textarea.dataset.tag;
-            if (tagTexts[tag]) {
-                textarea.value = tagTexts[tag];
+    function saveTagList(tags) {
+        safeStorage.setItem(TAG_LIST_KEY, JSON.stringify(tags));
+        populateTagSelects();
+        renderTagManagementUI();
+    }
+
+    function loadTagTexts() {
+        const stored = safeStorage.getItem(TAG_TEXTS_KEY);
+        tagTexts = stored ? JSON.parse(stored) : {};
+    }
+
+    function populateTagSelects() {
+        const tags = getTagList();
+        const optionsHtml = tags.map(tag => `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`).join('');
+        
+        document.getElementById('newProductTag').innerHTML = optionsHtml;
+        document.getElementById('newProductTag').value = 'Nenhuma';
+    }
+    
+    async function updateTagNameInProducts(oldTag, newTag) {
+        const updates = {};
+        products.forEach(product => {
+            if (product.tag === oldTag) {
+                updates[`/products/${product.id}/tag`] = newTag;
             }
         });
+        if (Object.keys(updates).length > 0) {
+            try {
+                await update(ref(db), updates);
+                showCustomModal({ message: `Etiqueta atualizada em ${Object.keys(updates).length} produto(s).`});
+            } catch(error) {
+                console.error("Erro ao atualizar etiquetas nos produtos:", error);
+                showCustomModal({ message: `Erro ao atualizar produtos: ${error.message}`});
+            }
+        }
+    }
+
+    function renderTagManagementUI() {
+        const container = document.getElementById('adminTagsContent');
+        if (!container) return;
+        const tags = getTagList();
+
+        let tagsHtml = tags.map(tag => {
+            if (tag === 'Nenhuma') return ''; // Não renderiza a etiqueta "Nenhuma" para edição
+            const savedText = tagTexts[tag] || '';
+            return `
+            <div class="p-3 mb-2 rounded" style="background-color: rgba(0,0,0,0.2);">
+                <div class="mb-2">
+                    <label class="form-label small">Nome da Etiqueta</label>
+                    <input type="text" class="form-control form-control-sm tag-name-input" value="${escapeHtml(tag)}" data-original-name="${escapeHtml(tag)}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small">Texto Personalizado</label>
+                    <textarea class="form-control form-control-sm tag-text-input" rows="3" placeholder="Texto para ${escapeHtml(tag)}">${escapeHtml(savedText)}</textarea>
+                </div>
+                <div class="text-end">
+                    <button class="btn btn-sm btn-outline-danger delete-tag-btn" data-tag="${escapeHtml(tag)}"><i class="bi bi-trash"></i></button>
+                    <button class="btn btn-sm btn-primary save-tag-btn" data-tag="${escapeHtml(tag)}"><i class="bi bi-save-fill"></i> Salvar</button>
+                </div>
+            </div>
+            `;
+        }).join('');
+
+        container.innerHTML = `
+        <div class="admin-section w-100">
+            <h4 class="text-start"><i class="bi bi-tags-fill"></i> Gerenciar Etiquetas e Textos</h4>
+            <p class="text-start text-secondary">Adicione, edite ou remova etiquetas e seus textos personalizados.</p>
+            
+            <div class="p-3 mb-4 rounded" style="background-color: rgba(0,0,0,0.2);">
+                <form id="addTagForm">
+                     <label class="form-label">Adicionar Nova Etiqueta</label>
+                    <div class="d-flex gap-2">
+                        <input type="text" class="form-control" id="newTagName" placeholder="Nome da nova etiqueta" required>
+                        <button type="submit" class="btn btn-success"><i class="bi bi-plus-lg"></i> Adicionar</button>
+                    </div>
+                </form>
+            </div>
+            
+            <div id="tag-editor-list">
+                ${tagsHtml}
+            </div>
+        </div>
+        `;
     }
 
 
@@ -2720,7 +2769,8 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
                     isAuthReady = true; 
                     loadRatesFromDB(); 
                     loadProductsFromDB();
-                    loadTagTextsFromDB(); // Carrega os textos das etiquetas
+                    populateTagSelects();
+                    loadTagTexts();
                     checkForDueInstallments();
 
                     const loadingOverlay = document.getElementById('loadingOverlay');
@@ -2749,7 +2799,6 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
                  const boletoId = item.dataset.boletoId;
                  const notificationId = item.dataset.notificationId;
 
-                 // Mark as viewed
                  const todayStr = new Date().toISOString().split('T')[0];
                  const viewedNotifsKey = `viewedNotifications_${todayStr}`;
                  let viewedNotifs = JSON.parse(safeStorage.getItem(viewedNotifsKey) || '[]');
@@ -2758,7 +2807,6 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
                     safeStorage.setItem(viewedNotifsKey, JSON.stringify(viewedNotifs));
                  }
 
-                 // Visually remove notification and update badge
                  item.remove();
                  const remainingItems = document.querySelectorAll('#notificationList .notification-item').length;
                  const badge = document.querySelector('#notification-bell .notification-badge');
@@ -2769,7 +2817,6 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
                     document.getElementById('notificationList').innerHTML = '<div class="list-group-item text-center">Nenhuma notificação hoje.</div>';
                  }
 
-                 // Navigate to history
                  showMainSection('contract');
                  
                  setTimeout(() => {
@@ -2873,7 +2920,6 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
             }
         });
 
-        // MODIFICAÇÃO: Listener para copiar simulação ao clicar na linha do resultado
         document.getElementById('resultCalcularPorAparelho').addEventListener('click', (e) => {
             const row = e.target.closest('.copyable-row');
             if (!row) return;
@@ -2887,24 +2933,20 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
             const parcelaFormatted = parcelaValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             const totalFormatted = totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-            // Verifica se há valor de entrada para adicioná-lo à mensagem
             let entradaText = '';
             if (entradaValue > 0) {
                 const entradaFormatted = entradaValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                 entradaText = `\n"+${entradaFormatted} no dinheiro ou pix"`;
             }
 
-            // NOVA LÓGICA: Busca o texto personalizado da etiqueta
             let customText = '';
             const product = products.find(p => p.nome === produtoNome);
-            if (product && product.tag && tagTexts[product.tag]) {
+            if (product && product.tag && product.tag !== 'Nenhuma' && tagTexts[product.tag]) {
                 customText = `\n\n${tagTexts[product.tag]}`;
             }
 
-            // Monta o texto final no formato solicitado
             const textToCopy = `${installments}x ${parcelaFormatted}\n_(Total: ${totalFormatted})_${entradaText}\n🔵 ${produtoNome}${customText}`;
 
-            // Usa um textarea temporário para garantir compatibilidade
             const textArea = document.createElement("textarea");
             textArea.value = textToCopy;
             textArea.style.position = "fixed";
@@ -3014,7 +3056,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
             const valorStr = document.getElementById('newProductValue').value;
             const quantidade = parseInt(document.getElementById('newProductQuantity').value) || 1;
             const coresStr = document.getElementById('newProductColors').value.trim();
-            const tag = document.getElementById('newProductTag').value; // Captura a etiqueta
+            const tag = document.getElementById('newProductTag').value;
 
             if (!nome || !valorStr) {
                 showCustomModal({ message: "Nome e Valor são obrigatórios." });
@@ -3041,6 +3083,7 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
                 await push(getProductsRef(), newProduct);
                 showCustomModal({ message: `Produto "${nome}" adicionado com sucesso!`});
                 e.target.reset();
+                document.getElementById('newProductTag').value = 'Nenhuma'; // Reset to default
             } catch (error) {
                 showCustomModal({ message: `Erro ao adicionar produto: ${error.message}` });
             }
@@ -3105,44 +3148,98 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
             }
         });
         
-        // NOVA LÓGICA para navegação na tela de Administração
         document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             if (e.target.tagName === 'BUTTON') {
                 const targetId = e.target.dataset.adminSection;
                 
-                // Esconde todas as seções
                 document.getElementById('adminProductsContent').classList.add('hidden');
                 document.getElementById('adminRatesContent').classList.add('hidden');
-                document.getElementById('adminTextContent').classList.add('hidden');
+                document.getElementById('adminTagsContent').classList.add('hidden');
                 
-                // Remove a classe 'active' de todos os botões
                 document.querySelectorAll('#admin-nav-buttons button').forEach(btn => btn.classList.remove('active'));
                 
-                // Mostra a seção alvo e ativa o botão
                 document.getElementById(targetId).classList.remove('hidden');
                 e.target.classList.add('active');
 
-                 if (targetId === 'adminRatesContent') {
+                if (targetId === 'adminRatesContent') {
                     renderRatesEditor();
+                } else if (targetId === 'adminTagsContent') {
+                    renderTagManagementUI();
                 }
             }
         });
 
-        // NOVA LÓGICA para salvar os textos das etiquetas
-        document.getElementById('tagTextsForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const newTexts = {};
-            document.querySelectorAll('#tagTextsForm textarea').forEach(textarea => {
-                const tag = textarea.dataset.tag;
-                newTexts[tag] = textarea.value;
-            });
+        document.getElementById('administracao').addEventListener('submit', e => {
+            if (e.target.id === 'addTagForm') {
+                e.preventDefault();
+                const input = document.getElementById('newTagName');
+                const newTag = input.value.trim();
+                if (newTag && newTag !== "Nenhuma") {
+                    const tags = getTagList();
+                    if (!tags.find(t => t.toLowerCase() === newTag.toLowerCase())) {
+                        tags.push(newTag);
+                        saveTagList(tags);
+                        input.value = '';
+                    } else {
+                        showCustomModal({ message: 'Essa etiqueta já existe.' });
+                    }
+                }
+            }
+        });
 
-            try {
-                await update(ref(db, 'tagTexts'), newTexts);
-                showCustomModal({ message: 'Textos salvos com sucesso!' });
-            } catch (error) {
-                showCustomModal({ message: `Erro ao salvar: ${error.message}` });
-                console.error("Erro ao salvar textos:", error);
+        document.getElementById('administracao').addEventListener('click', e => {
+            const deleteBtn = e.target.closest('.delete-tag-btn');
+            const saveBtn = e.target.closest('.save-tag-btn');
+
+            if (deleteBtn) {
+                const tagToDelete = deleteBtn.dataset.tag;
+                showCustomModal({
+                    message: `Tem certeza que quer remover a etiqueta "${tagToDelete}"?`,
+                    confirmText: 'Remover',
+                    onConfirm: () => {
+                        let tags = getTagList();
+                        tags = tags.filter(t => t !== tagToDelete);
+                        saveTagList(tags);
+                        delete tagTexts[tagToDelete];
+                        safeStorage.setItem(TAG_TEXTS_KEY, JSON.stringify(tagTexts));
+                    },
+                    onCancel: () => {}
+                });
+            }
+
+            if (saveBtn) {
+                const originalName = saveBtn.dataset.tag;
+                const container = saveBtn.closest('div.p-3');
+                const newName = container.querySelector('.tag-name-input').value.trim();
+                const newText = container.querySelector('.tag-text-input').value.trim();
+
+                if (!newName) {
+                    showCustomModal({ message: 'O nome da etiqueta não pode ficar em branco.' });
+                    return;
+                }
+
+                const tags = getTagList();
+                if (newName !== originalName && tags.find(t => t.toLowerCase() === newName.toLowerCase())) {
+                    showCustomModal({ message: 'Já existe uma etiqueta com esse nome.' });
+                    return;
+                }
+                
+                const index = tags.indexOf(originalName);
+                if (index > -1) {
+                    tags[index] = newName;
+                }
+                
+                delete tagTexts[originalName];
+                tagTexts[newName] = newText;
+                
+                saveTagList(tags);
+                safeStorage.setItem(TAG_TEXTS_KEY, JSON.stringify(tagTexts));
+                
+                if (originalName !== newName) {
+                    updateTagNameInProducts(originalName, newName);
+                } else {
+                    showCustomModal({ message: 'Etiqueta salva!' });
+                }
             }
         });
 
@@ -3356,7 +3453,6 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
             push(boletosRef, boletoData)
                 .then(() => {
                     showCustomModal({ message: 'Contrato salvo no banco de dados!' });
-                    // Após salvar, continua com a impressão
                     populatePreview();
                     document.body.classList.add('print-only-contract');
                     window.print();
@@ -3404,20 +3500,17 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
           e.preventDefault();
           const currentSection = document.querySelector('.container:not(.hidden):not([style*="display: none"])');
           if (currentSection && currentSection.id !== 'mainMenu' && currentSection.id !== 'calculatorHome') {
-             // Se estiver em uma sub-seção da calculadora ou no estoque/contrato, volta para o menu principal
             showMainSection('main');
           } else if (currentSection && currentSection.id === 'calculatorHome') {
             showMainSection('main');
           }
           else {
-            // se já está no menu principal, fecha o app normalmente
             if(navigator.app){
                 navigator.app.exitApp();
             }
           }
         }, false);
 
-        // Suporte para navegadores (popstate do histórico)
         window.addEventListener('popstate', function () {
             const currentSection = document.querySelector('.container:not(.hidden):not([style*="display: none"])');
             if (currentSection && currentSection.id !== 'mainMenu') {
@@ -3426,7 +3519,6 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
             }
         });
 
-        // Garante que sempre tenha um histórico inicial
         history.pushState(null, null, location.href);
 
     });
@@ -3436,7 +3528,6 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
     document.addEventListener('DOMContentLoaded', () => {
         const DISABLED_MACHINES_KEY = 'disabledMachines';
 
-        // Função para obter a lista de maquininhas desativadas do localStorage
         function getDisabledMachines() {
             try {
                 const disabled = localStorage.getItem(DISABLED_MACHINES_KEY);
@@ -3447,7 +3538,6 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
             }
         }
 
-        // Função para salvar a lista de maquininhas desativadas
         function saveDisabledMachines(disabled) {
             try {
                 localStorage.setItem(DISABLED_MACHINES_KEY, JSON.stringify(disabled));
@@ -3456,7 +3546,6 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
             }
         }
 
-        // Função para atualizar a visibilidade das opções nos selects
         function updateMachineVisibility() {
             const disabledMachines = getDisabledMachines();
             const selects = document.querySelectorAll('#machine1, #machine2, #machine3, #machine4');
@@ -3473,48 +3562,40 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
                     }
                 }
                 
-                // Se a opção selecionada foi ocultada, seleciona a primeira visível
                 if (isSelectedOptionHidden) {
                     const firstVisibleOption = select.querySelector('option:not([hidden])');
                     if (firstVisibleOption) {
                         select.value = firstVisibleOption.value;
-                        // Dispara o evento change para que a UI se atualize conforme a nova seleção
                         select.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                 }
             });
         }
 
-        // Função para configurar os switches de visibilidade
         function setupVisibilityToggles() {
             const toggles = document.querySelectorAll('.visibility-toggle');
 
             toggles.forEach(toggle => {
                 const machineName = toggle.dataset.machine;
                 const disabledMachines = getDisabledMachines();
-                // O switch está checado se a maquininha NÃO ESTIVER na lista de desativadas
                 toggle.checked = !disabledMachines.includes(machineName);
 
                 toggle.addEventListener('change', () => {
                     const currentDisabled = getDisabledMachines();
                     if (toggle.checked) {
-                        // Se checado, remove da lista de desativadas
                         const newDisabled = currentDisabled.filter(m => m !== machineName);
                         saveDisabledMachines(newDisabled);
                     } else {
-                        // Se não checado, adiciona à lista de desativadas (se já não estiver)
                         if (!currentDisabled.includes(machineName)) {
                             currentDisabled.push(machineName);
                             saveDisabledMachines(currentDisabled);
                         }
                     }
-                    // Aplica a mudança de visibilidade imediatamente
                     updateMachineVisibility();
                 });
             });
         }
 
-        // Execução inicial
         setupVisibilityToggles();
         updateMachineVisibility();
     });
@@ -3524,3 +3605,4 @@ self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]
 
 </body>
 </html>
+
