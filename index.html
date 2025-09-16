@@ -52,7 +52,7 @@
 --glow-1: #D1C4E9;
 --glow-2: #FFCDD2;
 }
-html { box-sizing: border-box; }
+html { box-sizing: border-box; height: 100%; }
 *, *:before, *:after { box-sizing: inherit; }
 body {
 font-family: 'Poppins', sans-serif;
@@ -60,6 +60,8 @@ background-color: var(--tertiary-color);
 color: var(--text-color);
 margin: 0; padding: 0;
 width: 100%; overflow-x: hidden;
+height: 100%;
+overflow-y: hidden;
 -webkit-font-smoothing: antialiased;
 -moz-osx-font-smoothing: grayscale;
 transition: background-color var(--transition-duration), color var(--transition-duration);
@@ -90,12 +92,14 @@ will-change: background-position;
 .container {
 width: 100%; max-width: 550px; margin: 0 auto; padding: 20px 15px;
 display: flex; flex-direction: column; align-items: center;
-min-height: 100vh; justify-content: flex-start;
+height: 100%;
+overflow-y: auto;
+justify-content: flex-start;
 position: relative; z-index: 1;
 will-change: transform, opacity;
 }
 h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color); }
-.section-header { width: 100%; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--glass-border); }
+.section-header { width: 100%; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--glass-border); flex-shrink: 0;}
 .section-header h3 { margin-bottom: 0; font-size: 1.5rem; }
 #mainMenu, #calculatorHome {
 padding-top: 80px; justify-content: flex-start;
@@ -3331,3 +3335,4 @@ updateMachineVisibility();
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
+
