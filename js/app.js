@@ -1,3 +1,4 @@
+// CORREÇÃO: Todas as importações movidas para o topo do arquivo, como deve ser.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
 import { getDatabase, ref, push, update, remove, onValue, off } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
@@ -12,6 +13,241 @@ const firebaseConfig = {
     appId: "1:37459949616:web:bf2e722a491f45880a55f5"
 };
 
+// Função ajudante para esperar as imagens carregarem antes de imprimir.
+function waitForImagesToLoad(element) {
+    const images = Array.from(element.getElementsByTagName('img'));
+    if (images.length === 0) {
+        return Promise.resolve();
+    }
+    const promises = images.map(img => {
+        return new Promise((resolve) => {
+            if (img.complete) {
+                return resolve();
+            }
+            img.onload = resolve;
+            img.onerror = resolve; // Resolvemos no erro também para não travar a impressão
+        });
+    });
+    return Promise.all(promises);
+}
+
+// --- FUNÇÕES DO BOOKIP ---
+
+function handleProductSelectionForBookip(product) {
+    document.getElementById('bookipProductName').value = product.nome;
+    const priceField = document.getElementById('bookipProductPrice');
+    priceField.value = (product.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    document.getElementById('bookipSearchResultsContainer').innerHTML = '';
+}
+
+// FUNÇÃO PARA CRIAR O HTML DE IMPRESSÃO, MANTENDO O DESIGN ORIGINAL
+function populateBookipPreview() {
+    // Coleta dos dados do formulário
+    const clientName = document.getElementById('bookipClientName').value;
+    const clientCpf = document.getElementById('bookipClientCpf').value;
+    const clientPhone = document.getElementById('bookipClientPhone').value;
+    const clientCep = document.getElementById('bookipClientCep').value;
+
+    const itemName = document.getElementById('bookipProductName').value;
+    const itemColor = document.getElementById('bookipProductColor').value;
+    const itemImeiSn = document.getElementById('bookipImeiSn').value.replace(/\n/g, '<br>');
+    const optionalDetails = document.getElementById('bookipOptionalDetails').value.replace(/\n/g, '<br>');
+
+    const itemPriceRaw = parseFloat(document.getElementById('bookipProductPrice').value.replace(/\D/g, '')) / 100 || 0;
+    const itemPrice = itemPriceRaw.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    const paymentMethod = document.getElementById('bookipPaymentMethod').value;
+    const termosGarantiaText = document.getElementById('bookipTermosGarantia').value.replace(/\n/g, '<br>');
+
+    const today = new Date();
+    const warrantyExpires = new Date();
+    warrantyExpires.setFullYear(today.getFullYear() + 1);
+    const issueDate = today.toLocaleDateString('pt-BR');
+    const warrantyDate = warrantyExpires.toLocaleDateString('pt-BR');
+
+    // **CORREÇÃO**: Imagens embutidas como Base64 para garantir que sempre carreguem na impressão.
+    const logoBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAAyCAYAAAAZ68joAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAARBSURBVHhe7Z3NiyRHGManR+AYLpSLy+VyclG4Y7iQ+xVc3CgcyuWyKC5uVC4ubpQubhz/C9y/9/PS00zVVD1Vj0wzVdM5fJJd3Z3p6elqpn+q3tVAIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSCQSiUQikUgkEolEIpFIJBKJRCKRSKSe/wB8Bv3xGj75FAAAAABJRU5ErkJggg==";
+    const assinaturaBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAA8CAYAAADPLSlDAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAQxSURBVHhe7Z1tTqNAGIZnJ1sVuxJLsGK1tQcrWIMV+wVYsVrbW7FagxUbv3l5h/OQ88CJk0yYSSZz/yQJksmTZJL35GGyEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQPwH/wF1uX5B1zM9UAAAAABJRU5ErkJggg==";
+
+    // Monta o HTML com o design aprovado, preenchido com os dados do formulário
+    const previewHTML = `
+        <div style="font-family: Helvetica, Arial, sans-serif; font-size: 10pt; color: #000; padding: 40pt;">
+
+            <!-- CABEÇALHO -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 80pt;">
+                <tr>
+                    <td style="width: 50%; vertical-align: top;"><img src="${logoBase64}" style="width: 100pt;"></td>
+                    <td style="width: 50%; text-align: right; vertical-align: top;">
+                        <h1 style="font-size: 16pt; margin: 0;">Comprovante de<br>compra / Garantia</h1>
+                        <p style="font-size: 9pt; line-height: 1.4; margin-top: 15pt;">
+                            WHORKCELL TECNOLOGIA<br>
+                            tecnologiaworkcell@gmail.com<br>
+                            CNPJ: 50.299.715/0001-65<br>
+                            CEP:74063320 Av Goiás N 4118 loja 05 do lado do subway posto crimeia oeste<br>
+                            Goiânia / Goiás / Brasil<br>
+                            Cell: (62) 99620-0237 / (62) 99865-3031 / (62) 9624-6529
+                        </p>
+                    </td>
+                </tr>
+            </table>
+
+            <!-- DADOS DO CLIENTE E DA COMPRA -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 60pt; font-size: 10pt;">
+                <tr>
+                    <td style="width: 50%; vertical-align: top;">
+                        <p style="margin: 0 0 15pt 0;">Para:</p>
+                        <p style="margin: 0; font-weight: bold;">${clientName}</p>
+                        <p style="margin: 0;">CPF: ${clientCpf}</p>
+                        ${clientPhone ? `<p style="margin: 0;">Telefone: ${clientPhone}</p>` : ''}
+                        ${clientCep ? `<p style="margin: 0;">CEP: ${clientCep}</p>` : ''}
+                    </td>
+                    <td style="width: 50%; text-align: left; vertical-align: top;">
+                         <table style="width: 100%; border-collapse: collapse;">
+                            <tr>
+                                <td style="text-align: left;">Termo de Compra/Garantia #:</td>
+                                <td style="text-align: right; font-weight: bold;">Garantia1278</td>
+                            </tr>
+                             <tr>
+                                <td style="text-align: left; padding-top:15px;">Data:</td>
+                                <td style="text-align: right; font-weight: bold; padding-top:15px;">${issueDate}</td>
+                            </tr>
+                             <tr>
+                                <td style="text-align: left; padding-top:15px;">Vencimento da garantia:</td>
+                                <td style="text-align: right; font-weight: bold; padding-top:15px;">${warrantyDate}</td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+
+            <!-- TABELA DE ITENS -->
+            <table style="width: 100%; border-collapse: collapse; font-size: 9pt;">
+                <thead style="color: #FFFFFF; background-color: #6B8E23; border-radius: 8px;">
+                    <tr>
+                        <th style="padding: 8pt; text-align: left; border-top-left-radius: 8px;">Item</th>
+                        <th style="padding: 8pt; text-align: center;">Qtd</th>
+                        <th style="padding: 8pt; text-align: right;">Preço</th>
+                        <th style="padding: 8pt; text-align: right; border-top-right-radius: 8px;">Valor</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="border-bottom: 1px solid #ddd;">
+                        <td style="padding: 8pt; vertical-align: top;">
+                            <strong>${itemName}</strong><br>
+                            <small>
+                                ${itemColor ? `Cor: ${itemColor}<br>` : ''}
+                                ${paymentMethod ? `Pagamento: ${paymentMethod}<br>` : ''}
+                                ${itemImeiSn ? `${itemImeiSn}<br>` : ''}
+                                ${optionalDetails ? `Detalhes: ${optionalDetails}` : ''}
+                            </small>
+                        </td>
+                        <td style="padding: 8pt; vertical-align: top; text-align: center;">1</td>
+                        <td style="padding: 8pt; vertical-align: top; text-align: right;">${itemPrice}</td>
+                        <td style="padding: 8pt; vertical-align: top; text-align: right;">${itemPrice}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- TOTAIS -->
+            <table style="width: 100%; border-collapse: collapse; margin-top: 20pt;">
+                 <tr>
+                    <td style="width: 70%; text-align: right; padding: 5pt;">Subtotal</td>
+                    <td style="width: 30%; text-align: right; padding: 5pt;">${itemPrice}</td>
+                </tr>
+                <tr>
+                    <td style="width: 70%; text-align: right; padding: 5pt; font-weight: bold;">Total</td>
+                    <td style="width: 30%; text-align: right; padding: 5pt; font-weight: bold;">${itemPrice}</td>
+                </tr>
+                 <tr>
+                    <td style="width: 70%; text-align: right; padding: 5pt;">Valor pago</td>
+                    <td style="width: 30%; text-align: right; padding: 5pt;">${itemPrice}</td>
+                </tr>
+            </table>
+
+            <!-- RODAPÉ PÁGINA 1 -->
+            <div style="font-size: 9pt; line-height: 1.5; margin-top: 80pt;">
+                 <p style="font-weight: bold;">GARANTIA PARA DEFEITOS DE FABRICAÇÃO!!</p>
+                 <p style="margin-top: 15pt; font-weight: bold;">Nota Importante</p>
+                 <p style="margin-top: 15pt;">Este documento é o comprovante da sua compra e do direito à garantia do produto informado. Ele é indispensável para acionar a garantia, seja em formato digital ou físico.<br>NÃO PERCA ESTE DOCUMENTO! MANTENHA-O INTACTO E NÃO REALIZE NENHUM TIPO DE ALTERAÇÃO!</p>
+            </div>
+
+            <!-- PÁGINA 2 COM OS TERMOS -->
+            ${termosGarantiaText ? `
+            <div style="page-break-before: always; padding-top: 40pt; font-size: 9pt; line-height: 1.5; text-align: justify;">
+                ${termosGarantiaText}
+                <div style="text-align: center; margin-top: 80px;">
+                    <img src="${assinaturaBase64}" style="width: 180px;"><br>
+                    <div style="border-top: 1px solid #000; width: 250px; margin: 0 auto; padding-top: 5px;">
+                        WHORKCELL TECNOLOGIA
+                    </div>
+                </div>
+            </div>
+            ` : ''}
+        </div>
+    `;
+    document.getElementById('bookipPreview').innerHTML = previewHTML;
+}
+
+// --- FIM DAS FUNÇÕES DO BOOKIP ---
+
+// --- FUNÇÕES DE GERENCIAMENTO DE TERMOS ---
+
+function loadTermosFromDB() {
+    if (!db || !isAuthReady) return;
+    const termosRef = ref(db, 'termos');
+    if (termosListener) off(termosRef, 'value', termosListener);
+
+    termosListener = onValue(termosRef, (snapshot) => {
+        const data = snapshot.val();
+        termos = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
+
+        const selectTermo = document.getElementById('bookipSelectTermo');
+        if(selectTermo) {
+            const currentVal = selectTermo.value;
+            selectTermo.innerHTML = '<option value="">Nenhum (usar texto manual)</option>';
+            termos.forEach(termo => {
+                selectTermo.innerHTML += `<option value="${escapeHtml(termo.id)}">${escapeHtml(termo.title)}</option>`;
+            });
+            selectTermo.value = currentVal;
+        }
+
+        if (document.getElementById('adminTermosContent') && !document.getElementById('adminTermosContent').classList.contains('hidden')) {
+            renderTermosAdminList();
+        }
+    }, (error) => {
+        console.error("Firebase Read Error (Termos):", error);
+        showCustomModal({ message: `Erro ao carregar termos: ${error.message}` });
+    });
+}
+
+function renderTermosAdminList() {
+    const container = document.getElementById('termosListContainer');
+    if (!container) return;
+    if (termos.length === 0) {
+        container.innerHTML = `<p class="text-secondary text-center">Nenhum modelo de termo salvo.</p>`;
+        return;
+    }
+    container.innerHTML = termos.map(termo => `
+        <div class="admin-product-accordion mb-2" data-id="${termo.id}">
+            <div class="admin-product-header">
+                <h6 class="product-name-title mb-0">${escapeHtml(termo.title)}</h6>
+                <i class="bi bi-chevron-down"></i>
+            </div>
+            <div class="admin-product-body">
+                <textarea class="form-control" rows="10" readonly>${escapeHtml(termo.text)}</textarea>
+                <div class="text-end mt-3">
+                    <button class="btn btn-sm btn-outline-danger delete-termo-btn" data-id="${termo.id}">
+                        <i class="bi bi-trash"></i> Apagar
+                    </button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// --- FIM DAS FUNÇÕES DE TERMOS ---
+
+// O restante do seu código original continua aqui...
 let app, db, auth, userId = null, isAuthReady = false, areRatesLoaded = false;
 let products = [], fuse, selectedAparelhoValue = 0, fecharVendaPrecoBase = 0;
 let currentCalculatorSectionId = 'calculatorHome', productsListener = null, rates = {};
@@ -26,6 +262,16 @@ let modificationTracker = {};
 let tagTexts = {};
 let tags = [];
 let tagsListener = null;
+let termos = [];
+let termosListener = null;
+
+const appUsers = [
+  { id: 'user1', nome: 'Brendon', role: 'admin' },
+  { id: 'user2', nome: 'Erica', role: 'vendedor' },
+  { id: 'user3', nome: 'Anderson', role: 'vendedor' }
+];
+let currentUser = null;
+
 let currentlySelectedProductForCalc = null;
 
 const APARELHO_FAVORITES_KEY = 'ctwAparelhoFavoritos';
@@ -33,12 +279,14 @@ const CHECKED_ITEMS_KEY = 'ctwCheckedItems';
 const MAX_FAVORITES = 5;
 const CONTRACT_DRAFT_KEY = 'ctwContractDraft';
 const TAG_TEXTS_KEY = 'ctwTagTexts';
+const BOOKIP_DRAFT_KEY = 'ctwBookipDraft';
 let draftSaveTimeout;
+let bookipDraftSaveTimeout;
 
 const safeStorage = {
     getItem(key) { try { return localStorage.getItem(key); } catch (e) { console.warn("Acesso ao localStorage negado.", e); return null; } },
     setItem(key, value) { try { localStorage.setItem(key, value); } catch (e) { console.warn("Acesso ao localStorage negado.", e); } },
-    removeItem(key) { try { localStorage.removeItem(key); } catch (e) { console.warn("Acesso ao localStorage negado.", e); } }
+    removeItem(key) { try { localStorage.removeItem(key); } catch (e) { console.warn("Acesso ao localStorage negado.", e); } },
 };
 
 const themeToggleCheckbox = document.getElementById('theme-toggle-checkbox');
@@ -63,9 +311,17 @@ const contractContainer = document.getElementById('contractContainer');
 const stockContainer = document.getElementById('stockContainer');
 const adminContainer = document.getElementById('administracao');
 const topRightControls = document.getElementById('top-right-controls');
+const bookipContainer = document.getElementById('bookipContainer');
 
 function showMainSection(sectionId) {
     if (!isAuthReady) return;
+    
+    if (currentUser && currentUser.role === 'vendedor') {
+        document.getElementById('goToAdmin').style.display = 'none';
+    } else {
+        document.getElementById('goToAdmin').style.display = 'flex';
+    }
+
     if (productsListener) { off(getProductsRef(), 'value', productsListener); productsListener = null; }
     if (boletosListener) { off(ref(db, 'boletos'), 'value', boletosListener); boletosListener = null; }
 
@@ -74,6 +330,7 @@ function showMainSection(sectionId) {
     contractContainer.classList.add('hidden');
     stockContainer.classList.add('hidden');
     adminContainer.classList.add('hidden');
+    bookipContainer.classList.add('hidden');
     topRightControls.classList.add('hidden');
 
     mainMenu.style.display = 'none';
@@ -81,6 +338,7 @@ function showMainSection(sectionId) {
     contractContainer.style.display = 'none';
     stockContainer.style.display = 'none';
     adminContainer.style.display = 'none';
+    bookipContainer.style.display = 'none';
 
     if (sectionId === 'main') {
         mainMenu.classList.remove('hidden');
@@ -99,6 +357,10 @@ function showMainSection(sectionId) {
             toggle.checked = false;
             toggle.dispatchEvent(new Event('change'));
         }
+    } else if (sectionId === 'bookip') {
+        bookipContainer.classList.remove('hidden');
+        bookipContainer.style.display = 'flex';
+        loadBookipDraft(); 
     } else if (sectionId === 'stock') {
         stockContainer.classList.remove('hidden');
         stockContainer.style.display = 'flex';
@@ -387,7 +649,7 @@ function calculateRepassarValores() {
                 valorTotalFinal = valorParcela * i;
             }
             
-            tableRows += `<tr><td>${i}x</td><td>${valorParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td>${valorTotalFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td></tr>`;
+            tableRows += `<tr class="copyable-row" data-installments="${i}" data-parcela="${valorParcela.toFixed(2)}" data-total="${valorTotalFinal.toFixed(2)}"><td>${i}x</td><td>${valorParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td>${valorTotalFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td></tr>`;
         }
     }
     
@@ -446,7 +708,7 @@ function calculateEmprestimo() {
                 valorTotalFinal = valorParcela * i;
             }
 
-            tableRows += `<tr><td>${i}x</td><td>${valorParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td>${valorTotalFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td></tr>`;
+            tableRows += `<tr class="copyable-row" data-installments="${i}" data-parcela="${valorParcela.toFixed(2)}" data-total="${valorTotalFinal.toFixed(2)}"><td>${i}x</td><td>${valorParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td>${valorTotalFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td></tr>`;
         }
     }
     
@@ -659,7 +921,7 @@ const getProductsRef = () => ref(db, 'products');
 function loadProductsFromDB() {
     if (!db || !isAuthReady) return;
     
-    const searchContainers = [document.getElementById('vendaSearchResultsContainer'), document.getElementById('aparelhoResultsContainer')];
+    const searchContainers = [document.getElementById('vendaSearchResultsContainer'), document.getElementById('aparelhoResultsContainer'), document.getElementById('bookipSearchResultsContainer')];
     searchContainers.forEach(c => showSkeletonLoader(c));
     
     if (productsListener) off(getProductsRef(), 'value', productsListener);
@@ -683,6 +945,7 @@ function loadProductsFromDB() {
         const placeholderText = products.length > 0 ? `Pesquisar entre ${products.length} produtos...` : 'Nenhum produto cadastrado';
         document.getElementById('vendaProdutoSearch').placeholder = placeholderText;
         document.getElementById('aparelhoSearch').placeholder = placeholderText;
+        document.getElementById('bookipProductSearch').placeholder = placeholderText;
         if(document.getElementById('adminSearchInput')) document.getElementById('adminSearchInput').placeholder = `Filtrar ${products.length} produtos...`;
         
         if (currentMainSectionId === 'administracao') filterAdminProducts();
@@ -1269,10 +1532,50 @@ function clearContractDraft(clearStorage = true) {
     }
 }
 
+function saveBookipDraft() {
+    const draftStatus = document.getElementById('bookipDraftStatus');
+    const formData = {};
+    document.querySelectorAll('#bookipForm input, #bookipForm textarea, #bookipForm select').forEach(input => {
+        if(input.id) {
+            formData[input.id] = input.value;
+        }
+    });
+    safeStorage.setItem(BOOKIP_DRAFT_KEY, JSON.stringify(formData));
+    if (draftStatus) {
+        draftStatus.textContent = 'Rascunho salvo!';
+        clearTimeout(bookipDraftSaveTimeout);
+        bookipDraftSaveTimeout = setTimeout(() => {
+            draftStatus.textContent = '';
+        }, 2000);
+    }
+}
+
+function loadBookipDraft() {
+    const savedDraft = safeStorage.getItem(BOOKIP_DRAFT_KEY);
+    if (savedDraft) {
+        const formData = JSON.parse(savedDraft);
+        for (const key in formData) {
+            const input = document.getElementById(key);
+            if (input) {
+                input.value = formData[key];
+            }
+        }
+        showCustomModal({ message: 'Rascunho do Bookip carregado.'});
+    }
+}
+
+function clearBookipDraft(clearStorage = true) {
+    document.getElementById('bookipForm').reset();
+    if(clearStorage) {
+        safeStorage.removeItem(BOOKIP_DRAFT_KEY);
+        showCustomModal({ message: 'Rascunho do Bookip apagado.'});
+    }
+}
+
 function populatePreview() {
     document.getElementById('contractPreview').innerHTML = `
     <h4>CONTRATO DE COMPRA E VENDA DE SMARTPHONE</h4>
-    <p>Pelo presente instrumento particular, as partes a seguir identificadas firmam o presente CONTRATO DE COMPRA E VENDA, mediante as cláusulas e condições abaixo:</p>
+    <p>Pelo presente instrumento particular, as partes a seguir identificadas firmam o presente CONTRato DE COMPRA E VENDA, mediante as cláusulas e condições abaixo:</p>
     <div class="section-title" style="text-transform: none; text-align: left;">VENDEDOR</div>
     <p>Workcell Tecnologia LTDA – CNPJ nº 50.299.715/0001-65, com sede em Av. Goiás, n° 4118 - loja 05 posto - St. Crimeia Oeste, Goiânia - GO, 74563-220.</p>
     <div class="section-title" style="text-transform: none; text-align: left;">COMPRADOR</div>
@@ -1411,6 +1714,7 @@ function renderBoletosHistory(data) {
                     <p><strong>Valor Total:</strong> R$ ${escapeHtml(boleto.valorTotal.toLocaleString('pt-BR', {minimumFractionDigits: 2}))}<br>
                     <strong>Entrada:</strong> R$ ${escapeHtml(boleto.valorEntrada.toLocaleString('pt-BR', {minimumFractionDigits: 2}))}<br>
                     <strong>Parcelas:</strong> ${boleto.numeroParcelas}x de R$ ${boleto.valorParcela}</p>
+                    <p><strong>Gerado por:</strong> ${escapeHtml(boleto.criadoPorNome || 'N/A')}</p>
                     <hr style="border-color: var(--glass-border);">
                     <div class="text-end">
                         <button class="btn btn-sm btn-outline-danger delete-boleto-btn" data-id="${boleto.id}"><i class="bi bi-trash"></i> Excluir</button>
@@ -1590,6 +1894,20 @@ function renderTagManagementUI() {
     const container = document.getElementById('adminTagsContent');
     if (!container) return;
     const tags = getTagList();
+
+    const optionsHtml = `
+    <div class="admin-section w-100">
+        <h4 class="text-start"><i class="bi bi-clipboard-check-fill"></i> Opções de Cópia</h4>
+        <div class="form-check form-switch bg-dark p-3 rounded-3 mb-4 d-flex justify-content-between align-items-center">
+            <label class="form-check-label" for="invertCopyOrderToggle">
+                <strong class="fs-5">Inverter Ordem do Texto Copiado</strong>
+                <p class="text-secondary small mb-0">Coloca o nome do produto antes dos valores da parcela.</p>
+            </label>
+            <input class="form-check-input" type="checkbox" role="switch" id="invertCopyOrderToggle" style="width: 4em; height: 2em;">
+        </div>
+    </div>
+    `;
+
     let tagsHtml = tags.map(tag => {
         if (tag === 'Nenhuma') return '';
         const savedText = tagTexts[tag] || '';
@@ -1612,6 +1930,7 @@ function renderTagManagementUI() {
     }).join('');
     
     container.innerHTML = `
+    ${optionsHtml}
     <div class="admin-section w-100">
         <h4 class="text-start"><i class="bi bi-tags-fill"></i> Gerenciar Etiquetas e Textos</h4>
         <p class="text-start text-secondary">Adicione, edite ou remova etiquetas e seus textos personalizados.</p>
@@ -1629,6 +1948,15 @@ function renderTagManagementUI() {
         </div>
     </div>
     `;
+
+    const invertToggle = document.getElementById('invertCopyOrderToggle');
+    if (invertToggle) {
+        invertToggle.checked = safeStorage.getItem('ctwInvertCopyOrder') === 'true';
+        invertToggle.addEventListener('change', () => {
+            safeStorage.setItem('ctwInvertCopyOrder', invertToggle.checked);
+            showCustomModal({ message: `Ordem de cópia ${invertToggle.checked ? 'INVERTIDA' : 'PADRÃO'}.` });
+        });
+    }
 }
 
 function loadTagsFromDB() {
@@ -1689,6 +2017,50 @@ function renderScheduledNotificationsAdminList() {
     });
 }
 
+function openUserSelectionModal() {
+    const userListContainer = document.getElementById('userListContainer');
+    const modalOverlay = document.getElementById('userSelectionModalOverlay');
+    
+    userListContainer.innerHTML = appUsers.map(user => `
+        <button class="btn btn-user" data-userid="${user.id}">
+            <span>${escapeHtml(user.nome)}</span>
+            <span class="user-role">(${escapeHtml(user.role)})</span>
+        </button>
+    `).join('');
+
+    modalOverlay.classList.add('active');
+
+    document.querySelectorAll('#userListContainer .btn-user').forEach(button => {
+        button.addEventListener('click', () => {
+            const selectedUser = appUsers.find(u => u.id === button.dataset.userid);
+            if (selectedUser) {
+                currentUser = selectedUser;
+                sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+                updateUserUI();
+                modalOverlay.classList.remove('active');
+                showMainSection(currentMainSectionId); // Re-renderiza a seção para aplicar permissões
+            }
+        });
+    });
+}
+
+function updateUserUI() {
+    const userNameSpan = document.getElementById('current-user-name');
+    if (currentUser) {
+        userNameSpan.textContent = currentUser.nome.split(' ')[0]; // Mostra o primeiro nome
+    } else {
+        userNameSpan.textContent = '';
+    }
+}
+
+function initializeUserSession() {
+    const savedUser = sessionStorage.getItem('currentUser');
+    if (savedUser) {
+        currentUser = JSON.parse(savedUser);
+        updateUserUI();
+    }
+}
+
 async function main() {
     try {
         setupPWA();
@@ -1701,9 +2073,11 @@ async function main() {
             if (user) {
                 userId = user.uid;
                 isAuthReady = true;
+                initializeUserSession(); 
                 loadRatesFromDB();
                 loadProductsFromDB();
                 loadTagsFromDB();
+                loadTermosFromDB();
                 loadTagTexts();
                 setupNotificationListeners();
                 
@@ -1712,6 +2086,9 @@ async function main() {
                 setTimeout(() => {
                     loadingOverlay.style.display = 'none';
                     showMainSection('main');
+                    if (!currentUser) {
+                        openUserSelectionModal();
+                    }
                 }, 500);
             } else {
                 await signInAnonymously(auth);
@@ -1787,6 +2164,13 @@ document.addEventListener('DOMContentLoaded', () => {
     applyTheme(savedTheme);
     themeToggleCheckbox.addEventListener('change', toggleTheme);
 
+    document.getElementById('switch-user-button').addEventListener('click', openUserSelectionModal);
+    document.getElementById('userSelectionModalOverlay').addEventListener('click', function(e) {
+        if (e.target === this && currentUser) {
+            this.classList.remove('active');
+        }
+    });
+
     document.getElementById('goToCalculator').addEventListener('click', () => showMainSection('calculator'));
     document.getElementById('goToContract').addEventListener('click', () => showMainSection('contract'));
     document.getElementById('goToStock').addEventListener('click', () => {
@@ -1805,11 +2189,113 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
     document.getElementById('goToAdmin').addEventListener('click', () => showMainSection('administracao'));
-
+    document.getElementById('goToBookip').addEventListener('click', () => showMainSection('bookip'));
+    document.getElementById('backFromBookip').addEventListener('click', () => showMainSection('main'));
+    
+    // **CORREÇÃO DEFINITIVA**
+    document.getElementById('btnGenerateBookip').addEventListener('click', async () => {
+        const bookipForm = document.getElementById('bookipForm');
+        if (!bookipForm.checkValidity()) {
+            bookipForm.reportValidity();
+            showCustomModal({ message: "Por favor, preencha todos os campos obrigatórios." });
+            return;
+        }
+    
+        try {
+            // 1. Popula o preview com os dados do formulário
+            populateBookipPreview();
+    
+            const previewElement = document.getElementById('bookipPreview');
+            
+            // 2. Espera que as imagens dentro do preview sejam carregadas
+            await waitForImagesToLoad(previewElement);
+    
+            // 3. Adiciona a classe que mostra o preview e esconde o resto
+            document.body.classList.add('print-only-bookip');
+    
+            // 4. **A MUDANÇA PRINCIPAL**: Espera um instante para o navegador aplicar a classe CSS
+            setTimeout(() => {
+                // 5. Aciona a janela de impressão
+                window.print();
+                showCustomModal({ message: "Preparando para impressão..." });
+            }, 100); // Um pequeno delay de 100ms é o suficiente
+    
+        } catch (err) {
+            console.error("Erro ao preparar para impressão:", err);
+            showCustomModal({ message: `Erro ao preparar impressão: ${err.message}.` });
+            // Garante que a classe seja removida em caso de erro
+            document.body.classList.remove('print-only-bookip');
+        }
+    });
+    
     document.getElementById('backFromContract').addEventListener('click', () => showMainSection('main'));
     document.getElementById('backFromStock').addEventListener('click', () => showMainSection('main'));
     document.getElementById('backFromAdmin').addEventListener('click', () => showMainSection('main'));
     document.getElementById('goToAdminFromEmptyState').addEventListener('click', () => showMainSection('administracao'));
+
+    document.getElementById('bookipProductSearch').addEventListener('input', () => {
+        displayDynamicSearchResults(
+            document.getElementById('bookipProductSearch').value, 
+            'bookipSearchResultsContainer', 
+            handleProductSelectionForBookip
+        );
+    });
+    document.getElementById('bookipForm').addEventListener('input', saveBookipDraft);
+    document.getElementById('btnLimparBookip').addEventListener('click', () => clearBookipDraft(false));
+    document.getElementById('btnApagarRascunhoBookip').addEventListener('click', () => clearBookipDraft(true));
+
+    document.getElementById('addTermoForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const title = document.getElementById('newTermoTitle').value.trim();
+        const text = document.getElementById('newTermoText').value.trim();
+
+        if (!title || !text) {
+            showCustomModal({ message: "Título e Texto são obrigatórios." });
+            return;
+        }
+
+        const newTermo = { title, text, createdAt: new Date().toISOString() };
+        try {
+            await push(ref(db, 'termos'), newTermo);
+            showCustomModal({ message: "Modelo de termo salvo com sucesso!" });
+            e.target.reset();
+        } catch (error) {
+            showCustomModal({ message: `Erro ao salvar: ${error.message}` });
+        }
+    });
+
+    document.getElementById('administracao').addEventListener('click', e => {
+        const deleteBtn = e.target.closest('.delete-termo-btn');
+        if (deleteBtn) {
+            const termoId = deleteBtn.dataset.id;
+            showCustomModal({
+                message: "Tem certeza que deseja apagar este modelo de termo?",
+                confirmText: "Apagar",
+                onConfirm: async () => {
+                    await remove(ref(db, `termos/${termoId}`));
+                    showCustomModal({ message: "Modelo apagado." });
+                },
+                onCancel: () => {}
+            });
+        }
+        const header = e.target.closest('.admin-product-header');
+        if (header && header.parentElement.dataset.id) {
+            header.parentElement.classList.toggle('is-open');
+        }
+    });
+
+    document.getElementById('bookipSelectTermo').addEventListener('change', (e) => {
+        const termoId = e.target.value;
+        const textArea = document.getElementById('bookipTermosGarantia');
+        if (termoId) {
+            const selectedTermo = termos.find(t => t.id === termoId);
+            if(selectedTermo) {
+                textArea.value = selectedTermo.text;
+            }
+        } else {
+            textArea.value = '';
+        }
+    });
 
     ['openFecharVenda', 'openRepassarValores', 'openCalcularEmprestimo', 'openCalcularPorAparelho'].forEach(id => { document.getElementById(id).addEventListener('click', () => openCalculatorSection(id.replace('open', '').charAt(0).toLowerCase() + id.slice(5))); });
     ['backFromFecharVenda', 'backFromRepassarValores', 'backFromCalcularEmprestimo', 'backFromCalcularPorAparelho'].forEach(id => { document.getElementById(id).addEventListener('click', () => openCalculatorSection('calculatorHome')); });
@@ -1822,14 +2308,13 @@ document.addEventListener('DOMContentLoaded', () => {
         updateFecharVendaUI();
     });
 
-    document.getElementById('machine1').addEventListener('change', (event) => { // Adicionamos o 'event'
-    updateInstallmentsOptions(); 
-    updateFecharVendaUI(); 
-    // Adicionamos a checagem 'event.isTrusted'
-    if(event.isTrusted && document.getElementById('machine1').value !== 'pagbank') {
-        openFlagModal(document.getElementById('machine1'));
-    } 
-});
+    document.getElementById('machine1').addEventListener('change', (event) => {
+        updateInstallmentsOptions(); 
+        updateFecharVendaUI(); 
+        if(event.isTrusted && document.getElementById('machine1').value !== 'pagbank') {
+            openFlagModal(document.getElementById('machine1'));
+        } 
+    });
     document.getElementById('brand1').addEventListener('change', updateFecharVendaUI);
     document.getElementById('vendaModeToggle').addEventListener('change', updateFecharVendaUI);
     document.querySelectorAll('input[name="manualMode"]').forEach(radio => radio.addEventListener('change', updateFecharVendaUI));
@@ -1856,9 +2341,8 @@ document.addEventListener('DOMContentLoaded', () => {
         container.classList.toggle('is-active');
     });
 
-    document.getElementById('machine3').addEventListener('change', (event) => { // Adicionamos o 'event'
+    document.getElementById('machine3').addEventListener('change', (event) => {
     updateCalcularPorAparelhoUI(); 
-    // Adicionamos a checagem 'event.isTrusted'
     if(event.isTrusted && document.getElementById('machine3').value !== 'pagbank') {
         openFlagModal(document.getElementById('machine3'));
     }
@@ -1897,7 +2381,18 @@ document.addEventListener('DOMContentLoaded', () => {
             customText = `\n\n${tagTexts[currentlySelectedProductForCalc.tag]}`;
         }
         
-        const textToCopy = `${installments}x ${parcelaFormatted}\n_(Total: ${totalFormatted})_${entradaText}\n ${produtoNome}${customText}`;
+        let textToCopy;
+        const invertOrder = safeStorage.getItem('ctwInvertCopyOrder') === 'true';
+        
+        const simulationBlock = `${installments}x ${parcelaFormatted}\n_(Total: ${totalFormatted})_${entradaText}`;
+        const productNameBlock = produtoNome;
+        const customTextBlock = customText;
+
+        if (invertOrder) {
+            textToCopy = `${productNameBlock}\n${simulationBlock}${customTextBlock}`;
+        } else {
+            textToCopy = `${simulationBlock}\n ${productNameBlock}${customTextBlock}`;
+        }
         const textArea = document.createElement("textarea");
         textArea.value = textToCopy;
         textArea.style.position = "fixed";
@@ -1919,6 +2414,44 @@ document.addEventListener('DOMContentLoaded', () => {
             showCustomModal({ message: 'Erro ao copiar.' });
         }
         document.body.removeChild(textArea);
+    });
+
+    ['resultRepassarValores', 'resultCalcularEmprestimo'].forEach(containerId => {
+        document.getElementById(containerId).addEventListener('click', (e) => {
+            const row = e.target.closest('.copyable-row');
+            if (!row) return;
+
+            const installments = row.dataset.installments;
+            const parcelaValue = parseFloat(row.dataset.parcela);
+            const totalValue = parseFloat(row.dataset.total);
+            
+            const parcelaFormatted = parcelaValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            const totalFormatted = totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+            const textToCopy = `${installments}x de ${parcelaFormatted}\n_(Total: ${totalFormatted})_`;
+            
+            const textArea = document.createElement("textarea");
+            textArea.value = textToCopy;
+            textArea.style.position = "fixed";
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.opacity = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showCustomModal({ message: 'Simulação copiada!' });
+                } else {
+                    showCustomModal({ message: 'Falha ao copiar.' });
+                }
+            } catch (err) {
+                console.error('Erro ao copiar:', err);
+                showCustomModal({ message: 'Erro ao copiar.' });
+            }
+            document.body.removeChild(textArea);
+        });
     });
 
     const favoriteNameModal = document.getElementById('favoriteNameModalOverlay');
@@ -1963,9 +2496,8 @@ document.addEventListener('DOMContentLoaded', () => {
     cancelSaveFavoriteBtn.addEventListener('click', closeFavoriteNameModal);
     favoriteNameModal.addEventListener('click', (e) => { if (e.target === favoriteNameModal) closeFavoriteNameModal(); });
 
-   document.getElementById('machine2').addEventListener('change', (event) => { // Adicionamos o 'event'
+   document.getElementById('machine2').addEventListener('change', (event) => {
     updateRepassarValoresUI(); 
-    // Adicionamos a checagem 'event.isTrusted'
     if(event.isTrusted && document.getElementById('machine2').value !== 'pagbank') {
         openFlagModal(document.getElementById('machine2'));
     }
@@ -1974,9 +2506,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('repassarValue').addEventListener('input', calculateRepassarValores);
 
     document.getElementById('emprestimoValue').addEventListener('input', calculateEmprestimo);
-    document.getElementById('machine4').addEventListener('change', (event) => { // Adicionamos o 'event'
+    document.getElementById('machine4').addEventListener('change', (event) => {
     updateCalcularEmprestimoUI(); 
-    // Adicionamos a checagem 'event.isTrusted'
     if(event.isTrusted && document.getElementById('machine4').value !== 'pagbank') {
         openFlagModal(document.getElementById('machine4'));
     }
@@ -2110,20 +2641,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const targetId = buttonElement.dataset.adminSection;
 
         if (buttonElement.classList.contains('active')) return;
-
+        
         const switchAdminTab = (id, btn) => {
             document.getElementById('adminProductsContent').classList.add('hidden');
             document.getElementById('adminRatesContent').classList.add('hidden');
             document.getElementById('adminTagsContent').classList.add('hidden');
             document.getElementById('adminNotificationsContent').classList.add('hidden');
+            document.getElementById('adminTermosContent').classList.add('hidden');
             document.querySelectorAll('#admin-nav-buttons button').forEach(b => b.classList.remove('active'));
-            
+
             document.getElementById(id).classList.remove('hidden');
             btn.classList.add('active');
 
             if (id === 'adminRatesContent') renderRatesEditor();
             if (id === 'adminTagsContent') renderTagManagementUI();
             if (id === 'adminNotificationsContent') renderScheduledNotificationsAdminList();
+            if (id === 'adminTermosContent') renderTermosAdminList();
         };
 
         if (targetId === 'adminNotificationsContent') {
@@ -2468,6 +3001,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const boletosRef = ref(db, 'boletos');
         const boletoData = {
+            criadoPorId: currentUser ? currentUser.id : 'nao_identificado',
+            criadoPorNome: currentUser ? currentUser.nome : 'nao_identificado',
             compradorNome: document.getElementById('compradorNome').value,
             compradorCpf: document.getElementById('compradorCpf').value,
             compradorRg: document.getElementById('compradorRg').value,
@@ -2521,8 +3056,9 @@ document.addEventListener('DOMContentLoaded', () => {
         exportResultsToImage('resultCalcularPorAparelho', `${fileName}.png`, header);
     });
     
+    // Listener unificado para limpar o body após a impressão de qualquer documento
     window.addEventListener('afterprint', () => {
-        document.body.classList.remove('print-only-contract', 'print-only-report');
+        document.body.classList.remove('print-only-contract', 'print-only-report', 'print-only-bookip');
     });
 
     main();
@@ -2559,7 +3095,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     history.pushState(null, null, location.href);
 
-    // Visibility Toggles for Machines
     const DISABLED_MACHINES_KEY = 'disabledMachines';
     function getDisabledMachines() {
         try {
@@ -2626,6 +3161,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     setupVisibilityToggles();
     updateMachineVisibility();
+    
 });
-
 
