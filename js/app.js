@@ -2193,40 +2193,63 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('backFromBookip').addEventListener('click', () => showMainSection('main'));
     
     // **CORREÇÃO DEFINITIVA**
-    document.getElementById('btnGenerateBookip').addEventListener('click', async () => {
-        const bookipForm = document.getElementById('bookipForm');
-        if (!bookipForm.checkValidity()) {
-            bookipForm.reportValidity();
-            showCustomModal({ message: "Por favor, preencha todos os campos obrigatórios." });
-            return;
-        }
+  // Encontre e substitua TODA a função de clique do 'btnGenerateBookip' por esta:
+
+document.getElementById('btnGenerateBookip').addEventListener('click', async () => {
+    // NOVO: Pega a referência da nossa tela de carregamento
+    const printLoader = document.getElementById('printLoadingOverlay');
+    const bookipForm = document.getElementById('bookipForm');
+
+    if (!bookipForm.checkValidity()) {
+        bookipForm.reportValidity();
+        showCustomModal({ message: "Por favor, preencha todos os campos obrigatórios." });
+        return;
+    }
+
+    try {
+        // NOVO: Mostra a tela de carregamento com uma transição suave
+        printLoader.style.display = 'flex';
+        setTimeout(() => printLoader.style.opacity = '1', 10); // Pequeno delay para a transição funcionar
+
+        // O resto da lógica que já tínhamos...
+        populateBookipPreview();
+        const previewElement = document.getElementById('bookipPreview');
+        await waitForImagesToLoad(previewElement);
+        document.body.classList.add('print-only-bookip');
+
+        setTimeout(() => {
+            window.print();
+            // A tela de carregamento será escondida pelo evento 'afterprint'
+        }, 150);
+
+    } catch (err) {
+        console.error("Erro ao preparar para impressão:", err);
+        showCustomModal({ message: `Ocorreu um erro ao gerar a impressão: ${err.message}.` });
+        
+        // NOVO: Garante que o loading seja escondido em caso de erro
+        printLoader.style.opacity = '0';
+        setTimeout(() => printLoader.style.display = 'none', 300); // Espera a transição
+        
+        document.body.classList.remove('print-only-bookip');
+    }
+});
+
+// Agora, vamos modificar o evento 'afterprint' para também cuidar da tela de carregamento
+
+window.addEventListener('afterprint', () => {
+    // NOVO: Pega a referência da nossa tela de carregamento
+    const printLoader = document.getElementById('printLoadingOverlay');
+
+    // Esconde a tela de carregamento
+    if (printLoader) {
+        printLoader.style.opacity = '0';
+        setTimeout(() => printLoader.style.display = 'none', 300); // Espera a transição de fade-out
+    }
     
-        try {
-            // 1. Popula o preview com os dados do formulário
-            populateBookipPreview();
-    
-            const previewElement = document.getElementById('bookipPreview');
-            
-            // 2. Espera que as imagens dentro do preview sejam carregadas
-            await waitForImagesToLoad(previewElement);
-    
-            // 3. Adiciona a classe que mostra o preview e esconde o resto
-            document.body.classList.add('print-only-bookip');
-    
-            // 4. **A MUDANÇA PRINCIPAL**: Espera um instante para o navegador aplicar a classe CSS
-            setTimeout(() => {
-                // 5. Aciona a janela de impressão
-                window.print();
-                showCustomModal({ message: "Preparando para impressão..." });
-            }, 100); // Um pequeno delay de 100ms é o suficiente
-    
-        } catch (err) {
-            console.error("Erro ao preparar para impressão:", err);
-            showCustomModal({ message: `Erro ao preparar impressão: ${err.message}.` });
-            // Garante que a classe seja removida em caso de erro
-            document.body.classList.remove('print-only-bookip');
-        }
-    });
+    // Remove as classes de impressão do body
+    document.body.classList.remove('print-only-contract', 'print-only-report', 'print-only-bookip');
+});
+
     
     document.getElementById('backFromContract').addEventListener('click', () => showMainSection('main'));
     document.getElementById('backFromStock').addEventListener('click', () => showMainSection('main'));
