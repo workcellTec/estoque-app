@@ -474,7 +474,8 @@ function calculateAparelho() {
     
     // NOVO: MULTIPLICA O VALOR BASE PELO NÚMERO DE APARELHOS
     const valorBaseUnicoAparelho = selectedAparelhoValue;
-    const valorTotalAparelho = (valorBaseUnicoAparelho * aparelhoQuantity) + extraValue;
+    const aparelhoQuantity = parseInt(document.getElementById('aparelhoQuantity').value) || 1;
+const valorTotalAparelho = (valorBaseUnicoAparelho * aparelhoQuantity) + extraValue;
     
     const valorBaseParaCalculo = valorTotalAparelho - entradaValue;
     let headerHtml = `<h4 class="mt-4">Preço Total: ${valorTotalAparelho.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</h4>`;
@@ -541,7 +542,7 @@ function handleProductSelectionForAparelho(product) {
     document.getElementById('entradaAparelho').value = '';
     document.getElementById('valorExtraAparelho').value = '';
     document.getElementById('aparelhoQuantity').value = 1; // Reseta a quantidade
-    aparelhoQuantity = 1;
+    
     const infoNoteEl = document.getElementById('aparelhoInfoNote');
     if (product.lastCheckedTimestamp) {
         const date = new Date(product.lastCheckedTimestamp).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
