@@ -540,8 +540,7 @@ function handleProductSelectionForAparelho(product) {
     document.getElementById('aparelhoResultsContainer').innerHTML = '';
     document.getElementById('entradaAparelho').value = '';
     document.getElementById('valorExtraAparelho').value = '';
-    document.getElementById('aparelhoQuantity').value = 1; // Reseta a quantidade
-    aparelhoQuantity = 1;
+    document.getElementById('aparelhoQuantity').value = 1;
     const infoNoteEl = document.getElementById('aparelhoInfoNote');
     if (product.lastCheckedTimestamp) {
         const date = new Date(product.lastCheckedTimestamp).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
@@ -1881,7 +1880,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('entradaAparelho').addEventListener('input', calculateAparelho);
     document.getElementById('valorExtraAparelho').addEventListener('input', calculateAparelho);
-    document.getElementById('aparelhoQuantity').addEventListener('input', (e) => { // NOVO: Listener para a quantidade
+    document.getElementById('aparelhoQuantity').addEventListener('input', (e) => {
         const value = parseInt(e.target.value, 10);
         aparelhoQuantity = isNaN(value) || value < 1 ? 1 : value;
         calculateAparelho();
@@ -1893,9 +1892,8 @@ document.addEventListener('DOMContentLoaded', () => {
         container.classList.toggle('is-active');
     });
 
-    document.getElementById('machine3').addEventListener('change', (event) => { // Adicionamos o 'event'
+    document.getElementById('machine3').addEventListener('change', (event) => {
     updateCalcularPorAparelhoUI(); 
-    // Adicionamos a checagem 'event.isTrusted'
     if(event.isTrusted && document.getElementById('machine3').value !== 'pagbank') {
         openFlagModal(document.getElementById('machine3'));
     }
@@ -1922,7 +1920,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const entradaValue = parseFloat(document.getElementById('entradaAparelho').value) || 0;
         const parcelaFormatted = parcelaValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         const totalFormatted = totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        const quantidade = document.getElementById('aparelhoQuantity').value; // NOVO: Pega a quantidade
+        const quantidade = document.getElementById('aparelhoQuantity').value;
         
         let entradaText = '';
         if (entradaValue > 0) {
@@ -1939,7 +1937,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const invertOrder = safeStorage.getItem('ctwInvertCopyOrder') === 'true';
         
         const simulationBlock = `${installments}x ${parcelaFormatted}\n_(Total: ${totalFormatted})_${entradaText}`;
-        const productNameBlock = `${produtoNome}${quantidade > 1 ? ` (x${quantidade})` : ''}`; // NOVO: Adiciona a quantidade ao nome
+        const productNameBlock = `${produtoNome}${quantidade > 1 ? ` (x${quantidade})` : ''}`;
         const customTextBlock = customText;
 
         if (invertOrder) {
@@ -2041,7 +2039,7 @@ document.addEventListener('DOMContentLoaded', () => {
             productName: document.getElementById('aparelhoSearch').value,
             entryValue: parseFloat(document.getElementById('entradaAparelho').value) || 0,
             additionalValue: parseFloat(document.getElementById('valorExtraAparelho').value) || 0,
-            quantity: aparelhoQuantity // NOVO: Salva a quantidade
+            quantity: parseInt(document.getElementById('aparelhoQuantity').value) || 1
         };
         favorites[favoriteName] = favoriteData;
         saveAparelhoFavorites(favorites);
@@ -2052,9 +2050,8 @@ document.addEventListener('DOMContentLoaded', () => {
     cancelSaveFavoriteBtn.addEventListener('click', closeFavoriteNameModal);
     favoriteNameModal.addEventListener('click', (e) => { if (e.target === favoriteNameModal) closeFavoriteNameModal(); });
 
-   document.getElementById('machine2').addEventListener('change', (event) => { // Adicionamos o 'event'
+   document.getElementById('machine2').addEventListener('change', (event) => {
     updateRepassarValoresUI(); 
-    // Adicionamos a checagem 'event.isTrusted'
     if(event.isTrusted && document.getElementById('machine2').value !== 'pagbank') {
         openFlagModal(document.getElementById('machine2'));
     }
@@ -2063,9 +2060,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('repassarValue').addEventListener('input', calculateRepassarValores);
 
     document.getElementById('emprestimoValue').addEventListener('input', calculateEmprestimo);
-    document.getElementById('machine4').addEventListener('change', (event) => { // Adicionamos o 'event'
+    document.getElementById('machine4').addEventListener('change', (event) => {
     updateCalcularEmprestimoUI(); 
-    // Adicionamos a checagem 'event.isTrusted'
     if(event.isTrusted && document.getElementById('machine4').value !== 'pagbank') {
         openFlagModal(document.getElementById('machine4'));
     }
