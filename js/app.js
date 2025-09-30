@@ -475,12 +475,19 @@ function calculateAparelho() {
     const aparelhoQuantity = parseInt(document.getElementById('aparelhoQuantity').value) || 1;
     const valorBaseUnicoAparelho = selectedAparelhoValue;
     const valorTotalAparelho = (valorBaseUnicoAparelho * aparelhoQuantity) + extraValue;
-    
     const valorBaseParaCalculo = valorTotalAparelho - entradaValue;
-    let headerHtml = `<h4 class="mt-4">Preço Total: ${valorTotalAparelho.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</h4>`;
+
+    // Atualiza o visor de preço total dentro da área oculta
+    const precoTotalDisplay = document.getElementById('aparelhoPrecoTotalDisplay');
+    if(precoTotalDisplay) {
+        precoTotalDisplay.innerHTML = `Preço Total: ${valorTotalAparelho.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
+    }
+    
+    // Inicia o cabeçalho visível como uma string vazia
+    let headerHtml = ``;
     
     if (entradaValue > 0) {
-        headerHtml += `<div class="alert alert-info d-flex align-items-center w-100" style="max-width: 400px;"><i class="bi bi-info-circle-fill me-3"></i><div><strong>Entrada:</strong> ${entradaValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}<br><strong>Valor a Parcelar:</strong> ${valorBaseParaCalculo.toLocaleString('pt-BR', { style: 'currency', 'currency': 'BRL' })}</div></div>`;
+        headerHtml += `<div class="alert alert-info d-flex align-items-center w-100" style="max-width: 400px; margin-top: 1rem;"><i class="bi bi-info-circle-fill me-3"></i><div><strong>Entrada:</strong> ${entradaValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}<br><strong>Valor a Parcelar:</strong> ${valorBaseParaCalculo.toLocaleString('pt-BR', { style: 'currency', 'currency': 'BRL' })}</div></div>`;
     }
 
     if (valorBaseParaCalculo < 0) {
@@ -532,6 +539,7 @@ function calculateAparelho() {
     exportContainer.style.display = tableRows.trim() !== "" ? 'block' : 'none';
 }
 
+
 function handleProductSelectionForAparelho(product) {
     currentlySelectedProductForCalc = product;
     document.getElementById('saveAparelhoFavoriteBtn').classList.remove('hidden');
@@ -539,7 +547,7 @@ function handleProductSelectionForAparelho(product) {
     document.getElementById('aparelhoSearch').value = `${product.nome}`;
     document.getElementById('aparelhoResultsContainer').innerHTML = '';
     document.getElementById('entradaAparelho').value = '';
-    document.getElementById('valorExtraAparelho').value = '';
+    document.getElementById('valorExtraAparelho').value = '40';
     document.getElementById('aparelhoQuantity').value = 1;
     const infoNoteEl = document.getElementById('aparelhoInfoNote');
     if (product.lastCheckedTimestamp) {
@@ -2438,13 +2446,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.target.classList.contains('stock-qty-input')) {
                 handleStockUpdate(e.target);
             }
-            if (e.target.classList.contains('stock-checked-toggle')) {
+                        if (e.target.classList.contains('stock-checked-toggle')) {
                 const id = e.target.dataset.id;
                 const isChecked = e.target.checked;
                 if (isChecked) {
                     const timestamp = Date.now();
                     checkedItems[id] = { checked: true, timestamp: timestamp };
                     updateProductInDB(id, { lastCheckedTimestamp: timestamp });
+                    // Adiciona a notificação toast
+                    const product = products.find(p => p.id === id);
+                    if (product) {
+                        showCustomModal({ message: `Produto "${product.nome}" conferido e salvo!`});
+                    }
                 } else {
                     delete checkedItems[id];
                     updateProductInDB(id, { lastCheckedTimestamp: null });
@@ -2453,6 +2466,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 delete modificationTracker[id];
                 filterStockProducts();
             }
+
         });
         
         stockTableBody.addEventListener('click', e => {
