@@ -317,7 +317,7 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
 .btn-toggle-extra i { transition: transform 0.3s ease; }
 .btn-toggle-extra.is-active i { transform: rotate(180deg); }
 .extra-value-container { max-height: 0; overflow: hidden; transition: max-height 0.35s ease-in-out, margin-top 0.35s ease-in-out; margin-top: 0; }
-.extra-value-container.is-active { max-height: 100px; margin-top: 1rem; }
+.extra-value-container.is-active { max-height: 150px; margin-top: 1rem; }
 
 .favoritos { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 15px; }
 .favorito { display: flex; align-items: center; background-color: var(--input-bg); border-radius: 20px; border: 1px solid var(--input-border); overflow: hidden; transition: all 0.2s ease; }
