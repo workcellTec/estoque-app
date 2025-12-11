@@ -1391,90 +1391,213 @@ body[data-color="orange"] {
 }
 
     
-/* --- ESTILOS DO BOOKIP (LAYOUT FINAL WORKCELL) --- */
+/* --- ESTILOS DO BOOKIP (DESIGN PREMIUM - REF: WORKCELL) --- */
 
-/* Esconde o preview na tela normal */
-#bookipPreview { display: none; }
+/* --- ESTILOS DO BOOKIP (LAYOUT "NOTA DE GARANTIA") --- */
 
-/* Configuração de Impressão (CORREÇÃO PARA ANDROID) */
+/* Esconde o preview na tela normal do app */
+#bookipPreview {
+    display: none;
+}
+
+/* Configuração de Impressão */
 @media print {
-    /* 1. Esconde tudo EXCETO o que tiver a classe print-bookip */
+    /* Esconde todo o app, EXCETO o preview */
     body:not(.print-bookip) * {
         display: none !important;
     }
 
-    /* 2. Mostra e posiciona o recibo */
     body.print-bookip #bookipPreview {
         display: block !important;
-        position: absolute;
-        top: 0;
-        left: 0;
+    }
+
+    * { 
+        -webkit-print-color-adjust: exact !important; 
+        print-color-adjust: exact !important; 
+    }
+}
+    /* Mostra só o recibo */
+    body.print-bookip #bookipPreview { 
+        display: block !important; 
+        position: absolute; 
+        top: 0; 
+        left: 0; 
         width: 100%;
+        height: 100%;
         margin: 0;
         padding: 0;
         background: #fff;
         z-index: 9999;
     }
 
-    /* 3. Força impressão de cores de fundo (Tabela Verde) */
-    * { 
-        -webkit-print-color-adjust: exact !important; 
-        print-color-adjust: exact !important; 
-    }
+    /* Força a impressão das cores de fundo (barra colorida) */
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 }
 
-/* O DESIGN DO DOCUMENTO (Igual Foto Workcell) */
+/* O DESIGN DO DOCUMENTO */
 #bookipPreview {
-    font-family: 'Segoe UI', Tahoma, sans-serif;
-    color: #333; font-size: 10pt; line-height: 1.3;
-    padding: 10mm; box-sizing: border-box; max-width: 210mm; margin: 0 auto;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #333;
+    line-height: 1.3;
+    font-size: 10pt; /* Tamanho de letra padrão de documento */
+    padding: 10mm; /* Margem da folha A4 */
+    box-sizing: border-box;
+    max-width: 210mm;
+    margin: 0 auto;
 }
 
-/* Cabeçalho */
-.bk-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; }
-.bk-logo-area { width: 130px; height: 130px; display: flex; align-items: center; }
-.bk-logo-img { width: 100%; object-fit: contain; }
-.bk-company-info { text-align: right; font-size: 9pt; color: #444; }
-.bk-title-main { font-size: 20pt; color: #000; margin-bottom: 2px; font-weight: 400; }
-.bk-title-sub { font-size: 20pt; color: #000; font-weight: 700; margin-bottom: 10px; }
+/* 1. Cabeçalho (Logo Esq | Texto Dir) */
+.bk-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 30px;
+}
 
-/* Grid de Dados (Cliente/Datas) */
+.bk-logo-area {
+    width: 120px;
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.bk-logo-img {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+}
+
+.bk-company-info {
+    text-align: right;
+    font-size: 9pt;
+    color: #444;
+}
+.bk-title-main {
+    font-size: 22pt;
+    font-weight: 400; /* Leve */
+    color: #000;
+    margin-bottom: 5px;
+    line-height: 1.1;
+}
+.bk-title-sub {
+    font-size: 22pt;
+    font-weight: 700; /* Negrito */
+    color: #000;
+    margin-bottom: 15px;
+    line-height: 1.1;
+}
+
+/* 2. Grid de Informações (Cliente | Datas) */
 .bk-info-grid {
-    display: flex; justify-content: space-between; gap: 20px;
-    border-top: 1px solid #ccc; padding-top: 20px; margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    border-top: 1px solid #ddd;
+    padding-top: 15px;
 }
-.bk-col-client { flex: 2; }
-.bk-col-dates { flex: 1; text-align: right; }
-.bk-label-bold { font-weight: 700; color: #000; font-size: 9pt; display: block; margin-bottom: 2px; }
-.bk-text { font-size: 10pt; color: #000; margin-bottom: 10px; display: block; }
-.bk-date-row { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 9pt; }
-.bk-date-label { font-weight: 700; color: #000; }
 
-/* Tabela (Barra Verde) */
-.bk-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-.bk-table th {
-    /* COR VERDE DA SUA FOTO */
-    background-color: #7cb342 !important; 
-    color: #fff !important; padding: 8px; text-align: left; font-weight: 700; font-size: 9pt;
+.bk-col-client { flex: 2; padding-right: 20px; }
+.bk-col-dates { flex: 1; }
+
+.bk-label-bold {
+    font-weight: 700;
+    font-size: 10pt;
+    color: #000;
+    margin-bottom: 2px;
+    display: block;
 }
-.bk-table td { padding: 10px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+.bk-text {
+    font-size: 10pt;
+    color: #333;
+    margin-bottom: 10px;
+    display: block;
+}
+
+/* Tabela de Datas na direita */
+.bk-date-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    font-size: 9pt;
+}
+.bk-date-label { font-weight: 700; color: #000; }
+.bk-date-val { text-align: right; }
+
+/* 3. Tabela de Produtos (Barra Colorida) */
+.bk-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+}
+.bk-table th {
+    background-color: var(--primary-color); /* Usa a cor do tema do app */
+    color: #fff;
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 9pt;
+    text-transform: uppercase;
+}
+.bk-table td {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+    vertical-align: top;
+    font-size: 10pt;
+}
 .bk-table td:last-child, .bk-table th:last-child { text-align: right; }
 
-/* Totais (Cinza) */
-.bk-totals-area { display: flex; justify-content: flex-end; margin-bottom: 30px; }
-.bk-totals-box { width: 250px; }
-.bk-total-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #eee; }
-.bk-total-final {
-    display: flex; justify-content: space-between;
-    background-color: #f0f0f0; padding: 10px; margin-top: 5px;
-    font-weight: 700; color: #000; font-size: 11pt;
+/* Detalhes do produto (marca, cor, etc) */
+.bk-prod-desc { font-weight: 700; font-size: 10pt; display: block; }
+.bk-prod-meta { font-size: 9pt; color: #666; display: block; margin-top: 3px; }
+
+/* 4. Totais e "Valor Pago" */
+.bk-totals-area {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 30px;
 }
-.bk-total-highlight { color: #558b2f; }
+.bk-totals-box {
+    width: 250px;
+}
+.bk-total-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    font-size: 10pt;
+    border-bottom: 1px solid #eee;
+}
+.bk-total-final {
+    display: flex;
+    justify-content: space-between;
+    background-color: #f0f0f0; /* Fundo cinza igual da foto */
+    padding: 10px;
+    margin-top: 5px;
+    font-weight: 700;
+    color: #000;
+    font-size: 11pt;
+}
+.bk-total-highlight { color: #2e7d32; } /* Verde escuro para o valor */
 
-/* Termos */
-.bk-section-title { font-weight: 700; text-transform: uppercase; margin-top: 20px; margin-bottom: 5px; font-size: 9pt; color: #000; }
-.bk-terms-text { font-size: 9pt; text-align: justify; color: #333; white-space: pre-wrap; }
-.bk-warning-box { font-weight: 700; margin: 15px 0; text-transform: uppercase; font-size: 9pt; }
-.bk-footer { margin-top: 50px; text-align: center; border-top: 1px solid #000; padding-top: 5px; font-size: 9pt; width: 80%; margin-left: auto; margin-right: auto;}
-
+/* 5. Termos e Garantia */
+.bk-terms-area {
+    font-size: 9pt;
+    color: #333;
+    text-align: justify;
+}
+.bk-section-title {
+    font-weight: 700;
+    font-size: 10pt;
+    text-transform: uppercase;
+    margin-top: 20px;
+    margin-bottom: 5px;
+    color: #000;
+}
+.bk-warning-box {
+    border: 1px dashed #000;
+    padding: 10px;
+    margin: 15px 0;
+    font-weight: 700;
+    text-align: center;
+    background-color: #fafafa;
+}
 
