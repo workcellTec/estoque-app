@@ -2426,6 +2426,8 @@ function applyColorTheme(color) {
         }
     });
 }
+
+//aqui
 async function main() {
     try {
         setupPWA();
@@ -2442,12 +2444,12 @@ async function main() {
                 userId = user.uid;
                 isAuthReady = true;
                 
-                // Carrega todos os dados
+                // CARREGAMENTO DE DADOS
                 loadRatesFromDB();
                 loadProductsFromDB();
                 loadTagsFromDB();
                 loadTagTexts();
-                loadSettingsFromDB(); // Configurações do Recibo
+                loadSettingsFromDB(); // <--- Carrega o cabeçalho/termos do recibo
                 setupNotificationListeners();
                 
                 // Remove a tela de carregamento suavemente
@@ -2483,6 +2485,9 @@ async function main() {
     }
 }
 
+        
+        
+        //fim
 
 document.addEventListener('DOMContentLoaded', () => {
     const notificationOffcanvasEl = document.getElementById('notificationPanel');
@@ -3970,70 +3975,133 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
 
     // --- FUNÇÃO PARA IMPRIMIR BOOKIP (Recebe dados prontos) ---
     // --- E: FUNÇÃO DE IMPRESSÃO (ATUALIZADA) ---
-function printBookip(dados) {
-    const total = dados.prodValor * dados.prodQtd;
-    const dataFormatada = new Date(dados.criadoEm).toLocaleString('pt-BR');
+    // --- E: FUNÇÃO DE IMPRESSÃO BOOKIP (LAYOUT ESTILO REFERÊNCIA) ---
+    function printBookip(dados) {
+        const total = dados.prodValor * dados.prodQtd;
+        
+        // Cálculos de Data
+        const hoje = new Date();
+        const dataCompra = hoje.toLocaleDateString('pt-BR');
+        
+        // Calcula validade (ex: +90 dias padrão)
+        const validade = new Date();
+        validade.setDate(hoje.getDate() + 90);
+        const dataVencimento = validade.toLocaleDateString('pt-BR');
+        
+        // Gera um ID de Garantia aleatório pro visual
+        const garantiaID = "G-" + Math.floor(Math.random() * 1000000);
 
-    // Usa os textos salvos ou um padrão se estiver vazio
-    // O .replace(/\n/g, '<br>') faz as quebras de linha funcionarem na impressão
-    const headerText = receiptSettings.header || "WORKCELL TECNOLOGIA\n(Configure seus dados no Admin)";
-    const termsText = receiptSettings.terms || "Garantia legal de 90 dias.";
+        // Prepara os textos (Cabeçalho e Termos) vindos do Admin
+        // Se estiver vazio, usa um padrão, mas o ideal é você configurar no Admin
+        const headerRaw = receiptSettings.header || "WORKCELL TECNOLOGIA\nConfigure os dados no Admin";
+        const termsRaw = receiptSettings.terms || "Garantia legal de 90 dias contra defeitos de fabricação.";
+        
+        // Formata quebra de linha
+        const headerHtml = headerRaw.replace(/\n/g, '<br>');
+        
+        // LOGO: Usa a logo do seu sistema (que está no index.html)
+        const logoUrl = "https://i.imgur.com/6Ei51Rg.png"; 
 
-    const headerHtml = headerText.replace(/\n/g, '<br>');
-    const termsHtml = termsText.replace(/\n/g, '<br>');
-
-    const htmlRecibo = `
-        <div class="bookip-header">
-            <div style="font-size: 14px; font-weight: bold; line-height: 1.4; white-space: pre-wrap;">${headerHtml}</div>
-            <h3 style="margin-top: 15px; border-top: 1px dashed #000; padding-top: 10px;">RECIBO DE VENDA</h3>
-            <p>Data: ${dataFormatada}</p>
-        </div>
-
-        <div class="bookip-section">
-            <p><span class="bookip-label">Cliente:</span> ${dados.nome}</p>
-            <p><span class="bookip-label">CPF:</span> ${dados.cpf}</p>
-            <p><span class="bookip-label">Tel:</span> ${dados.tel}</p>
-            <p><span class="bookip-label">Endereço:</span> ${dados.end}</p>
-            ${dados.email ? `<p><span class="bookip-label">Email:</span> ${dados.email}</p>` : ''}
-        </div>
-
-        <table class="bookip-table">
-            <thead><tr><th>Qtd</th><th>Descrição</th><th>Unit.</th><th>Total</th></tr></thead>
-            <tbody>
-                <tr>
-                    <td>${dados.prodQtd}</td>
-                    <td>${dados.prodNome} <br><small>(${dados.prodCor})</small></td>
-                    <td>${parseFloat(dados.prodValor).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</td>
-                    <td>${total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</td>
-                </tr>
-            </tbody>
-        </table>
-
-        ${dados.obs ? `<div class="bookip-section" style="margin-top: 15px; border: 1px solid #ccc; padding: 5px;"><small><strong>OBS:</strong> ${dados.obs}</small></div>` : ''}
-
-        <div class="bookip-total">
-            TOTAL A PAGAR: ${total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}
-        </div>
-
-        <div class="bookip-footer">
-            <p>__________________________________________</p>
-            <p>Assinatura do Cliente</p>
-            <br>
-            <div style="text-align: justify; font-size: 10px; border-top: 1px solid #ccc; padding-top: 5px;">
-                <strong>TERMOS E GARANTIA:</strong><br>
-                ${termsHtml}
+        const htmlRecibo = `
+            <div class="bk-header">
+                <div class="bk-logo-area">
+                    <img src="${logoUrl}" class="bk-logo-img" alt="Logo">
+                </div>
+                <div class="bk-company-info">
+                    <div class="bk-title-main">Comprovante de<br>Compra / Garantia</div>
+                    ${headerHtml}
+                </div>
             </div>
-            <br>
-            <p style="font-weight: bold;">Obrigado pela preferência!</p>
-        </div>
-    `;
 
-    const preview = document.getElementById('bookipPreview');
-    preview.innerHTML = htmlRecibo;
-    document.body.classList.add('print-bookip');
-    window.print();
-    setTimeout(() => document.body.classList.remove('print-bookip'), 1000);
-}
+            <div class="bk-info-grid">
+                <div class="bk-col-client">
+                    <span class="bk-label">Para</span>
+                    <div class="bk-value">
+                        ${dados.nome}<br>
+                        ${dados.cpf ? `CPF: ${dados.cpf} ` : ''} ${dados.tel ? `• Tel: ${dados.tel}` : ''}<br>
+                        ${dados.end}
+                    </div>
+                </div>
+                <div class="bk-col-dates">
+                    <div style="margin-bottom: 8px;">
+                        <span class="bk-label">Termo de Compra</span>
+                        <span class="bk-value">Venda Direta</span>
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <span class="bk-label">Garantia #</span>
+                        <span class="bk-value">${garantiaID}</span>
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <span class="bk-label">Data da Compra</span>
+                        <span class="bk-value">${dataCompra}</span>
+                    </div>
+                    <div>
+                        <span class="bk-label">Vencimento da Garantia</span>
+                        <span class="bk-value">${dataVencimento}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bk-table-container">
+                <table class="bk-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 55%;">Item / Descrição</th>
+                            <th style="width: 10%; text-align: center;">Qtd</th>
+                            <th style="width: 15%; text-align: right;">Preço</th>
+                            <th style="width: 20%; text-align: right;">Valor</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>
+                                <span class="bk-prod-title">${dados.prodNome}</span>
+                                <span class="bk-prod-sub">
+                                    Cor: ${dados.prodCor}<br>
+                                    ${dados.obs ? `Obs: ${dados.obs}` : 'Garantia de Balcão'}
+                                </span>
+                            </td>
+                            <td style="text-align: center;">${dados.prodQtd}</td>
+                            <td style="text-align: right;">${parseFloat(dados.prodValor).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</td>
+                            <td style="text-align: right;">${total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="bk-totals">
+                <div class="bk-total-row">
+                    <span>Subtotal</span>
+                    <span>${total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</span>
+                </div>
+                <div class="bk-total-final">
+                    <span>Valor Pago</span>
+                    <span>${total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</span>
+                </div>
+            </div>
+
+            <div class="bk-terms-container">
+                <div class="bk-terms-title">Garantia para defeitos de fabricação</div>
+                <div class="bk-terms-text">
+Este documento é o comprovante da sua compra e do direito à garantia do produto informado. Ele é indispensável para acionar a garantia.
+
+<strong>TERMOS DE GARANTIA:</strong>
+${termsRaw}
+                </div>
+            </div>
+
+            <div class="bk-footer">
+                <p>_______________________________________________________</p>
+                <p>Assinatura do Cliente (Declaro ter recebido o produto e aceitado os termos)</p>
+            </div>
+        `;
+        
+        const preview = document.getElementById('bookipPreview');
+        preview.innerHTML = htmlRecibo;
+        document.body.classList.add('print-bookip');
+        window.print();
+        setTimeout(() => document.body.classList.remove('print-bookip'), 1000);
+    }
 
 
     // --- CARREGAR HISTÓRICO DE BOOKIPS ---
