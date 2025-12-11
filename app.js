@@ -4011,7 +4011,7 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             const termsHtml = termsRaw.replace(/\n/g, '<br>');
             
             // URL da Logo (Fixa ou do settings se você implementar upload depois)
-            const logoUrl = "https://i.imgur.com/6Ei51Rg.png"; 
+            const logoUrl = "https://i.imgur.com/H6BjyBS.png"; 
 
             // Pega a cor do tema para a barra da tabela
             const style = getComputedStyle(document.body);
