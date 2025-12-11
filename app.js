@@ -4215,6 +4215,41 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             }
         });
     }
+    // --- CÓDIGO QUE ESTAVA FALTANDO: BOTÃO SALVAR E IMPRIMIR ---
+    const btnGerarBookip = document.getElementById('btnGerarBookip');
+    if (btnGerarBookip) {
+        btnGerarBookip.addEventListener('click', async () => {
+            // 1. Pega os dados dos campos
+            const dados = {
+                nome: document.getElementById('bookipNome').value || 'Consumidor Final',
+                cpf: document.getElementById('bookipCpf').value || '',
+                tel: document.getElementById('bookipTelefone').value || '',
+                end: document.getElementById('bookipEndereco').value || '',
+                email: document.getElementById('bookipEmail').value || '',
+                prodNome: document.getElementById('bookipProdNome').value || 'Produto Diverso',
+                prodValor: parseFloat(document.getElementById('bookipProdValor').value) || 0,
+                prodQtd: parseInt(document.getElementById('bookipProdQtd').value) || 1,
+                prodCor: document.getElementById('bookipProdCor').value || '',
+                obs: document.getElementById('bookipAdicional').value || '',
+                criadoEm: new Date().toISOString()
+            };
+
+            // 2. Salva e Imprime
+            try {
+                // Salva no histórico (Firebase)
+                await push(ref(db, 'bookips'), dados);
+                
+                showCustomModal({ message: "Recibo salvo! Gerando impressão..." });
+                
+                // Chama a função de imprimir (que já está no seu código)
+                printBookip(dados); 
+                
+            } catch (error) {
+                console.error(error);
+                showCustomModal({ message: "Erro ao salvar: " + error.message });
+            }
+        });
+    }
 
     
       });
