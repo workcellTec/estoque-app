@@ -4133,7 +4133,7 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                     window.print();
                     // Limpa a classe depois de um tempo
                     setTimeout(() => document.body.classList.remove('print-bookip'), 1500);
-                }, 150);
+                }, 300);
             } else {
                 console.error("ERRO: Elemento #bookipPreview não encontrado no HTML.");
             }
@@ -4215,7 +4215,8 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             }
         });
     }
-    // --- CÓDIGO QUE ESTAVA FALTANDO: BOTÃO SALVAR E IMPRIMIR ---
+
+        // --- CÓDIGO QUE ESTAVA FALTANDO: BOTÃO SALVAR E IMPRIMIR ---
     const btnGerarBookip = document.getElementById('btnGerarBookip');
     if (btnGerarBookip) {
         btnGerarBookip.addEventListener('click', async () => {
@@ -4251,6 +4252,7 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
         });
     }
 
+    
     
       });
     

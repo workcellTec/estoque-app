@@ -1402,9 +1402,20 @@ body[data-color="orange"] {
 
 /* Configuração de Impressão */
 @media print {
-    /* Esconde todo o resto do app */
-    body > * { display: none !important; }
-    
+    /* Esconde todo o app, EXCETO o preview */
+    body:not(.print-bookip) * {
+        display: none !important;
+    }
+
+    body.print-bookip #bookipPreview {
+        display: block !important;
+    }
+
+    * { 
+        -webkit-print-color-adjust: exact !important; 
+        print-color-adjust: exact !important; 
+    }
+}
     /* Mostra só o recibo */
     body.print-bookip #bookipPreview { 
         display: block !important; 
