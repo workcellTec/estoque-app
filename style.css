@@ -1391,52 +1391,202 @@ body[data-color="orange"] {
 }
 
     
-    /* --- ESTILOS DO BOOKIP (RECIBO) --- */
-#bookipSearchResults .list-group-item {
-    background-color: var(--input-bg);
-    color: var(--text-color);
-    border-color: var(--glass-border);
-    cursor: pointer;
-}
-#bookipSearchResults .list-group-item:hover {
-    background-color: var(--primary-color);
-    color: #fff;
+/* --- ESTILOS DO BOOKIP (DESIGN PREMIUM - REF: WORKCELL) --- */
+
+/* --- ESTILOS DO BOOKIP (LAYOUT "NOTA DE GARANTIA") --- */
+
+/* Esconde o preview na tela normal do app */
+#bookipPreview {
+    display: none;
 }
 
-/* LAYOUT DE IMPRESSÃO DO RECIBO */
+/* Configuração de Impressão */
+@media print {
+    /* Esconde todo o resto do app */
+    body > * { display: none !important; }
+    
+    /* Mostra só o recibo */
+    body.print-bookip #bookipPreview { 
+        display: block !important; 
+        position: absolute; 
+        top: 0; 
+        left: 0; 
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+        z-index: 9999;
+    }
+
+    /* Força a impressão das cores de fundo (barra colorida) */
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+}
+
+/* O DESIGN DO DOCUMENTO */
 #bookipPreview {
-    font-family: 'Courier New', Courier, monospace;
-    background: #fff;
-    color: #000;
-    padding: 20px;
-    width: 100%;
-    max-width: 800px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #333;
+    line-height: 1.3;
+    font-size: 10pt; /* Tamanho de letra padrão de documento */
+    padding: 10mm; /* Margem da folha A4 */
+    box-sizing: border-box;
+    max-width: 210mm;
     margin: 0 auto;
 }
 
-.bookip-header {
-    text-align: center;
-    border-bottom: 2px dashed #000;
-    padding-bottom: 15px;
+/* 1. Cabeçalho (Logo Esq | Texto Dir) */
+.bk-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 30px;
+}
+
+.bk-logo-area {
+    width: 120px;
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.bk-logo-img {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+}
+
+.bk-company-info {
+    text-align: right;
+    font-size: 9pt;
+    color: #444;
+}
+.bk-title-main {
+    font-size: 22pt;
+    font-weight: 400; /* Leve */
+    color: #000;
+    margin-bottom: 5px;
+    line-height: 1.1;
+}
+.bk-title-sub {
+    font-size: 22pt;
+    font-weight: 700; /* Negrito */
+    color: #000;
     margin-bottom: 15px;
+    line-height: 1.1;
 }
 
-.bookip-logo-text { font-size: 24px; font-weight: bold; text-transform: uppercase; }
-.bookip-section { margin-bottom: 15px; }
-.bookip-label { font-weight: bold; display: inline-block; min-width: 100px; }
-
-.bookip-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-.bookip-table th, .bookip-table td { border-bottom: 1px dashed #ccc; padding: 8px 0; text-align: left; }
-
-.bookip-total {
-    text-align: right; font-size: 18px; font-weight: bold;
-    margin-top: 20px; border-top: 2px dashed #000; padding-top: 10px;
+/* 2. Grid de Informações (Cliente | Datas) */
+.bk-info-grid {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    border-top: 1px solid #ddd;
+    padding-top: 15px;
 }
 
-.bookip-footer { text-align: center; margin-top: 40px; font-size: 12px; }
+.bk-col-client { flex: 2; padding-right: 20px; }
+.bk-col-dates { flex: 1; }
 
-@media print {
-    body.print-bookip * { visibility: hidden; }
-    body.print-bookip #bookipPreview, body.print-bookip #bookipPreview * { visibility: visible; }
-    body.print-bookip #bookipPreview { position: absolute; left: 0; top: 0; width: 100%; }
+.bk-label-bold {
+    font-weight: 700;
+    font-size: 10pt;
+    color: #000;
+    margin-bottom: 2px;
+    display: block;
 }
+.bk-text {
+    font-size: 10pt;
+    color: #333;
+    margin-bottom: 10px;
+    display: block;
+}
+
+/* Tabela de Datas na direita */
+.bk-date-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    font-size: 9pt;
+}
+.bk-date-label { font-weight: 700; color: #000; }
+.bk-date-val { text-align: right; }
+
+/* 3. Tabela de Produtos (Barra Colorida) */
+.bk-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+}
+.bk-table th {
+    background-color: var(--primary-color); /* Usa a cor do tema do app */
+    color: #fff;
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 9pt;
+    text-transform: uppercase;
+}
+.bk-table td {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+    vertical-align: top;
+    font-size: 10pt;
+}
+.bk-table td:last-child, .bk-table th:last-child { text-align: right; }
+
+/* Detalhes do produto (marca, cor, etc) */
+.bk-prod-desc { font-weight: 700; font-size: 10pt; display: block; }
+.bk-prod-meta { font-size: 9pt; color: #666; display: block; margin-top: 3px; }
+
+/* 4. Totais e "Valor Pago" */
+.bk-totals-area {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 30px;
+}
+.bk-totals-box {
+    width: 250px;
+}
+.bk-total-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    font-size: 10pt;
+    border-bottom: 1px solid #eee;
+}
+.bk-total-final {
+    display: flex;
+    justify-content: space-between;
+    background-color: #f0f0f0; /* Fundo cinza igual da foto */
+    padding: 10px;
+    margin-top: 5px;
+    font-weight: 700;
+    color: #000;
+    font-size: 11pt;
+}
+.bk-total-highlight { color: #2e7d32; } /* Verde escuro para o valor */
+
+/* 5. Termos e Garantia */
+.bk-terms-area {
+    font-size: 9pt;
+    color: #333;
+    text-align: justify;
+}
+.bk-section-title {
+    font-weight: 700;
+    font-size: 10pt;
+    text-transform: uppercase;
+    margin-top: 20px;
+    margin-bottom: 5px;
+    color: #000;
+}
+.bk-warning-box {
+    border: 1px dashed #000;
+    padding: 10px;
+    margin: 15px 0;
+    font-weight: 700;
+    text-align: center;
+    background-color: #fafafa;
+}
+
