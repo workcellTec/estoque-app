@@ -736,11 +736,12 @@
         </div>
     </div>
     
-    <div class="container" id="administracao" style="display: none;">
+       <div class="container" id="administracao" style="display: none;">
         <div class="section-header">
             <h3>Administração</h3>
             <button aria-label="Voltar" class="btn-back" id="backFromAdmin"><i class="bi bi-arrow-left"></i></button>
         </div>
+        
         <div class="admin-section w-100">
             <h5 class="text-center mb-3">Selecione o que deseja gerenciar</h5>
             <div class="row row-cols-2 g-2 mb-3" id="admin-nav-buttons">
@@ -756,8 +757,12 @@
                 <div class="col d-grid">
                     <button type="button" class="btn btn-outline-secondary" data-admin-section="adminTagsContent">Etiquetas</button>
                 </div>
+                <div class="col-12 d-grid mt-2">
+                    <button type="button" class="btn btn-outline-primary" data-admin-section="adminSettingsContent"><i class="bi bi-receipt"></i> Config. Recibo & Garantia</button>
+                </div>
             </div>
         </div>
+
         <div id="adminProductsContent">
             <div class="admin-section text-start w-100">
                 <h4 class="mb-3"><i class="bi bi-plus-circle-fill"></i> Adicionar Novo Produto</h4>
@@ -798,6 +803,7 @@
                 <button class="btn btn-danger" id="deleteAllProductsBtn"><i class="bi bi-trash-fill"></i> Excluir todos os produtos</button>
             </div>
         </div>
+
         <div id="adminNotificationsContent" class="hidden">
             <div class="admin-section w-100">
                 <h4 class="mb-3"><i class="bi bi-send-fill"></i> Agendar Notificação</h4>
@@ -820,6 +826,7 @@
                  <div id="scheduledNotificationsList"></div>
             </div>
         </div>
+
         <div id="adminRatesContent" class="hidden">
             <div class="admin-section">
                 <h4 class="text-start"><i class="bi bi-eye-fill"></i> Maquininhas Visíveis</h4>
@@ -861,6 +868,35 @@
                 </button>
             </div>
         </div>
+
+        <div id="adminTagsContent" class="hidden"></div>
+
+        <div id="adminSettingsContent" class="hidden">
+            <div class="admin-section w-100">
+                <h4 class="mb-3 text-start"><i class="bi bi-pencil-square"></i> Cabeçalho do Recibo</h4>
+                <p class="text-secondary small">Edite os dados da empresa que aparecem no topo do Bookip (Nome, CNPJ, Endereço, etc).</p>
+                <div class="form-group mb-3">
+                    <label class="form-label">Texto do Cabeçalho</label>
+                    <textarea class="form-control" id="settingHeaderInput" rows="8" placeholder="Digite o nome da empresa, CNPJ, endereço..."></textarea>
+                </div>
+            </div>
+
+            <div class="admin-section w-100">
+                <h4 class="mb-3 text-start"><i class="bi bi-shield-check"></i> Termos de Garantia</h4>
+                <p class="text-secondary small">Este texto aparecerá no rodapé de todos os recibos.</p>
+                <div class="form-group mb-3">
+                    <label class="form-label">Texto da Garantia</label>
+                    <textarea class="form-control" id="settingTermsInput" rows="6" placeholder="Ex: Garantia de 90 dias para defeitos de fabricação..."></textarea>
+                </div>
+            </div>
+
+            <button class="btn btn-success w-100 py-3" id="saveSettingsBtn">
+                <i class="bi bi-save-fill"></i> Salvar Configurações
+            </button>
+        </div>
+    </div>
+
+        
         <div id="adminTagsContent" class="hidden"></div>
     </div>
     

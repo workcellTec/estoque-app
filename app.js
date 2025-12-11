@@ -15,6 +15,11 @@ const firebaseConfig = {
 let app, db, auth, userId = null, isAuthReady = false, areRatesLoaded = false;
 let products = [], fuse, selectedAparelhoValue = 0, fecharVendaPrecoBase = 0;
 let activeTagFilter = null; // Guarda a etiqueta selecionada (ex: 'Xiaomi')
+// Adicione esta variável global
+let receiptSettings = {
+    header: "WORKCELL TECNOLOGIA\nCNPJ: 00.000.000/0001-00", 
+    terms: "Garantia legal de 90 dias." 
+};
 
 let currentCalculatorSectionId = 'calculatorHome', productsListener = null, rates = {};
 let boletosListener = null;
@@ -1899,6 +1904,23 @@ function populatePreview() {
     document.getElementById('previewLocalData').textContent = `Goiânia, ${today.toLocaleDateString('pt-BR', dateOptions)}`;
 }
 
+function loadSettingsFromDB() {
+    if (!db || !isAuthReady) return;
+    onValue(ref(db, 'settings'), (snapshot) => {
+        if (snapshot.exists()) {
+            receiptSettings = snapshot.val();
+        }
+        // Preenche os campos se a tela de admin estiver aberta
+        const headerInput = document.getElementById('settingHeaderInput');
+        const termsInput = document.getElementById('settingTermsInput');
+        if (headerInput && termsInput) {
+            headerInput.value = receiptSettings.header || '';
+            termsInput.value = receiptSettings.terms || '';
+        }
+    });
+}
+
+
 function loadBoletosHistory() {
     if (!db || !isAuthReady) return;
     const boletosRef = ref(db, 'boletos');
@@ -2404,13 +2426,11 @@ function applyColorTheme(color) {
         }
     });
 }
-
-
 async function main() {
     try {
         setupPWA();
         applyTheme(safeStorage.getItem('theme') || 'dark');
-                // Carrega a cor salva (ou usa vermelho se não tiver)
+        // Carrega a cor salva (ou usa vermelho se não tiver)
         applyColorTheme(safeStorage.getItem('ctwColorTheme') || 'red');
 
         app = initializeApp(firebaseConfig); 
@@ -2421,43 +2441,38 @@ async function main() {
             if (user) {
                 userId = user.uid;
                 isAuthReady = true;
+                
+                // Carrega todos os dados
                 loadRatesFromDB();
                 loadProductsFromDB();
                 loadTagsFromDB();
                 loadTagTexts();
+                loadSettingsFromDB(); // Configurações do Recibo
                 setupNotificationListeners();
                 
+                // Remove a tela de carregamento suavemente
                 const loadingOverlay = document.getElementById('loadingOverlay');
-                loadingOverlay.style.opacity = '0';
-                // --- CORREÇÃO DO "PISCAR" DO MENU ---
+                if(loadingOverlay) loadingOverlay.style.opacity = '0';
                 
-                // 1. PRIMEIRO decidimos para onde ir (enquanto a tela de carregamento ainda cobre tudo)
+                // Redireciona para a última seção acessada
                 const lastSection = safeStorage.getItem('ctwLastSection');
                 const lastCalcSub = safeStorage.getItem('ctwLastCalcSub');
 
                 if (lastSection && lastSection !== 'main') {
-                    // Se tinha uma seção salva, vai pra ela IMEDIATAMENTE
                     showMainSection(lastSection);
-                    
-                    // Se era a calculadora, abre a sub-aba certa
                     if (lastSection === 'calculator' && lastCalcSub) {
                         openCalculatorSection(lastCalcSub);
                     }
                 } else {
-                    // Se não tinha nada, prepara o menu
                     showMainSection('main');
                 }
 
-                // 2. SÓ AGORA tiramos a tela de carregamento
+                // Finaliza a animação de loading
                 setTimeout(() => {
-                    const loadingOverlay = document.getElementById('loadingOverlay');
                     if(loadingOverlay) {
-                        loadingOverlay.style.opacity = '0'; // Começa a desaparecer suave
-                        setTimeout(() => {
-                            loadingOverlay.style.display = 'none'; // Some de vez
-                        }, 500); // Espera a animação de opacidade terminar
+                        loadingOverlay.style.display = 'none';
                     }
-                }, 100); // Pequeno delay só para garantir que o navegador desenhou a tela certa
+                }, 500);
             } else {
                 await signInAnonymously(auth);
             }
@@ -2467,6 +2482,7 @@ async function main() {
         document.body.innerHTML = `<h1>Erro ao conectar.</h1><p>${error.message}</p>`; 
     }
 }
+
 
 document.addEventListener('DOMContentLoaded', () => {
     const notificationOffcanvasEl = document.getElementById('notificationPanel');
@@ -3159,7 +3175,40 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('deleteAllProductsBtn').addEventListener('click', deleteAllProducts);
-    
+        // --- C: SALVAR CONFIGURAÇÕES DE RECIBO ---
+    const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+    if (saveSettingsBtn) {
+        saveSettingsBtn.addEventListener('click', async () => {
+            const header = document.getElementById('settingHeaderInput').value;
+            const terms = document.getElementById('settingTermsInput').value;
+
+            // Pede senha de admin
+            showCustomModal({
+                message: "Senha de Administrador:",
+                showPassword: true,
+                confirmText: "Salvar",
+                onConfirm: async (password) => {
+                    if (password === "220390") {
+                        try {
+                            // Salva na pasta 'settings' do Firebase
+                            await update(ref(db, 'settings'), { header, terms });
+                            
+                            // Atualiza a variável local imediatamente
+                            receiptSettings = { header, terms };
+                            
+                            showCustomModal({ message: "Configurações salvas com sucesso!" });
+                        } catch (error) {
+                            showCustomModal({ message: "Erro ao salvar: " + error.message });
+                        }
+                    } else {
+                        showCustomModal({ message: "Senha incorreta." });
+                    }
+                },
+                onCancel: () => {}
+            });
+        });
+    }
+
     const productsListContainer = document.getElementById('productsListContainer');
     productsListContainer.addEventListener('click', e => {
         const header = e.target.closest('.admin-product-header');
@@ -3214,47 +3263,65 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    document.getElementById('admin-nav-buttons').addEventListener('click', e => {
-        if (e.target.tagName !== 'BUTTON') return;
-        const buttonElement = e.target;
-        const targetId = buttonElement.dataset.adminSection;
+    
+    //comeco
+    
+    // --- D: NAVEGAÇÃO DO ADMIN (ATUALIZADA) ---
+document.getElementById('admin-nav-buttons').addEventListener('click', e => {
+    if (e.target.tagName !== 'BUTTON') return;
+    const buttonElement = e.target;
+    const targetId = buttonElement.dataset.adminSection;
 
-        if (buttonElement.classList.contains('active')) return;
+    if (buttonElement.classList.contains('active')) return;
 
-        const switchAdminTab = (id, btn) => {
-            document.getElementById('adminProductsContent').classList.add('hidden');
-            document.getElementById('adminRatesContent').classList.add('hidden');
-            document.getElementById('adminTagsContent').classList.add('hidden');
-            document.getElementById('adminNotificationsContent').classList.add('hidden');
-            document.querySelectorAll('#admin-nav-buttons button').forEach(b => b.classList.remove('active'));
-            
-            document.getElementById(id).classList.remove('hidden');
-            btn.classList.add('active');
+    const switchAdminTab = (id, btn) => {
+        // Esconde todas as abas
+        document.getElementById('adminProductsContent').classList.add('hidden');
+        document.getElementById('adminRatesContent').classList.add('hidden');
+        document.getElementById('adminTagsContent').classList.add('hidden');
+        document.getElementById('adminNotificationsContent').classList.add('hidden');
+        document.getElementById('adminSettingsContent').classList.add('hidden'); // NOVA ABA
 
-            if (id === 'adminRatesContent') renderRatesEditor();
-            if (id === 'adminTagsContent') renderTagManagementUI();
-            if (id === 'adminNotificationsContent') renderScheduledNotificationsAdminList();
-        };
+        // Remove active dos botões
+        document.querySelectorAll('#admin-nav-buttons button').forEach(b => b.classList.remove('active'));
 
-        if (targetId === 'adminNotificationsContent') {
-            showCustomModal({
-                message: "Digite a senha para acessar Notificações:",
-                showPassword: true,
-                confirmText: "Acessar",
-                onConfirm: (password) => {
-                    if (password === "220390") {
-                        switchAdminTab(targetId, buttonElement);
-                    } else {
-                        showCustomModal({ message: "Senha incorreta." });
-                    }
-                },
-                onCancel: () => {}
-            });
-        } else {
-            switchAdminTab(targetId, buttonElement);
+        // Mostra a aba certa
+        document.getElementById(id).classList.remove('hidden');
+        btn.classList.add('active');
+
+        if (id === 'adminRatesContent') renderRatesEditor();
+        if (id === 'adminTagsContent') renderTagManagementUI();
+        if (id === 'adminNotificationsContent') renderScheduledNotificationsAdminList();
+
+        // Se abriu a aba de config, preenche os dados
+        if (id === 'adminSettingsContent') {
+            document.getElementById('settingHeaderInput').value = receiptSettings.header || '';
+            document.getElementById('settingTermsInput').value = receiptSettings.terms || '';
         }
-    });
+    };
 
+    if (targetId === 'adminNotificationsContent' || targetId === 'adminSettingsContent') {
+        // Pede senha para Notificações E Configurações
+        showCustomModal({
+            message: "Acesso Restrito. Senha:",
+            showPassword: true,
+            confirmText: "Acessar",
+            onConfirm: (password) => {
+                if (password === "220390") {
+                    switchAdminTab(targetId, buttonElement);
+                } else {
+                    showCustomModal({ message: "Senha incorreta." });
+                }
+            },
+            onCancel: () => {}
+        });
+    } else {
+        switchAdminTab(targetId, buttonElement);
+    }
+});
+
+    
+    
     document.getElementById('scheduleNotificationForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const text = document.getElementById('notificationText').value.trim();
@@ -3902,81 +3969,72 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- FUNÇÃO PARA IMPRIMIR BOOKIP (Recebe dados prontos) ---
-    function printBookip(dados) {
-        const total = dados.prodValor * dados.prodQtd;
-        const dataFormatada = new Date(dados.criadoEm).toLocaleString('pt-BR');
+    // --- E: FUNÇÃO DE IMPRESSÃO (ATUALIZADA) ---
+function printBookip(dados) {
+    const total = dados.prodValor * dados.prodQtd;
+    const dataFormatada = new Date(dados.criadoEm).toLocaleString('pt-BR');
 
-        const htmlRecibo = `
-            <div class="bookip-header">
-                <div class="bookip-logo-text">WORKCELL TECNOLOGIA</div>
-                <p>Av. Goiás, 4118 - St. Crimeia Oeste, Goiânia - GO</p>
-                <p>CNPJ: 50.299.715/0001-65 | Tel: (62) 99999-9999</p>
-                <h3>RECIBO DE VENDA</h3>
-                <p>Data: ${dataFormatada}</p>
-            </div>
-            <div class="bookip-section">
-                <p><span class="bookip-label">Cliente:</span> ${dados.nome}</p>
-                <p><span class="bookip-label">CPF:</span> ${dados.cpf}</p>
-                <p><span class="bookip-label">Tel:</span> ${dados.tel}</p>
-                <p><span class="bookip-label">Endereço:</span> ${dados.end}</p>
-            </div>
-            <table class="bookip-table">
-                <thead><tr><th>Qtd</th><th>Descrição</th><th>Unit.</th><th>Total</th></tr></thead>
-                <tbody>
-                    <tr>
-                        <td>${dados.prodQtd}</td>
-                        <td>${dados.prodNome} <br><small>(${dados.prodCor})</small></td>
-                        <td>${parseFloat(dados.prodValor).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</td>
-                        <td>${total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</td>
-                    </tr>
-                </tbody>
-            </table>
-            ${dados.obs ? `<div class="bookip-section" style="margin-top: 15px; border: 1px solid #ccc; padding: 5px;"><small><strong>OBS:</strong> ${dados.obs}</small></div>` : ''}
-            <div class="bookip-total">TOTAL A PAGAR: ${total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</div>
-            <div class="bookip-footer">
-                <p>__________________________________________</p><p>Assinatura do Cliente</p><br>
-                <p>Garantia legal de 90 dias para defeitos de fabricação.</p><p>Obrigado pela preferência!</p>
-            </div>
-        `;
-        const preview = document.getElementById('bookipPreview');
-        preview.innerHTML = htmlRecibo;
-        document.body.classList.add('print-bookip');
-        window.print();
-        setTimeout(() => document.body.classList.remove('print-bookip'), 1000);
-    }
+    // Usa os textos salvos ou um padrão se estiver vazio
+    // O .replace(/\n/g, '<br>') faz as quebras de linha funcionarem na impressão
+    const headerText = receiptSettings.header || "WORKCELL TECNOLOGIA\n(Configure seus dados no Admin)";
+    const termsText = receiptSettings.terms || "Garantia legal de 90 dias.";
 
-    // --- SALVAR E GERAR BOOKIP ---
-    const btnGerarBookip = document.getElementById('btnGerarBookip');
-    if(btnGerarBookip) {
-        btnGerarBookip.addEventListener('click', async () => {
-            const dados = {
-                nome: document.getElementById('bookipNome').value || 'Consumidor Final',
-                cpf: document.getElementById('bookipCpf').value || '---',
-                tel: document.getElementById('bookipTelefone').value || '---',
-                end: document.getElementById('bookipEndereco').value || '---',
-                email: document.getElementById('bookipEmail').value || '',
-                prodNome: document.getElementById('bookipProdNome').value || 'Produto Diverso',
-                prodValor: parseFloat(document.getElementById('bookipProdValor').value) || 0,
-                prodQtd: parseInt(document.getElementById('bookipProdQtd').value) || 1,
-                prodCor: document.getElementById('bookipProdCor').value || '---',
-                obs: document.getElementById('bookipAdicional').value || '',
-                criadoEm: new Date().toISOString()
-            };
+    const headerHtml = headerText.replace(/\n/g, '<br>');
+    const termsHtml = termsText.replace(/\n/g, '<br>');
 
-            // Salva no Firebase
-            try {
-                await push(ref(db, 'bookips'), dados);
-                showCustomModal({ message: "Recibo salvo no histórico! Imprimindo..." });
-                printBookip(dados);
-                
-                // Opcional: Limpar campos
-                // document.getElementById('bookipNome').value = '';
-                // ...
-            } catch (error) {
-                showCustomModal({ message: "Erro ao salvar: " + error.message });
-            }
-        });
-    }
+    const htmlRecibo = `
+        <div class="bookip-header">
+            <div style="font-size: 14px; font-weight: bold; line-height: 1.4; white-space: pre-wrap;">${headerHtml}</div>
+            <h3 style="margin-top: 15px; border-top: 1px dashed #000; padding-top: 10px;">RECIBO DE VENDA</h3>
+            <p>Data: ${dataFormatada}</p>
+        </div>
+
+        <div class="bookip-section">
+            <p><span class="bookip-label">Cliente:</span> ${dados.nome}</p>
+            <p><span class="bookip-label">CPF:</span> ${dados.cpf}</p>
+            <p><span class="bookip-label">Tel:</span> ${dados.tel}</p>
+            <p><span class="bookip-label">Endereço:</span> ${dados.end}</p>
+            ${dados.email ? `<p><span class="bookip-label">Email:</span> ${dados.email}</p>` : ''}
+        </div>
+
+        <table class="bookip-table">
+            <thead><tr><th>Qtd</th><th>Descrição</th><th>Unit.</th><th>Total</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td>${dados.prodQtd}</td>
+                    <td>${dados.prodNome} <br><small>(${dados.prodCor})</small></td>
+                    <td>${parseFloat(dados.prodValor).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</td>
+                    <td>${total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        ${dados.obs ? `<div class="bookip-section" style="margin-top: 15px; border: 1px solid #ccc; padding: 5px;"><small><strong>OBS:</strong> ${dados.obs}</small></div>` : ''}
+
+        <div class="bookip-total">
+            TOTAL A PAGAR: ${total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}
+        </div>
+
+        <div class="bookip-footer">
+            <p>__________________________________________</p>
+            <p>Assinatura do Cliente</p>
+            <br>
+            <div style="text-align: justify; font-size: 10px; border-top: 1px solid #ccc; padding-top: 5px;">
+                <strong>TERMOS E GARANTIA:</strong><br>
+                ${termsHtml}
+            </div>
+            <br>
+            <p style="font-weight: bold;">Obrigado pela preferência!</p>
+        </div>
+    `;
+
+    const preview = document.getElementById('bookipPreview');
+    preview.innerHTML = htmlRecibo;
+    document.body.classList.add('print-bookip');
+    window.print();
+    setTimeout(() => document.body.classList.remove('print-bookip'), 1000);
+}
+
 
     // --- CARREGAR HISTÓRICO DE BOOKIPS ---
     function loadBookipHistory() {
