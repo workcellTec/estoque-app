@@ -978,7 +978,13 @@
                 </label>
             </div>
 
-            <div id="newBookipContent">
+            
+
+
+
+            
+            
+                      <div id="newBookipContent">
                 <div class="content-card w-100">
                     <h5 class="form-section-title mb-3"><i class="bi bi-person-lines-fill"></i> Dados do Cliente</h5>
                     <div class="row">
@@ -1004,36 +1010,88 @@
                         </div>
                     </div>
 
-                    <h5 class="form-section-title mb-3 mt-2"><i class="bi bi-box-seam-fill"></i> Item Vendido</h5>
+                    <h5 class="form-section-title mb-3 mt-2"><i class="bi bi-cart-plus-fill"></i> Adicionar Produtos</h5>
                     
-                    <div class="mb-3 p-3 rounded" style="background: rgba(var(--primary-color-rgb), 0.1); border: 1px dashed var(--primary-color);">
-                        <label class="form-label text-primary fw-bold"><i class="bi bi-search"></i> Buscar no Estoque (Preencher Automático)</label>
-                        <div class="position-relative">
-                            <input type="text" class="form-control" id="bookipProductSearch" placeholder="Digite para buscar..." autocomplete="off">
+                    <div class="p-3 rounded mb-3" style="border: 1px solid var(--glass-border); background: rgba(0,0,0,0.2);">
+                        <div class="mb-3 position-relative">
+                            <label class="form-label text-primary"><i class="bi bi-search"></i> Buscar / Digitar Produto</label>
+                            <input type="text" class="form-control" id="bookipProductSearch" placeholder="Busque ou digite o nome..." autocomplete="off">
                             <div id="bookipSearchResults" class="list-group position-absolute w-100" style="z-index: 1000; max-height: 200px; overflow-y: auto; display: none;"></div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-12 mb-2">
+                                <input type="text" class="form-control form-control-sm" id="bookipProdNomeTemp" placeholder="Nome do produto aparecerá aqui">
+                            </div>
+                            <div class="col-4 mb-2">
+                                <input type="number" class="form-control form-control-sm" id="bookipProdQtdTemp" value="1" placeholder="Qtd">
+                            </div>
+                            <div class="col-8 mb-2">
+                                <input type="number" step="0.01" class="form-control form-control-sm" id="bookipProdValorTemp" placeholder="Valor Unit (R$)">
+                            </div>
+                            <div class="col-12 mb-2">
+                                <input type="text" class="form-control form-control-sm" id="bookipProdCorTemp" placeholder="Cor / Detalhe">
+                            </div>
+                            <div class="col-12 mb-2">
+                                <textarea class="form-control form-control-sm" id="bookipProdObsTemp" rows="1" placeholder="IMEI / Serial / Obs"></textarea>
+                            </div>
+                            <div class="col-12">
+                                <button class="btn btn-primary btn-sm w-100" id="btnAdicionarItemLista">
+                                    <i class="bi bi-plus-lg"></i> Adicionar o Produto
+                                </button>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="row">
-                        <div class="col-md-12 mb-3">
-                            <label class="form-label">Nome do Produto (Editável)</label>
-                            <input type="text" class="form-control" id="bookipProdNome">
-                        </div>
-                        <div class="col-6 mb-3">
-                            <label class="form-label">Valor Unit. (R$)</label>
-                            <input type="number" step="0.01" class="form-control" id="bookipProdValor">
-                        </div>
-                        <div class="col-6 mb-3">
-                            <label class="form-label">Quantidade</label>
-                            <input type="number" class="form-control" id="bookipProdQtd" value="1">
-                        </div>
-                        <div class="col-12 mb-3">
-                            <label class="form-label">Cor / Detalhes</label>
-                            <input type="text" class="form-control" id="bookipProdCor" placeholder="Ex: Preto Espacial">
-                        </div>
-                        <div class="col-12 mb-3">
-                            <label class="form-label">Informações Adicionais / IMEI</label>
-                            <textarea class="form-control" id="bookipAdicional" rows="2" placeholder="Garantia de 90 dias, IMEI: ..."></textarea>
+                    <h6 class="text-secondary small mb-2">Itens no Recibo:</h6>
+                    <ul class="list-group mb-3" id="bookipListaItens">
+                        <li class="list-group-item text-center text-muted small bg-transparent">Nenhum item adicionado.</li>
+                    </ul>
+                    <div class="text-end mb-3">
+                        <h5 class="m-0">Total: <span class="text-success" id="bookipTotalDisplay">R$ 0,00</span></h5>
+                    </div>
+
+                    <h5 class="form-section-title mb-3 mt-4"><i class="bi bi-sliders"></i> Detalhes Finais</h5>
+<div class="mb-3">
+    <label class="form-label">Data da Venda (Para Garantias anteriores)</label>
+    <input type="date" class="form-control" id="bookipDataManual">
+</div>
+
+
+
+
+                    <<div class="mb-3">
+    <label class="form-label">Tempo de Garantia</label>
+    <select class="form-select" id="bookipGarantiaSelect">
+        <option value="365" selected>1 Ano (Padrão)</option>
+        <option value="30">30 Dias</option>
+        <option value="120">4 Meses</option>
+        <option value="180">6 Meses</option>
+        <option value="custom">Manual (Digitar Dias)</option>
+    </select>
+    <input type="number" class="form-control mt-2 hidden" id="bookipGarantiaCustomInput" placeholder="Digite a quantidade de dias (Ex: 45)">
+</div>
+
+
+                    <div class="mb-3">
+                        <label class="form-label d-block">Forma(s) de Pagamento</label>
+                        <div class="d-flex flex-wrap gap-3 p-2 rounded" style="background: rgba(0,0,0,0.2);">
+                            <div class="form-check">
+                                <input class="form-check-input check-pagamento" type="checkbox" value="Dinheiro/Pix" id="pagPix">
+                                <label class="form-check-label" for="pagPix">Dinheiro/Pix</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input check-pagamento" type="checkbox" value="Crédito" id="pagCredito">
+                                <label class="form-check-label" for="pagCredito">Crédito</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input check-pagamento" type="checkbox" value="Débito" id="pagDebito">
+                                <label class="form-check-label" for="pagDebito">Débito</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input check-pagamento" type="checkbox" value="Boleto" id="pagBoleto">
+                                <label class="form-check-label" for="pagBoleto">Boleto</label>
+                            </div>
                         </div>
                     </div>
 
@@ -1045,6 +1103,17 @@
                 </div>
             </div>
 
+
+
+
+<div id="bookipSearchContainer" class="mb-2 w-100 hidden">
+    <input type="text" class="form-control" id="bookipHistorySearch" placeholder="🔍 Buscar no histórico (Nome, CPF...)" style="background: var(--input-bg); color: var(--text-color);">
+</div>
+
+<div id="historyBookipContent" class="hidden w-100"></div>
+
+            
+            
             <div id="historyBookipContent" class="hidden w-100"></div>
         </div>
     </div>

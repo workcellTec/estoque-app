@@ -1601,3 +1601,24 @@ body[data-color="orange"] {
     background-color: #fafafa;
 }
 
+
+/* --- ESTILO PARA O CABEÇALHO DA TABELA DO BOOKIP (BARRA VERDE MUSGO) --- */
+
+#bookipPreview .bk-table thead tr {
+    background-color: #6da037 !important; /* <--- Esse é o Verde Musgo da foto */
+    color: #FFFFFF !important; /* Texto Branco */
+    border: none !important;
+    -webkit-print-color-adjust: exact !important; /* Obriga a impressora a pintar o verde */
+    print-color-adjust: exact !important;
+}
+
+/* Garante que as células individuais obedeçam o verde */
+#bookipPreview .bk-table th {
+    background-color: #6da037 !important; /* Verde Musgo aqui também */
+    color: #fff !important;
+    padding: 8px 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 10pt;
+    border: none !important; 
+}

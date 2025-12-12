@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
-import { getDatabase, ref, push, update, remove, onValue, off } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
+import { getDatabase, ref, push, update, remove, onValue, off, get } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyANdJzvmHr8JVqrjveXbP_ZV6ZRR6fcVQk",
@@ -15,6 +15,13 @@ const firebaseConfig = {
 let app, db, auth, userId = null, isAuthReady = false, areRatesLoaded = false;
 let products = [], fuse, selectedAparelhoValue = 0, fecharVendaPrecoBase = 0;
 let activeTagFilter = null; // Guarda a etiqueta selecionada (ex: 'Xiaomi')
+// --- CORREÇÃO: ADICIONE ESTA LINHA ---
+let bookipCartList = []; 
+// --- CORREÇÃO: ADICIONE ESTA LINHA ---
+let bookipListener = null; 
+
+
+
 // Adicione esta variável global
 let receiptSettings = {
     header: "WORKCELL TECNOLOGIA\nCNPJ: 00.000.000/0001-00", 
@@ -3873,6 +3880,8 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
     });
     
     
+    //logica book
+    
         // --- LÓGICA DE ABAS (CONTRATO vs BOOKIP) ---
     const btnShowContrato = document.getElementById('btnShowContrato');
     const btnShowBookip = document.getElementById('btnShowBookip');
@@ -3912,247 +3921,286 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
     }
 
     // --- TOGGLE NOVO / HISTÓRICO DO BOOKIP ---
+        // --- TOGGLE NOVO / HISTÓRICO DO BOOKIP (CORRIGIDO) ---
     const bookipToggle = document.getElementById('bookipModeToggle');
-    let bookipListener = null;
+    // Pegamos o novo container de busca que criamos no HTML
+    const searchContainer = document.getElementById('bookipSearchContainer');
 
     if(bookipToggle) {
         bookipToggle.addEventListener('change', (e) => {
             const showHistory = e.target.checked;
+            
+            // Alterna as telas principais
             document.getElementById('newBookipContent').classList.toggle('hidden', showHistory);
             document.getElementById('historyBookipContent').classList.toggle('hidden', !showHistory);
+            
+            // Alterna a barra de busca separadamente (Segurança contra erro de impressão)
+            if (searchContainer) {
+                searchContainer.classList.toggle('hidden', !showHistory);
+            }
+
             if (showHistory) {
                 loadBookipHistory();
             }
         });
     }
 
-    // --- BUSCA INTELIGENTE NO ESTOQUE ---
-    const bookipSearch = document.getElementById('bookipProductSearch');
-    const bookipResults = document.getElementById('bookipSearchResults');
 
-    if(bookipSearch) {
-        bookipSearch.addEventListener('input', (e) => {
-            const term = e.target.value.toLowerCase();
-            bookipResults.innerHTML = '';
+
+    // ============================================================
+    // CORREÇÃO: LÓGICA DE BUSCA E ADIÇÃO DE ITENS NO BOOKIP
+    // ============================================================
+    
+    const inputBuscaBookip = document.getElementById('bookipProductSearch');
+    const containerResultados = document.getElementById('bookipSearchResults');
+    const btnAddLista = document.getElementById('btnAdicionarItemLista');
+    const listaVisual = document.getElementById('bookipListaItens');
+    const totalDisplay = document.getElementById('bookipTotalDisplay');
+
+    // 1. Lógica da Busca (Consertada)
+    if (inputBuscaBookip && containerResultados) {
+        inputBuscaBookip.addEventListener('input', (e) => {
+            const termo = e.target.value.toLowerCase();
             
-            if(term.length < 1) {
-                bookipResults.style.display = 'none';
+            // Se digitar, já joga pro nome do produto caso não selecione nada
+            document.getElementById('bookipProdNomeTemp').value = e.target.value;
+            
+            containerResultados.innerHTML = '';
+            
+            if (termo.length < 1) {
+                containerResultados.style.display = 'none';
                 return;
             }
-            const filtered = products.filter(p => p.nome.toLowerCase().includes(term));
 
-            if(filtered.length > 0) {
-                bookipResults.style.display = 'block';
-                filtered.forEach(p => {
+            // Filtra os produtos salvos
+            const filtrados = products.filter(p => p.nome.toLowerCase().includes(termo));
+
+            if (filtrados.length > 0) {
+                containerResultados.style.display = 'block';
+                filtrados.slice(0, 5).forEach(p => { // Mostra só os 5 primeiros
                     const item = document.createElement('a');
                     item.className = 'list-group-item list-group-item-action';
+                    item.style.cursor = 'pointer';
                     item.innerHTML = `
                         <div class="d-flex justify-content-between align-items-center">
                             <strong>${p.nome}</strong>
-                            <span class="text-success fw-bold">${parseFloat(p.valor).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</span>
-                        </div>
-                        <small class="text-secondary">Qtd atual: ${p.quantidade}</small>
-                    `;
+                            <span class="text-success small">R$ ${parseFloat(p.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                        </div>`;
+                    
+                    // Ao clicar no resultado
                     item.addEventListener('click', () => {
-                        document.getElementById('bookipProdNome').value = p.nome;
-                        document.getElementById('bookipProdValor').value = p.valor;
-                        document.getElementById('bookipProdQtd').value = 1;
-                        if(p.cores && p.cores.length > 0) document.getElementById('bookipProdCor').value = p.cores[0].nome;
-                        else document.getElementById('bookipProdCor').value = '';
-                        bookipSearch.value = '';
-                        bookipResults.style.display = 'none';
+                        document.getElementById('bookipProdNomeTemp').value = p.nome;
+                        document.getElementById('bookipProdValorTemp').value = p.valor;
+                        // Tenta pegar a primeira cor, se tiver
+                        const cor = (p.cores && p.cores.length > 0) ? p.cores[0].nome : '';
+                        document.getElementById('bookipProdCorTemp').value = cor;
+                        
+                        inputBuscaBookip.value = p.nome;
+                        containerResultados.style.display = 'none';
                     });
-                    bookipResults.appendChild(item);
+                    
+                    containerResultados.appendChild(item);
                 });
             } else {
-                bookipResults.style.display = 'none';
+                containerResultados.style.display = 'none';
             }
         });
+
+        // Fecha a busca se clicar fora
         document.addEventListener('click', (e) => {
-            if(!bookipSearch.contains(e.target) && !bookipResults.contains(e.target)) bookipResults.style.display = 'none';
+            if (!inputBuscaBookip.contains(e.target) && !containerResultados.contains(e.target)) {
+                containerResultados.style.display = 'none';
+            }
         });
     }
+
+    // 2. Lógica do Botão "Adicionar à Lista" (Não existia antes)
+    if (btnAddLista) {
+        btnAddLista.addEventListener('click', (e) => {
+            e.preventDefault(); // Evita recarregar página
+
+            // Pega os valores dos inputs pequenos
+            const nome = document.getElementById('bookipProdNomeTemp').value;
+            const qtd = parseInt(document.getElementById('bookipProdQtdTemp').value) || 1;
+            const valor = parseFloat(document.getElementById('bookipProdValorTemp').value) || 0;
+            const cor = document.getElementById('bookipProdCorTemp').value;
+            const obs = document.getElementById('bookipProdObsTemp').value;
+
+            if (!nome) {
+                showCustomModal({ message: "Digite ou busque o nome do produto." });
+                return;
+            }
+
+            // Adiciona ao carrinho global (bookipCartList)
+            bookipCartList.push({
+                nome: nome,
+                qtd: qtd,
+                valor: valor,
+                cor: cor,
+                obs: obs
+            });
+
+            // Limpa os campos para o próximo
+            inputBuscaBookip.value = '';
+            document.getElementById('bookipProdNomeTemp').value = '';
+            document.getElementById('bookipProdValorTemp').value = '';
+            document.getElementById('bookipProdCorTemp').value = '';
+            document.getElementById('bookipProdObsTemp').value = '';
+            document.getElementById('bookipProdQtdTemp').value = '1';
+
+            // Atualiza o visual da lista
+            atualizarListaVisualBookip();
+        });
+    }
+
+    // 3. Função para Atualizar a Lista Visual na Tela
+    function atualizarListaVisualBookip() {
+        if (!listaVisual) return;
+        
+        listaVisual.innerHTML = ''; // Limpa lista atual
+        let total = 0;
+
+        if (bookipCartList.length === 0) {
+            listaVisual.innerHTML = '<li class="list-group-item text-center text-muted small bg-transparent">Nenhum item adicionado.</li>';
+        } else {
+            bookipCartList.forEach((item, index) => {
+                const subtotal = item.valor * item.qtd;
+                total += subtotal;
+
+                const li = document.createElement('li');
+                li.className = 'list-group-item d-flex justify-content-between align-items-center bg-transparent text-light border-secondary border-opacity-25';
+                li.innerHTML = `
+                    <div>
+                        <div class="fw-bold">${item.nome} <small class="text-secondary">x${item.qtd}</small></div>
+                        <div class="small text-secondary">${item.cor} ${item.obs}</div>
+                    </div>
+                    <div class="text-end">
+                        <div class="fw-bold text-success">R$ ${subtotal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
+                        <button class="btn btn-sm btn-link text-danger p-0 text-decoration-none remove-item-bookip" data-index="${index}" style="font-size: 0.8rem;">Remover</button>
+                    </div>
+                `;
+                listaVisual.appendChild(li);
+            });
+        }
+
+        // Atualiza o Total lá embaixo
+        if (totalDisplay) {
+            totalDisplay.innerText = total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        }
+
+        // Ativa botões de remover
+        document.querySelectorAll('.remove-item-bookip').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = parseInt(e.target.dataset.index);
+                bookipCartList.splice(idx, 1);
+                atualizarListaVisualBookip();
+            });
+        });
+    }
+
 
     // --- FUNÇÃO PARA IMPRIMIR BOOKIP (Recebe dados prontos) ---
     // --- E: FUNÇÃO DE IMPRESSÃO (ATUALIZADA) ---
     // --- E: FUNÇÃO DE IMPRESSÃO BOOKIP (LAYOUT ESTILO REFERÊNCIA) ---
          // --- FUNÇÃO DE IMPRESSÃO BOOKIP (LAYOUT IDENTICO À REFERÊNCIA) ---
-    function printBookip(dados) {
+        function printBookip(dados) {
         try {
-            // 1. Proteção de Dados
-            if (!dados) { alert("Erro: Sem dados para imprimir."); return; }
+            if (!dados) { alert("Erro: Sem dados."); return; }
 
-            const qtd = parseInt(dados.prodQtd) || 1;
-            const valorUnit = parseFloat(dados.prodValor) || 0;
-            const total = valorUnit * qtd;
+            // 1. Processa Lista de Itens (Compatibilidade com antigo e novo)
+            let lista = (dados.items && Array.isArray(dados.items)) ? dados.items : [{
+                nome: dados.prodNome || 'Produto', qtd: parseInt(dados.prodQtd)||1, valor: parseFloat(dados.prodValor)||0, cor: dados.prodCor||'', obs: dados.obs||''
+            }];
             
-            // 2. Datas e Garantia
+            const totalGeral = lista.reduce((acc, i) => acc + (i.valor * i.qtd), 0);
+
+            // 2. Datas e Garantia Manual
             const hoje = new Date();
             const dataCompra = hoje.toLocaleDateString('pt-BR');
+            const diasGarantia = (dados.diasGarantia !== undefined) ? parseInt(dados.diasGarantia) : 90;
             
-            // Calcula validade (90 dias padrão)
-            const validade = new Date();
-            validade.setDate(hoje.getDate() + 90);
-            const dataVencimento = validade.toLocaleDateString('pt-BR');
-            
-            // Gera ID de Garantia aleatório se não existir
-            const garantiaID = dados.id ? `REF-${dados.id.substring(1, 6).toUpperCase()}` : "G-" + Math.floor(Math.random() * 1000000);
+            let dataVencimento = "S/ Garantia";
+            if (diasGarantia > 0) {
+                const validade = new Date();
+                validade.setDate(hoje.getDate() + diasGarantia);
+                dataVencimento = validade.toLocaleDateString('pt-BR');
+            }
+            const txtGarantia = diasGarantia > 0 ? `${diasGarantia} Dias` : "Sem Garantia";
 
-            // 3. Configurações (Com proteção contra falha de carregamento)
-            // Se receiptSettings for undefined, usa objeto vazio
+            // 3. Monta Linhas da Tabela
+            const linhas = lista.map(item => `
+                <tr>
+                    <td><strong>${item.nome}</strong><br><span style="font-size:8.5pt;color:#666;">${item.cor} ${item.obs}</span></td>
+                    <td style="text-align:center;">${item.qtd}</td>
+                    <td style="text-align:right;">R$ ${item.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+                    <td style="text-align:right;">R$ ${(item.valor*item.qtd).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+                </tr>`).join('');
+
+            // Textos
             const settings = (typeof receiptSettings !== 'undefined' && receiptSettings) ? receiptSettings : {};
-            
-            // Pega o texto do admin OU usa o padrão se estiver vazio
-            const headerRaw = settings.header || "WORKCELL TECNOLOGIA\nCNPJ: 50.299.715/0001-65\nAv Goiás N 4118 - Goiânia/GO";
-            const termsRaw = settings.terms || "Garantia legal de 90 dias contra defeitos de fabricação.";
-            
-            // Converte quebras de linha (\n) para HTML (<br>)
-            const headerHtml = headerRaw.replace(/\n/g, '<br>');
-            const termsHtml = termsRaw.replace(/\n/g, '<br>');
-            
-            // URL da Logo (Fixa ou do settings se você implementar upload depois)
-            const logoUrl = "https://i.imgur.com/H6BjyBS.png"; 
+            const headerHtml = (settings.header || "WORKCELL TECNOLOGIA").replace(/\n/g, '<br>');
+            const termsHtml = (settings.terms || "Garantia legal.").replace(/\n/g, '<br>');
+            const logoUrl = "https://i.imgur.com/H6BjyBS.png";
 
-            // Pega a cor do tema para a barra da tabela
-            const style = getComputedStyle(document.body);
-            let themeColor = style.getPropertyValue('--primary-color').trim();
-            if (!themeColor) themeColor = '#000'; // Fallback preto
+            // Pagamento
+            const pgtoHtml = dados.pagamento ? `<div style="font-size:9pt; margin-top:5px;"><strong>Forma de Pagamento:</strong> ${dados.pagamento}</div>` : '';
 
-            // 4. MONTAGEM DO HTML (Estrutura da Referência)
             const htmlRecibo = `
                 <div class="bk-header">
-                    <div class="bk-logo-area">
-                        <img src="${logoUrl}" class="bk-logo-img" alt="Logo" onerror="this.style.display='none'">
-                    </div>
-                    <div class="bk-company-info">
-                        <div class="bk-title-main">Comprovante de</div>
-                        <div class="bk-title-sub">compra / Garantia</div>
-                        ${headerHtml}
-                    </div>
+                    <div class="bk-logo-area"><img src="${logoUrl}" class="bk-logo-img" onerror="this.style.display='none'"></div>
+                    <div class="bk-company-info"><div class="bk-title-main">Comprovante de</div><div class="bk-title-sub">compra / Garantia</div>${headerHtml}</div>
                 </div>
-
                 <div class="bk-info-grid">
-                    <div class="bk-col-client">
-                        <span class="bk-label-bold">Para</span>
-                        <div class="bk-text">
-                            ${dados.nome || 'Consumidor Final'}<br>
-                            ${dados.cpf ? `CPF: ${dados.cpf}` : ''}<br>
-                            ${dados.end || ''}<br>
-                            ${dados.tel || ''}
-                        </div>
-                    </div>
-
+                    <div class="bk-col-client"><span class="bk-label-bold">Para</span><div class="bk-text"><strong>${dados.nome}</strong><br>${dados.cpf}<br>${dados.tel}<br>${dados.end}</div></div>
                     <div class="bk-col-dates">
-                        <div class="bk-date-row">
-                            <span class="bk-date-label">Termo de Compra</span>
-                            <span class="bk-date-val">Venda Direta</span>
-                        </div>
-                        <div class="bk-date-row">
-                            <span class="bk-date-label">Garantia #</span>
-                            <span class="bk-date-val">${garantiaID}</span>
-                        </div>
-                        <div class="bk-date-row">
-                            <span class="bk-date-label">Data</span>
-                            <span class="bk-date-val">${dataCompra}</span>
-                        </div>
-                        <div class="bk-date-row">
-                            <span class="bk-date-label">Vencimento</span>
-                            <span class="bk-date-val">${dataVencimento}</span>
-                        </div>
+                        <div class="bk-date-row"><span class="bk-date-label">Recibo #</span><span>${dados.id ? dados.id.substring(1,6).toUpperCase() : 'NOVO'}</span></div>
+                        <div class="bk-date-row"><span class="bk-date-label">Data</span><span>${dataCompra}</span></div>
+                        <div class="bk-date-row"><span class="bk-date-label">Garantia</span><span>${txtGarantia}</span></div>
+                        <div class="bk-date-row"><span class="bk-date-label">Vence</span><span>${dataVencimento}</span></div>
                     </div>
                 </div>
-
-                <table class="bk-table">
+                               <table class="bk-table">
                     <thead>
                         <tr>
-                            <th style="background-color: ${themeColor} !important;">Item</th>
-                            <th style="background-color: ${themeColor} !important; text-align: center; width: 50px;">Qty</th>
-                            <th style="background-color: ${themeColor} !important; text-align: right; width: 100px;">Preço</th>
-                            <th style="background-color: ${themeColor} !important; text-align: right; width: 100px;">Valor</th>
+                            <th>Item</th>
+                            <th style="text-align:center;">Qtd</th>
+                            <th style="text-align:right;">Preço</th>
+                            <th style="text-align:right;">Valor</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <tr>
-                            <td>
-                                <span class="bk-prod-desc">${dados.prodNome || 'Produto Diverso'}</span>
-                                <span class="bk-prod-meta">
-                                    Cor: ${dados.prodCor || '-'}<br>
-                                    ${dados.obs ? `Obs: ${dados.obs}` : ''}
-                                </span>
-                            </td>
-                            <td style="text-align: center;">${qtd}</td>
-                            <td style="text-align: right;">${valorUnit.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</td>
-                            <td style="text-align: right;">${total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</td>
-                        </tr>
-                    </tbody>
+                    <tbody>${linhas}</tbody>
                 </table>
 
-                <div class="bk-totals-area">
-                    <div class="bk-totals-box">
-                        <div class="bk-total-row">
-                            <span>Subtotal</span>
-                            <span>${total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</span>
-                        </div>
-                        <div class="bk-total-row">
-                            <span>Total</span>
-                            <span>${total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</span>
-                        </div>
-                        <div class="bk-total-final">
-                            <span>Valor pago</span>
-                            <span class="bk-total-highlight">${total.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="bk-terms-area">
-                    <div class="bk-section-title">GARANTIA PARA DEFEITOS DE FABRICAÇÃO</div>
-                    <p>Este documento é o comprovante da sua compra e do direito à garantia do produto informado. Ele é indispensável para acionar a garantia.</p>
-                    
-                    <div class="bk-warning-box">
-                        NÃO PERCA ESTE DOCUMENTO! MANTENHA-O INTACTO.
-                    </div>
-
-                    <div class="bk-section-title">Termos de Garantia</div>
-                    <div style="white-space: pre-wrap;">${termsHtml}</div>
-                    
-                    <br><br><br>
-                    <div style="border-top: 1px solid #000; width: 100%; text-align: center; padding-top: 5px;">
-                        Assinatura do Cliente
-                    </div>
-                </div>
+                <div class="bk-totals-area"><div class="bk-totals-box">
+                    ${pgtoHtml}
+                    <div class="bk-total-final"><span>Total Pago</span><span class="bk-total-highlight">R$ ${totalGeral.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+                </div></div>
+                <div class="bk-section-title">Termos de Garantia</div><div class="bk-terms-text">${termsHtml}</div>
+                <br><br><div style="border-top:1px solid #000;width:100%;text-align:center;font-size:9pt;padding-top:5px;">Assinatura do Cliente</div>
             `;
-            
-            // 5. Inserir e Imprimir
+
             const preview = document.getElementById('bookipPreview');
             if(preview) {
                 preview.innerHTML = htmlRecibo;
                 document.body.classList.add('print-bookip');
-                
-                // Timeout para garantir que imagens carreguem
-                setTimeout(() => {
-                    window.print();
-                    // Limpa a classe depois de um tempo
-                    setTimeout(() => document.body.classList.remove('print-bookip'), 1500);
-                }, 300);
-            } else {
-                console.error("ERRO: Elemento #bookipPreview não encontrado no HTML.");
+                setTimeout(() => { window.print(); setTimeout(() => document.body.classList.remove('print-bookip'), 1500); }, 300);
             }
-
-        } catch (error) {
-            console.error("Erro fatal ao gerar recibo:", error);
-            alert("Erro ao imprimir: " + error.message);
-            document.body.classList.remove('print-bookip');
-        }
+        } catch (e) { alert("Erro: " + e.message); document.body.classList.remove('print-bookip'); }
     }
 
     
     
     
     // --- CARREGAR HISTÓRICO DE BOOKIPS ---
+        // --- CARREGAR HISTÓRICO DE BOOKIPS (CORRIGIDO) ---
+      // --- CARREGAR HISTÓRICO DE BOOKIPS (COM BUSCA SEGURA) ---
     function loadBookipHistory() {
         if (!db || !isAuthReady) return;
+        
         const bookipsRef = ref(db, 'bookips');
         const container = document.getElementById('historyBookipContent');
+        const searchInput = document.getElementById('bookipHistorySearch'); // O input que criamos
+        
         container.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div></div>';
 
         if (bookipListener) off(bookipsRef, 'value', bookipListener);
@@ -4160,99 +4208,326 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
         bookipListener = onValue(bookipsRef, (snapshot) => {
             if (snapshot.exists()) {
                 const data = snapshot.val();
-                const lista = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-                lista.sort((a, b) => new Date(b.criadoEm) - new Date(a.criadoEm));
+                const allBookips = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+                // Ordena: Mais novo primeiro
+                allBookips.sort((a, b) => new Date(b.criadoEm) - new Date(a.criadoEm));
 
-                container.innerHTML = `<div class="accordion w-100 history-accordion" id="bookipAccordion">${lista.map(item => {
-                    const dataFormatada = new Date(item.criadoEm).toLocaleDateString('pt-BR');
-                    return `
-                    <div class="accordion-item">
-                        <h2 class="accordion-header" id="head-bk-${item.id}">
-                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-bk-${item.id}">
-                                ${item.nome} - ${item.prodNome} (${dataFormatada})
-                            </button>
-                        </h2>
-                        <div id="collapse-bk-${item.id}" class="accordion-collapse collapse" data-bs-parent="#bookipAccordion">
-                            <div class="accordion-body">
-                                <p><strong>Cliente:</strong> ${item.nome} (${item.cpf})</p>
-                                <p><strong>Produto:</strong> ${item.prodNome} - ${item.prodCor}</p>
-                                <p><strong>Valor:</strong> R$ ${item.prodValor.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
-                                <div class="d-flex justify-content-end gap-2 mt-2">
-                                    <button class="btn btn-sm btn-primary print-old-bookip" data-id="${item.id}"><i class="bi bi-printer"></i> Imprimir</button>
-                                    <button class="btn btn-sm btn-outline-danger delete-bookip-btn" data-id="${item.id}"><i class="bi bi-trash"></i></button>
+                // Função interna para desenhar a lista na tela
+                const renderList = (lista) => {
+                    if (lista.length === 0) {
+                        container.innerHTML = '<p class="text-center text-secondary mt-4">Nenhum documento encontrado.</p>';
+                        return;
+                    }
+
+                    container.innerHTML = `<div class="accordion w-100 history-accordion" id="bookipAccordion">${lista.map(item => {
+                        // Tratamento de data seguro
+                        let dataFormatada = 'Data desc.';
+                        if (item.dataVenda) {
+                             // Data manual salva
+                             const partes = item.dataVenda.split('-'); // ex: 2023-12-25
+                             dataFormatada = `${partes[2]}/${partes[1]}/${partes[0]}`;
+                        } else if (item.criadoEm) {
+                             // Fallback para recibos antigos
+                             dataFormatada = new Date(item.criadoEm).toLocaleDateString('pt-BR');
+                        }
+                        
+                        const docNum = item.docNumber || '---';
+
+                        return `
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="head-bk-${item.id}">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-bk-${item.id}">
+                                    <span class="badge bg-primary me-2">Doc ${docNum}</span> ${item.nome} - ${dataFormatada}
+                                </button>
+                            </h2>
+                            <div id="collapse-bk-${item.id}" class="accordion-collapse collapse" data-bs-parent="#bookipAccordion">
+                                <div class="accordion-body">
+                                    <p><strong>Cliente:</strong> ${item.nome} <br> <small class="text-secondary">${item.cpf || 'Sem CPF'}</small></p>
+                                    <hr>
+                                    <p class="mb-1"><strong>Itens:</strong></p>
+                                    <ul class="list-unstyled small mb-3">
+                                        ${(item.items || []).map(i => `<li>${i.qtd}x ${i.nome} - R$ ${parseFloat(i.valor).toFixed(2)}</li>`).join('')}
+                                    </ul>
+                                    <div class="d-flex justify-content-end gap-2 mt-2">
+                                        <button class="btn btn-sm btn-primary print-old-bookip" data-id="${item.id}"><i class="bi bi-printer"></i> Imprimir</button>
+                                        <button class="btn btn-sm btn-outline-danger delete-bookip-btn" data-id="${item.id}"><i class="bi bi-trash"></i></button>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>`;
-                }).join('')}</div>`;
+                        </div>`;
+                    }).join('')}</div>`;
 
-                // Listeners dos botões do histórico
-                container.querySelectorAll('.print-old-bookip').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        const id = e.target.closest('button').dataset.id;
-                        const item = lista.find(i => i.id === id);
-                        if(item) printBookip(item);
-                    });
-                });
-
-                container.querySelectorAll('.delete-bookip-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        const id = e.target.closest('button').dataset.id;
-                        showCustomModal({
-                            message: "Apagar este recibo do histórico?",
-                            confirmText: "Sim, Apagar",
-                            onConfirm: async () => {
-                                await remove(ref(db, `bookips/${id}`));
-                                showCustomModal({ message: "Apagado." });
-                            },
-                            onCancel: () => {}
+                    // Reativa os botões da lista gerada
+                    container.querySelectorAll('.print-old-bookip').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const id = e.target.closest('button').dataset.id;
+                            const item = allBookips.find(i => i.id === id);
+                            if(item) printBookip(item);
                         });
                     });
-                });
+
+                    container.querySelectorAll('.delete-bookip-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const id = e.target.closest('button').dataset.id;
+                            showCustomModal({
+                                message: "Apagar este recibo?",
+                                confirmText: "Apagar",
+                                onConfirm: async () => {
+                                    await remove(ref(db, `bookips/${id}`));
+                                    showCustomModal({ message: "Apagado." });
+                                },
+                                onCancel: () => {}
+                            });
+                        });
+                    });
+                };
+
+                // 1. Desenha a lista inicial (Completa)
+                renderList(allBookips);
+
+                // 2. Configura a busca (com proteção para não duplicar eventos)
+                if (searchInput) {
+                    // Clona o nó para remover listeners antigos e evitar bugs
+                    const newSearchInput = searchInput.cloneNode(true);
+                    searchInput.parentNode.replaceChild(newSearchInput, searchInput);
+
+                    newSearchInput.addEventListener('input', (e) => {
+                        const termo = e.target.value.toLowerCase();
+                        const filtrados = allBookips.filter(item => {
+                            const nDoc = (item.docNumber || '').toLowerCase();
+                            const nome = (item.nome || '').toLowerCase();
+                            const cpf = (item.cpf || '').toLowerCase();
+                            return nDoc.includes(termo) || nome.includes(termo) || cpf.includes(termo);
+                        });
+                        renderList(filtrados);
+                    });
+                }
 
             } else {
                 container.innerHTML = '<p class="text-center text-secondary mt-4">Nenhum recibo salvo.</p>';
             }
         });
     }
+    
 
-        // --- CÓDIGO QUE ESTAVA FALTANDO: BOTÃO SALVAR E IMPRIMIR ---
-    const btnGerarBookip = document.getElementById('btnGerarBookip');
-    if (btnGerarBookip) {
-        btnGerarBookip.addEventListener('click', async () => {
-            // 1. Pega os dados dos campos
-            const dados = {
-                nome: document.getElementById('bookipNome').value || 'Consumidor Final',
-                cpf: document.getElementById('bookipCpf').value || '',
-                tel: document.getElementById('bookipTelefone').value || '',
-                end: document.getElementById('bookipEndereco').value || '',
-                email: document.getElementById('bookipEmail').value || '',
-                prodNome: document.getElementById('bookipProdNome').value || 'Produto Diverso',
-                prodValor: parseFloat(document.getElementById('bookipProdValor').value) || 0,
-                prodQtd: parseInt(document.getElementById('bookipProdQtd').value) || 1,
-                prodCor: document.getElementById('bookipProdCor').value || '',
-                obs: document.getElementById('bookipAdicional').value || '',
-                criadoEm: new Date().toISOString()
-            };
 
-            // 2. Salva e Imprime
-            try {
-                // Salva no histórico (Firebase)
-                await push(ref(db, 'bookips'), dados);
-                
-                showCustomModal({ message: "Recibo salvo! Gerando impressão..." });
-                
-                // Chama a função de imprimir (que já está no seu código)
-                printBookip(dados); 
-                
-            } catch (error) {
-                console.error(error);
-                showCustomModal({ message: "Erro ao salvar: " + error.message });
+    // --- LÓGICA DE SALVAR E GARANTIA (NOVO) ---
+        // --- LÓGICA DE SALVAR E GARANTIA (NOVO) ---
+    const garantiaSelect = document.getElementById('bookipGarantiaSelect');
+    const garantiaInput = document.getElementById('bookipGarantiaCustomInput');
+    
+    if (garantiaSelect && garantiaInput) {
+        garantiaSelect.addEventListener('change', () => {
+            if (garantiaSelect.value === 'custom') {
+                // Remove a classe 'hidden' para mostrar o campo
+                garantiaInput.classList.remove('hidden');
+                garantiaInput.focus();
+            } else {
+                // Adiciona a classe 'hidden' para esconder
+                garantiaInput.classList.add('hidden');
+                garantiaInput.value = ''; // Limpa se esconder
             }
         });
     }
 
-    
-    
-      });
-    
+
+        // --- LÓGICA DE SALVAR BOOKIP COM NÚMERO SEQUENCIAL ---
+    const btnGerarBookip = document.getElementById('btnGerarBookip');
+    if (btnGerarBookip) {
+        btnGerarBookip.addEventListener('click', async () => {
+            if (bookipCartList.length === 0) {
+                showCustomModal({ message: "Adicione itens à lista primeiro." });
+                return;
+            }
+
+            // 1. Pagamento
+            const pags = [];
+            document.querySelectorAll('.check-pagamento:checked').forEach(c => pags.push(c.value));
+            const txtPag = pags.length > 0 ? pags.join(', ') : '';
+
+            // 2. Garantia
+            let dias = 365; // Padrão 1 ano
+            const sel = document.getElementById('bookipGarantiaSelect').value;
+            if (sel === 'custom') {
+                dias = parseInt(document.getElementById('bookipGarantiaCustomInput').value) || 0;
+            } else {
+                dias = parseInt(sel);
+            }
+
+            try {
+                // 3. GERAR NÚMERO SEQUENCIAL (Doc Nº)
+                const snapshot = await get(ref(db, 'bookips'));
+                let count = 0;
+                if (snapshot.exists()) {
+                    count = Object.keys(snapshot.val()).length;
+                }
+                const nextNum = count + 1;
+                // Formata para 3 dígitos (ex: 1 vira "001", 10 vira "010")
+                const docNumberFormatted = String(nextNum).padStart(3, '0');
+
+                            // --- CÓDIGO CORRIGIDO PARA O PASSO 1 ---
+            
+            // Pega a data manual (se tiver) ou usa a de hoje
+            const dataManualInput = document.getElementById('bookipDataManual').value;
+            // Se não tiver data selecionada, usa a data de hoje formatada YYYY-MM-DD
+            const dataFinalVenda = dataManualInput ? dataManualInput : new Date().toISOString().split('T')[0];
+
+            try {
+                // 3. GERAR NÚMERO SEQUENCIAL (Doc Nº)
+                const snapshot = await get(ref(db, 'bookips'));
+                let count = 0;
+                if (snapshot.exists()) {
+                    count = Object.keys(snapshot.val()).length;
+                }
+                const nextNum = count + 1;
+                const docNumberFormatted = String(nextNum).padStart(3, '0');
+
+                const dados = {
+                    docNumber: docNumberFormatted,
+                    nome: document.getElementById('bookipNome').value || 'Consumidor',
+                    cpf: document.getElementById('bookipCpf').value || '',
+                    tel: document.getElementById('bookipTelefone').value || '',
+                    end: document.getElementById('bookipEndereco').value || '',
+                    items: bookipCartList,
+                    pagamento: txtPag,
+                    diasGarantia: dias,
+                    dataVenda: dataFinalVenda, // <--- AQUI ESTÁ O SEGREDO (Salva a data escolhida)
+                    criadoEm: new Date().toISOString() // Mantemos esse para organizar o histórico por ordem de criação
+                };
+
+                await push(ref(db, 'bookips'), dados);
+                showCustomModal({ message: `Documento Nº ${docNumberFormatted} gerado!` });
+                printBookip(dados);
+                
+            } catch (e) {
+                showCustomModal({ message: "Erro: " + e.message });
+            }
+
+
+                await push(ref(db, 'bookips'), dados);
+                showCustomModal({ message: `Documento Nº ${docNumberFormatted} gerado!` });
+                printBookip(dados);
+                
+            } catch (e) {
+                showCustomModal({ message: "Erro: " + e.message });
+            }
+        });
+    }
+
+    // --- FUNÇÃO DE IMPRESSÃO BOOKIP (ATUALIZADA: Doc Nº e Layout) ---
+        // --- FUNÇÃO DE IMPRESSÃO BOOKIP (ATUALIZADA: Com Assinatura Digital) ---
+    function printBookip(dados) {
+        try {
+            if (!dados) { alert("Erro: Sem dados."); return; }
+
+            // ==============================================================================
+            // ÁREA DE CONFIGURAÇÃO DAS IMAGENS
+            // ==============================================================================
+            const logoUrl = "https://i.imgur.com/H6BjyBS.png"; // Sua Logo atual
+
+            // ---> COLE O LINK DA SUA ASSINATURA AQUI EMBAIXO (DENTRO DAS ASPAS) <---
+            const signatureUrl = "https://i.imgur.com/Bh3fVLM.jpeg";
+
+            // ==============================================================================
+
+            // Lista de Itens
+            let lista = (dados.items && Array.isArray(dados.items)) ? dados.items : [{
+                nome: dados.prodNome || 'Produto', qtd: parseInt(dados.prodQtd)||1, valor: parseFloat(dados.prodValor)||0, cor: dados.prodCor||'', obs: dados.obs||''
+            }];
+            
+            const totalGeral = lista.reduce((acc, i) => acc + (i.valor * i.qtd), 0);
+
+            // --- CÓDIGO CORRIGIDO PARA O PASSO 2 ---
+
+            // Datas e Garantia
+            let hoje;
+            let dataCompra;
+
+            // Se existir uma data manual salva no banco (dados.dataVenda), usamos ela
+            if (dados.dataVenda) {
+                // O formato vem como YYYY-MM-DD (ex: 2023-12-08)
+                // Precisamos quebrar para garantir que não haja erro de fuso horário
+                const partes = dados.dataVenda.split('-'); 
+                // Cria a data usando Ano, Mês (começa em 0), Dia
+                hoje = new Date(partes[0], partes[1] - 1, partes[2]);
+                dataCompra = `${partes[2]}/${partes[1]}/${partes[0]}`; // Formata para PT-BR (08/12/2023)
+            } else {
+                // Se for um recibo antigo que não tinha data salva, usa hoje
+                hoje = new Date();
+                dataCompra = hoje.toLocaleDateString('pt-BR');
+            }
+
+            const diasGarantia = (dados.diasGarantia !== undefined) ? parseInt(dados.diasGarantia) : 365;
+
+            let dataVencimento = "S/ Garantia";
+            if (diasGarantia > 0) {
+                const validade = new Date();
+                validade.setDate(hoje.getDate() + diasGarantia);
+                dataVencimento = validade.toLocaleDateString('pt-BR');
+            }
+            
+            // Texto da Garantia
+            let txtGarantia = "Sem Garantia";
+            if (diasGarantia === 365) txtGarantia = "1 Ano";
+            else if (diasGarantia === 180) txtGarantia = "6 Meses";
+            else if (diasGarantia === 120) txtGarantia = "4 Meses";
+            else if (diasGarantia === 30) txtGarantia = "30 Dias";
+            else if (diasGarantia > 0) txtGarantia = `${diasGarantia} Dias`;
+
+            // Linhas da Tabela
+            const linhas = lista.map(item => `
+                <tr>
+                    <td><strong>${item.nome}</strong><br><span style="font-size:8.5pt;color:#666;">${item.cor} ${item.obs}</span></td>
+                    <td style="text-align:center;">${item.qtd}</td>
+                    <td style="text-align:right;">R$ ${item.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+                    <td style="text-align:right;">R$ ${(item.valor*item.qtd).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+                </tr>`).join('');
+
+            // Configurações e Textos
+            const settings = (typeof receiptSettings !== 'undefined' && receiptSettings) ? receiptSettings : {};
+            const headerHtml = (settings.header || "WORKCELL TECNOLOGIA").replace(/\n/g, '<br>');
+            const termsHtml = (settings.terms || "Garantia legal.").replace(/\n/g, '<br>');
+            const pgtoHtml = dados.pagamento ? `<div style="font-size:9pt; margin-top:5px;"><strong>Forma de Pagamento:</strong> ${dados.pagamento}</div>` : '';
+            const numeroDoc = dados.docNumber ? dados.docNumber : '---';
+
+            // Montagem do HTML do Recibo
+            const htmlRecibo = `
+                <div class="bk-header">
+                    <div class="bk-logo-area"><img src="${logoUrl}" class="bk-logo-img" onerror="this.style.display='none'"></div>
+                    <div class="bk-company-info"><div class="bk-title-main">Comprovante de</div><div class="bk-title-sub">Compra &  Garantia</div>${headerHtml}</div>
+                </div>
+                <div class="bk-info-grid">
+                    <div class="bk-col-client"><span class="bk-label-bold">Para</span><div class="bk-text"><strong>${dados.nome}</strong><br>${dados.cpf}<br>${dados.tel}<br>${dados.end}</div></div>
+                    <div class="bk-col-dates">
+                        <div class="bk-date-row"><span class="bk-date-label">Doc Nº</span><span style="font-size: 11pt; font-weight: bold;">${numeroDoc}</span></div>
+                        <div class="bk-date-row"><span class="bk-date-label">Data</span><span>${dataCompra}</span></div>
+                        <div class="bk-date-row"><span class="bk-date-label">Garantia de </span><span>${txtGarantia}</span></div>
+                        <div class="bk-date-row"><span class="bk-date-label">Vencimento da Garantia:</span><span>${dataVencimento}</span></div>
+                    </div>
+                </div>
+                <table class="bk-table">
+                    <thead><tr><th style="width:50%;">Item</th><th style="width:10%;text-align:center;">Qtd</th><th style="width:20%;text-align:right;">Unit</th><th style="width:20%;text-align:right;">Total</th></tr></thead>
+                    <tbody>${linhas}</tbody>
+                </table>
+                <div class="bk-totals-area"><div class="bk-totals-box">
+                    ${pgtoHtml}
+                    <div class="bk-total-final"><span>Total Pago</span><span class="bk-total-highlight">R$ ${totalGeral.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+                </div></div>
+                <div class="bk-section-title">Termos de Garantia</div><div class="bk-terms-text">${termsHtml}</div>
+                
+                <div style="display: flex; justify-content: flex-end; margin-top: 30px; padding-right: 10px;">
+                     <img src="${signatureUrl}" style="width: 300px; height: auto;" alt="Assinatura Responsável" onerror="this.style.display='none'">
+                </div>
+            `;
+
+            const preview = document.getElementById('bookipPreview');
+            if(preview) {
+                preview.innerHTML = htmlRecibo;
+                document.body.classList.add('print-bookip');
+                setTimeout(() => { window.print(); setTimeout(() => document.body.classList.remove('print-bookip'), 1500); }, 300);
+            }
+        } catch (e) { alert("Erro: " + e.message); document.body.classList.remove('print-bookip'); }
+    }
+
+
+        });
