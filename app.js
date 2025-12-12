@@ -12,6 +12,9 @@ const firebaseConfig = {
     appId: "1:37459949616:web:bf2e722a491f45880a55f5"
 };
 
+// Adicione junto com as outras variáveis globais (perto de userId, products, etc.)
+let currentEditingBookipId = null; // Guarda o ID se estiver editando
+
 let app, db, auth, userId = null, isAuthReady = false, areRatesLoaded = false;
 let products = [], fuse, selectedAparelhoValue = 0, fecharVendaPrecoBase = 0;
 let activeTagFilter = null; // Guarda a etiqueta selecionada (ex: 'Xiaomi')
@@ -4194,12 +4197,14 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
     // --- CARREGAR HISTÓRICO DE BOOKIPS ---
         // --- CARREGAR HISTÓRICO DE BOOKIPS (CORRIGIDO) ---
       // --- CARREGAR HISTÓRICO DE BOOKIPS (COM BUSCA SEGURA) ---
+        // --- CARREGAR HISTÓRICO DE BOOKIPS (ATUALIZADO COM BOTÃO PDF) ---
+        // --- CARREGAR HISTÓRICO (ATUALIZADO COM EDITAR) ---
     function loadBookipHistory() {
         if (!db || !isAuthReady) return;
         
         const bookipsRef = ref(db, 'bookips');
         const container = document.getElementById('historyBookipContent');
-        const searchInput = document.getElementById('bookipHistorySearch'); // O input que criamos
+        const searchInput = document.getElementById('bookipHistorySearch');
         
         container.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div></div>';
 
@@ -4209,10 +4214,8 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             if (snapshot.exists()) {
                 const data = snapshot.val();
                 const allBookips = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-                // Ordena: Mais novo primeiro
                 allBookips.sort((a, b) => new Date(b.criadoEm) - new Date(a.criadoEm));
 
-                // Função interna para desenhar a lista na tela
                 const renderList = (lista) => {
                     if (lista.length === 0) {
                         container.innerHTML = '<p class="text-center text-secondary mt-4">Nenhum documento encontrado.</p>';
@@ -4220,14 +4223,11 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                     }
 
                     container.innerHTML = `<div class="accordion w-100 history-accordion" id="bookipAccordion">${lista.map(item => {
-                        // Tratamento de data seguro
                         let dataFormatada = 'Data desc.';
                         if (item.dataVenda) {
-                             // Data manual salva
-                             const partes = item.dataVenda.split('-'); // ex: 2023-12-25
+                             const partes = item.dataVenda.split('-'); 
                              dataFormatada = `${partes[2]}/${partes[1]}/${partes[0]}`;
                         } else if (item.criadoEm) {
-                             // Fallback para recibos antigos
                              dataFormatada = new Date(item.criadoEm).toLocaleDateString('pt-BR');
                         }
                         
@@ -4249,7 +4249,12 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                                         ${(item.items || []).map(i => `<li>${i.qtd}x ${i.nome} - R$ ${parseFloat(i.valor).toFixed(2)}</li>`).join('')}
                                     </ul>
                                     <div class="d-flex justify-content-end gap-2 mt-2">
-                                        <button class="btn btn-sm btn-primary print-old-bookip" data-id="${item.id}"><i class="bi bi-printer"></i> Imprimir</button>
+                                        <button class="btn btn-sm btn-info edit-bookip-btn" data-id="${item.id}" title="Editar Recibo">
+                                            <i class="bi bi-pencil-square"></i>
+                                        </button>
+
+                                        <button class="btn btn-sm btn-warning email-history-btn" data-id="${item.id}" title="PDF/Email"><i class="bi bi-envelope-at-fill"></i></button>
+                                        <button class="btn btn-sm btn-primary print-old-bookip" data-id="${item.id}"><i class="bi bi-printer"></i></button>
                                         <button class="btn btn-sm btn-outline-danger delete-bookip-btn" data-id="${item.id}"><i class="bi bi-trash"></i></button>
                                     </div>
                                 </div>
@@ -4257,7 +4262,25 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                         </div>`;
                     }).join('')}</div>`;
 
-                    // Reativa os botões da lista gerada
+                    // --- LISTENERS ---
+                    
+                    // Listener do botão EDITAR
+                    container.querySelectorAll('.edit-bookip-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const id = e.target.closest('button').dataset.id;
+                            const item = allBookips.find(i => i.id === id);
+                            carregarDadosParaEdicao(item);
+                        });
+                    });
+
+                    // (Mantive os outros listeners iguais: PDF, Print, Delete)
+                    container.querySelectorAll('.email-history-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const id = e.target.closest('button').dataset.id;
+                            const item = allBookips.find(i => i.id === id);
+                            if(item) gerarPdfDoHistorico(item, e.target.closest('button'));
+                        });
+                    });
                     container.querySelectorAll('.print-old-bookip').forEach(btn => {
                         btn.addEventListener('click', (e) => {
                             const id = e.target.closest('button').dataset.id;
@@ -4265,7 +4288,6 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                             if(item) printBookip(item);
                         });
                     });
-
                     container.querySelectorAll('.delete-bookip-btn').forEach(btn => {
                         btn.addEventListener('click', (e) => {
                             const id = e.target.closest('button').dataset.id;
@@ -4282,15 +4304,11 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                     });
                 };
 
-                // 1. Desenha a lista inicial (Completa)
                 renderList(allBookips);
 
-                // 2. Configura a busca (com proteção para não duplicar eventos)
-                if (searchInput) {
-                    // Clona o nó para remover listeners antigos e evitar bugs
+                if (searchInput && searchInput.parentNode) {
                     const newSearchInput = searchInput.cloneNode(true);
                     searchInput.parentNode.replaceChild(newSearchInput, searchInput);
-
                     newSearchInput.addEventListener('input', (e) => {
                         const termo = e.target.value.toLowerCase();
                         const filtrados = allBookips.filter(item => {
@@ -4302,13 +4320,71 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                         renderList(filtrados);
                     });
                 }
-
             } else {
                 container.innerHTML = '<p class="text-center text-secondary mt-4">Nenhum recibo salvo.</p>';
             }
         });
     }
-    
+
+    // --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO ---
+    function carregarDadosParaEdicao(item) {
+        if(!item) return;
+
+        // 1. Marca que estamos editando
+        currentEditingBookipId = item.id;
+
+        // 2. Muda visualmente para a aba "Novo"
+        document.getElementById('bookipModeToggle').checked = false;
+        document.getElementById('bookipModeToggle').dispatchEvent(new Event('change'));
+
+        // 3. Preenche os campos
+        document.getElementById('bookipNome').value = item.nome || '';
+        document.getElementById('bookipCpf').value = item.cpf || '';
+        document.getElementById('bookipTelefone').value = item.tel || '';
+        document.getElementById('bookipEndereco').value = item.end || '';
+        document.getElementById('bookipEmail').value = item.email || '';
+        document.getElementById('bookipDataManual').value = item.dataVenda || '';
+
+        // 4. Preenche a lista de itens
+        bookipCartList = item.items || [];
+        atualizarListaVisualBookip(); // (Essa função já existe no seu código, do passo anterior)
+
+        // 5. Pagamento (Checkboxes)
+        document.querySelectorAll('.check-pagamento').forEach(chk => chk.checked = false); // Reseta
+        if(item.pagamento) {
+            const formas = item.pagamento.split(', ');
+            formas.forEach(forma => {
+                const chk = Array.from(document.querySelectorAll('.check-pagamento')).find(c => c.value === forma);
+                if(chk) chk.checked = true;
+            });
+        }
+
+        // 6. Garantia
+        const selectGarantia = document.getElementById('bookipGarantiaSelect');
+        const inputGarantia = document.getElementById('bookipGarantiaCustomInput');
+        const dias = parseInt(item.diasGarantia);
+        
+        // Verifica se é um dos valores padrão
+        const isPadrao = [30, 120, 180, 365].includes(dias);
+        if(isPadrao) {
+            selectGarantia.value = dias;
+            inputGarantia.classList.add('hidden');
+        } else {
+            selectGarantia.value = 'custom';
+            inputGarantia.value = dias;
+            inputGarantia.classList.remove('hidden');
+        }
+
+        // 7. Muda o texto do botão salvar para avisar
+        const btnSalvar = document.getElementById('btnGerarBookip');
+        btnSalvar.innerHTML = `<i class="bi bi-pencil-square"></i> Atualizar Recibo (Doc ${item.docNumber || '---'})`;
+        btnSalvar.classList.remove('btn-success');
+        btnSalvar.classList.add('btn-info');
+
+        showCustomModal({ message: "Dados carregados! Faça as alterações e clique em Atualizar." });
+    }
+
+
 
 
     // --- LÓGICA DE SALVAR E GARANTIA (NOVO) ---
@@ -4528,6 +4604,282 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             }
         } catch (e) { alert("Erro: " + e.message); document.body.classList.remove('print-bookip'); }
     }
+
+
+    // ============================================================
+    // FUNÇÃO NOVA: GERAR PDF E COMPARTILHAR (GMAIL/WHATSAPP)
+    // ============================================================
+
+        // ============================================================
+    // VERSÃO FINAL 2.0: PDF + TRUQUE DE COPIAR E-MAIL
+    // ============================================================
+
+    const btnEmailBookip = document.getElementById('btnEmailBookip');
+
+    if (btnEmailBookip) {
+        btnEmailBookip.addEventListener('click', async () => {
+            // 1. Valida lista vazia
+            if (bookipCartList.length === 0) {
+                showCustomModal({ message: "A lista está vazia! Adicione itens primeiro." });
+                return;
+            }
+
+            // --- O PULO DO GATO: COPIAR E-MAIL ---
+            const emailCliente = document.getElementById('bookipEmail').value.trim();
+            if (emailCliente) {
+                try {
+                    await navigator.clipboard.writeText(emailCliente);
+                    showCustomModal({ message: "E-mail copiado! Basta COLAR no Gmail." });
+                } catch (err) {
+                    console.log("Não foi possível copiar automático");
+                }
+            }
+            // -------------------------------------
+
+            const btnTextoOriginal = btnEmailBookip.innerHTML;
+            btnEmailBookip.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Gerando PDF...';
+            btnEmailBookip.disabled = true;
+
+            try {
+                // 2. Coleta dados
+                const pags = [];
+                document.querySelectorAll('.check-pagamento:checked').forEach(c => pags.push(c.value));
+                const txtPag = pags.length > 0 ? pags.join(', ') : '';
+
+                let dias = 365;
+                const sel = document.getElementById('bookipGarantiaSelect').value;
+                if (sel === 'custom') dias = parseInt(document.getElementById('bookipGarantiaCustomInput').value) || 0;
+                else dias = parseInt(sel);
+
+                const dataManualInput = document.getElementById('bookipDataManual').value;
+                const dataFinalVenda = dataManualInput ? dataManualInput : new Date().toISOString().split('T')[0];
+
+                const dados = {
+                    nome: document.getElementById('bookipNome').value || 'Consumidor',
+                    cpf: document.getElementById('bookipCpf').value || '',
+                    tel: document.getElementById('bookipTelefone').value || '',
+                    end: document.getElementById('bookipEndereco').value || '',
+                    email: emailCliente, // Salvando o e-mail nos dados agora
+                    items: bookipCartList,
+                    pagamento: txtPag,
+                    diasGarantia: dias,
+                    dataVenda: dataFinalVenda
+                };
+
+                // 3. Renderiza Visual (Preview)
+                const previewDiv = document.getElementById('bookipPreview');
+                
+                let lista = (dados.items && Array.isArray(dados.items)) ? dados.items : [];
+                const totalGeral = lista.reduce((acc, i) => acc + (i.valor * i.qtd), 0);
+                
+                let hoje, dataCompra;
+                if (dados.dataVenda) {
+                    const partes = dados.dataVenda.split('-'); 
+                    hoje = new Date(partes[0], partes[1] - 1, partes[2]);
+                    dataCompra = `${partes[2]}/${partes[1]}/${partes[0]}`;
+                } else {
+                    hoje = new Date();
+                    dataCompra = hoje.toLocaleDateString('pt-BR');
+                }
+                
+                let dataVencimento = "S/ Garantia";
+                if (dias > 0) {
+                    const validade = new Date(hoje);
+                    validade.setDate(hoje.getDate() + dias);
+                    dataVencimento = validade.toLocaleDateString('pt-BR');
+                }
+                let txtGarantia = dias === 365 ? "1 Ano" : (dias + " Dias");
+
+                const linhas = lista.map(item => `
+                    <tr>
+                        <td><strong>${item.nome}</strong><br><span style="font-size:8.5pt;color:#666;">${item.cor} ${item.obs}</span></td>
+                        <td style="text-align:center;">${item.qtd}</td>
+                        <td style="text-align:right;">R$ ${item.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+                        <td style="text-align:right;">R$ ${(item.valor*item.qtd).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+                    </tr>`).join('');
+
+                const headerHtml = (typeof receiptSettings !== 'undefined' ? receiptSettings.header : "WORKCELL").replace(/\n/g, '<br>');
+                const termsHtml = (typeof receiptSettings !== 'undefined' ? receiptSettings.terms : "Garantia.").replace(/\n/g, '<br>');
+                const logoUrl = "https://i.imgur.com/H6BjyBS.png";
+                const signatureUrl = "https://i.imgur.com/Bh3fVLM.jpeg";
+
+                previewDiv.innerHTML = `
+                    <div class="bk-header"><div class="bk-logo-area"><img src="${logoUrl}" class="bk-logo-img"></div><div class="bk-company-info"><div class="bk-title-main">Comprovante de</div><div class="bk-title-sub">compra / Garantia</div>${headerHtml}</div></div>
+                    <div class="bk-info-grid"><div class="bk-col-client"><span class="bk-label-bold">Para</span><div class="bk-text"><strong>${dados.nome}</strong><br>${dados.cpf}<br>${dados.tel}<br>${dados.end}</div></div>
+                    <div class="bk-col-dates"><div class="bk-date-row"><span class="bk-date-label">Doc Nº</span><span style="font-size: 11pt; font-weight: bold;">PDF</span></div><div class="bk-date-row"><span class="bk-date-label">Data</span><span>${dataCompra}</span></div><div class="bk-date-row"><span class="bk-date-label">Garantia</span><span>${txtGarantia}</span></div><div class="bk-date-row"><span class="bk-date-label">Vence</span><span>${dataVencimento}</span></div></div></div>
+                    <table class="bk-table"><thead><tr><th>Item</th><th style="text-align:center;">Qtd</th><th style="text-align:right;">Preço</th><th style="text-align:right;">Valor</th></tr></thead><tbody>${linhas}</tbody></table>
+                    <div class="bk-totals-area"><div class="bk-totals-box">${dados.pagamento ? `<div style="font-size:9pt; margin-top:5px;"><strong>Forma de Pagamento:</strong> ${dados.pagamento}</div>` : ''}<div class="bk-total-final"><span>Total Pago</span><span class="bk-total-highlight">R$ ${totalGeral.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div></div></div>
+                    <div class="bk-section-title">Termos de Garantia</div><div class="bk-terms-text">${termsHtml}</div>
+                   <<div class="bk-signature-box" style="width: 100%; text-align: right; margin-top: 30px; page-break-inside: avoid; break-inside: avoid;">
+    <img src="${signatureUrl}" style="width: 300px; height: auto; display: inline-block;">
+</div>
+
+
+                `;
+
+                previewDiv.style.display = 'block';
+
+                                // 4. CONFIGURAÇÃO DO PDF (ATUALIZADA COM MARGEM E PROTEÇÃO DE CORTE)
+                                const opt = {
+                    margin:       [5, 0, 5, 0],
+                    filename:     `Recibo_${dados.nome.split(' ')[0]}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2, useCORS: true },
+                    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                    
+                    // MUDANÇA AQUI: Removemos o 'avoid-all'.
+                    // Agora ele só evita cortar Títulos e a Caixa de Totais no meio.
+                    // O texto longo vai fluir e quebrar naturalmente entre as páginas.
+                    // Adicionamos '.bk-signature-box' na lista de coisas proibidas de cortar
+pagebreak: { mode: 'css', avoid: ['.bk-section-title', '.bk-totals-box', '.bk-header', '.bk-signature-box'] }
+
+                };
+
+
+                html2pdf().set(opt).from(previewDiv).output('blob').then(async (blob) => {
+                    previewDiv.style.display = 'none';
+                    const file = new File([blob], opt.filename, { type: 'application/pdf' });
+
+                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                        try {
+                            await navigator.share({
+                                files: [file],
+                                title: 'Recibo de Garantia',
+                                text: `Olá ${dados.nome}, segue em anexo o recibo PDF.`
+                            });
+                        } catch (err) {}
+                    } else {
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.download = opt.filename;
+                        link.click();
+                        showCustomModal({ message: "PDF Baixado!" });
+                    }
+
+                    btnEmailBookip.innerHTML = btnTextoOriginal;
+                    btnEmailBookip.disabled = false;
+                });
+
+            } catch (e) {
+                console.error(e);
+                showCustomModal({ message: "Erro: " + e.message });
+                btnEmailBookip.innerHTML = btnTextoOriginal;
+                btnEmailBookip.disabled = false;
+                document.getElementById('bookipPreview').style.display = 'none';
+            }
+        });
+    }
+
+
+// ============================================================
+// FUNÇÃO EXTRA: GERAR PDF A PARTIR DO HISTÓRICO
+// ============================================================
+async function gerarPdfDoHistorico(dados, botao) {
+    // 1. Guarda o texto original do botão para restaurar depois
+    const textoOriginal = botao.innerHTML;
+    botao.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    botao.disabled = true;
+
+    try {
+        // 2. Prepara os dados (Garante que tudo existe)
+        const lista = (dados.items && Array.isArray(dados.items)) ? dados.items : [];
+        const totalGeral = lista.reduce((acc, i) => acc + (i.valor * i.qtd), 0);
+
+        // Tratamento de Datas (Mesma lógica do imprimir)
+        let hoje, dataCompra;
+        if (dados.dataVenda) {
+            const partes = dados.dataVenda.split('-');
+            hoje = new Date(partes[0], partes[1] - 1, partes[2]);
+            dataCompra = `${partes[2]}/${partes[1]}/${partes[0]}`;
+        } else {
+            // Fallback para recibos muito antigos
+            hoje = dados.criadoEm ? new Date(dados.criadoEm) : new Date();
+            dataCompra = hoje.toLocaleDateString('pt-BR');
+        }
+
+        let dias = parseInt(dados.diasGarantia) || 0;
+        let dataVencimento = "S/ Garantia";
+        if (dias > 0) {
+            const validade = new Date(hoje);
+            validade.setDate(hoje.getDate() + dias);
+            dataVencimento = validade.toLocaleDateString('pt-BR');
+        }
+        let txtGarantia = dias === 365 ? "1 Ano" : (dias + " Dias");
+
+        // 3. Monta o HTML do Recibo
+        const linhas = lista.map(item => `
+            <tr>
+                <td><strong>${item.nome}</strong><br><span style="font-size:8.5pt;color:#666;">${item.cor || ''} ${item.obs || ''}</span></td>
+                <td style="text-align:center;">${item.qtd}</td>
+                <td style="text-align:right;">R$ ${parseFloat(item.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
+                <td style="text-align:right;">R$ ${(item.valor * item.qtd).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
+            </tr>`).join('');
+
+        const headerHtml = (typeof receiptSettings !== 'undefined' ? receiptSettings.header : "WORKCELL").replace(/\n/g, '<br>');
+        const termsHtml = (typeof receiptSettings !== 'undefined' ? receiptSettings.terms : "Garantia.").replace(/\n/g, '<br>');
+        const logoUrl = "https://i.imgur.com/H6BjyBS.png";
+        const signatureUrl = "https://i.imgur.com/Bh3fVLM.jpeg";
+        const docNum = dados.docNumber || '---';
+
+        const previewDiv = document.getElementById('bookipPreview');
+        previewDiv.innerHTML = `
+            <div class="bk-header"><div class="bk-logo-area"><img src="${logoUrl}" class="bk-logo-img"></div><div class="bk-company-info"><div class="bk-title-main">Comprovante de</div><div class="bk-title-sub">compra / Garantia</div>${headerHtml}</div></div>
+            <div class="bk-info-grid"><div class="bk-col-client"><span class="bk-label-bold">Para</span><div class="bk-text"><strong>${dados.nome}</strong><br>${dados.cpf || ''}<br>${dados.tel || ''}<br>${dados.end || ''}</div></div>
+            <div class="bk-col-dates"><div class="bk-date-row"><span class="bk-date-label">Doc Nº</span><span style="font-size: 11pt; font-weight: bold;">${docNum}</span></div><div class="bk-date-row"><span class="bk-date-label">Data</span><span>${dataCompra}</span></div><div class="bk-date-row"><span class="bk-date-label">Garantia</span><span>${txtGarantia}</span></div><div class="bk-date-row"><span class="bk-date-label">Vence</span><span>${dataVencimento}</span></div></div></div>
+            <table class="bk-table"><thead><tr><th>Item</th><th style="text-align:center;">Qtd</th><th style="text-align:right;">Preço</th><th style="text-align:right;">Valor</th></tr></thead><tbody>${linhas}</tbody></table>
+            <div class="bk-totals-area"><div class="bk-totals-box">${dados.pagamento ? `<div style="font-size:9pt; margin-top:5px;"><strong>Forma de Pagamento:</strong> ${dados.pagamento}</div>` : ''}<div class="bk-total-final"><span>Total Pago</span><span class="bk-total-highlight">R$ ${totalGeral.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span></div></div></div>
+            <div class="bk-section-title">Termos de Garantia</div><div class="bk-terms-text">${termsHtml}</div>
+            <<div class="bk-signature-box" style="width: 100%; text-align: right; margin-top: 30px; page-break-inside: avoid; break-inside: avoid;">
+    <img src="${signatureUrl}" style="width: 300px; height: auto; display: inline-block;">
+</div>
+
+        `;
+
+        // 4. Gera o PDF
+                // 4. Gera o PDF (CONFIGURAÇÃO ATUALIZADA)
+        previewDiv.style.display = 'block';
+                const opt = {
+            margin:       [5, 0, 5, 0],
+            filename:     `Recibo_${(dados.nome || 'Cliente').split(' ')[0]}_${docNum}.pdf`,
+            image:        { type: 'jpeg', quality: 0.98 },
+            html2canvas:  { scale: 2, useCORS: true },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            
+            // MUDANÇA AQUI TAMBÉM:
+            // Adicionamos '.bk-signature-box' na lista de coisas proibidas de cortar
+pagebreak: { mode: 'css', avoid: ['.bk-section-title', '.bk-totals-box', '.bk-header', '.bk-signature-box'] }
+
+        };
+
+        const blob = await html2pdf().set(opt).from(previewDiv).output('blob');
+        previewDiv.style.display = 'none';
+
+        // 5. Compartilha
+        const file = new File([blob], opt.filename, { type: 'application/pdf' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+                files: [file],
+                title: 'Recibo de Garantia',
+                text: `Olá ${dados.nome}, segue em anexo a 2ª via do seu recibo.`
+            });
+        } else {
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = opt.filename;
+            link.click();
+            showCustomModal({ message: "PDF Baixado!" });
+        }
+
+    } catch (e) {
+        console.error(e);
+        showCustomModal({ message: "Erro: " + e.message });
+    } finally {
+        // Restaura o botão
+        botao.innerHTML = textoOriginal;
+        botao.disabled = false;
+        document.getElementById('bookipPreview').style.display = 'none';
+    }
+}
 
 
         });

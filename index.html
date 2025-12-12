@@ -19,6 +19,8 @@
     
      <link rel="stylesheet" href="style.css">
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
     <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
@@ -545,7 +547,7 @@
         <h2 class="mb-4">Bem-vindo(a) à Central Workcell,<br/>O que você quer fazer?</h2>
         <div class="d-grid gap-2">
             <button class="btn-menu" id="goToCalculator"><i class="bi bi-calculator-fill"></i> Calculadora de Taxa</button>
-            <button class="btn-menu" id="goToContract"><i class="bi bi-file-earmark-text-fill"></i> Boletos</button>
+            <button class="btn-menu" id="goToContract"><i class="bi bi-file-earmark-text-fill"></i> Documentos</button>
             <button class="btn-menu" id="goToStock"><i class="bi bi-box-seam"></i> Controle de Estoque</button>
             <button class="btn-menu" id="goToAdmin"><i class="bi bi-gear"></i> Administração</button>
         </div>
@@ -916,7 +918,7 @@
                 </div>
                 <div class="col-6">
                     <button class="btn w-100" id="btnShowBookip" style="border: 1px solid var(--glass-border); background: transparent; color: var(--text-secondary);">
-                        <i class="bi bi-receipt"></i> Bookip
+                        <i class="bi bi-receipt"></i> Garantias
                     </button>
                 </div>
             </div>
@@ -1099,6 +1101,10 @@
                         <button class="btn btn-success w-100 py-3" id="btnGerarBookip">
                             <i class="bi bi-save-fill"></i> Salvar e Imprimir Recibo
                         </button>
+<button class="btn btn-warning w-100 py-3 mt-2" id="btnEmailBookip">
+    <i class="bi bi-envelope-at-fill"></i> Gerar PDF e Enviar
+</button>
+
                     </div>
                 </div>
             </div>
