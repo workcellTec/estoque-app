@@ -4718,6 +4718,8 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                 `;
 
                 previewDiv.style.display = 'block';
+// DELAY DE SEGURANÇA: Espera as imagens carregarem antes de gerar
+await new Promise(resolve => setTimeout(resolve, 1500));
 
                                 // 4. CONFIGURAÇÃO DO PDF (ATUALIZADA COM MARGEM E PROTEÇÃO DE CORTE)
                                 const opt = {
@@ -4838,6 +4840,10 @@ async function gerarPdfDoHistorico(dados, botao) {
         // 4. Gera o PDF
                 // 4. Gera o PDF (CONFIGURAÇÃO ATUALIZADA)
         previewDiv.style.display = 'block';
+
+// DELAY DE SEGURANÇA: Espera as imagens carregarem antes de gerar
+await new Promise(resolve => setTimeout(resolve, 1500));
+
                 const opt = {
             margin:       [5, 0, 5, 0],
             filename:     `Recibo_${(dados.nome || 'Cliente').split(' ')[0]}_${docNum}.pdf`,
