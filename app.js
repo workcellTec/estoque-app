@@ -1914,18 +1914,35 @@ function populatePreview() {
     document.getElementById('previewLocalData').textContent = `Goiânia, ${today.toLocaleDateString('pt-BR', dateOptions)}`;
 }
 
+// --- CARREGAR CONFIGURAÇÕES (ATUALIZADO) ---
+// --- CARREGAR CONFIGURAÇÕES (ATUALIZADO COM IMAGENS) ---
 function loadSettingsFromDB() {
     if (!db || !isAuthReady) return;
     onValue(ref(db, 'settings'), (snapshot) => {
         if (snapshot.exists()) {
             receiptSettings = snapshot.val();
         }
-        // Preenche os campos se a tela de admin estiver aberta
+        
+        // Preenche Texto
         const headerInput = document.getElementById('settingHeaderInput');
         const termsInput = document.getElementById('settingTermsInput');
-        if (headerInput && termsInput) {
-            headerInput.value = receiptSettings.header || '';
-            termsInput.value = receiptSettings.terms || '';
+        const msgInput = document.getElementById('settingEmailMsgInput');
+        
+        if (headerInput) headerInput.value = receiptSettings.header || '';
+        if (termsInput) termsInput.value = receiptSettings.terms || '';
+        if (msgInput) msgInput.value = receiptSettings.emailMessage || '';
+
+        // Preenche Imagens (Preview)
+        const imgLogo = document.getElementById('previewLogo');
+        const imgSig = document.getElementById('previewSignature');
+
+        if (imgLogo && receiptSettings.logoBase64) {
+            imgLogo.src = receiptSettings.logoBase64;
+            imgLogo.style.display = 'block';
+        }
+        if (imgSig && receiptSettings.signatureBase64) {
+            imgSig.src = receiptSettings.signatureBase64;
+            imgSig.style.display = 'block';
         }
     });
 }
@@ -3191,29 +3208,55 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('deleteAllProductsBtn').addEventListener('click', deleteAllProducts);
         // --- C: SALVAR CONFIGURAÇÕES DE RECIBO ---
+        // --- BOTÃO SALVAR CONFIGURAÇÕES (ATUALIZADO) ---
+        // --- BOTÃO SALVAR CONFIGURAÇÕES (ATUALIZADO COM UPLOAD) ---
     const saveSettingsBtn = document.getElementById('saveSettingsBtn');
     if (saveSettingsBtn) {
-        saveSettingsBtn.addEventListener('click', async () => {
-            const header = document.getElementById('settingHeaderInput').value;
-            const terms = document.getElementById('settingTermsInput').value;
-
-            // Pede senha de admin
+        saveSettingsBtn.addEventListener('click', () => {
             showCustomModal({
                 message: "Senha de Administrador:",
                 showPassword: true,
                 confirmText: "Salvar",
                 onConfirm: async (password) => {
                     if (password === "220390") {
+                        const btnOriginalText = saveSettingsBtn.innerHTML;
+                        saveSettingsBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Salvando...';
+                        
                         try {
-                            // Salva na pasta 'settings' do Firebase
-                            await update(ref(db, 'settings'), { header, terms });
+                            const header = document.getElementById('settingHeaderInput').value;
+                            const terms = document.getElementById('settingTermsInput').value;
+                            const emailMessage = document.getElementById('settingEmailMsgInput').value;
                             
-                            // Atualiza a variável local imediatamente
-                            receiptSettings = { header, terms };
+                            // Objeto base de atualização
+                            let updates = { header, terms, emailMessage };
+
+                            // Processa Logo (se tiver selecionado nova)
+                            const logoInput = document.getElementById('uploadLogoInput');
+                            if (logoInput.files && logoInput.files[0]) {
+                                const logoBase64 = await processarImagemParaBase64(logoInput.files[0], 300); // Max 300px
+                                updates.logoBase64 = logoBase64;
+                            }
+
+                            // Processa Assinatura (se tiver selecionado nova)
+                            const sigInput = document.getElementById('uploadSignatureInput');
+                            if (sigInput.files && sigInput.files[0]) {
+                                const sigBase64 = await processarImagemParaBase64(sigInput.files[0], 300); // Max 300px
+                                updates.signatureBase64 = sigBase64;
+                            }
+
+                            // Salva no Firebase
+                            await update(ref(db, 'settings'), updates);
                             
-                            showCustomModal({ message: "Configurações salvas com sucesso!" });
+                            // Atualiza localmente para ver na hora
+                            receiptSettings = { ...receiptSettings, ...updates };
+                            
+                            showCustomModal({ message: "Configurações e Imagens salvas!" });
+                            saveSettingsBtn.innerHTML = btnOriginalText;
+
                         } catch (error) {
+                            console.error(error);
                             showCustomModal({ message: "Erro ao salvar: " + error.message });
+                            saveSettingsBtn.innerHTML = btnOriginalText;
                         }
                     } else {
                         showCustomModal({ message: "Senha incorreta." });
@@ -3223,6 +3266,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
     }
+
 
     const productsListContainer = document.getElementById('productsListContainer');
     productsListContainer.addEventListener('click', e => {
@@ -4699,9 +4743,19 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                     </tr>`).join('');
 
                 const headerHtml = (typeof receiptSettings !== 'undefined' ? receiptSettings.header : "WORKCELL").replace(/\n/g, '<br>');
-                const termsHtml = (typeof receiptSettings !== 'undefined' ? receiptSettings.terms : "Garantia.").replace(/\n/g, '<br>');
-                const logoUrl = "https://i.imgur.com/H6BjyBS.png";
-                const signatureUrl = "https://i.imgur.com/Bh3fVLM.jpeg";
+                                // --- NOVA LÓGICA: Cria blocos separados para cada parágrafo ---
+                // Pega o texto e divide onde tiver "Enter" (\n)
+                const rawTerms = (typeof receiptSettings !== 'undefined' ? receiptSettings.terms : "Garantia.");
+                const termsHtml = rawTerms.split('\n').map(line => {
+                    // Se for linha vazia, põe um espacinho
+                    if(line.trim() === '') return '<div style="height: 10px;"></div>'; 
+                    // Se tiver texto, envolve na proteção anti-corte
+                    return `<div class="bk-term-paragraph">${line}</div>`;
+                }).join('');
+
+                // ATUALIZAÇÃO: Usa as imagens enviadas ou mantém o padrão
+const logoUrl = receiptSettings.logoBase64 || "https://i.imgur.com/H6BjyBS.png";
+const signatureUrl = receiptSettings.signatureBase64 || "https://i.imgur.com/Bh3fVLM.jpeg";
 
                 previewDiv.innerHTML = `
                     <div class="bk-header"><div class="bk-logo-area"><img src="${logoUrl}" class="bk-logo-img"></div><div class="bk-company-info"><div class="bk-title-main">Comprovante de</div><div class="bk-title-sub">compra / Garantia</div>${headerHtml}</div></div>
@@ -4742,14 +4796,21 @@ pagebreak: { mode: 'css', avoid: ['.bk-section-title', '.bk-totals-box', '.bk-he
                     previewDiv.style.display = 'none';
                     const file = new File([blob], opt.filename, { type: 'application/pdf' });
 
-                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                                                            if (navigator.canShare && navigator.canShare({ files: [file] })) {
                         try {
+                            // Pega a mensagem salva. Se estiver vazia, usa um ponto final.
+                            const msgExtra = receiptSettings.emailMessage || ''; 
+                            
                             await navigator.share({
                                 files: [file],
                                 title: 'Recibo de Garantia',
-                                text: `Olá ${dados.nome}, segue em anexo o recibo PDF.`
+                                // AQUI ESTÁ A MUDANÇA: "Olá [Nome], [Sua Mensagem]"
+                                text: `Olá ${dados.nome}, ${msgExtra}`
                             });
                         } catch (err) {}
+                
+
+
                     } else {
                         const link = document.createElement('a');
                         link.href = URL.createObjectURL(blob);
@@ -4818,9 +4879,19 @@ async function gerarPdfDoHistorico(dados, botao) {
             </tr>`).join('');
 
         const headerHtml = (typeof receiptSettings !== 'undefined' ? receiptSettings.header : "WORKCELL").replace(/\n/g, '<br>');
-        const termsHtml = (typeof receiptSettings !== 'undefined' ? receiptSettings.terms : "Garantia.").replace(/\n/g, '<br>');
-        const logoUrl = "https://i.imgur.com/H6BjyBS.png";
-        const signatureUrl = "https://i.imgur.com/Bh3fVLM.jpeg";
+                        // --- NOVA LÓGICA: Cria blocos separados para cada parágrafo ---
+                // Pega o texto e divide onde tiver "Enter" (\n)
+                const rawTerms = (typeof receiptSettings !== 'undefined' ? receiptSettings.terms : "Garantia.");
+                const termsHtml = rawTerms.split('\n').map(line => {
+                    // Se for linha vazia, põe um espacinho
+                    if(line.trim() === '') return '<div style="height: 10px;"></div>'; 
+                    // Se tiver texto, envolve na proteção anti-corte
+                    return `<div class="bk-term-paragraph">${line}</div>`;
+                }).join('');
+
+        const logoUrl = receiptSettings.logoBase64 || "https://i.imgur.com/H6BjyBS.png";
+const signatureUrl = receiptSettings.signatureBase64 || "https://i.imgur.com/Bh3fVLM.jpeg";
+
         const docNum = dados.docNumber || '---';
 
         const previewDiv = document.getElementById('bookipPreview');
@@ -4861,12 +4932,14 @@ pagebreak: { mode: 'css', avoid: ['.bk-section-title', '.bk-totals-box', '.bk-he
         previewDiv.style.display = 'none';
 
         // 5. Compartilha
-        const file = new File([blob], opt.filename, { type: 'application/pdf' });
+                const file = new File([blob], opt.filename, { type: 'application/pdf' });
+        
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
             await navigator.share({
                 files: [file],
                 title: 'Recibo de Garantia',
-                text: `Olá ${dados.nome}, segue em anexo a 2ª via do seu recibo.`
+                // AQUI ESTÁ A MUDANÇA (Usa sua mensagem ou fica vazio se não tiver)
+                text: `Olá ${dados.nome}, ${receiptSettings.emailMessage || ''}`
             });
         } else {
             const link = document.createElement('a');
@@ -4885,6 +4958,30 @@ pagebreak: { mode: 'css', avoid: ['.bk-section-title', '.bk-totals-box', '.bk-he
         botao.disabled = false;
         document.getElementById('bookipPreview').style.display = 'none';
     }
+
+}
+    // --- FUNÇÃO AUXILIAR: REDIMENSIONAR IMAGEM PARA BASE64 ---
+function processarImagemParaBase64(file, maxWidth = 300) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const scaleSize = maxWidth / img.width;
+                canvas.width = maxWidth;
+                canvas.height = img.height * scaleSize;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                // Converte para texto (Base64) com qualidade 0.7 para ficar leve
+                resolve(canvas.toDataURL('image/png', 0.7)); 
+            };
+            img.onerror = (err) => reject(err);
+        };
+        reader.onerror = (err) => reject(err);
+    });
 }
 
 

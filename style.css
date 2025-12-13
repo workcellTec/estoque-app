@@ -1622,3 +1622,18 @@ body[data-color="orange"] {
     font-size: 10pt;
     border: none !important; 
 }
+
+
+/* --- PROTEÇÃO ANTI-CORTE PARA PDF --- */
+.bk-term-paragraph {
+    display: block;
+    width: 100%;
+    /* O comando abaixo é a ordem suprema para não cortar o bloco ao meio */
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    
+    margin-bottom: 10px; /* Espaço entre os parágrafos */
+    text-align: justify;
+    font-size: 10pt; /* Garante tamanho legível */
+    line-height: 1.3;
+}

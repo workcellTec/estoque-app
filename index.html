@@ -892,6 +892,40 @@
                 </div>
             </div>
 
+            <div class="admin-section w-100 mt-3">
+                <h4 class="mb-3 text-start"><i class="bi bi-chat-text-fill"></i> Mensagem de Envio (E-mail/Zap)</h4>
+                <p class="text-secondary small">Personalize o texto que vai junto com o PDF. O sistema adiciona "Olá [Nome]" automaticamente antes.</p>
+                <div class="form-group mb-3">
+                    <label class="form-label">Sua Mensagem</label>
+                    <textarea class="form-control" id="settingEmailMsgInput" rows="3" placeholder="Ex: segue em anexo a sua garantia. Qualquer dúvida estamos à disposição!"></textarea>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-6">
+                    <div class="admin-section h-100 d-flex flex-column align-items-center justify-content-center p-3">
+                        <h6 class="mb-2"><i class="bi bi-image"></i> Logo da Loja</h6>
+                        <img id="previewLogo" src="" style="max-width: 80px; max-height: 80px; display: none; margin-bottom: 10px; border-radius: 8px;">
+                        <label class="btn btn-sm btn-outline-light w-100" style="border: 1px dashed var(--text-secondary);">
+                            Escolher Logo
+                            <input type="file" id="uploadLogoInput" accept="image/*" hidden>
+                        </label>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="admin-section h-100 d-flex flex-column align-items-center justify-content-center p-3">
+                        <h6 class="mb-2"><i class="bi bi-pen-fill"></i> Assinatura</h6>
+                        <img id="previewSignature" src="" style="max-width: 80px; max-height: 80px; display: none; margin-bottom: 10px; border-radius: 8px;">
+                        <label class="btn btn-sm btn-outline-light w-100" style="border: 1px dashed var(--text-secondary);">
+                            Escolher Assin.
+                            <input type="file" id="uploadSignatureInput" accept="image/*" hidden>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+
+
             <button class="btn btn-success w-100 py-3" id="saveSettingsBtn">
                 <i class="bi bi-save-fill"></i> Salvar Configurações
             </button>
