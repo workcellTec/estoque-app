@@ -125,37 +125,16 @@ function showMainSection(sectionId) {
         calculatorContainer.style.display = 'block';
         openCalculatorSection('calculatorHome');
     } 
-       else if (sectionId === 'contract') {
+               else if (sectionId === 'contract') {
         contractContainer.classList.remove('hidden');
-        contractContainer.style.display = 'flex';
-        loadContractDraft();
+        contractContainer.style.display = 'block'; 
         
-        // --- MUDANÇA: FORÇA ABRIR NA ABA GARANTIA (BOOKIP) ---
-        const btnBookip = document.getElementById('btnShowBookip');
-        const btnContrato = document.getElementById('btnShowContrato');
-        const areaBookip = document.getElementById('areaBookipWrapper');
-        const areaContrato = document.getElementById('areaContratoWrapper');
-
-        // Ativa visualmente o botão Garantia
-        if(btnBookip) {
-            btnBookip.classList.add('active');
-            btnBookip.style.cssText = 'border: 1px solid var(--primary-color); background: rgba(var(--primary-color-rgb), 0.2); color: #fff; width: 100%;';
-        }
-        // Desativa o botão Contrato
-        if(btnContrato) {
-            btnContrato.classList.remove('active');
-            btnContrato.style.cssText = 'border: 1px solid var(--glass-border); background: transparent; color: var(--text-secondary); width: 100%;';
-        }
-        // Troca as áreas
-        if(areaBookip) areaBookip.classList.remove('hidden');
-        if(areaContrato) areaContrato.classList.add('hidden');
+        // CORREÇÃO: Não carregamos o rascunho aqui ainda!
+        // Apenas abrimos o menu de escolha.
         
-        // Garante que o toggle esteja em "Novo"
-        const toggle = document.getElementById('bookipModeToggle');
-        if (toggle && toggle.checked) {
-            toggle.checked = false;
-            toggle.dispatchEvent(new Event('change'));
-        }
+        document.getElementById('documentsHome').style.display = 'flex'; // Garante o display correto
+        document.getElementById('areaContratoWrapper').style.display = 'none';
+        document.getElementById('areaBookipWrapper').style.display = 'none';
     } 
 
     else if (sectionId === 'stock') {
@@ -2817,7 +2796,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('goToAdmin').addEventListener('click', () => showMainSection('administracao'));
 
-    document.getElementById('backFromContract').addEventListener('click', () => showMainSection('main'));
     document.getElementById('backFromStock').addEventListener('click', () => showMainSection('main'));
     document.getElementById('backFromAdmin').addEventListener('click', () => showMainSection('main'));
 
@@ -4029,59 +4007,8 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
     //logica book
     
         // --- LÓGICA DE ABAS (CONTRATO vs BOOKIP) ---
-    const btnShowContrato = document.getElementById('btnShowContrato');
-    const btnShowBookip = document.getElementById('btnShowBookip');
-    const areaContrato = document.getElementById('areaContratoWrapper');
-    const areaBookip = document.getElementById('areaBookipWrapper');
+    
 
-        // --- LÓGICA DE ABAS (CORRIGIDA: ESCONDE BUSCA AO TROCAR) ---
-    if(btnShowContrato && btnShowBookip) {
-        // 1. CLIQUE NA ABA CONTRATO
-        btnShowContrato.addEventListener('click', () => {
-            // Estilo dos botões
-            btnShowContrato.classList.add('active');
-            btnShowContrato.style.cssText = 'border: 1px solid var(--primary-color); background: rgba(var(--primary-color-rgb), 0.2); color: #fff; width: 100%;';
-
-            btnShowBookip.classList.remove('active');
-            btnShowBookip.style.cssText = 'border: 1px solid var(--glass-border); background: transparent; color: var(--text-secondary); width: 100%;';
-
-            // Troca o conteúdo principal
-            areaContrato.classList.remove('hidden');
-            areaBookip.classList.add('hidden');
-
-            // --- CORREÇÃO: FORÇA ESCONDER A BUSCA E O HISTÓRICO DO BOOKIP ---
-            // Isso impede que eles vazem para a tela de contrato
-            const searchContainer = document.getElementById('bookipSearchContainer');
-            const historyContent = document.getElementById('historyBookipContent');
-            if(searchContainer) searchContainer.classList.add('hidden');
-            if(historyContent) historyContent.classList.add('hidden');
-        });
-
-        // 2. CLIQUE NA ABA GARANTIA (BOOKIP)
-        btnShowBookip.addEventListener('click', () => {
-            // Estilo dos botões
-            btnShowBookip.classList.add('active');
-            btnShowBookip.style.cssText = 'border: 1px solid var(--primary-color); background: rgba(var(--primary-color-rgb), 0.2); color: #fff; width: 100%;';
-
-            btnShowContrato.classList.remove('active');
-            btnShowContrato.style.cssText = 'border: 1px solid var(--glass-border); background: transparent; color: var(--text-secondary); width: 100%;';
-
-            // Troca o conteúdo principal
-            areaBookip.classList.remove('hidden');
-            areaContrato.classList.add('hidden');
-
-            // --- CORREÇÃO: SE ESTAVA NO MODO HISTÓRICO, MOSTRA A BUSCA DE VOLTA ---
-            const toggle = document.getElementById('bookipModeToggle');
-            const searchContainer = document.getElementById('bookipSearchContainer');
-            const historyContent = document.getElementById('historyBookipContent');
-            
-            // Só mostra a busca se o botão "Histórico" estiver ativado
-            if (toggle && toggle.checked) {
-                if(searchContainer) searchContainer.classList.remove('hidden');
-                if(historyContent) historyContent.classList.remove('hidden');
-            }
-        });
-    }
 
 
     // --- TOGGLE NOVO / HISTÓRICO DO BOOKIP ---
@@ -5712,5 +5639,73 @@ const setupProductTags = () => {
 // Inicia a função
 setupProductTags();
 
+
+    // ============================================================
+    // NOVA LÓGICA: SUB-MENU DE DOCUMENTOS
+    // ============================================================
+
+    // ============================================================
+    // CÓDIGO NOVO: SUB-MENU DE DOCUMENTOS
+    // ============================================================
+
+    // 1. Função que troca as telas (Menu -> Contrato -> Garantia)
+    window.openDocumentsSection = function(subSectionId) {
+        // Pega os elementos da tela
+        const docHome = document.getElementById('documentsHome');
+        const areaContrato = document.getElementById('areaContratoWrapper');
+        const areaBookip = document.getElementById('areaBookipWrapper');
+
+        // Esconde tudo primeiro (para não ficar um em cima do outro)
+        if(docHome) docHome.style.display = 'none';
+        if(areaContrato) areaContrato.style.display = 'none';
+        if(areaBookip) areaBookip.style.display = 'none';
+
+        // Mostra só o que você escolheu
+        if (subSectionId === 'home') {
+            if(docHome) docHome.style.display = 'flex'; // Mostra o Menu
+        } 
+        else if (subSectionId === 'contrato') {
+            if(areaContrato) {
+                areaContrato.style.display = 'block';
+                // Carrega o rascunho (se tiver)
+                if(typeof loadContractDraft === 'function') loadContractDraft(); 
+            }
+        } 
+        else if (subSectionId === 'bookip') {
+            if(areaBookip) areaBookip.style.display = 'block';
+        }
+    };
+
+    // 2. Faz os botões clicarem de verdade
+    
+    // Botão Voltar (Seta) -> Vai para o Menu Principal
+    const btnBackDoc = document.getElementById('backFromDocumentsHome');
+    if (btnBackDoc) {
+        btnBackDoc.onclick = function() { showMainSection('main'); };
+    }
+
+    // Botão "Contrato de Venda"
+    const btnOpenContrato = document.getElementById('openContratoView');
+    if (btnOpenContrato) {
+        btnOpenContrato.onclick = function() { window.openDocumentsSection('contrato'); };
+    }
+
+    // Botão "Garantia (Bookip)"
+    const btnOpenBookip = document.getElementById('openBookipView');
+    if (btnOpenBookip) {
+        btnOpenBookip.onclick = function() { window.openDocumentsSection('bookip'); };
+    }
+
+    // Botão Voltar (dentro do Contrato) -> Volta pro Menu Doc
+    const btnBackFromContrato = document.getElementById('backFromContratoView');
+    if (btnBackFromContrato) {
+        btnBackFromContrato.onclick = function() { window.openDocumentsSection('home'); };
+    }
+
+    // Botão Voltar (dentro da Garantia) -> Volta pro Menu Doc
+    const btnBackFromBookip = document.getElementById('backFromBookipView');
+    if (btnBackFromBookip) {
+        btnBackFromBookip.onclick = function() { window.openDocumentsSection('home'); };
+    }
 
         });

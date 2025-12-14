@@ -98,11 +98,13 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
 .section-header { width: 100%; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--glass-border); flex-shrink: 0;}
 .section-header h3 { margin-bottom: 0; font-size: 1.5rem; }
 
-#mainMenu, #calculatorHome {
-    padding-top: 80px; justify-content: flex-start;
+/* ATUALIZADO: Inclui #documentsHome na regra */
+#mainMenu, #calculatorHome, #documentsHome {
+    padding-top: 80px; 
+    justify-content: flex-start;
 }
 
-#mainMenu h2, #calculatorHome h2 {
+#mainMenu h2, #calculatorHome h2, #documentsHome h2 {
     text-shadow: 0 1px 3px rgba(0,0,0,0.3);
     margin-bottom: 30px;
     color: var(--text-color);
@@ -140,9 +142,11 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
     transition: background-color var(--transition-duration) ease, border-color var(--transition-duration) ease;
 }
 
-.container:not(#mainMenu):not(#calculatorHome) {
+./* AQUI ESTAVA O ERRO: Adicionamos :not(#documentsHome) para ele NÃO esticar os botões */
+.container:not(#mainMenu):not(#calculatorHome):not(#documentsHome) {
     padding-top: 20px; align-items: stretch;
 }
+
 
 .form-label { color: var(--text-secondary); margin-bottom: 8px; font-weight: 400; }
 [data-theme="dark"] .form-label { color: var(--text-color); }
@@ -1828,4 +1832,28 @@ body[data-color="orange"] {
     opacity: 1;                                  /* Totalmente visível */
     transform: scale(1.05);                      /* Cresce um pouquinho */
     box-shadow: 0 2px 8px rgba(var(--primary-color-rgb), 0.4);
+}
+/* Botões da aba Documentos (mesmo tamanho da tela inicial) */
+.btn-document {
+    width: 100%;
+    max-width: 320px; /* MESMO padrão da tela inicial */
+    margin: 0 auto 15px auto; /* centraliza */
+    padding: 16px 24px;
+    border-radius: var(--border-radius);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+}
+/* === BOTÕES DA ABA DOCUMENTOS === */
+#documentsHome .documents-buttons {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center !important; /* MATA o stretch */
+}
+
+#documentsHome .documents-buttons .btn-menu {
+    width: 100% !important;
+    max-width: 320px !important; /* MESMO DA HOME */
 }

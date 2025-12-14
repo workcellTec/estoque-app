@@ -947,28 +947,61 @@
     </div>
     
 
-    <div id="contractContainer" class="container hidden">
-        <div class="section-header">
-            <h3>Documentos & Recibos</h3>
-            <button aria-label="Voltar" class="btn-back" id="backFromContract"><i class="bi bi-arrow-left"></i></button>
-        </div>
 
-        <div class="content-card w-100 p-2 mb-3">
-            <div class="row g-2">
-                <div class="col-6">
-                    <button class="btn w-100 active" id="btnShowContrato" style="border: 1px solid var(--primary-color); background: rgba(var(--primary-color-rgb), 0.2); color: #fff;">
-                        <i class="bi bi-file-text-fill"></i> Contrato
-                    </button>
-                </div>
-                <div class="col-6">
-                    <button class="btn w-100" id="btnShowBookip" style="border: 1px solid var(--glass-border); background: transparent; color: var(--text-secondary);">
-                        <i class="bi bi-receipt"></i> Garantias
-                    </button>
-                </div>
+
+
+
+
+
+
+
+
+
+    <div id="contractContainer" class="hidden">
+        
+        <div class="container text-center" id="documentsHome">
+            
+            <div class="w-100 d-flex justify-content-start mb-2">
+                <button aria-label="Voltar ao Menu" class="btn-back" id="backFromDocumentsHome" style="font-size: 1.5rem; padding: 10px;">
+                    <i class="bi bi-arrow-left"></i>
+                </button>
             </div>
+
+            <h2 class="mb-4">Documentos & Garantias,
+<br/>
+do que você precisa??</h2>
+            
+            
+            <div class="d-grid gap-2">
+                <button class="btn-menu" id="openContratoView"><i class="bi bi-file-text-fill"></i> Contratos P/Boleto </button>
+                <button class="btn-menu" id="openBookipView"><i class="bi bi-receipt"></i> Garantias (Bookip)</button>
+
+                <button class="btn-menu" disabled style="opacity: 0.5; cursor: not-allowed; filter: grayscale(100%); background-color: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1);">
+                    <i class="bi bi-tag-fill"></i> Novo Recibo 
+                    <span style="font-size: 0.75rem; margin-left: auto; color: var(--text-secondary);">(Em breve)</span>
+  <button class="btn-menu" disabled style="opacity: 0.5; cursor: not-allowed; filter: grayscale(100%); background-color: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1);">
+                    <i class="bi bi-clipboard-check-fill"></i> Ord. Serviços
+                    <span style="font-size: 0.75rem; margin-left: auto; color: var(--text-secondary);">(Em breve)</span>
+                </button>
+            </div>
+
         </div>
 
-        <div id="areaContratoWrapper" class="w-100">
+
+
+    
+
+
+
+
+
+
+        <div id="areaContratoWrapper" class="container" style="display: none;">
+            <div class="section-header">
+                <h3>Contrato</h3>
+                <button aria-label="Voltar" class="btn-back" id="backFromContratoView"><i class="bi bi-arrow-left"></i></button>
+            </div>
+            
             <div class="toggle-switch">
                 <input type="checkbox" id="boletoModeToggle">
                 <label for="boletoModeToggle">
@@ -1015,7 +1048,12 @@
             <div id="historyBoletoContent" class="hidden w-100"></div>
         </div>
 
-        <div id="areaBookipWrapper" class="w-100 hidden">
+        <div id="areaBookipWrapper" class="container" style="display: none;">
+            <div class="section-header">
+                <h3>Garantia (Bookip)</h3>
+                <button aria-label="Voltar" class="btn-back" id="backFromBookipView"><i class="bi bi-arrow-left"></i></button>
+            </div>
+
             <div class="toggle-switch">
                 <input type="checkbox" id="bookipModeToggle">
                 <label for="bookipModeToggle">
@@ -1024,24 +1062,15 @@
                 </label>
             </div>
 
-            
-
-
-
-            
-            
-                      <div id="newBookipContent">
+            <div id="newBookipContent">
                 <div class="content-card w-100">
                     <h5 class="form-section-title mb-3"><i class="bi bi-person-lines-fill"></i> Dados do Cliente</h5>
                     <div class="row">
-                                                <div class="col-md-12 mb-3 position-relative">
+                        <div class="col-md-12 mb-3 position-relative">
                             <label class="form-label">Nome Completo</label>
                             <input type="text" class="form-control" id="bookipNome" placeholder="Nome do cliente" autocomplete="off">
-                            
                             <ul id="clientSuggestionsList" class="list-group position-absolute w-100 shadow" style="z-index: 9999; display: none; max-height: 200px; overflow-y: auto; border: 2px solid red;"></ul>
-
                         </div>
-
                         <div class="col-md-6 mb-3">
                             <label class="form-label">CPF</label>
                             <input type="text" class="form-control" id="bookipCpf" placeholder="000.000.000-00">
@@ -1070,7 +1099,7 @@
                         </div>
 
                         <div class="row">
-                                                                                   <div class="col-md-12 mb-2">
+                            <div class="col-md-12 mb-2">
                                 <input type="text" class="form-control form-control-sm" id="bookipProdNomeTemp" placeholder="Nome do produto aparecerá aqui">
                                 <div class="d-flex gap-2 mt-2 ps-1">
                                     <span id="tagAddNovo" class="badge rounded-pill tag-option">
@@ -1081,7 +1110,6 @@
                                     </span>
                                 </div>
                             </div>
-
                             <div class="col-4 mb-2">
                                 <input type="number" class="form-control form-control-sm" id="bookipProdQtdTemp" value="1" placeholder="Qtd">
                             </div>
@@ -1111,26 +1139,22 @@
                     </div>
 
                     <h5 class="form-section-title mb-3 mt-4"><i class="bi bi-sliders"></i> Detalhes Finais</h5>
-<div class="mb-3">
-    <label class="form-label">Data da Venda (Para Garantias anteriores)</label>
-    <input type="date" class="form-control" id="bookipDataManual">
-</div>
+                    <div class="mb-3">
+                        <label class="form-label">Data da Venda (Para Garantias anteriores)</label>
+                        <input type="date" class="form-control" id="bookipDataManual">
+                    </div>
 
-
-
-
-                    <<div class="mb-3">
-    <label class="form-label">Tempo de Garantia</label>
-    <select class="form-select" id="bookipGarantiaSelect">
-        <option value="365" selected>1 Ano (Padrão)</option>
-        <option value="30">30 Dias</option>
-        <option value="120">4 Meses</option>
-        <option value="180">6 Meses</option>
-        <option value="custom">Manual (Digitar Dias)</option>
-    </select>
-    <input type="number" class="form-control mt-2 hidden" id="bookipGarantiaCustomInput" placeholder="Digite a quantidade de dias (Ex: 45)">
-</div>
-
+                    <div class="mb-3">
+                        <label class="form-label">Tempo de Garantia</label>
+                        <select class="form-select" id="bookipGarantiaSelect">
+                            <option value="365" selected>1 Ano (Padrão)</option>
+                            <option value="30">30 Dias</option>
+                            <option value="120">4 Meses</option>
+                            <option value="180">6 Meses</option>
+                            <option value="custom">Manual (Digitar Dias)</option>
+                        </select>
+                        <input type="number" class="form-control mt-2 hidden" id="bookipGarantiaCustomInput" placeholder="Digite a quantidade de dias (Ex: 45)">
+                    </div>
 
                     <div class="mb-3">
                         <label class="form-label d-block">Forma(s) de Pagamento</label>
@@ -1155,44 +1179,44 @@
                     </div>
 
                     <div class="text-center mt-4">
-<div id="bookipActionsArea">
-    <div id="saveActionContainer">
-        <button class="btn btn-success w-100 py-3 fw-bold" id="btnSaveBookip">
-            <i class="bi bi-check-circle-fill"></i> Finalizar e Salvar Documento
-        </button>
-    </div>
-
-
-
-
-        <button id="btnNewBookipCycle" class="btn btn-link text-secondary mt-3 text-decoration-none" style="font-size: 0.9rem;">
-            <i class="bi bi-plus-circle"></i> Começar um Novo Recibo
-        </button>
-    </div>
-</div>
-
-
+                        <div id="bookipActionsArea">
+                            <div id="saveActionContainer">
+                                <button class="btn btn-success w-100 py-3 fw-bold" id="btnSaveBookip">
+                                    <i class="bi bi-check-circle-fill"></i> Finalizar e Salvar Documento
+                                </button>
+                            </div>
+                            <button id="btnNewBookipCycle" class="btn btn-link text-secondary mt-3 text-decoration-none" style="font-size: 0.9rem;">
+                                <i class="bi bi-plus-circle"></i> Começar um Novo Recibo
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
 
+            <div id="bookipSearchContainer" class="mb-2 w-100 hidden">
+                <input type="text" class="form-control" id="bookipHistorySearch" placeholder="🔍 Buscar no histórico (Nome, CPF...)" style="background: var(--input-bg); color: var(--text-color);">
+            </div>
 
-
-
-<div id="bookipSearchContainer" class="mb-2 w-100 hidden">
-    <input type="text" class="form-control" id="bookipHistorySearch" placeholder="🔍 Buscar no histórico (Nome, CPF...)" style="background: var(--input-bg); color: var(--text-color);">
-</div>
-
-<div id="historyBookipContent" class="hidden w-100"></div>
-
-            
-            
             <div id="historyBookipContent" class="hidden w-100"></div>
         </div>
     </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     
     <div id="bookipPreview" style="display: none;"></div>
-
 
     <div id="stockContainer" class="container hidden">
         <div class="section-header">
