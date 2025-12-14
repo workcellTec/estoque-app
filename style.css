@@ -1637,3 +1637,74 @@ body[data-color="orange"] {
     font-size: 10pt; /* Garante tamanho legível */
     line-height: 1.3;
 }
+/* ============================================================
+   /* ============================================================
+   ESTILO DA TELA DE CLIENTES (COM !IMPORTANT PARA FORÇAR)
+   ============================================================ */
+
+/* 1. Barra de Pesquisa (Forçando o visual) */
+#clientsContainer .input-group-text {
+    background-color: var(--input-bg) !important;
+    border: 1px solid var(--input-border) !important;
+    border-right: none !important;
+    color: var(--text-secondary) !important;
+}
+
+#clientSearchInput {
+    background-color: var(--input-bg) !important;
+    border: 1px solid var(--input-border) !important;
+    border-left: none !important;
+    color: var(--text-color) !important;
+    box-shadow: none !important;
+}
+
+/* Foco */
+#clientSearchInput:focus, #clientsContainer .input-group:focus-within .input-group-text {
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 0 0 0.2rem rgba(var(--primary-color-rgb), 0.15) !important;
+}
+
+/* 2. Tabela Transparente (A Marreta no Bootstrap) */
+#clientsTableBody tr {
+    background-color: transparent !important; /* Remove fundo branco da linha */
+    border-bottom: 1px solid var(--glass-border) !important;
+}
+
+/* Remove fundo branco das CÉLULAS também (O Bootstrap põe cor aqui as vezes) */
+#clientsTableBody td {
+    background-color: transparent !important;
+    color: var(--text-color) !important;
+    vertical-align: middle !important;
+    border: none !important;
+}
+
+/* Efeito Hover (Passar o mouse) */
+#clientsTableBody tr:hover td {
+    background-color: rgba(var(--primary-color-rgb), 0.1) !important;
+}
+
+/* 3. Botões de Ação */
+.client-action-btn {
+    width: 40px !important;
+    height: 40px !important;
+    border-radius: 50% !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border: 1px solid transparent !important;
+    background: transparent; /* Reset */
+}
+
+/* Botão EDITAR (Pega cor do tema) */
+.btn-edit-theme {
+    background-color: rgba(var(--primary-color-rgb), 0.15) !important;
+    color: var(--primary-color) !important;
+    border-color: rgba(var(--primary-color-rgb), 0.3) !important;
+}
+
+/* Botão EXCLUIR (Vermelho) */
+.btn-delete-theme {
+    background-color: rgba(255, 82, 82, 0.15) !important;
+    color: #ff5252 !important;
+    border-color: rgba(255, 82, 82, 0.3) !important;
+}

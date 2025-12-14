@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
-import { getDatabase, ref, push, update, remove, onValue, off, get } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
+import { getDatabase, ref, push, update, remove, onValue, off, get, set } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyANdJzvmHr8JVqrjveXbP_ZV6ZRR6fcVQk",
@@ -87,54 +87,81 @@ const topRightControls = document.getElementById('top-right-controls');
 
 function showMainSection(sectionId) {
     if (!isAuthReady) return;
+    
+    // Desliga ouvintes antigos para economizar memória
     if (productsListener) { off(getProductsRef(), 'value', productsListener); productsListener = null; }
     if (boletosListener) { off(ref(db, 'boletos'), 'value', boletosListener); boletosListener = null; }
 
+    // 1. Pega o elemento novo (Clientes)
+    const clientsContainer = document.getElementById('clientsContainer');
+
+    // 2. Esconde TUDO (Adiciona classe hidden)
     mainMenu.classList.add('hidden');
     calculatorContainer.classList.add('hidden');
     contractContainer.classList.add('hidden');
     stockContainer.classList.add('hidden');
     adminContainer.classList.add('hidden');
     topRightControls.classList.add('hidden');
+    
+    // Esconde também o container de clientes se ele existir
+    if (clientsContainer) clientsContainer.classList.add('hidden');
 
+    // 3. Garante que o display seja none visualmente
     mainMenu.style.display = 'none';
     calculatorContainer.style.display = 'none';
     contractContainer.style.display = 'none';
     stockContainer.style.display = 'none';
     adminContainer.style.display = 'none';
+    if (clientsContainer) clientsContainer.style.display = 'none';
 
+    // 4. Mostra APENAS a seção escolhida
     if (sectionId === 'main') {
         mainMenu.classList.remove('hidden');
         mainMenu.style.display = 'flex';
         topRightControls.classList.remove('hidden');
-    } else if (sectionId === 'calculator') {
+    } 
+    else if (sectionId === 'calculator') {
         calculatorContainer.classList.remove('hidden');
         calculatorContainer.style.display = 'block';
         openCalculatorSection('calculatorHome');
-    } else if (sectionId === 'contract') {
+    } 
+    else if (sectionId === 'contract') {
         contractContainer.classList.remove('hidden');
         contractContainer.style.display = 'flex';
         loadContractDraft();
         const toggle = document.getElementById('boletoModeToggle');
-        if (toggle.checked) {
+        if (toggle && toggle.checked) {
             toggle.checked = false;
             toggle.dispatchEvent(new Event('change'));
         }
-    } else if (sectionId === 'stock') {
+    } 
+    else if (sectionId === 'stock') {
         stockContainer.classList.remove('hidden');
         stockContainer.style.display = 'flex';
         loadCheckedItems();
         filterStockProducts();
-    } else if (sectionId === 'administracao') {
+    } 
+    else if (sectionId === 'administracao') {
         adminContainer.classList.remove('hidden');
         adminContainer.style.display = 'flex';
         filterAdminProducts();
     }
+    // --- NOVO: LÓGICA DA TELA DE CLIENTES ---
+    else if (sectionId === 'clients') {
+        if (clientsContainer) {
+            clientsContainer.classList.remove('hidden');
+            clientsContainer.style.display = 'flex';
+            // Chama a função que preenche a tabela (que vamos criar no Bloco 2)
+            if (typeof renderClientsTable === 'function') {
+                renderClientsTable();
+            }
+        }
+    }
+
     currentMainSectionId = sectionId;
-    
-        // --- ADICIONE ESTA LINHA ---
     safeStorage.setItem('ctwLastSection', sectionId);
 }
+
 
 function renderRatesEditor() {
     const accordionContainer = document.getElementById('ratesAccordion');
@@ -2770,6 +2797,55 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('backFromContract').addEventListener('click', () => showMainSection('main'));
     document.getElementById('backFromStock').addEventListener('click', () => showMainSection('main'));
     document.getElementById('backFromAdmin').addEventListener('click', () => showMainSection('main'));
+
+    // ... outros botões acima ...
+    document.getElementById('backFromStock').addEventListener('click', () => showMainSection('main'));
+    
+    // ESTA É A LINHA DE REFERÊNCIA 👇
+    document.getElementById('backFromAdmin').addEventListener('click', () => showMainSection('main'));
+
+    // =======================================================
+    // >>> COLE O BLOCO 3 AQUI (NESSE ESPAÇO) <<<
+    // =======================================================
+
+    // --- BOTÕES DA TELA DE CLIENTES ---
+
+    // 1. Botão que está DENTRO da Administração para ir aos Clientes
+    const btnAdminClients = document.getElementById('btnAdminClients');
+    if (btnAdminClients) {
+        btnAdminClients.addEventListener('click', () => {
+            showMainSection('clients');
+        });
+    }
+
+    // 2. Botão Voltar (Da tela de Clientes volta para Administração)
+    const btnBackFromClients = document.getElementById('backFromClients');
+    if (btnBackFromClients) {
+        btnBackFromClients.addEventListener('click', () => {
+            showMainSection('administracao'); 
+        });
+    }
+
+    // 3. Campo de Busca na tabela
+    const clientSearchInput = document.getElementById('clientSearchInput');
+    if (clientSearchInput) {
+        clientSearchInput.addEventListener('input', (e) => {
+            renderClientsTable(e.target.value);
+        });
+    }
+    
+    // 4. Botão Importar (Ainda sem função, só avisa)
+    const btnImport = document.getElementById('btnImportClients');
+    if(btnImport) {
+        btnImport.addEventListener('click', () => {
+            showCustomModal({ message: "Aguarde o próximo passo para importar CSV!" });
+        });
+    }
+    // =======================================================
+
+    // ... o resto do código continua (goToAdminFromEmptyState etc) ...
+    document.getElementById('goToAdminFromEmptyState').addEventListener('click', () => showMainSection('administracao'));
+
     document.getElementById('goToAdminFromEmptyState').addEventListener('click', () => showMainSection('administracao'));
     // Botão Voltar do Sub-menu da Calculadora
     document.getElementById('backFromCalculatorHome').addEventListener('click', () => showMainSection('main'));
@@ -4452,7 +4528,7 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
 
 
         // --- LÓGICA DE SALVAR BOOKIP COM NÚMERO SEQUENCIAL ---
-    const btnGerarBookip = document.getElementById('btnGerarBookip');
+        const btnGerarBookip = document.getElementById('btnGerarBookip');
     if (btnGerarBookip) {
         btnGerarBookip.addEventListener('click', async () => {
             if (bookipCartList.length === 0) {
@@ -4474,22 +4550,8 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                 dias = parseInt(sel);
             }
 
-            try {
-                // 3. GERAR NÚMERO SEQUENCIAL (Doc Nº)
-                const snapshot = await get(ref(db, 'bookips'));
-                let count = 0;
-                if (snapshot.exists()) {
-                    count = Object.keys(snapshot.val()).length;
-                }
-                const nextNum = count + 1;
-                // Formata para 3 dígitos (ex: 1 vira "001", 10 vira "010")
-                const docNumberFormatted = String(nextNum).padStart(3, '0');
-
-                            // --- CÓDIGO CORRIGIDO PARA O PASSO 1 ---
-            
             // Pega a data manual (se tiver) ou usa a de hoje
             const dataManualInput = document.getElementById('bookipDataManual').value;
-            // Se não tiver data selecionada, usa a data de hoje formatada YYYY-MM-DD
             const dataFinalVenda = dataManualInput ? dataManualInput : new Date().toISOString().split('T')[0];
 
             try {
@@ -4502,37 +4564,45 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                 const nextNum = count + 1;
                 const docNumberFormatted = String(nextNum).padStart(3, '0');
 
+                // Prepara os dados
                 const dados = {
                     docNumber: docNumberFormatted,
                     nome: document.getElementById('bookipNome').value || 'Consumidor',
                     cpf: document.getElementById('bookipCpf').value || '',
                     tel: document.getElementById('bookipTelefone').value || '',
                     end: document.getElementById('bookipEndereco').value || '',
+                    email: document.getElementById('bookipEmail').value || '', // Adicionei para o robô salvar o email também
                     items: bookipCartList,
                     pagamento: txtPag,
                     diasGarantia: dias,
-                    dataVenda: dataFinalVenda, // <--- AQUI ESTÁ O SEGREDO (Salva a data escolhida)
-                    criadoEm: new Date().toISOString() // Mantemos esse para organizar o histórico por ordem de criação
+                    dataVenda: dataFinalVenda,
+                    criadoEm: new Date().toISOString()
                 };
 
+                // Salva no Banco de Dados
                 await push(ref(db, 'bookips'), dados);
+                
                 showCustomModal({ message: `Documento Nº ${docNumberFormatted} gerado!` });
+                
+                // >>> ROBÔ: SALVA O CLIENTE AUTOMATICAMENTE AQUI <<<
+                await salvarClienteAutomatico({
+                    nome: dados.nome,
+                    cpf: dados.cpf,
+                    tel: dados.tel,
+                    end: dados.end,
+                    email: dados.email
+                });
+
+                // Imprime (conforme seu código original)
                 printBookip(dados);
                 
             } catch (e) {
-                showCustomModal({ message: "Erro: " + e.message });
-            }
-
-
-                await push(ref(db, 'bookips'), dados);
-                showCustomModal({ message: `Documento Nº ${docNumberFormatted} gerado!` });
-                printBookip(dados);
-                
-            } catch (e) {
+                console.error(e);
                 showCustomModal({ message: "Erro: " + e.message });
             }
         });
     }
+
 
     // --- FUNÇÃO DE IMPRESSÃO BOOKIP (ATUALIZADA: Doc Nº e Layout) ---
         // --- FUNÇÃO DE IMPRESSÃO BOOKIP (ATUALIZADA: Com Assinatura Digital) ---
@@ -4983,6 +5053,393 @@ function processarImagemParaBase64(file, maxWidth = 300) {
         reader.onerror = (err) => reject(err);
     });
 }
+
+// --- FUNÇÃO INTELIGENTE: SALVAR/ATUALIZAR CLIENTE ---
+// --- FUNÇÃO DEPURADORA: SALVAR CLIENTE COM ALERTAS ---
+async function salvarClienteAutomatico(dados) {
+    // Alerta 1: Saber se a função foi chamada
+    // alert("ROBÔ INICIADO: " + dados.nome); 
+
+    if (!dados.nome) {
+        alert("ROBÔ ERRO: Nome vazio!");
+        return;
+    }
+
+    // 1. Cria ID
+    let clienteId = '';
+    const cpfLimpo = (dados.cpf || '').replace(/\D/g, '');
+
+    if (cpfLimpo.length > 5) {
+        clienteId = cpfLimpo;
+    } else {
+        const nomeLimpo = dados.nome.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const telLimpo = (dados.tel || '').replace(/\D/g, '');
+        clienteId = `${nomeLimpo}_${telLimpo}`;
+    }
+
+    if (!clienteId) {
+        alert("ROBÔ ERRO: Não consegui criar ID (faltou nome/tel/cpf)");
+        return;
+    }
+
+    // 2. Dados
+    const dadosCliente = {
+        id: clienteId,
+        nome: dados.nome,
+        cpf: dados.cpf || '',
+        tel: dados.tel || '',
+        end: dados.end || '',
+        email: dados.email || '',
+        ultimoCompra: new Date().toISOString()
+    };
+
+    // 3. Tenta Salvar
+    try {
+        // Usando SET em vez de UPDATE para garantir (força bruta)
+        await set(ref(db, `clientes/${clienteId}`), dadosCliente);
+        // alert("ROBÔ SUCESSO! Cliente salvo na pasta: " + clienteId); 
+        console.log("Cliente salvo: " + clienteId);
+    } catch (e) {
+        alert("ROBÔ FALHOU AO GRAVAR NO BANCO: " + e.message);
+    }
+}
+
+// ============================================================
+// ============================================================
+// ============================================================
+// ============================================================
+// AUTOCOMPLETE DE CLIENTES (VERSÃO FINAL LIMPA)
+// ============================================================
+let dbClientsCache = []; 
+
+/// 1. Carrega os clientes do Banco e Atualiza a Tabela
+if (typeof db !== 'undefined') {
+    const clientsRef = ref(db, 'clientes');
+    onValue(clientsRef, (snapshot) => {
+        if (snapshot.exists()) {
+            // Transforma o objeto do banco em uma lista
+            const dados = snapshot.val();
+            dbClientsCache = Object.values(dados);
+        } else {
+            dbClientsCache = [];
+        }
+
+        // --- A MÁGICA ACONTECE AQUI ---
+        // Verifica se a tela de Clientes está aberta. Se estiver, atualiza a tabela agora!
+        const container = document.getElementById('clientsContainer');
+        if (container && !container.classList.contains('hidden') && typeof renderClientsTable === 'function') {
+            renderClientsTable();
+        }
+    });
+}
+
+
+// 2. Lógica de Pesquisa
+function ativarAutocomplete() {
+    const inputNome = document.getElementById('bookipNome');
+    const boxSugestoes = document.getElementById('clientSuggestionsList');
+
+    if (!inputNome || !boxSugestoes) return;
+
+    // Garante estilo visual correto (Fundo branco e borda suave)
+    boxSugestoes.style.zIndex = "9999";
+    boxSugestoes.style.background = "white";
+    boxSugestoes.style.border = "1px solid #ddd";
+
+    inputNome.addEventListener('input', (e) => {
+        const termo = e.target.value.toLowerCase();
+        
+        boxSugestoes.style.display = 'none';
+        boxSugestoes.innerHTML = '';
+
+        if (termo.length < 1) return;
+
+        // Busca por Nome ou CPF
+        const encontrados = dbClientsCache.filter(c => {
+            const n = (c.nome || '').toLowerCase();
+            const cpf = (c.cpf || '').toLowerCase();
+            return n.includes(termo) || cpf.includes(termo);
+        });
+
+        if (encontrados.length > 0) {
+            boxSugestoes.innerHTML = encontrados.slice(0, 5).map(c => `
+                <li class="list-group-item list-group-item-action" 
+                    style="cursor: pointer;"
+                    onclick='preencherCliente("${c.id}")'>
+                    <div class="fw-bold">${c.nome}</div>
+                    <small class="text-muted">${c.cpf || 'Sem CPF'}</small>
+                </li>
+            `).join('');
+            
+            boxSugestoes.style.display = 'block';
+        }
+    });
+
+    // Fecha ao clicar fora
+    document.addEventListener('click', (e) => {
+        if (e.target !== inputNome && e.target !== boxSugestoes) {
+            boxSugestoes.style.display = 'none';
+        }
+    });
+}
+
+// Inicia a função
+ativarAutocomplete();
+
+// 3. Função de Preencher
+window.preencherCliente = function(id) {
+    const cliente = dbClientsCache.find(c => c.id === id);
+    if (cliente) {
+        document.getElementById('bookipNome').value = cliente.nome || '';
+        document.getElementById('bookipCpf').value = cliente.cpf || '';
+        document.getElementById('bookipTelefone').value = cliente.tel || '';
+        document.getElementById('bookipEndereco').value = cliente.end || '';
+        document.getElementById('bookipEmail').value = cliente.email || '';
+        
+        // Esconde a lista
+        document.getElementById('clientSuggestionsList').style.display = 'none';
+        
+        // Faz o campo piscar verde rapidinho pra confirmar
+        const inputNome = document.getElementById('bookipNome');
+        inputNome.classList.add('is-valid');
+        setTimeout(() => inputNome.classList.remove('is-valid'), 1000);
+    }
+};
+
+// ============================================================
+// LÓGICA DA TELA DE CLIENTES (TABELA E EXCLUSÃO)
+// ============================================================
+
+// ============================================================
+// MÓDULO DE CLIENTES (FINAL - PROTEGIDO CONTRA ERROS)
+// ============================================================
+
+// 1. Variável Global (Janela para os dados)
+window.dbClientsCache = []; 
+
+// 2. Conexão com o Banco (Atualiza lista automaticamente)
+if (typeof db !== 'undefined') {
+    const clientsRef = ref(db, 'clientes');
+    onValue(clientsRef, (snapshot) => {
+        if (snapshot.exists()) {
+            const dados = snapshot.val();
+            window.dbClientsCache = Object.values(dados);
+        } else {
+            window.dbClientsCache = [];
+        }
+        // Se a tela estiver aberta, atualiza visualmente
+        const container = document.getElementById('clientsContainer');
+        if (container && !container.classList.contains('hidden')) {
+            if(typeof renderClientsTable === 'function') renderClientsTable();
+        }
+    });
+}
+
+// 3. Função Visual: Desenhar Tabela
+window.renderClientsTable = function(filterText = '') {
+    const tbody = document.getElementById('clientsTableBody');
+    const countEl = document.getElementById('totalClientsCount');
+    
+    if (!tbody) return;
+
+    let lista = window.dbClientsCache || [];
+
+    // Filtro de Busca
+    if (filterText) {
+        const term = filterText.toLowerCase();
+        lista = lista.filter(c => 
+            (c.nome && c.nome.toLowerCase().includes(term)) || 
+            (c.cpf && c.cpf.includes(term))
+        );
+    }
+
+    // Ordenar A-Z
+    lista.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+
+    // Contador
+    if (countEl) countEl.innerText = `${lista.length} clientes`;
+
+    // Se vazio
+    if (lista.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="2" class="text-center py-5"><i class="bi bi-person-x" style="font-size: 2rem; color: var(--text-secondary); opacity: 0.5;"></i><p class="text-secondary mt-2 mb-0 small">Nenhum cliente encontrado.</p></td></tr>`;
+        return;
+    }
+
+    // Gerar HTML
+    tbody.innerHTML = lista.map(c => `
+        <tr>
+            <td class="ps-2">
+                <div style="font-weight: 600; font-size: 1rem;">${c.nome}</div>
+                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 3px; display: flex; align-items: center; gap: 8px;">
+                    <span><i class="bi bi-card-heading"></i> ${c.cpf || '---'}</span>
+                    <span style="opacity: 0.3;">|</span>
+                    <span><i class="bi bi-whatsapp"></i> ${c.tel || '---'}</span>
+                </div>
+            </td>
+            <td class="text-end pe-2" style="white-space: nowrap; width: 1px;">
+                <div class="d-flex justify-content-end gap-2">
+                    <button class="client-action-btn btn-edit-theme" onclick="editarCliente('${c.id}')" title="Editar"><i class="bi bi-pencil-fill"></i></button>
+                    <button class="client-action-btn btn-delete-theme" onclick="excluirCliente('${c.id}')" title="Excluir"><i class="bi bi-trash-fill"></i></button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+};
+
+// 4. Ações: Excluir e Editar
+window.excluirCliente = function(id) {
+    showCustomModal({
+        message: "Apagar este cliente?",
+        confirmText: "Apagar",
+        onConfirm: async () => {
+            try { await remove(ref(db, `clientes/${id}`)); showCustomModal({ message: "Apagado!" }); } 
+            catch (e) { showCustomModal({ message: "Erro: " + e.message }); }
+        },
+        onCancel: () => {}
+    });
+};
+
+window.editarCliente = function(id) {
+    const cliente = window.dbClientsCache.find(c => c.id === id);
+    if (!cliente) return;
+    document.getElementById('editClientId').value = cliente.id;
+    document.getElementById('editClientName').value = cliente.nome || '';
+    document.getElementById('editClientCpf').value = cliente.cpf || '';
+    document.getElementById('editClientTel').value = cliente.tel || '';
+    document.getElementById('editClientAddress').value = cliente.end || '';
+    document.getElementById('editClientEmail').value = cliente.email || '';
+    document.getElementById('editClientModalOverlay').classList.add('active');
+};
+
+// 5. ATIVAÇÃO DOS BOTÕES (COM PROTEÇÃO DE ESCOPO {})
+// O uso de { } evita o erro "Identifier already declared"
+{
+    // Botão Fechar Modal
+    const btnClose = document.getElementById('closeEditClientModal');
+    if (btnClose) {
+        const newBtn = btnClose.cloneNode(true);
+        btnClose.parentNode.replaceChild(newBtn, btnClose);
+        newBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('editClientModalOverlay').classList.remove('active');
+        });
+    }
+
+    // Botão Salvar Edição
+    const form = document.getElementById('formEditClient');
+    if (form) {
+        const newForm = form.cloneNode(true);
+        form.parentNode.replaceChild(newForm, form);
+        newForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('editClientId').value;
+            const btn = newForm.querySelector('button[type="submit"]');
+            const txt = btn.innerHTML;
+            btn.innerHTML = 'Salvando...'; btn.disabled = true;
+
+            const novosDados = {
+                id: id, 
+                nome: document.getElementById('editClientName').value,
+                cpf: document.getElementById('editClientCpf').value,
+                tel: document.getElementById('editClientTel').value,
+                end: document.getElementById('editClientAddress').value,
+                email: document.getElementById('editClientEmail').value,
+                ultimoCompra: new Date().toISOString()
+            };
+
+            try {
+                await update(ref(db, `clientes/${id}`), novosDados);
+                showCustomModal({ message: "Atualizado!" });
+                document.getElementById('editClientModalOverlay').classList.remove('active');
+            } catch (err) { showCustomModal({ message: "Erro: " + err.message }); } 
+            finally { btn.innerHTML = txt; btn.disabled = false; }
+        });
+    }
+}
+
+// 6. LÓGICA DE IMPORTAÇÃO CSV (PROTEGIDA)
+{
+    const btnImport = document.getElementById('btnImportClients');
+    const fileInput = document.getElementById('csvFileInput');
+
+    if (btnImport && fileInput) {
+        // Limpa listeners antigos
+        const newBtn = btnImport.cloneNode(true);
+        btnImport.parentNode.replaceChild(newBtn, btnImport);
+        
+        newBtn.addEventListener('click', () => {
+            fileInput.value = ''; 
+            fileInput.click();
+        });
+
+        fileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (evt) => processarCSV(evt.target.result);
+                reader.readAsText(file);
+            }
+        };
+    }
+
+    async function processarCSV(csvText) {
+        const linhas = csvText.split('\n');
+        // Remove cabeçalho e linhas vazias
+        const dados = linhas.slice(1).filter(l => l.trim() !== '');
+        
+        if (dados.length === 0) {
+            showCustomModal({ message: "Arquivo vazio." });
+            return;
+        }
+
+        // Detecta separador (; ou ,)
+        const sep = dados[0].includes(';') ? ';' : ',';
+        const updates = {};
+        let count = 0;
+
+        showCustomModal({ message: `Processando ${dados.length} linhas...` });
+
+        dados.forEach(linha => {
+            const cols = linha.split(sep);
+            // Mapeamento: 0=Name, 1=Email, 2=Phone, 3=Tax(CPF), 4=Address
+            if (cols.length >= 4) {
+                const clean = (t) => t ? t.replace(/["\r]/g, '').trim() : '';
+                
+                const nome = clean(cols[0]);
+                const email = clean(cols[1]);
+                let tel = clean(cols[2]).replace(/\D/g, ''); // Limpa tel
+                const cpfOrig = clean(cols[3]);
+                const end = clean(cols[4]);
+
+                if (nome) {
+                    // Cria ID: Se tiver CPF válido (>5 dígitos), usa ele. Senão Nome+Tel
+                    const cpfLimpo = cpfOrig.replace(/\D/g, '');
+                    let id = (cpfLimpo.length > 5) ? cpfLimpo : `${nome.toLowerCase().replace(/[^a-z0-9]/g, '')}_${tel}`;
+
+                    if (id) {
+                        updates[`clientes/${id}`] = {
+                            id: id, nome: nome, email: email, tel: tel, cpf: cpfOrig, end: end,
+                            origem: 'CSV', ultimoCompra: new Date().toISOString()
+                        };
+                        count++;
+                    }
+                }
+            }
+        });
+
+        if (count > 0) {
+            try {
+                await update(ref(db), updates);
+                showCustomModal({ message: `${count} clientes importados!` });
+            } catch (e) { showCustomModal({ message: "Erro: " + e.message }); }
+        } else {
+            showCustomModal({ message: "Nenhum dado válido." });
+        }
+    }
+}
+
+
+
 
 
         });
