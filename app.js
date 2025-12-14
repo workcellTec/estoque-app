@@ -4316,135 +4316,189 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
     
     // --- CARREGAR HISTÓRICO DE BOOKIPS ---
         // --- CARREGAR HISTÓRICO DE BOOKIPS (CORRIGIDO) ---
-      // --- CARREGAR HISTÓRICO DE BOOKIPS (COM BUSCA SEGURA) ---
-        // --- CARREGAR HISTÓRICO DE BOOKIPS (ATUALIZADO COM BOTÃO PDF) ---
-        // --- CARREGAR HISTÓRICO (ATUALIZADO COM EDITAR) ---
-    function loadBookipHistory() {
-        if (!db || !isAuthReady) return;
-        
-        const bookipsRef = ref(db, 'bookips');
-        const container = document.getElementById('historyBookipContent');
-        const searchInput = document.getElementById('bookipHistorySearch');
-        
-        container.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div></div>';
+// ============================================================
+// CARREGAR HISTÓRICO OTIMIZADO (COM PAGINAÇÃO "CARREGAR MAIS")
+// ============================================================
+function loadBookipHistory() {
+    if (!db || !isAuthReady) return;
+    
+    const bookipsRef = ref(db, 'bookips');
+    const container = document.getElementById('historyBookipContent');
+    const searchInput = document.getElementById('bookipHistorySearch');
+    
+    // Variáveis de Controle da Paginação
+    let listaCompletaCache = []; // Guarda todos os 17.000 na memória (leve)
+    let listaFiltradaCache = []; // Guarda o resultado da busca
+    let itensVisiveis = 50;      // Começa mostrando 50
+    const incremento = 50;       // Carrega +50 por vez
 
-        if (bookipListener) off(bookipsRef, 'value', bookipListener);
+    container.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div><p class="mt-2 text-secondary">Carregando histórico...</p></div>';
 
-        bookipListener = onValue(bookipsRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                const allBookips = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-                allBookips.sort((a, b) => new Date(b.criadoEm) - new Date(a.criadoEm));
+    if (bookipListener) off(bookipsRef, 'value', bookipListener);
 
-                const renderList = (lista) => {
-                    if (lista.length === 0) {
-                        container.innerHTML = '<p class="text-center text-secondary mt-4">Nenhum documento encontrado.</p>';
-                        return;
-                    }
+    bookipListener = onValue(bookipsRef, (snapshot) => {
+        if (snapshot.exists()) {
+            const data = snapshot.val();
+            // Transforma em lista e ordena por data (Mais recente primeiro)
+            listaCompletaCache = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+            listaCompletaCache.sort((a, b) => new Date(b.criadoEm) - new Date(a.criadoEm));
+            
+            // Inicializa a lista filtrada com tudo
+            listaFiltradaCache = listaCompletaCache;
+            
+            // Reseta a contagem e desenha
+            itensVisiveis = 50;
+            renderizarLote();
+        } else {
+            container.innerHTML = '<p class="text-center text-secondary mt-4">Nenhum recibo salvo.</p>';
+        }
+    });
 
-                    container.innerHTML = `<div class="accordion w-100 history-accordion" id="bookipAccordion">${lista.map(item => {
-                        let dataFormatada = 'Data desc.';
-                        if (item.dataVenda) {
-                             const partes = item.dataVenda.split('-'); 
-                             dataFormatada = `${partes[2]}/${partes[1]}/${partes[0]}`;
-                        } else if (item.criadoEm) {
-                             dataFormatada = new Date(item.criadoEm).toLocaleDateString('pt-BR');
-                        }
-                        
-                        const docNum = item.docNumber || '---';
+    // --- FUNÇÃO QUE DESENHA NA TELA (LOTE POR LOTE) ---
+    function renderizarLote() {
+        // Pega apenas a fatia que deve ser mostrada (Ex: 0 a 50)
+        const fatia = listaFiltradaCache.slice(0, itensVisiveis);
+        const temMais = listaFiltradaCache.length > itensVisiveis;
 
-                        return `
-                        <div class="accordion-item">
-                            <h2 class="accordion-header" id="head-bk-${item.id}">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-bk-${item.id}">
-                                    <span class="badge bg-primary me-2">Doc ${docNum}</span> ${item.nome} - ${dataFormatada}
-                                </button>
-                            </h2>
-                            <div id="collapse-bk-${item.id}" class="accordion-collapse collapse" data-bs-parent="#bookipAccordion">
-                                <div class="accordion-body">
-                                    <p><strong>Cliente:</strong> ${item.nome} <br> <small class="text-secondary">${item.cpf || 'Sem CPF'}</small></p>
-                                    <hr>
-                                    <p class="mb-1"><strong>Itens:</strong></p>
-                                    <ul class="list-unstyled small mb-3">
-                                        ${(item.items || []).map(i => `<li>${i.qtd}x ${i.nome} - R$ ${parseFloat(i.valor).toFixed(2)}</li>`).join('')}
-                                    </ul>
-                                    <div class="d-flex justify-content-end gap-2 mt-2">
-                                        <button class="btn btn-sm btn-info edit-bookip-btn" data-id="${item.id}" title="Editar Recibo">
-                                            <i class="bi bi-pencil-square"></i>
-                                        </button>
+        if (fatia.length === 0) {
+            container.innerHTML = '<p class="text-center text-secondary mt-4">Nenhum documento encontrado na busca.</p>';
+            return;
+        }
 
-                                        <button class="btn btn-sm btn-warning email-history-btn" data-id="${item.id}" title="PDF/Email"><i class="bi bi-envelope-at-fill"></i></button>
-                                        <button class="btn btn-sm btn-primary print-old-bookip" data-id="${item.id}"><i class="bi bi-printer"></i></button>
-                                        <button class="btn btn-sm btn-outline-danger delete-bookip-btn" data-id="${item.id}"><i class="bi bi-trash"></i></button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>`;
-                    }).join('')}</div>`;
-
-                    // --- LISTENERS ---
-                    
-                    // Listener do botão EDITAR
-                    container.querySelectorAll('.edit-bookip-btn').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
-                            const id = e.target.closest('button').dataset.id;
-                            const item = allBookips.find(i => i.id === id);
-                            carregarDadosParaEdicao(item);
-                        });
-                    });
-
-                    // (Mantive os outros listeners iguais: PDF, Print, Delete)
-                    container.querySelectorAll('.email-history-btn').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
-                            const id = e.target.closest('button').dataset.id;
-                            const item = allBookips.find(i => i.id === id);
-                            if(item) gerarPdfDoHistorico(item, e.target.closest('button'));
-                        });
-                    });
-                    container.querySelectorAll('.print-old-bookip').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
-                            const id = e.target.closest('button').dataset.id;
-                            const item = allBookips.find(i => i.id === id);
-                            if(item) printBookip(item);
-                        });
-                    });
-                    container.querySelectorAll('.delete-bookip-btn').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
-                            const id = e.target.closest('button').dataset.id;
-                            showCustomModal({
-                                message: "Apagar este recibo?",
-                                confirmText: "Apagar",
-                                onConfirm: async () => {
-                                    await remove(ref(db, `bookips/${id}`));
-                                    showCustomModal({ message: "Apagado." });
-                                },
-                                onCancel: () => {}
-                            });
-                        });
-                    });
-                };
-
-                renderList(allBookips);
-
-                if (searchInput && searchInput.parentNode) {
-                    const newSearchInput = searchInput.cloneNode(true);
-                    searchInput.parentNode.replaceChild(newSearchInput, searchInput);
-                    newSearchInput.addEventListener('input', (e) => {
-                        const termo = e.target.value.toLowerCase();
-                        const filtrados = allBookips.filter(item => {
-                            const nDoc = (item.docNumber || '').toLowerCase();
-                            const nome = (item.nome || '').toLowerCase();
-                            const cpf = (item.cpf || '').toLowerCase();
-                            return nDoc.includes(termo) || nome.includes(termo) || cpf.includes(termo);
-                        });
-                        renderList(filtrados);
-                    });
-                }
-            } else {
-                container.innerHTML = '<p class="text-center text-secondary mt-4">Nenhum recibo salvo.</p>';
+        // Gera o HTML
+        let html = `<div class="accordion w-100 history-accordion" id="bookipAccordion">` + 
+        fatia.map(item => {
+            let dataFormatada = 'Data desc.';
+            if (item.dataVenda) {
+                 const partes = item.dataVenda.split('-'); 
+                 dataFormatada = `${partes[2]}/${partes[1]}/${partes[0]}`;
+            } else if (item.criadoEm) {
+                 dataFormatada = new Date(item.criadoEm).toLocaleDateString('pt-BR');
             }
+            
+            const docNum = item.docNumber || '---';
+
+            return `
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="head-bk-${item.id}">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-bk-${item.id}">
+                        <span class="badge bg-primary me-2">Doc ${docNum}</span> 
+                        <span class="text-truncate" style="max-width: 180px;">${item.nome}</span> 
+                        <span class="ms-auto small text-secondary">${dataFormatada}</span>
+                    </button>
+                </h2>
+                <div id="collapse-bk-${item.id}" class="accordion-collapse collapse" data-bs-parent="#bookipAccordion">
+                    <div class="accordion-body">
+                        <p><strong>Cliente:</strong> ${item.nome} <br> <small class="text-secondary">${item.cpf || 'Sem CPF'}</small></p>
+                        <hr>
+                        <p class="mb-1"><strong>Itens:</strong></p>
+                        <ul class="list-unstyled small mb-3">
+                            ${(item.items || []).map(i => `<li>${i.qtd}x ${i.nome} - R$ ${parseFloat(i.valor).toFixed(2)}</li>`).join('')}
+                        </ul>
+                        <div class="d-flex justify-content-end gap-2 mt-2">
+                            <button class="btn btn-sm btn-info edit-bookip-btn" data-id="${item.id}" title="Editar Recibo">
+                                <i class="bi bi-pencil-square"></i>
+                            </button>
+                            <button class="btn btn-sm btn-warning email-history-btn" data-id="${item.id}" title="PDF/Email"><i class="bi bi-envelope-at-fill"></i></button>
+                            <button class="btn btn-sm btn-primary print-old-bookip" data-id="${item.id}"><i class="bi bi-printer"></i></button>
+                            <button class="btn btn-sm btn-outline-danger delete-bookip-btn" data-id="${item.id}"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        }).join('') + `</div>`;
+
+        // Adiciona botão "Carregar Mais" se tiver mais itens
+        if (temMais) {
+            html += `
+            <div class="text-center py-3">
+                <button id="btnLoadMoreBookip" class="btn btn-outline-primary rounded-pill px-4">
+                    <i class="bi bi-arrow-down-circle"></i> Ver Mais Antigos (${listaFiltradaCache.length - itensVisiveis} restantes)
+                </button>
+            </div>`;
+        }
+
+        container.innerHTML = html;
+
+        // --- REATIVA OS EVENTOS DOS BOTÕES ---
+        reativarListeners();
+        
+        // Listener do botão "Carregar Mais"
+        const btnMore = document.getElementById('btnLoadMoreBookip');
+        if (btnMore) {
+            btnMore.addEventListener('click', () => {
+                itensVisiveis += incremento; // Aumenta o limite
+                renderizarLote(); // Redesenha com mais itens
+            });
+        }
+    }
+
+    // --- FUNÇÃO PARA REATIVAR OS BOTÕES DE AÇÃO ---
+    function reativarListeners() {
+        container.querySelectorAll('.edit-bookip-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = e.target.closest('button').dataset.id;
+                const item = listaCompletaCache.find(i => i.id === id);
+                if (typeof carregarDadosParaEdicao === 'function') carregarDadosParaEdicao(item);
+            });
+        });
+
+        container.querySelectorAll('.email-history-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = e.target.closest('button').dataset.id;
+                const item = listaCompletaCache.find(i => i.id === id);
+                if(item && typeof gerarPdfDoHistorico === 'function') gerarPdfDoHistorico(item, e.target.closest('button'));
+            });
+        });
+
+        container.querySelectorAll('.print-old-bookip').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = e.target.closest('button').dataset.id;
+                const item = listaCompletaCache.find(i => i.id === id);
+                if(item && typeof printBookip === 'function') printBookip(item);
+            });
+        });
+
+        container.querySelectorAll('.delete-bookip-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = e.target.closest('button').dataset.id;
+                showCustomModal({
+                    message: "Apagar este recibo?",
+                    confirmText: "Apagar",
+                    onConfirm: async () => {
+                        await remove(ref(db, `bookips/${id}`));
+                        showCustomModal({ message: "Apagado." });
+                    },
+                    onCancel: () => {}
+                });
+            });
         });
     }
+
+    // --- LÓGICA DE BUSCA (FILTRA NA MEMÓRIA) ---
+    if (searchInput) {
+        // Clone para limpar listeners antigos
+        const newSearchInput = searchInput.cloneNode(true);
+        searchInput.parentNode.replaceChild(newSearchInput, searchInput);
+        
+        newSearchInput.addEventListener('input', (e) => {
+            const termo = e.target.value.toLowerCase();
+            
+            // Filtra a lista completa
+            listaFiltradaCache = listaCompletaCache.filter(item => {
+                const nDoc = (item.docNumber || '').toLowerCase();
+                const nome = (item.nome || '').toLowerCase();
+                const cpf = (item.cpf || '').toLowerCase();
+                return nDoc.includes(termo) || nome.includes(termo) || cpf.includes(termo);
+            });
+
+            // Reseta a visualização para 50 itens
+            itensVisiveis = 50;
+            renderizarLote();
+        });
+    }
+}
+
 
     // --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO ---
     function carregarDadosParaEdicao(item) {
@@ -5236,6 +5290,7 @@ if (typeof db !== 'undefined') {
 }
 
 // 3. Função Visual: Desenhar Tabela
+// 3. Função Visual OTIMIZADA (Para listas gigantes)
 window.renderClientsTable = function(filterText = '') {
     const tbody = document.getElementById('clientsTableBody');
     const countEl = document.getElementById('totalClientsCount');
@@ -5244,7 +5299,7 @@ window.renderClientsTable = function(filterText = '') {
 
     let lista = window.dbClientsCache || [];
 
-    // Filtro de Busca
+    // 1. Filtra (A busca continua rápida na memória)
     if (filterText) {
         const term = filterText.toLowerCase();
         lista = lista.filter(c => 
@@ -5253,10 +5308,10 @@ window.renderClientsTable = function(filterText = '') {
         );
     }
 
-    // Ordenar A-Z
+    // 2. Ordena
     lista.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
 
-    // Contador
+    // Atualiza contador (Mostra o total real)
     if (countEl) countEl.innerText = `${lista.length} clientes`;
 
     // Se vazio
@@ -5265,8 +5320,14 @@ window.renderClientsTable = function(filterText = '') {
         return;
     }
 
-    // Gerar HTML
-    tbody.innerHTML = lista.map(c => `
+    // === O SEGREDO DA PERFORMANCE AQUI ===
+    // Só desenha os primeiros 50 itens para não travar o celular
+    const limiteVisual = 50;
+    const listaVisivel = lista.slice(0, limiteVisual);
+    const temMais = lista.length > limiteVisual;
+
+    // Gera HTML só do que é visível
+    let html = listaVisivel.map(c => `
         <tr>
             <td class="ps-2">
                 <div style="font-weight: 600; font-size: 1rem;">${c.nome}</div>
@@ -5284,6 +5345,19 @@ window.renderClientsTable = function(filterText = '') {
             </td>
         </tr>
     `).join('');
+
+    // Se tiver mais de 50, adiciona um aviso no final da tabela
+    if (temMais) {
+        html += `
+        <tr>
+            <td colspan="2" class="text-center py-3 text-secondary" style="font-size: 0.85rem; border: none;">
+                <i class="bi bi-info-circle"></i> Exibindo os primeiros ${limiteVisual} resultados. <br>
+                <strong>Use a busca para encontrar o resto.</strong>
+            </td>
+        </tr>`;
+    }
+
+    tbody.innerHTML = html;
 };
 
 // 4. Ações: Excluir e Editar
