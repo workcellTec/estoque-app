@@ -1146,12 +1146,22 @@
                     </div>
 
                     <div class="text-center mt-4">
-                        <button class="btn btn-success w-100 py-3" id="btnGerarBookip">
-                            <i class="bi bi-save-fill"></i> Salvar e Imprimir Recibo
-                        </button>
-<button class="btn btn-warning w-100 py-3 mt-2" id="btnEmailBookip">
-    <i class="bi bi-envelope-at-fill"></i> Gerar PDF e Enviar
-</button>
+<div id="bookipActionsArea">
+    <div id="saveActionContainer">
+        <button class="btn btn-success w-100 py-3 fw-bold" id="btnSaveBookip">
+            <i class="bi bi-check-circle-fill"></i> Finalizar e Salvar Documento
+        </button>
+    </div>
+
+
+
+
+        <button id="btnNewBookipCycle" class="btn btn-link text-secondary mt-3 text-decoration-none" style="font-size: 0.9rem;">
+            <i class="bi bi-plus-circle"></i> Começar um Novo Recibo
+        </button>
+    </div>
+</div>
+
 
                     </div>
                 </div>
@@ -1416,6 +1426,37 @@
     </div>
 
 
+    <div id="postSaveOptions" class="hidden">
+        <div class="popup-backdrop"></div> <div class="popup-card">           <div class="mb-4">
+                <i class="bi bi-check-circle-fill text-success" style="font-size: 3.5rem;"></i>
+                <h4 class="mt-2 fw-bold text-light">Sucesso!</h4>
+                <p class="text-secondary small">Documento salvo e seguro.</p>
+            </div>
+
+            <div class="row g-2 mb-3">
+                <div class="col-6">
+                    <button id="btnPostPrint" class="btn btn-dark w-100 p-3 border-secondary">
+                        <i class="bi bi-printer-fill fs-2 d-block mb-2 text-primary"></i> 
+                        <span class="small text-light">Imprimir</span>
+                    </button>
+                </div>
+                <div class="col-6">
+                    <button id="btnPostShare" class="btn btn-dark w-100 p-3 border-secondary">
+                        <i class="bi bi-whatsapp fs-2 d-block mb-2 text-success"></i> 
+                        <span class="small text-light">Enviar</span>
+                    </button>
+                </div>
+            </div>
+
+            <button id="btnNewBookipCycle" class="btn btn-outline-light w-100 py-2 rounded-pill mt-2">
+                <i class="bi bi-plus-lg"></i> Começar Nova Garantia
+            </button>
+
+        </div>
+    </div>
+
+
+
         <script type="application/json" id="manifest-data">
         {
             "name": "Central Workcell",
@@ -1441,9 +1482,13 @@
         self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]; event.waitUntil( caches.keys().then(cacheNames => { return Promise.all( cacheNames.map(cacheName => { if (cacheWhitelist.indexOf(cacheName) === -1) { return caches.delete(cacheName); } }) ); }) ); });
     </script>
     
-<script src="app.js?v=12" type="module"></script>
+<script src="app.js?v=14" type="module"></script>
 
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+
+
+
 </body>
 </html>

@@ -1708,3 +1708,101 @@ body[data-color="orange"] {
     color: #ff5252 !important;
     border-color: rgba(255, 82, 82, 0.3) !important;
 }
+/* ============================================================
+   /* ============================================================
+   OTIMIZAÇÃO DE PERFORMANCE (ANTI-LAG)
+   ============================================================ */
+
+/* 1. Remove o efeito de vidro dos inputs (Isso pesa muito no scroll) */
+.form-control, .form-select {
+    backdrop-filter: none !important; 
+    -webkit-backdrop-filter: none !important;
+    /* Usa uma cor sólida levemente transparente em vez de calcular o blur */
+    background-color: var(--input-bg) !important; 
+    /* Força o celular a usar a placa de vídeo (GPU) para desenhar */
+    transform: translate3d(0,0,0); 
+}
+
+/* 2. Otimiza o container principal para não redesenhar tudo ao rolar */
+.content-card {
+    will-change: transform; 
+    transform: translate3d(0,0,0);
+}
+
+/* 3. Reduz a complexidade da sombra nos itens de lista (como as notificações) */
+.list-group-item {
+    box-shadow: none !important;
+    border: 1px solid var(--glass-border) !important;
+}
+/* =========================================
+   CORREÇÃO DO PDF (COLE NO FINAL DO ARQUIVO)
+   ========================================= */
+#bookipPreview.generating-pdf {
+    display: block !important;       /* Obriga a aparecer */
+    position: fixed !important;      /* Trava na tela */
+    top: 0 !important;               /* Cola no topo */
+    left: 0 !important;              /* Cola na esquerda */
+    width: 100% !important;          /* Ocupa largura total */
+    height: 100% !important;         /* Ocupa altura total */
+    background-color: white !important; /* Fundo BRANCO (evita transparência) */
+    z-index: 10000 !important;       /* Fica ACIMA do app */
+    overflow-y: scroll !important;   /* Permite rolar se precisar */
+}
+/* ============================================================
+   ESTILO DO POP-UP DE SUCESSO (COLE NO FINAL DO ARQUIVO)
+   ============================================================ */
+
+/* Quando o #postSaveOptions NÃO estiver escondido, ele vira um container de tela cheia */
+#postSaveOptions:not(.hidden) {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 12000 !important; /* Bem alto para ficar na frente de tudo */
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    margin: 0 !important;
+    padding: 20px;
+    background: transparent; /* O fundo escuro é feito pelo backdrop abaixo */
+}
+
+/* O Fundo Escuro (Dimmer) */
+#postSaveOptions .popup-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.85); /* Bem escuro para focar */
+    backdrop-filter: blur(5px); /* Desfoque no fundo */
+    z-index: 1;
+    animation: fadeIn 0.3s ease;
+}
+
+/* O Cartão Central (Pop-up) */
+#postSaveOptions .popup-card {
+    position: relative;
+    z-index: 2;
+    background: #1e1e1e; /* Cinza quase preto */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 24px;
+    padding: 30px;
+    width: 100%;
+    max-width: 350px;
+    text-align: center;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    animation: popInElastic 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Animação de entrada elástica (Pulo) */
+@keyframes popInElastic {
+    0% { opacity: 0; transform: scale(0.8); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
