@@ -1806,3 +1806,26 @@ body[data-color="orange"] {
     from { opacity: 0; }
     to { opacity: 1; }
 }
+/* =========================================
+   ESTILO DOS BOTÕES NOVO / SEMINOVO
+   ========================================= */
+.tag-option {
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.05); /* Fundo transparente */
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);          /* Texto cinza */
+    font-weight: 500;
+    font-size: 0.75rem;
+    opacity: 0.6;                          /* Meio apagado */
+    transition: all 0.2s ease;
+}
+
+/* Quando estiver SELECIONADO */
+.tag-option.active {
+    background: var(--primary-color) !important; /* Cor do tema */
+    color: white !important;                     /* Texto branco */
+    border-color: var(--primary-color) !important;
+    opacity: 1;                                  /* Totalmente visível */
+    transform: scale(1.05);                      /* Cresce um pouquinho */
+    box-shadow: 0 2px 8px rgba(var(--primary-color-rgb), 0.4);
+}

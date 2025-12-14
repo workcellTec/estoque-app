@@ -125,16 +125,39 @@ function showMainSection(sectionId) {
         calculatorContainer.style.display = 'block';
         openCalculatorSection('calculatorHome');
     } 
-    else if (sectionId === 'contract') {
+       else if (sectionId === 'contract') {
         contractContainer.classList.remove('hidden');
         contractContainer.style.display = 'flex';
         loadContractDraft();
-        const toggle = document.getElementById('boletoModeToggle');
+        
+        // --- MUDANÇA: FORÇA ABRIR NA ABA GARANTIA (BOOKIP) ---
+        const btnBookip = document.getElementById('btnShowBookip');
+        const btnContrato = document.getElementById('btnShowContrato');
+        const areaBookip = document.getElementById('areaBookipWrapper');
+        const areaContrato = document.getElementById('areaContratoWrapper');
+
+        // Ativa visualmente o botão Garantia
+        if(btnBookip) {
+            btnBookip.classList.add('active');
+            btnBookip.style.cssText = 'border: 1px solid var(--primary-color); background: rgba(var(--primary-color-rgb), 0.2); color: #fff; width: 100%;';
+        }
+        // Desativa o botão Contrato
+        if(btnContrato) {
+            btnContrato.classList.remove('active');
+            btnContrato.style.cssText = 'border: 1px solid var(--glass-border); background: transparent; color: var(--text-secondary); width: 100%;';
+        }
+        // Troca as áreas
+        if(areaBookip) areaBookip.classList.remove('hidden');
+        if(areaContrato) areaContrato.classList.add('hidden');
+        
+        // Garante que o toggle esteja em "Novo"
+        const toggle = document.getElementById('bookipModeToggle');
         if (toggle && toggle.checked) {
             toggle.checked = false;
             toggle.dispatchEvent(new Event('change'));
         }
     } 
+
     else if (sectionId === 'stock') {
         stockContainer.classList.remove('hidden');
         stockContainer.style.display = 'flex';
@@ -4011,37 +4034,55 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
     const areaContrato = document.getElementById('areaContratoWrapper');
     const areaBookip = document.getElementById('areaBookipWrapper');
 
+        // --- LÓGICA DE ABAS (CORRIGIDA: ESCONDE BUSCA AO TROCAR) ---
     if(btnShowContrato && btnShowBookip) {
+        // 1. CLIQUE NA ABA CONTRATO
         btnShowContrato.addEventListener('click', () => {
+            // Estilo dos botões
             btnShowContrato.classList.add('active');
-            btnShowContrato.style.border = '1px solid var(--primary-color)';
-            btnShowContrato.style.background = 'rgba(var(--primary-color-rgb), 0.2)';
-            btnShowContrato.style.color = '#fff';
+            btnShowContrato.style.cssText = 'border: 1px solid var(--primary-color); background: rgba(var(--primary-color-rgb), 0.2); color: #fff; width: 100%;';
 
             btnShowBookip.classList.remove('active');
-            btnShowBookip.style.border = '1px solid var(--glass-border)';
-            btnShowBookip.style.background = 'transparent';
-            btnShowBookip.style.color = 'var(--text-secondary)';
+            btnShowBookip.style.cssText = 'border: 1px solid var(--glass-border); background: transparent; color: var(--text-secondary); width: 100%;';
 
+            // Troca o conteúdo principal
             areaContrato.classList.remove('hidden');
             areaBookip.classList.add('hidden');
+
+            // --- CORREÇÃO: FORÇA ESCONDER A BUSCA E O HISTÓRICO DO BOOKIP ---
+            // Isso impede que eles vazem para a tela de contrato
+            const searchContainer = document.getElementById('bookipSearchContainer');
+            const historyContent = document.getElementById('historyBookipContent');
+            if(searchContainer) searchContainer.classList.add('hidden');
+            if(historyContent) historyContent.classList.add('hidden');
         });
 
+        // 2. CLIQUE NA ABA GARANTIA (BOOKIP)
         btnShowBookip.addEventListener('click', () => {
+            // Estilo dos botões
             btnShowBookip.classList.add('active');
-            btnShowBookip.style.border = '1px solid var(--primary-color)';
-            btnShowBookip.style.background = 'rgba(var(--primary-color-rgb), 0.2)';
-            btnShowBookip.style.color = '#fff';
+            btnShowBookip.style.cssText = 'border: 1px solid var(--primary-color); background: rgba(var(--primary-color-rgb), 0.2); color: #fff; width: 100%;';
 
             btnShowContrato.classList.remove('active');
-            btnShowContrato.style.border = '1px solid var(--glass-border)';
-            btnShowContrato.style.background = 'transparent';
-            btnShowContrato.style.color = 'var(--text-secondary)';
+            btnShowContrato.style.cssText = 'border: 1px solid var(--glass-border); background: transparent; color: var(--text-secondary); width: 100%;';
 
+            // Troca o conteúdo principal
             areaBookip.classList.remove('hidden');
             areaContrato.classList.add('hidden');
+
+            // --- CORREÇÃO: SE ESTAVA NO MODO HISTÓRICO, MOSTRA A BUSCA DE VOLTA ---
+            const toggle = document.getElementById('bookipModeToggle');
+            const searchContainer = document.getElementById('bookipSearchContainer');
+            const historyContent = document.getElementById('historyBookipContent');
+            
+            // Só mostra a busca se o botão "Histórico" estiver ativado
+            if (toggle && toggle.checked) {
+                if(searchContainer) searchContainer.classList.remove('hidden');
+                if(historyContent) historyContent.classList.remove('hidden');
+            }
         });
     }
+
 
     // --- TOGGLE NOVO / HISTÓRICO DO BOOKIP ---
         // --- TOGGLE NOVO / HISTÓRICO DO BOOKIP (CORRIGIDO) ---
@@ -4478,27 +4519,43 @@ function loadBookipHistory() {
     }
 
     // --- LÓGICA DE BUSCA (FILTRA NA MEMÓRIA) ---
+        // --- LÓGICA DE BUSCA (ATUALIZADA: C/ CELULAR E EMAIL) ---
     if (searchInput) {
-        // Clone para limpar listeners antigos
+        // Clone para limpar listeners antigos e evitar duplicação
         const newSearchInput = searchInput.cloneNode(true);
         searchInput.parentNode.replaceChild(newSearchInput, searchInput);
         
         newSearchInput.addEventListener('input', (e) => {
-            const termo = e.target.value.toLowerCase();
+            const termo = e.target.value.toLowerCase().trim();
             
-            // Filtra a lista completa
+            // Filtra a lista completa (Memória)
             listaFiltradaCache = listaCompletaCache.filter(item => {
+                // 1. Pega os dados existentes
                 const nDoc = (item.docNumber || '').toLowerCase();
                 const nome = (item.nome || '').toLowerCase();
                 const cpf = (item.cpf || '').toLowerCase();
-                return nDoc.includes(termo) || nome.includes(termo) || cpf.includes(termo);
+                
+                // 2. NOVOS CAMPOS ADICIONADOS (Telefone e Email)
+                // Removemos espaços do telefone para facilitar a busca (ex: achar 9988 dentro de 9 988)
+                const telLimpo = (item.tel || '').toLowerCase().replace(/\s/g, ''); 
+                const telOriginal = (item.tel || '').toLowerCase();
+                const email = (item.email || '').toLowerCase();
+
+                // 3. A Lógica Inteligente (OU || OU || OU)
+                return nDoc.includes(termo) || 
+                       nome.includes(termo) || 
+                       cpf.includes(termo) || 
+                       telOriginal.includes(termo) || 
+                       telLimpo.includes(termo) || // Acha mesmo se digitar tudo junto
+                       email.includes(termo);
             });
 
-            // Reseta a visualização para 50 itens
+            // Reseta a visualização e desenha de novo
             itensVisiveis = 50;
             renderizarLote();
         });
     }
+
 }
 
 
@@ -5032,30 +5089,29 @@ async function gerarPdfDoHistorico(dados, botao) {
         // Pequeno delay para garantir que imagens carregaram
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-        const opt = {
-            margin:       [10, 10, 10, 10], // Margens seguras (mm)
-            filename:     `Recibo_${(dados.nome || 'Cliente').split(' ')[0]}_${docNum}.pdf`,
+                const opt = {
+            margin:       [10, 10, 10, 10],
+            // AQUI ESTÁ O NOVO NOME DO ARQUIVO:
+            filename:     `DocGarantia&comprovante_${(dados.nome || 'Cliente').split(' ')[0]}_${docNum}.pdf`,
             image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { 
-                scale: 2, // Tenta qualidade boa
-                useCORS: true, 
-                scrollY: 0,
-                backgroundColor: '#ffffff' // Força fundo branco no canvas
-            },
+            html2canvas:  { scale: 2, useCORS: true, scrollY: 0, backgroundColor: '#ffffff' },
             jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
         };
+
 
         // GERAÇÃO
         const blob = await html2pdf().set(opt).from(reciboDiv).output('blob');
 
-        // 6. Compartilha
+          // 6. Compartilha
         const file = new File([blob], opt.filename, { type: 'application/pdf' });
         
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
             await navigator.share({
                 files: [file],
-                title: 'Recibo de Garantia',
-                text: `Olá ${dados.nome}, segue seu recibo.`
+                // AQUI: Mudei o Título (Assunto do E-mail)
+                title: 'Documento Workcell Tecnologia',
+                // AQUI: Voltei a puxar sua mensagem configurada no Admin
+                text: `Olá ${dados.nome}, ${receiptSettings.emailMessage || 'segue em anexo seu documento.'}`
             });
         } else {
             const link = document.createElement('a');
@@ -5064,6 +5120,7 @@ async function gerarPdfDoHistorico(dados, botao) {
             link.click();
             showCustomModal({ message: "PDF Baixado!" });
         }
+
 
     } catch (e) {
         console.error(e);
@@ -5572,7 +5629,88 @@ document.addEventListener('click', function(e) {
     }
 });
 
+// ============================================================
+// LÓGICA DOS ATALHOS (NOVO / SEMINOVO)
+// ============================================================
+// ============================================================
+// LÓGICA DOS ATALHOS (INTELIGENTE E EXCLUSIVA)
+// ============================================================
+const setupProductTags = () => {
+    const btnNovo = document.getElementById('tagAddNovo');
+    const btnSemi = document.getElementById('tagAddSeminovo');
+    const inputNome = document.getElementById('bookipProdNomeTemp');
 
+    const suffixNovo = ' - Novo / Lacrado';
+    const suffixSemi = ' - Seminovo';
+
+    // Função que atualiza as cores dos botões
+    const updateVisuals = () => {
+        const val = inputNome.value;
+        
+        // Se tiver o texto Novo, acende o botão Novo
+        if (val.includes(suffixNovo)) {
+            btnNovo.classList.add('active');
+            btnNovo.innerHTML = '<i class="bi bi-check"></i> Novo / Lacrado'; // Adiciona check
+        } else {
+            btnNovo.classList.remove('active');
+            btnNovo.innerHTML = '+ Novo / Lacrado';
+        }
+
+        // Se tiver o texto Seminovo, acende o botão Seminovo
+        if (val.includes(suffixSemi)) {
+            btnSemi.classList.add('active');
+            btnSemi.innerHTML = '<i class="bi bi-check"></i> Seminovo'; // Adiciona check
+        } else {
+            btnSemi.classList.remove('active');
+            btnSemi.innerHTML = '+ Seminovo';
+        }
+    };
+
+    // Ação ao clicar no NOVO
+    if (btnNovo && inputNome) {
+        btnNovo.addEventListener('click', () => {
+            let text = inputNome.value;
+            // 1. Remove SEMINOVO se existir (limpa o rival)
+            text = text.replace(suffixSemi, '');
+            
+            // 2. Se já tem NOVO, remove (desmarca). Se não tem, adiciona.
+            if (text.includes(suffixNovo)) {
+                text = text.replace(suffixNovo, '');
+            } else {
+                text += suffixNovo;
+            }
+            
+            inputNome.value = text;
+            updateVisuals();
+        });
+    }
+
+    // Ação ao clicar no SEMINOVO
+    if (btnSemi && inputNome) {
+        btnSemi.addEventListener('click', () => {
+            let text = inputNome.value;
+            // 1. Remove NOVO se existir (limpa o rival)
+            text = text.replace(suffixNovo, '');
+
+            // 2. Se já tem SEMINOVO, remove (desmarca). Se não tem, adiciona.
+            if (text.includes(suffixSemi)) {
+                text = text.replace(suffixSemi, '');
+            } else {
+                text += suffixSemi;
+            }
+
+            inputNome.value = text;
+            updateVisuals();
+        });
+    }
+    
+    // Ouve se o usuário digitar manualmente para atualizar os botões
+    if(inputNome) {
+        inputNome.addEventListener('input', updateVisuals);
+    }
+};
+// Inicia a função
+setupProductTags();
 
 
         });

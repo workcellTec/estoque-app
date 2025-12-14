@@ -1019,7 +1019,7 @@
             <div class="toggle-switch">
                 <input type="checkbox" id="bookipModeToggle">
                 <label for="bookipModeToggle">
-                    <span><i class="bi bi-plus-lg"></i> Novo Recibo</span>
+                    <span><i class="bi bi-plus-lg"></i> Nova Garantia</span>
                     <span><i class="bi bi-clock-history"></i> Histórico</span>
                 </label>
             </div>
@@ -1070,9 +1070,18 @@
                         </div>
 
                         <div class="row">
-                            <div class="col-md-12 mb-2">
+                                                                                   <div class="col-md-12 mb-2">
                                 <input type="text" class="form-control form-control-sm" id="bookipProdNomeTemp" placeholder="Nome do produto aparecerá aqui">
+                                <div class="d-flex gap-2 mt-2 ps-1">
+                                    <span id="tagAddNovo" class="badge rounded-pill tag-option">
+                                        + Novo / Lacrado
+                                    </span>
+                                    <span id="tagAddSeminovo" class="badge rounded-pill tag-option">
+                                        + Seminovo
+                                    </span>
+                                </div>
                             </div>
+
                             <div class="col-4 mb-2">
                                 <input type="number" class="form-control form-control-sm" id="bookipProdQtdTemp" value="1" placeholder="Qtd">
                             </div>
