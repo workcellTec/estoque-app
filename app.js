@@ -4244,7 +4244,12 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                     <div class="bk-company-info"><div class="bk-title-main">Comprovante de</div><div class="bk-title-sub">compra / Garantia</div>${headerHtml}</div>
                 </div>
                 <div class="bk-info-grid">
-                    <div class="bk-col-client"><span class="bk-label-bold">Para</span><div class="bk-text"><strong>${dados.nome}</strong><br><strong>CPF:</strong> ${dados.cpf}<br><strong>Número:</strong> ${dados.tel}<br>${dados.end}</div></div>
+
+
+<div class="bk-col-client"><span class="bk-label-bold">Para</span><div class="bk-text"><strong>${dados.nome}</strong><br><strong>CPF:</strong> ${dados.cpf}<br><strong>Número:</strong> ${dados.tel}<br><strong>Endereço:</strong> ${dados.end}</div></div>
+
+
+
                     <div class="bk-col-dates">
                         <div class="bk-date-row"><span class="bk-date-label">Recibo #</span><span>${dados.id ? dados.id.substring(1,6).toUpperCase() : 'NOVO'}</span></div>
                         <div class="bk-date-row"><span class="bk-date-label">Data</span><span>${dataCompra}</span></div>
@@ -4650,7 +4655,12 @@ function loadBookipHistory() {
                     <div class="bk-company-info"><div class="bk-title-main">Comprovante de</div><div class="bk-title-sub">Compra &  Garantia</div>${headerHtml}</div>
                 </div>
                 <div class="bk-info-grid">
-                    <div class="bk-col-client"><span class="bk-label-bold">Para</span><div class="bk-text"><strong>${dados.nome}</strong><br><strong>CPF:</strong> ${dados.cpf}<br><strong>Número:</strong> ${dados.tel}<br>${dados.end}</div></div>
+
+
+<div class="bk-col-client" style="flex:2;"><strong>Para</strong><br>${dados.nome}<br><strong>CPF:</strong> ${dados.cpf || ''}<br><strong>Número:</strong> ${dados.tel || ''}<br><strong>Endereço:</strong> ${dados.end || ''}</div>
+
+
+</div>
                     <div class="bk-col-dates">
                         <div class="bk-date-row"><span class="bk-date-label">Doc Nº</span><span style="font-size: 11pt; font-weight: bold;">${numeroDoc}</span></div>
                         <div class="bk-date-row"><span class="bk-date-label">Data</span><span>${dataCompra}</span></div>
@@ -4974,7 +4984,7 @@ async function gerarPdfDoHistorico(dados, botao) {
             <div class="bk-company-info"><div class="bk-title-main">Comprovante de</div><div class="bk-title-sub">compra / Garantia</div>${headerHtml}</div>
         </div>
 
-        <div class="bk-info-grid" style="display:flex; justify-content:space-between; margin:20px 0; border-top:1px solid #ccc; padding-top:15px;"><div class="bk-col-client" style="flex:2;"><strong>Para</strong><br>${dados.nome}<br><strong>CPF:</strong> ${dados.cpf || ''}<br><strong>Número:</strong> ${dados.tel || ''}<br>${dados.end || ''}</div><div class="bk-col-dates" style="flex:1; text-align:right;"><div><strong>Doc Nº:</strong> ${docNum}</div><div><strong>Data:</strong> ${dataCompra}</div><div><strong>Garantia:</strong> ${txtGarantia}</div><div><strong>Vence:</strong> ${dataVencimento}</div></div></div>
+        <div class="bk-info-grid" style="display:flex; justify-content:space-between; margin:20px 0; border-top:1px solid #ccc; padding-top:15px;"><div class="bk-col-client" style="flex:2;"><strong>Para</strong><br>${dados.nome}<br><strong>CPF:</strong> ${dados.cpf || ''}<br><strong>Número:</strong> ${dados.tel || ''}<br><strong>Endereço:</strong> ${dados.end || ''}</div><div class="bk-col-dates" style="flex:1; text-align:right;"><div><strong>Doc Nº:</strong> ${docNum}</div><div><strong>Data:</strong> ${dataCompra}</div><div><strong>Garantia:</strong> ${txtGarantia}</div><div><strong>Vence:</strong> ${dataVencimento}</div></div></div>
         
         <table class="bk-table" style="width:100%; border-collapse:collapse; margin-bottom:5px;">
             <thead>
