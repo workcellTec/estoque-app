@@ -4277,6 +4277,10 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
 
 // CARREGAR HISTÓRICO OTIMIZADO (COM PAGINAÇÃO "CARREGAR MAIS")
 // ============================================================
+// ============================================================
+// ============================================================
+// CARREGAR HISTÓRICO (ORDENADO POR DATA DA GARANTIA)
+// ============================================================
 function loadBookipHistory() {
     if (!db || !isAuthReady) return;
     
@@ -4285,21 +4289,32 @@ function loadBookipHistory() {
     const searchInput = document.getElementById('bookipHistorySearch');
     
     // Variáveis de Controle da Paginação
-    let listaCompletaCache = []; // Guarda todos os 17.000 na memória (leve)
-    let listaFiltradaCache = []; // Guarda o resultado da busca
-    let itensVisiveis = 50;      // Começa mostrando 50
-    const incremento = 50;       // Carrega +50 por vez
+    let listaCompletaCache = []; 
+    let listaFiltradaCache = []; 
+    let itensVisiveis = 50;      
+    const incremento = 50;       
 
-    container.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div><p class="mt-2 text-secondary">Carregando histórico...</p></div>';
+    container.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div><p class="mt-2 text-secondary">Organizando por data...</p></div>';
 
     if (bookipListener) off(bookipsRef, 'value', bookipListener);
 
     bookipListener = onValue(bookipsRef, (snapshot) => {
         if (snapshot.exists()) {
             const data = snapshot.val();
-            // Transforma em lista e ordena por data (Mais recente primeiro)
+            // Transforma em lista
             listaCompletaCache = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-            listaCompletaCache.sort((a, b) => new Date(b.criadoEm) - new Date(a.criadoEm));
+            
+            // --- A MÁGICA DA ORDENAÇÃO (DATA DA GARANTIA) 📅 ---
+            listaCompletaCache.sort((a, b) => {
+                // Pega a data da venda (garantia) ou usa a de criação se não tiver
+                const dataA = a.dataVenda || (a.criadoEm ? a.criadoEm.split('T')[0] : '0000-00-00');
+                const dataB = b.dataVenda || (b.criadoEm ? b.criadoEm.split('T')[0] : '0000-00-00');
+                
+                // Compara as datas (Decrescente: Mais novo no topo)
+                if (dataB > dataA) return 1;
+                if (dataB < dataA) return -1;
+                return 0;
+            });
             
             // Inicializa a lista filtrada com tudo
             listaFiltradaCache = listaCompletaCache;
@@ -4314,7 +4329,6 @@ function loadBookipHistory() {
 
     // --- FUNÇÃO QUE DESENHA NA TELA (LOTE POR LOTE) ---
     function renderizarLote() {
-        // Pega apenas a fatia que deve ser mostrada (Ex: 0 a 50)
         const fatia = listaFiltradaCache.slice(0, itensVisiveis);
         const temMais = listaFiltradaCache.length > itensVisiveis;
 
@@ -4378,20 +4392,18 @@ function loadBookipHistory() {
 
         container.innerHTML = html;
 
-        // --- REATIVA OS EVENTOS DOS BOTÕES ---
+        // Reativa os botões
         reativarListeners();
         
-        // Listener do botão "Carregar Mais"
         const btnMore = document.getElementById('btnLoadMoreBookip');
         if (btnMore) {
             btnMore.addEventListener('click', () => {
-                itensVisiveis += incremento; // Aumenta o limite
-                renderizarLote(); // Redesenha com mais itens
+                itensVisiveis += incremento; 
+                renderizarLote(); 
             });
         }
     }
 
-    // --- FUNÇÃO PARA REATIVAR OS BOTÕES DE AÇÃO ---
     function reativarListeners() {
         container.querySelectorAll('.edit-bookip-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -4433,46 +4445,35 @@ function loadBookipHistory() {
         });
     }
 
-    // --- LÓGICA DE BUSCA (FILTRA NA MEMÓRIA) ---
-        // --- LÓGICA DE BUSCA (ATUALIZADA: C/ CELULAR E EMAIL) ---
     if (searchInput) {
-        // Clone para limpar listeners antigos e evitar duplicação
+        // Clone para limpar listeners antigos
         const newSearchInput = searchInput.cloneNode(true);
         searchInput.parentNode.replaceChild(newSearchInput, searchInput);
         
         newSearchInput.addEventListener('input', (e) => {
             const termo = e.target.value.toLowerCase().trim();
             
-            // Filtra a lista completa (Memória)
             listaFiltradaCache = listaCompletaCache.filter(item => {
-                // 1. Pega os dados existentes
                 const nDoc = (item.docNumber || '').toLowerCase();
                 const nome = (item.nome || '').toLowerCase();
                 const cpf = (item.cpf || '').toLowerCase();
-                
-                // 2. NOVOS CAMPOS ADICIONADOS (Telefone e Email)
-                // Removemos espaços do telefone para facilitar a busca (ex: achar 9988 dentro de 9 988)
                 const telLimpo = (item.tel || '').toLowerCase().replace(/\s/g, ''); 
                 const telOriginal = (item.tel || '').toLowerCase();
                 const email = (item.email || '').toLowerCase();
 
-                // 3. A Lógica Inteligente (OU || OU || OU)
                 return nDoc.includes(termo) || 
                        nome.includes(termo) || 
                        cpf.includes(termo) || 
                        telOriginal.includes(termo) || 
-                       telLimpo.includes(termo) || // Acha mesmo se digitar tudo junto
+                       telLimpo.includes(termo) || 
                        email.includes(termo);
             });
 
-            // Reseta a visualização e desenha de novo
             itensVisiveis = 50;
             renderizarLote();
         });
     }
-
 }
-
 
     // --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO ---
     function carregarDadosParaEdicao(item) {
