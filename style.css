@@ -1811,6 +1811,7 @@ body[data-color="orange"] {
     justify-content: center;
     gap: 12px;
 }
+
 /* === BOTÕES DA ABA DOCUMENTOS === */
 #documentsHome .documents-buttons {
     width: 100%;
@@ -1823,3 +1824,84 @@ body[data-color="orange"] {
     width: 100% !important;
     max-width: 320px !important; /* MESMO DA HOME */
 }
+
+/* =========================================
+   ESTILO DA LISTA DE PRODUTOS (BOOKIP)
+   ========================================= */
+.bookip-item-card {
+    background: rgba(255, 255, 255, 0.03); /* Fundo sutil */
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 12px 15px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+
+.bookip-item-card:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Lado Esquerdo: Texto */
+.bk-info {
+    flex: 1; /* Ocupa o espaço que sobrar */
+    text-align: left;
+    padding-right: 10px;
+}
+
+.bk-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text-color);
+    margin-bottom: 2px;
+    line-height: 1.2;
+}
+
+.bk-details {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+/* Lado Direito: Preço e Botões */
+.bk-actions-area {
+    display: flex;
+    align-items: center;
+    gap: 15px; /* Espaço entre preço e botões */
+}
+
+.bk-price {
+    font-weight: 800;
+    color: var(--text-success); /* Verde */
+    font-size: 1rem;
+    white-space: nowrap;
+}
+
+.bk-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+/* Botões Redondos (Lápis e Lixo) */
+.btn-icon-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.2s;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.btn-icon-circle:hover { transform: scale(1.1); }
+
+.btn-edit-c { color: #ffc107; border: 1px solid rgba(255, 193, 7, 0.3); } /* Amarelo */
+.btn-edit-c:hover { background: rgba(255, 193, 7, 0.1); }
+
+.btn-del-c { color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); } /* Vermelho */
+.btn-del-c:hover { background: rgba(239, 68, 68, 0.1); }

@@ -23,6 +23,9 @@ let bookipCartList = [];
 // --- CORREÇÃO: ADICIONE ESTA LINHA ---
 let bookipListener = null; 
 
+// ADICIONE ESTA LINHA NOVA:
+let editingItemIndex = null; // Controla qual item está sendo editado (null = nenhum)
+
 
 
 // Adicione esta variável global
@@ -4109,12 +4112,19 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
         });
     }
 
-    // 2. Lógica do Botão "Adicionar à Lista" (Não existia antes)
+    // ============================================================
+    // ============================================================
+    // 2. LÓGICA DE ADICIONAR / EDITAR PRODUTO NA LISTA (FINAL)
+    // ============================================================
+    
+    // Variável para controlar a edição (null = criando novo)
+    // Nota: editingItemIndex já foi declarado lá no topo, então usamos ele direto.
+
     if (btnAddLista) {
         btnAddLista.addEventListener('click', (e) => {
-            e.preventDefault(); // Evita recarregar página
+            e.preventDefault(); 
 
-            // Pega os valores dos inputs pequenos
+            // Pega os valores dos inputs
             const nome = document.getElementById('bookipProdNomeTemp').value;
             const qtd = parseInt(document.getElementById('bookipProdQtdTemp').value) || 1;
             const valor = parseFloat(document.getElementById('bookipProdValorTemp').value) || 0;
@@ -4126,16 +4136,25 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                 return;
             }
 
-            // Adiciona ao carrinho global (bookipCartList)
-            bookipCartList.push({
-                nome: nome,
-                qtd: qtd,
-                valor: valor,
-                cor: cor,
-                obs: obs
-            });
+            const itemObjeto = { nome, qtd, valor, cor, obs };
 
-            // Limpa os campos para o próximo
+            if (editingItemIndex !== null) {
+                // --- MODO EDIÇÃO: Atualiza o existente ---
+                bookipCartList[editingItemIndex] = itemObjeto;
+                editingItemIndex = null; // Sai do modo edição
+                
+                // Volta o botão para "Adicionar" (Azul)
+                btnAddLista.innerHTML = '<i class="bi bi-plus-lg"></i> Adicionar o Produto';
+                btnAddLista.classList.remove('btn-warning');
+                btnAddLista.classList.add('btn-primary');
+                
+                showCustomModal({ message: "Item atualizado!" });
+            } else {
+                // --- MODO NOVO: Adiciona ao final ---
+                bookipCartList.push(itemObjeto);
+            }
+
+            // Limpa os campos
             inputBuscaBookip.value = '';
             document.getElementById('bookipProdNomeTemp').value = '';
             document.getElementById('bookipProdValorTemp').value = '';
@@ -4143,12 +4162,11 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             document.getElementById('bookipProdObsTemp').value = '';
             document.getElementById('bookipProdQtdTemp').value = '1';
 
-            // Atualiza o visual da lista
             atualizarListaVisualBookip();
         });
     }
 
-    // 3. Função para Atualizar a Lista Visual na Tela (CORRIGIDA - MODO CLARO)
+    // 3. Função para Atualizar a Lista Visual (USANDO SEU CSS NOVO)
     function atualizarListaVisualBookip() {
         if (!listaVisual) return;
         
@@ -4156,26 +4174,45 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
         let total = 0;
 
         if (bookipCartList.length === 0) {
-            // Ajustei aqui também para usar a cor do texto padrão
-            listaVisual.innerHTML = '<li class="list-group-item text-center small bg-transparent" style="color: var(--text-secondary);">Nenhum item adicionado.</li>';
+            listaVisual.innerHTML = `
+                <div class="text-center p-4" style="opacity: 0.6;">
+                    <i class="bi bi-cart-x" style="font-size: 2rem;"></i>
+                    <p class="mb-0 small text-secondary">Lista vazia.</p>
+                </div>`;
         } else {
             bookipCartList.forEach((item, index) => {
                 const subtotal = item.valor * item.qtd;
                 total += subtotal;
 
-                const li = document.createElement('li');
-                // REMOVI O 'text-light' e adicionei o style com var(--text-color)
-                li.className = 'list-group-item d-flex justify-content-between align-items-center bg-transparent border-secondary border-opacity-25';
-                li.style.color = 'var(--text-color)'; 
+                // Cria o elemento usando as classes do CSS que você acabou de colar
+                const li = document.createElement('div');
+                li.className = 'bookip-item-card'; 
                 
+                // Formatação dos detalhes
+                let detalhes = [];
+                if(item.qtd > 1) detalhes.push(`x${item.qtd}`);
+                if(item.cor) detalhes.push(item.cor);
+                if(item.obs) detalhes.push(item.obs);
+                const detalhesTexto = detalhes.join(' | ');
+
                 li.innerHTML = `
-                    <div>
-                        <div class="fw-bold">${item.nome} <small style="color: var(--text-secondary);">x${item.qtd}</small></div>
-                        <div class="small" style="color: var(--text-secondary);">${item.cor} ${item.obs}</div>
+                    <div class="bk-info">
+                        <div class="bk-title">${item.nome}</div>
+                        <div class="bk-details">${detalhesTexto}</div>
                     </div>
-                    <div class="text-end">
-                        <div class="fw-bold text-success">R$ ${subtotal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
-                        <button class="btn btn-sm btn-link text-danger p-0 text-decoration-none remove-item-bookip" data-index="${index}" style="font-size: 0.8rem;">Remover</button>
+
+                    <div class="bk-actions-area">
+                        <div class="bk-price">R$ ${subtotal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
+                        
+                        <div class="bk-buttons">
+                            <button class="btn-icon-circle btn-edit-c edit-item-bookip" data-index="${index}" title="Editar">
+                                <i class="bi bi-pencil-fill" style="font-size: 0.8rem;"></i>
+                            </button>
+
+                            <button class="btn-icon-circle btn-del-c remove-item-bookip" data-index="${index}" title="Remover">
+                                <i class="bi bi-trash-fill" style="font-size: 0.8rem;"></i>
+                            </button>
+                        </div>
                     </div>
                 `;
                 listaVisual.appendChild(li);
@@ -4186,16 +4223,56 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             totalDisplay.innerText = total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         }
 
+        // --- ATIVAR BOTÕES ---
+
+        // 1. Remover
         document.querySelectorAll('.remove-item-bookip').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const idx = parseInt(e.target.dataset.index);
+                const idx = parseInt(e.currentTarget.dataset.index);
+                // Se estava editando esse, cancela a edição
+                if (editingItemIndex === idx) {
+                    editingItemIndex = null;
+                    btnAddLista.innerHTML = '<i class="bi bi-plus-lg"></i> Adicionar o Produto';
+                    btnAddLista.classList.remove('btn-warning');
+                    btnAddLista.classList.add('btn-primary');
+                    document.getElementById('bookipProdNomeTemp').value = '';
+                    document.getElementById('bookipProdValorTemp').value = '';
+                }
+                
                 bookipCartList.splice(idx, 1);
                 atualizarListaVisualBookip();
             });
         });
+
+        // 2. Editar (A Lógica do Lápis)
+        document.querySelectorAll('.edit-item-bookip').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = parseInt(e.currentTarget.dataset.index);
+                const item = bookipCartList[idx];
+
+                // Devolve os dados para os campos de cima
+                document.getElementById('bookipProdNomeTemp').value = item.nome;
+                document.getElementById('bookipProdQtdTemp').value = item.qtd;
+                document.getElementById('bookipProdValorTemp').value = item.valor;
+                document.getElementById('bookipProdCorTemp').value = item.cor;
+                document.getElementById('bookipProdObsTemp').value = item.obs;
+
+                editingItemIndex = idx; // Marca qual estamos mexendo
+
+                // Muda o botão principal para "Salvar Alteração" (Amarelo)
+                btnAddLista.innerHTML = '<i class="bi bi-check-lg"></i> Salvar Alteração';
+                btnAddLista.classList.remove('btn-primary');
+                btnAddLista.classList.add('btn-warning');
+
+                // Rola a tela para cima suavemente
+                document.getElementById('bookipProdNomeTemp').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
+        });
     }
 
+
     // ============================================================
+
 
 // CARREGAR HISTÓRICO OTIMIZADO (COM PAGINAÇÃO "CARREGAR MAIS")
 // ============================================================
