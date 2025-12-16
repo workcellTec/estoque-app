@@ -6117,8 +6117,11 @@ window.processarTextoZap = function() {
     let tel = extrair('Whatsapp') || extrair('Telefone') || extrair('Celular');
     tel = tel.replace(/\D/g, ''); // Só números
 
-    // Email
-    let email = extrair('E-mail/G-mail') || extrair('E-mail') || extrair('Email');
+    // --- BUSCA INTELIGENTE DE E-MAIL (Detecta @hotmail, @outlook, @tudo) ---
+    // Procura qualquer padrão "texto@texto.com" no texto inteiro
+    const regexEmail = /[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/;
+    const matchEmail = texto.match(regexEmail);
+    let email = matchEmail ? matchEmail[0] : '';
 
     // Endereço (O Grande Truque: Junta tudo)
     const rua = extrair('Rua');
