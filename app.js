@@ -5820,8 +5820,10 @@ async function gerarPdfDoHistorico(dados, botao) {
     const tituloCompartilhamento = "Documento Workcell Tecnologia";
 
     // --- GERAÇÃO HTML ---
-    const containerTemp = document.createElement('div');
-    containerTemp.style.cssText = `position: absolute; top: 0; left: 0; width: 794px; background: white; z-index: 100; margin: 0; padding: 0;`;
+ const containerTemp = document.createElement('div');
+// MUDANÇA: 'left: -9999px' joga para fora da tela e 'position: fixed' evita esticar o site
+containerTemp.style.cssText = `position: fixed; top: 0; left: -9999px; width: 794px; background: white; z-index: -100; margin: 0; padding: 0;`;
+
     
     if (typeof getReciboHTML === 'function') {
         containerTemp.innerHTML = getReciboHTML(dados);
