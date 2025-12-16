@@ -4595,11 +4595,41 @@ if (btnSave) {
             const dataManualInput = document.getElementById('bookipDataManual').value;
             const dataFinalVenda = dataManualInput ? dataManualInput : new Date().toISOString().split('T')[0];
 
-            // Gera Número Doc
+            // ---------------------------------------------------------
+            // CORREÇÃO: GERAÇÃO DO NÚMERO DOC (EVITA DUPLICIDADE)
+            // ---------------------------------------------------------
             const snapshot = await get(ref(db, 'bookips'));
-            let count = 0;
-            if (snapshot.exists()) count = Object.keys(snapshot.val()).length;
-            const docNumberFormatted = String(count + 1).padStart(3, '0');
+            let docNumberFormatted = '001';
+
+            if (currentEditingBookipId) {
+                // MODO EDIÇÃO: Tenta manter o número original
+                if (snapshot.exists()) {
+                    const todos = snapshot.val();
+                    const itemAtual = todos[currentEditingBookipId];
+                    if (itemAtual && itemAtual.docNumber) {
+                        docNumberFormatted = itemAtual.docNumber;
+                    }
+                }
+            } else {
+                // MODO NOVO: Procura o MAIOR número existente e soma +1
+                let maiorNumero = 0;
+                
+                if (snapshot.exists()) {
+                    const todos = snapshot.val();
+                    Object.values(todos).forEach(item => {
+                        // Converte o texto "005" para número 5
+                        const num = parseInt(item.docNumber || '0', 10);
+                        if (!isNaN(num) && num > maiorNumero) {
+                            maiorNumero = num;
+                        }
+                    });
+                }
+                
+                // O próximo será o Maior + 1 (Ex: Se o maior for 8, o novo é 009)
+                docNumberFormatted = String(maiorNumero + 1).padStart(3, '0');
+            }
+            // ---------------------------------------------------------
+
 
             // Objeto Final
             const dados = {
