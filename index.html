@@ -1200,9 +1200,33 @@ do que você precisa??</h2>
                 </div>
             </div>
 
-            <div id="bookipSearchContainer" class="mb-2 w-100 hidden">
-                <input type="text" class="form-control" id="bookipHistorySearch" placeholder="🔍 Buscar no histórico (Nome, CPF...)" style="background: var(--input-bg); color: var(--text-color);">
-            </div>
+<div id="bookipSearchContainer" class="mb-2 w-100 hidden">
+    <div class="input-group position-relative" 
+         style="background: rgba(0, 0, 0, 0.25); /* Fundo vidro escuro */
+                backdrop-filter: blur(5px);       /* Desfoque leve atrás */
+                -webkit-backdrop-filter: blur(5px);
+                border: 1px solid rgba(255, 255, 255, 0.15); /* Borda fina clara */
+                border-radius: 12px;              /* Cantos arredondados */
+                overflow: hidden;"> 
+        
+        <span class="input-group-text bg-transparent border-0 text-secondary ps-3">
+            <i class="bi bi-search"></i>
+        </span>
+        
+        <input type="text" class="form-control border-0 shadow-none" 
+               id="bookipHistorySearch" 
+               placeholder="Nome, CPF ou Doc..." 
+               style="background: transparent; color: var(--text-color); height: 45px;">
+        
+        <span class="input-group-text bg-transparent border-0 pe-3" id="calendarIconWrapper" style="cursor: pointer;">
+            <i class="bi bi-calendar-event" id="calendarIconDisplay" style="color: var(--text-secondary); font-size: 1.1rem;"></i>
+        </span>
+
+        <input type="date" id="bookipHistoryDate" 
+               style="position: absolute; right: 0; top: 0; bottom: 0; width: 50px; opacity: 0; z-index: 10; cursor: pointer;">
+    </div>
+</div>
+
 
             <div id="historyBookipContent" class="hidden w-100"></div>
         </div>

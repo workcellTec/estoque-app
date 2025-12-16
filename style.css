@@ -1913,3 +1913,41 @@ body[data-color="orange"] {
 .btn-edit-c:hover { background: rgba(255, 193, 7, 0.1); }
 .btn-del-c { color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
 .btn-del-c:hover { background: rgba(239, 68, 68, 0.1); }
+/* ============================================================
+   ESTILO DA BARRA DE BUSCA "GLASS" (VIDRO UNIFICADO)
+   ============================================================ */
+
+/* 1. O Container (A "Cápsula" de Vidro) */
+#bookipSearchContainer .input-group {
+    background: rgba(0, 0, 0, 0.25) !important; /* Fundo escuro transparente */
+    backdrop-filter: blur(10px) !important;      /* Desfoque de vidro */
+    -webkit-backdrop-filter: blur(10px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important; /* Borda fina */
+    border-radius: 15px !important;              /* Bem redondo */
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    overflow: hidden; /* Garante que nada saia das bordas redondas */
+}
+
+/* 2. O Campo de Texto (Totalmente Transparente) */
+#bookipHistorySearch {
+    background-color: transparent !important; /* O TRUQUE: Fundo invisível */
+    border: none !important;                  /* Sem bordas cortando */
+    color: var(--text-color) !important;      /* Texto na cor do tema */
+    box-shadow: none !important;              /* Remove brilho azul ao clicar */
+    padding-left: 0 !important;               /* Cola na lupa */
+}
+
+/* 3. A Lupa e o Calendário (Ícones Transparentes) */
+#bookipSearchContainer .input-group-text {
+    background-color: transparent !important; /* Fundo invisível */
+    border: none !important;
+    color: rgba(255, 255, 255, 0.5) !important; /* Cor suave para os ícones */
+    padding-right: 10px;
+}
+
+/* Quando clica para digitar, a barra inteira brilha um pouco */
+#bookipSearchContainer .input-group:focus-within {
+    border-color: var(--primary-color) !important;
+    background: rgba(0, 0, 0, 0.35) !important;
+    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+}

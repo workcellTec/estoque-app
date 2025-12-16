@@ -4273,79 +4273,154 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
 
     // ============================================================
 
-
-
-// CARREGAR HISTÓRICO OTIMIZADO (COM PAGINAÇÃO "CARREGAR MAIS")
-// ============================================================
-// ============================================================
-// ============================================================
-// CARREGAR HISTÓRICO (ORDENADO POR DATA DA GARANTIA)
+// CARREGAR HISTÓRICO (VERSÃO MASTER: TUDO INCLUSO 🏆)
 // ============================================================
 function loadBookipHistory() {
     if (!db || !isAuthReady) return;
     
     const bookipsRef = ref(db, 'bookips');
     const container = document.getElementById('historyBookipContent');
-    const searchInput = document.getElementById('bookipHistorySearch');
     
-    // Variáveis de Controle da Paginação
+    // Variáveis de Controle
     let listaCompletaCache = []; 
     let listaFiltradaCache = []; 
     let itensVisiveis = 50;      
     const incremento = 50;       
 
-    container.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div><p class="mt-2 text-secondary">Organizando por data...</p></div>';
+    container.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div><p class="mt-2 text-secondary">Carregando histórico...</p></div>';
 
     if (bookipListener) off(bookipsRef, 'value', bookipListener);
 
     bookipListener = onValue(bookipsRef, (snapshot) => {
         if (snapshot.exists()) {
             const data = snapshot.val();
-            // Transforma em lista
+            // 1. Transforma em lista
             listaCompletaCache = Object.keys(data).map(key => ({ id: key, ...data[key] }));
             
-            // --- A MÁGICA DA ORDENAÇÃO (DATA DA GARANTIA) 📅 ---
+            // 2. Ordena (Data da Garantia mais recente no topo)
             listaCompletaCache.sort((a, b) => {
-                // Pega a data da venda (garantia) ou usa a de criação se não tiver
                 const dataA = a.dataVenda || (a.criadoEm ? a.criadoEm.split('T')[0] : '0000-00-00');
                 const dataB = b.dataVenda || (b.criadoEm ? b.criadoEm.split('T')[0] : '0000-00-00');
-                
-                // Compara as datas (Decrescente: Mais novo no topo)
                 if (dataB > dataA) return 1;
                 if (dataB < dataA) return -1;
                 return 0;
             });
             
-            // Inicializa a lista filtrada com tudo
-            listaFiltradaCache = listaCompletaCache;
+            // 3. Configura os gatilhos e aplica o primeiro filtro
+            configurarFiltros();
+            aplicarFiltrosCombinados();
             
-            // Reseta a contagem e desenha
-            itensVisiveis = 50;
-            renderizarLote();
         } else {
             container.innerHTML = '<p class="text-center text-secondary mt-4">Nenhum recibo salvo.</p>';
         }
     });
 
-    // --- FUNÇÃO QUE DESENHA NA TELA (LOTE POR LOTE) ---
+    // --- CONFIGURAÇÃO DOS GATILHOS (LISTENERS) ---
+    function configurarFiltros() {
+        const searchInput = document.getElementById('bookipHistorySearch');
+        const dateInput = document.getElementById('bookipHistoryDate');
+        const iconDisplay = document.getElementById('calendarIconDisplay');
+
+        // Busca ao digitar (Texto)
+        if (searchInput) {
+            searchInput.oninput = aplicarFiltrosCombinados;
+        }
+        
+        // Busca ao mudar data
+        if (dateInput) {
+            dateInput.onchange = aplicarFiltrosCombinados;
+
+            // Clique no ícone abre o calendário (para mobile)
+            if (iconDisplay && iconDisplay.parentElement) {
+                iconDisplay.parentElement.onclick = function() {
+                    if (dateInput.showPicker) dateInput.showPicker();
+                    else dateInput.focus();
+                };
+            }
+        }
+    }
+
+    // --- A LÓGICA DE FILTRAGEM (CÉREBRO) 🧠 ---
+    function aplicarFiltrosCombinados() {
+        // Pega elementos frescos
+        const elTexto = document.getElementById('bookipHistorySearch');
+        const elData = document.getElementById('bookipHistoryDate');
+        const elIcone = document.getElementById('calendarIconDisplay');
+
+        const termo = elTexto ? elTexto.value.toLowerCase().trim() : '';
+        const dataFiltro = elData ? elData.value : ''; 
+
+        // 1. Atualiza visual do Ícone (Glass Effect)
+        if (elIcone) {
+            if (dataFiltro) {
+                elIcone.className = "bi bi-calendar-check-fill";
+                elIcone.style.color = "var(--primary-color)"; 
+                elIcone.style.filter = "drop-shadow(0 0 5px rgba(0,255,0,0.3))";
+                const dataFormatada = dataFiltro.split('-').reverse().join('/');
+                elIcone.parentElement.title = `Filtrando por: ${dataFormatada}`;
+            } else {
+                elIcone.className = "bi bi-calendar-event";
+                elIcone.style.color = "rgba(255, 255, 255, 0.5)";
+                elIcone.style.filter = "none";
+                elIcone.parentElement.title = "Filtrar por data";
+            }
+        }
+
+        // 2. Filtra a Lista
+        listaFiltradaCache = listaCompletaCache.filter(item => {
+            // --- A. FILTRO DE TEXTO (COMPLETO) ---
+            const nDoc = (item.docNumber || '').toLowerCase();
+            const nome = (item.nome || '').toLowerCase();
+            const cpf = (item.cpf || '').toLowerCase();
+            const email = (item.email || '').toLowerCase(); // <--- E-MAIL ESTÁ AQUI! ✅
+            const telLimpo = (item.tel || '').toLowerCase().replace(/\D/g, ''); 
+            const telOriginal = (item.tel || '').toLowerCase();
+            
+            const matchTexto = termo === '' || 
+                               nDoc.includes(termo) || 
+                               nome.includes(termo) || 
+                               cpf.includes(termo) || 
+                               email.includes(termo) ||  // <--- CHECAGEM DE E-MAIL ✅
+                               telOriginal.includes(termo) ||
+                               telLimpo.includes(termo);
+
+            // --- B. FILTRO DE DATA ---
+            let matchData = true;
+            if (dataFiltro) {
+                let dataItem = item.dataVenda || '';
+                // Fallback se não tiver dataVenda
+                if (!dataItem && item.criadoEm) {
+                    dataItem = item.criadoEm.split('T')[0];
+                }
+                matchData = (dataItem === dataFiltro);
+            }
+
+            // Tem que passar nos DOIS testes
+            return matchTexto && matchData;
+        });
+
+        itensVisiveis = 50; // Reseta paginação
+        renderizarLote();
+    }
+
+    // --- DESENHA NA TELA ---
     function renderizarLote() {
         const fatia = listaFiltradaCache.slice(0, itensVisiveis);
         const temMais = listaFiltradaCache.length > itensVisiveis;
 
         if (fatia.length === 0) {
-            container.innerHTML = '<p class="text-center text-secondary mt-4">Nenhum documento encontrado na busca.</p>';
+            container.innerHTML = `<div class="text-center p-4 opacity-75"><i class="bi bi-search" style="font-size: 2rem;"></i><p class="mt-2 text-secondary small">Nada encontrado.</p></div>`;
             return;
         }
 
-        // Gera o HTML
         let html = `<div class="accordion w-100 history-accordion" id="bookipAccordion">` + 
         fatia.map(item => {
-            let dataFormatada = 'Data desc.';
+            let dataVisual = '---';
             if (item.dataVenda) {
-                 const partes = item.dataVenda.split('-'); 
-                 dataFormatada = `${partes[2]}/${partes[1]}/${partes[0]}`;
+                 const p = item.dataVenda.split('-'); 
+                 dataVisual = `${p[2]}/${p[1]}/${p[0]}`;
             } else if (item.criadoEm) {
-                 dataFormatada = new Date(item.criadoEm).toLocaleDateString('pt-BR');
+                 dataVisual = new Date(item.criadoEm).toLocaleDateString('pt-BR');
             }
             
             const docNum = item.docNumber || '---';
@@ -4355,125 +4430,51 @@ function loadBookipHistory() {
                 <h2 class="accordion-header" id="head-bk-${item.id}">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-bk-${item.id}">
                         <span class="badge bg-primary me-2">Doc ${docNum}</span> 
-                        <span class="text-truncate" style="max-width: 180px;">${item.nome}</span> 
-                        <span class="ms-auto small text-secondary">${dataFormatada}</span>
+                        <span class="text-truncate" style="max-width: 150px;">${item.nome}</span> 
+                        <span class="ms-auto small text-secondary">${dataVisual}</span>
                     </button>
                 </h2>
                 <div id="collapse-bk-${item.id}" class="accordion-collapse collapse" data-bs-parent="#bookipAccordion">
                     <div class="accordion-body">
-                        <p><strong>Cliente:</strong> ${item.nome} <br> <small class="text-secondary">${item.cpf || 'Sem CPF'}</small></p>
-                        <hr>
-                        <p class="mb-1"><strong>Itens:</strong></p>
+                        <p><strong>Cliente:</strong> ${item.nome}</p>
                         <ul class="list-unstyled small mb-3">
                             ${(item.items || []).map(i => `<li>${i.qtd}x ${i.nome} - R$ ${parseFloat(i.valor).toFixed(2)}</li>`).join('')}
                         </ul>
                         <div class="d-flex justify-content-end gap-2 mt-2">
-                            <button class="btn btn-sm btn-info edit-bookip-btn" data-id="${item.id}" title="Editar Recibo">
-                                <i class="bi bi-pencil-square"></i>
-                            </button>
+                            <button class="btn btn-sm btn-info edit-bookip-btn" data-id="${item.id}" title="Editar"><i class="bi bi-pencil-square"></i></button>
                             <button class="btn btn-sm btn-warning email-history-btn" data-id="${item.id}" title="PDF/Email"><i class="bi bi-envelope-at-fill"></i></button>
-                            <button class="btn btn-sm btn-primary print-old-bookip" data-id="${item.id}"><i class="bi bi-printer"></i></button>
-                            <button class="btn btn-sm btn-outline-danger delete-bookip-btn" data-id="${item.id}"><i class="bi bi-trash"></i></button>
+                            <button class="btn btn-sm btn-primary print-old-bookip" data-id="${item.id}" title="Imprimir"><i class="bi bi-printer"></i></button>
+                            <button class="btn btn-sm btn-outline-danger delete-bookip-btn" data-id="${item.id}" title="Apagar"><i class="bi bi-trash"></i></button>
                         </div>
                     </div>
                 </div>
             </div>`;
         }).join('') + `</div>`;
 
-        // Adiciona botão "Carregar Mais" se tiver mais itens
         if (temMais) {
-            html += `
-            <div class="text-center py-3">
-                <button id="btnLoadMoreBookip" class="btn btn-outline-primary rounded-pill px-4">
-                    <i class="bi bi-arrow-down-circle"></i> Ver Mais Antigos (${listaFiltradaCache.length - itensVisiveis} restantes)
-                </button>
-            </div>`;
+            html += `<div class="text-center py-3"><button id="btnLoadMoreBookip" class="btn btn-outline-primary rounded-pill px-4">Ver Mais</button></div>`;
         }
 
         container.innerHTML = html;
-
-        // Reativa os botões
         reativarListeners();
         
         const btnMore = document.getElementById('btnLoadMoreBookip');
-        if (btnMore) {
-            btnMore.addEventListener('click', () => {
-                itensVisiveis += incremento; 
-                renderizarLote(); 
-            });
-        }
+        if (btnMore) btnMore.addEventListener('click', () => { itensVisiveis += incremento; renderizarLote(); });
     }
 
+    // --- REATIVAR BOTÕES INTERNOS ---
     function reativarListeners() {
-        container.querySelectorAll('.edit-bookip-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const id = e.target.closest('button').dataset.id;
-                const item = listaCompletaCache.find(i => i.id === id);
-                if (typeof carregarDadosParaEdicao === 'function') carregarDadosParaEdicao(item);
-            });
-        });
-
-        container.querySelectorAll('.email-history-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const id = e.target.closest('button').dataset.id;
-                const item = listaCompletaCache.find(i => i.id === id);
-                if(item && typeof gerarPdfDoHistorico === 'function') gerarPdfDoHistorico(item, e.target.closest('button'));
-            });
-        });
-
-        container.querySelectorAll('.print-old-bookip').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const id = e.target.closest('button').dataset.id;
-                const item = listaCompletaCache.find(i => i.id === id);
-                if(item && typeof printBookip === 'function') printBookip(item);
-            });
-        });
-
-        container.querySelectorAll('.delete-bookip-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const id = e.target.closest('button').dataset.id;
-                showCustomModal({
-                    message: "Apagar este recibo?",
-                    confirmText: "Apagar",
-                    onConfirm: async () => {
-                        await remove(ref(db, `bookips/${id}`));
-                        showCustomModal({ message: "Apagado." });
-                    },
-                    onCancel: () => {}
-                });
-            });
-        });
-    }
-
-    if (searchInput) {
-        // Clone para limpar listeners antigos
-        const newSearchInput = searchInput.cloneNode(true);
-        searchInput.parentNode.replaceChild(newSearchInput, searchInput);
-        
-        newSearchInput.addEventListener('input', (e) => {
-            const termo = e.target.value.toLowerCase().trim();
-            
-            listaFiltradaCache = listaCompletaCache.filter(item => {
-                const nDoc = (item.docNumber || '').toLowerCase();
-                const nome = (item.nome || '').toLowerCase();
-                const cpf = (item.cpf || '').toLowerCase();
-                const telLimpo = (item.tel || '').toLowerCase().replace(/\s/g, ''); 
-                const telOriginal = (item.tel || '').toLowerCase();
-                const email = (item.email || '').toLowerCase();
-
-                return nDoc.includes(termo) || 
-                       nome.includes(termo) || 
-                       cpf.includes(termo) || 
-                       telOriginal.includes(termo) || 
-                       telLimpo.includes(termo) || 
-                       email.includes(termo);
-            });
-
-            itensVisiveis = 50;
-            renderizarLote();
-        });
+        container.querySelectorAll('.edit-bookip-btn').forEach(b => b.addEventListener('click', e => carregarDadosParaEdicao(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id))));
+        container.querySelectorAll('.email-history-btn').forEach(b => b.addEventListener('click', e => gerarPdfDoHistorico(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id), b)));
+        container.querySelectorAll('.print-old-bookip').forEach(b => b.addEventListener('click', e => printBookip(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id))));
+        container.querySelectorAll('.delete-bookip-btn').forEach(b => b.addEventListener('click', e => {
+            const id = e.target.closest('button').dataset.id;
+            showCustomModal({message: "Apagar?", confirmText: "Sim", onConfirm: async () => { await remove(ref(db, `bookips/${id}`)); showCustomModal({message: "Apagado."}); }, onCancel: ()=>{}});
+        }));
     }
 }
+
+
 
     // --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO ---
     function carregarDadosParaEdicao(item) {
@@ -5823,17 +5824,53 @@ function getReciboHTML(dados) {
 // 3. FUNÇÃO PDF FINAL (COM CÓPIA DE E-MAIL AUTOMÁTICA)
 // ============================================================
 async function gerarPdfDoHistorico(dados, botao) {
-    // --- 0. O RETORNO DO COPY & PASTE (RESTAURADO) ---
-    // Copia o e-mail assim que clica no botão, antes de começar a carregar
+    // ============================================================
+    // 0. CÓPIA DE E-MAIL BLINDADA (COM FALLBACK) 🛡️
+    // ============================================================
     if (dados.email && dados.email.trim() !== '') {
-        try {
-            await navigator.clipboard.writeText(dados.email);
-            // Se quiser dar um feedback visual, pode descomentar a linha abaixo:
-            // if(typeof showCustomModal === 'function') showCustomModal({ message: "E-mail do cliente copiado!" });
-        } catch (err) {
-            console.error('Erro ao copiar e-mail automaticamente:', err);
+        const textToCopy = dados.email.trim();
+
+        // 🔧 Função de emergência: Usa o método antigo (execCommand) 
+        // que funciona mesmo quando o navegador bloqueia o clipboard moderno.
+        const copiarJeitoAntigo = (texto) => {
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = texto;
+                
+                // Esconde o elemento mas mantém ele "visível" pro sistema selecionar
+                textArea.style.position = "fixed";
+                textArea.style.left = "-9999px";
+                textArea.style.top = "0";
+                
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                // console.log('Cópia via fallback:', successful);
+            } catch (e) {
+                console.error("Erro no método antigo:", e);
+            }
+        };
+
+        // Tenta o jeito moderno primeiro
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            try {
+                await navigator.clipboard.writeText(textToCopy);
+            } catch (err) {
+                // Se der erro (bloqueio de segurança), aciona o plano B
+                copiarJeitoAntigo(textToCopy);
+            }
+        } else {
+            // Se o navegador for velho e nem tiver clipboard, vai direto no plano B
+            copiarJeitoAntigo(textToCopy);
         }
     }
+
+    // ============================================================
+    // INÍCIO DA GERAÇÃO DO PDF
+    // ============================================================
 
     const textoOriginal = botao.innerHTML;
     botao.innerHTML = 'Aguarde...';
@@ -5899,9 +5936,9 @@ async function gerarPdfDoHistorico(dados, botao) {
     const tituloCompartilhamento = "Documento Workcell Tecnologia";
 
     // --- GERAÇÃO HTML ---
- const containerTemp = document.createElement('div');
-// MUDANÇA: 'left: -9999px' joga para fora da tela e 'position: fixed' evita esticar o site
-containerTemp.style.cssText = `position: fixed; top: 0; left: -9999px; width: 794px; background: white; z-index: -100; margin: 0; padding: 0;`;
+    const containerTemp = document.createElement('div');
+    // MUDANÇA: 'left: -9999px' joga para fora da tela e 'position: fixed' evita esticar o site
+    containerTemp.style.cssText = `position: fixed; top: 0; left: -9999px; width: 794px; background: white; z-index: -100; margin: 0; padding: 0;`;
 
     
     if (typeof getReciboHTML === 'function') {
