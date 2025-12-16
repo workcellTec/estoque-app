@@ -1827,17 +1827,18 @@ body[data-color="orange"] {
 }
 
 /* =========================================
-   ESTILO DA LISTA DE PRODUTOS (BOOKIP)
+   /* =========================================
+   ESTILO DA LISTA DE PRODUTOS (CORRIGIDO VERTICAL)
    ========================================= */
 .bookip-item-card {
-    background: rgba(255, 255, 255, 0.03); /* Fundo sutil */
+    background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--glass-border);
     border-radius: 12px;
     padding: 12px 15px;
     margin-bottom: 8px;
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: center; /* Centraliza verticalmente os dois lados */
     transition: all 0.2s ease;
 }
 
@@ -1848,44 +1849,52 @@ body[data-color="orange"] {
 
 /* Lado Esquerdo: Texto */
 .bk-info {
-    flex: 1; /* Ocupa o espaço que sobrar */
+    flex: 1;
     text-align: left;
-    padding-right: 10px;
+    padding-right: 15px; /* Mais espaço para não grudar na direita */
+    min-width: 0; /* Permite que o texto quebre linha se precisar */
 }
 
 .bk-title {
     font-weight: 700;
     font-size: 0.95rem;
     color: var(--text-color);
-    margin-bottom: 2px;
+    margin-bottom: 4px;
     line-height: 1.2;
+    word-wrap: break-word; /* Quebra nomes muito longos */
 }
 
 .bk-details {
     font-size: 0.8rem;
     color: var(--text-secondary);
+    opacity: 0.8;
 }
 
-/* Lado Direito: Preço e Botões */
+/* --- MUDANÇA AQUI: Lado Direito Vertical --- */
 .bk-actions-area {
     display: flex;
-    align-items: center;
-    gap: 15px; /* Espaço entre preço e botões */
+    flex-direction: column; /* Empilha um em cima do outro */
+    align-items: flex-end; /* Alinha tudo à direita */
+    justify-content: center;
+    gap: 8px; /* Espaço entre o preço e os botões */
+    min-width: fit-content; /* Garante que não amasse */
 }
 
 .bk-price {
     font-weight: 800;
     color: var(--text-success); /* Verde */
-    font-size: 1rem;
-    white-space: nowrap;
+    font-size: 1.1rem;
+    white-space: nowrap; /* Preço sempre numa linha só */
+    line-height: 1;
 }
 
 .bk-buttons {
     display: flex;
-    gap: 8px;
+    gap: 8px; /* Espaço entre os botões */
 }
+/* ------------------------------------------ */
 
-/* Botões Redondos (Lápis e Lixo) */
+/* Botões Redondos (Lápis e Lixo) - Mantidos iguais */
 .btn-icon-circle {
     width: 32px;
     height: 32px;
@@ -1900,9 +1909,7 @@ body[data-color="orange"] {
 }
 
 .btn-icon-circle:hover { transform: scale(1.1); }
-
-.btn-edit-c { color: #ffc107; border: 1px solid rgba(255, 193, 7, 0.3); } /* Amarelo */
+.btn-edit-c { color: #ffc107; border: 1px solid rgba(255, 193, 7, 0.3); }
 .btn-edit-c:hover { background: rgba(255, 193, 7, 0.1); }
-
-.btn-del-c { color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); } /* Vermelho */
+.btn-del-c { color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
 .btn-del-c:hover { background: rgba(239, 68, 68, 0.1); }
