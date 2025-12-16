@@ -4760,53 +4760,121 @@ if (typeof db !== 'undefined') {
 
 
 // 2. Lógica de Pesquisa
+// ============================================================
+// 🕵️‍♂️ AUTOCOMPLETE UNIVERSAL (NOME, CPF, TELEFONE)
+// ============================================================
 function ativarAutocomplete() {
-    const inputNome = document.getElementById('bookipNome');
-    const boxSugestoes = document.getElementById('clientSuggestionsList');
+    // Configuração dos campos que queremos monitorar
+    const campos = [
+        { idInput: 'bookipNome',     tipo: 'nome' },
+        { idInput: 'bookipCpf',      tipo: 'cpf' },
+        { idInput: 'bookipTelefone', tipo: 'tel' }
+    ];
 
-    if (!inputNome || !boxSugestoes) return;
+    campos.forEach(campo => {
+        const input = document.getElementById(campo.idInput);
+        if (!input) return;
 
-    // Garante estilo visual correto (Fundo branco e borda suave)
-    boxSugestoes.style.zIndex = "9999";
-    boxSugestoes.style.background = "white";
-    boxSugestoes.style.border = "1px solid #ddd";
+        // 1. Cria a lista de sugestões dinamicamente (sem mexer no HTML)
+        let listaUl = document.getElementById(`sugestao-${campo.idInput}`);
+        if (!listaUl) {
+            listaUl = document.createElement('ul');
+            listaUl.id = `sugestao-${campo.idInput}`;
+            listaUl.className = "list-group position-absolute w-100 shadow";
+            listaUl.style.zIndex = "9999";
+            listaUl.style.display = "none";
+            listaUl.style.maxHeight = "200px";
+            listaUl.style.overflowY = "auto";
+            // Adiciona a lista logo depois do input
+            input.parentNode.appendChild(listaUl);
+            // Garante que o pai tenha posição relativa para a lista ficar embaixo
+            input.parentNode.style.position = "relative"; 
+        }
 
-    inputNome.addEventListener('input', (e) => {
-        const termo = e.target.value.toLowerCase();
-        
-        boxSugestoes.style.display = 'none';
-        boxSugestoes.innerHTML = '';
+        // 2. Ouve o que você digita
+        input.addEventListener('input', (e) => {
+            const termo = e.target.value.toLowerCase().trim();
+            const termoLimpo = termo.replace(/[^a-z0-9]/g, ''); // Tira pontos e traços para comparar
 
-        if (termo.length < 1) return;
+            listaUl.style.display = 'none';
+            listaUl.innerHTML = '';
 
-        // Busca por Nome ou CPF
-        const encontrados = dbClientsCache.filter(c => {
-            const n = (c.nome || '').toLowerCase();
-            const cpf = (c.cpf || '').toLowerCase();
-            return n.includes(termo) || cpf.includes(termo);
+            if (termoLimpo.length < 2) return; // Só busca se tiver 2+ caracteres/números
+
+            // 3. Filtra a base de clientes (dbClientsCache)
+            const encontrados = window.dbClientsCache.filter(c => {
+                const nomeDb = (c.nome || '').toLowerCase();
+                const cpfDb = (c.cpf || '').replace(/[^a-z0-9]/g, '');
+                const telDb = (c.tel || '').replace(/[^a-z0-9]/g, '');
+
+                // Lógica de Busca Inteligente
+                if (campo.tipo === 'nome') {
+                    return nomeDb.includes(termo);
+                } else if (campo.tipo === 'cpf') {
+                    return cpfDb.includes(termoLimpo);
+                } else if (campo.tipo === 'tel') {
+                    return telDb.includes(termoLimpo);
+                }
+                return false;
+            });
+
+            // 4. Mostra os resultados
+            if (encontrados.length > 0) {
+                listaUl.innerHTML = encontrados.slice(0, 5).map(c => `
+                    <li class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" 
+                        style="cursor: pointer;"
+                        onclick='preencherCliente("${c.id}", "sugestao-${campo.idInput}")'>
+                        <div>
+                            <strong>${c.nome}</strong><br>
+                            <small class="text-secondary">${c.cpf || 'S/ CPF'} - ${c.tel || 'S/ Tel'}</small>
+                        </div>
+                        <i class="bi bi-box-arrow-in-down-left text-primary"></i>
+                    </li>
+                `).join('');
+                listaUl.style.display = 'block';
+            }
         });
 
-        if (encontrados.length > 0) {
-            boxSugestoes.innerHTML = encontrados.slice(0, 5).map(c => `
-                <li class="list-group-item list-group-item-action" 
-                    style="cursor: pointer;"
-                    onclick='preencherCliente("${c.id}")'>
-                    <div class="fw-bold">${c.nome}</div>
-                    <small class="text-muted">${c.cpf || 'Sem CPF'}</small>
-                </li>
-            `).join('');
-            
-            boxSugestoes.style.display = 'block';
-        }
-    });
-
-    // Fecha ao clicar fora
-    document.addEventListener('click', (e) => {
-        if (e.target !== inputNome && e.target !== boxSugestoes) {
-            boxSugestoes.style.display = 'none';
-        }
+        // Fecha se clicar fora
+        document.addEventListener('click', (e) => {
+            if (e.target !== input && e.target !== listaUl) {
+                listaUl.style.display = 'none';
+            }
+        });
     });
 }
+
+// Inicia a função assim que o código carrega
+ativarAutocomplete();
+
+// 3. Função de Preencher (Pequeno ajuste para fechar a lista certa)
+window.preencherCliente = function(id, idListaParaFechar) {
+    const cliente = window.dbClientsCache.find(c => c.id === id);
+    
+    if (cliente) {
+        // Preenche os campos se estiverem vazios ou substitui (decisão de UX)
+        // Aqui vou mandar substituir tudo para garantir os dados certos
+        document.getElementById('bookipNome').value = cliente.nome || '';
+        document.getElementById('bookipCpf').value = cliente.cpf || '';
+        document.getElementById('bookipTelefone').value = cliente.tel || '';
+        document.getElementById('bookipEndereco').value = cliente.end || '';
+        document.getElementById('bookipEmail').value = cliente.email || '';
+        
+        // Esconde a lista que foi clicada
+        if(idListaParaFechar) {
+            document.getElementById(idListaParaFechar).style.display = 'none';
+        }
+        
+        // Feedback Visual (Piscadinha verde em todos os campos preenchidos)
+        ['bookipNome', 'bookipCpf', 'bookipTelefone'].forEach(id => {
+            const el = document.getElementById(id);
+            if(el) {
+                el.classList.add('is-valid');
+                setTimeout(() => el.classList.remove('is-valid'), 1000);
+            }
+        });
+    }
+};
 
 // Inicia a função
 ativarAutocomplete();
@@ -5876,6 +5944,107 @@ async function gerarPdfDoHistorico(dados, botao) {
     }
 }
 
+// ============================================================
+// ============================================================
+// 🧹 FAXINA DO FIREBASE (GLOBAL)
+// ============================================================
+window.limparImportacaoErrada = async function() {
+    // 1. Verificação de Segurança do Banco
+    if (!db) {
+        alert("Erro: O Banco de Dados ainda não conectou. Tente novamente em 5 segundos.");
+        return;
+    }
+
+    // 2. Senha de Segurança
+    showCustomModal({
+        message: "⚠️ ZONA DE PERIGO ⚠️\n\nIsso vai escanear o Firebase e apagar clientes que parecem erros (ex: nome '12929' ou sem telefone).\n\nDigite a senha:",
+        showPassword: true,
+        confirmText: "INICIAR VARREDURA",
+        onConfirm: (password) => {
+            if (password === "220390") {
+                executarVarreduraReal();
+            } else {
+                showCustomModal({ message: "Senha incorreta." });
+            }
+        },
+        onCancel: () => {}
+    });
+};
+
+async function executarVarreduraReal() {
+    const loadingToast = document.getElementById('toastNotification');
+    if(loadingToast) {
+        loadingToast.innerHTML = '<i class="spinner-border spinner-border-sm"></i> Escaneando Firebase...';
+        loadingToast.classList.add('show');
+    }
+
+    try {
+        // 1. Baixa TUDO da pasta clientes
+        const snapshot = await get(ref(db, 'clientes'));
+        
+        if (!snapshot.exists()) {
+            showCustomModal({ message: "O banco de dados de clientes está vazio." });
+            return;
+        }
+
+        const clientes = snapshot.val();
+        const updates = {};
+        let contador = 0;
+        let amostra = [];
+
+        // 2. O Algoritmo de Detecção de "Lixo"
+        Object.keys(clientes).forEach(key => {
+            const c = clientes[key];
+            const nome = String(c.nome || '').trim();
+            const tel = String(c.tel || '').replace(/\D/g, ''); // Só números
+            const cpf = String(c.cpf || '');
+
+            // CRITÉRIO 1: O Nome é puramente numérico? (Ex: "159700", "12.90")
+            // Regex: Só aceita números, pontos, traços e espaços. Sem letras.
+            const nomePareceCodigo = /^[0-9\s.-]+$/.test(nome) && nome.length > 0;
+
+            // CRITÉRIO 2: Sem telefone E nome curto (Ex: "Eu", "A")
+            const cadastroIncompleto = (tel.length < 6) && (nome.length < 3);
+
+            // CRITÉRIO 3: Nome contém palavras de erro de arquivo (Opcional)
+            const nomeInvalido = nome.toLowerCase().includes("undefined") || nome.toLowerCase().includes("null");
+
+            if (nomePareceCodigo || cadastroIncompleto || nomeInvalido) {
+                // Marca para deletar (null apaga no Firebase)
+                updates[`clientes/${key}`] = null;
+                contador++;
+                
+                // Guarda 3 exemplos para te mostrar antes de apagar
+                if (amostra.length < 3) amostra.push(`${nome} (ID: ${key})`);
+            }
+        });
+
+        if(loadingToast) loadingToast.classList.remove('show');
+
+        // 3. Resultado
+        if (contador === 0) {
+            showCustomModal({ message: "Tudo limpo! Não encontrei nenhum cadastro com erro." });
+        } else {
+            showCustomModal({
+                message: `🚨 ENCONTREI ${contador} ERROS!\n\nExemplos:\n- ${amostra.join('\n- ')}\n\nTem certeza que deseja EXCLUIR DEFINITIVAMENTE esses ${contador} registros do Firebase?`,
+                confirmText: "SIM, APAGAR AGORA",
+                onConfirm: async () => {
+                    await update(ref(db), updates);
+                    showCustomModal({ message: `Pronto! ${contador} registros de lixo foram apagados.` });
+                    // Atualiza a tabela se estiver aberta
+                    if (typeof renderClientsTable === 'function') renderClientsTable();
+                },
+                onCancel: () => {
+                    showCustomModal({ message: "Cancelado. Nada foi apagado." });
+                }
+            });
+        }
+
+    } catch (error) {
+        console.error(error);
+        alert("Erro técnico: " + error.message);
+    }
+}
 
 
         });
