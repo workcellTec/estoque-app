@@ -4274,6 +4274,7 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
     // ============================================================
 
 
+
 // CARREGAR HISTÓRICO OTIMIZADO (COM PAGINAÇÃO "CARREGAR MAIS")
 // ============================================================
 function loadBookipHistory() {
