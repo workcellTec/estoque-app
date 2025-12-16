@@ -6047,4 +6047,118 @@ async function executarVarreduraReal() {
 }
 
 
+// ============================================================
+// 🪄 MÁGICA: IMPORTAR DADOS DO WHATSAPP
+// ============================================================
+
+// 1. Abre a janelinha para colar
+window.abrirModalColarZap = function() {
+    // Cria o HTML do modal dinamicamente (sem sujar seu index.html)
+    const modalHtml = `
+    <div class="custom-modal-overlay active" id="modalZapOverlay" style="z-index: 10000;">
+        <div class="custom-modal-content" style="max-width: 90%; width: 400px;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0 text-success"><i class="bi bi-whatsapp"></i> Colar Dados</h5>
+                <button class="btn-back" onclick="fecharModalZap()"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <p class="text-secondary small text-start">Copie a mensagem inteira do cliente e cole abaixo:</p>
+            <textarea id="textoZapInput" class="form-control mb-3" rows="8" placeholder="Ex: *Nome*: João... *CPF*: 000..."></textarea>
+            <button class="btn btn-success w-100" onclick="processarTextoZap()">
+                <i class="bi bi-magic"></i> Preencher Automático
+            </button>
+        </div>
+    </div>`;
+
+    // Adiciona na tela
+    const div = document.createElement('div');
+    div.id = 'containerModalZap';
+    div.innerHTML = modalHtml;
+    document.body.appendChild(div);
+
+    // Foca no campo para colar rápido
+    setTimeout(() => document.getElementById('textoZapInput').focus(), 100);
+};
+
+window.fecharModalZap = function() {
+    const el = document.getElementById('containerModalZap');
+    if (el) el.remove();
+};
+
+// 2. O Robô que lê o texto
+window.processarTextoZap = function() {
+    const texto = document.getElementById('textoZapInput').value;
+    if (!texto.trim()) {
+        alert("Cole o texto primeiro!");
+        return;
+    }
+
+    // --- FUNÇÃO DE EXTRAÇÃO (REGEX) ---
+    // Procura por "Chave : Valor" ignorando maiúsculas/minúsculas e asteriscos
+    const extrair = (chave) => {
+        // Regex explicado:
+        // 1. Procura a palavra chave (ex: CPF)
+        // 2. Aceita caracteres como * ou : ou espaço no meio
+        // 3. Pega tudo que vem depois até quebrar a linha (\n)
+        const regex = new RegExp(`${chave}[\\s\\*\\:]+([^\n]+)`, 'i');
+        const match = texto.match(regex);
+        return match ? match[1].trim() : '';
+    };
+
+    // --- CAPTURA DOS DADOS ---
+    
+    // Nome (Tenta "Nome completo" ou só "Nome")
+    let nome = extrair('Nome completo') || extrair('Nome') || extrair('Comprador');
+    
+    // CPF (Limpa pontos e traços)
+    let cpf = extrair('CPF').replace(/\D/g, ''); 
+    if(cpf.length > 3) cpf = cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4"); // Formata bonito
+
+    // Telefone
+    let tel = extrair('Whatsapp') || extrair('Telefone') || extrair('Celular');
+    tel = tel.replace(/\D/g, ''); // Só números
+
+    // Email
+    let email = extrair('E-mail/G-mail') || extrair('E-mail') || extrair('Email');
+
+    // Endereço (O Grande Truque: Junta tudo)
+    const rua = extrair('Rua');
+    const numero = extrair('Número');
+    const setor = extrair('Setor') || extrair('Bairro');
+    const cidade = extrair('Cidade');
+    const cep = extrair('Cep do local da entrega') || extrair('Cep');
+    const complemento = extrair('Quadra e Lote') || extrair('Complemento');
+
+    // Monta a frase do endereço
+    let enderecoCompleto = '';
+    if (rua) enderecoCompleto += `${rua}`;
+    if (numero) enderecoCompleto += `, ${numero}`;
+    if (complemento) enderecoCompleto += `, ${complemento}`;
+    if (setor) enderecoCompleto += ` - ${setor}`;
+    if (cidade) enderecoCompleto += ` - ${cidade}`;
+    if (cep) enderecoCompleto += ` (${cep})`;
+
+    // --- PREENCHIMENTO DOS CAMPOS ---
+    
+    let preencheuAlgo = false;
+
+    if (nome) { document.getElementById('bookipNome').value = nome; preencheuAlgo = true; }
+    if (cpf) { document.getElementById('bookipCpf').value = cpf; preencheuAlgo = true; }
+    if (tel) { document.getElementById('bookipTelefone').value = tel; preencheuAlgo = true; }
+    if (email) { document.getElementById('bookipEmail').value = email; preencheuAlgo = true; }
+    if (enderecoCompleto.length > 5) { document.getElementById('bookipEndereco').value = enderecoCompleto; preencheuAlgo = true; }
+
+    // Fecha e Avisa
+    fecharModalZap();
+    
+    if (preencheuAlgo) {
+        showCustomModal({ message: "Dados preenchidos com sucesso! 🚀" });
+        
+        // Dispara o autocomplete para salvar o cliente novo (se for o caso)
+        // (Isso já acontece quando você clica em Salvar depois)
+    } else {
+        showCustomModal({ message: "Não consegui encontrar os dados no texto. Verifique se copiou a mensagem certa." });
+    }
+};
+
+
         });
