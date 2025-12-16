@@ -6130,130 +6130,132 @@ async function executarVarreduraReal() {
 // ============================================================
 // ============================================================
 // 🪄 MÁGICA: IMPORTAR DADOS DO WHATSAPP (VERSÃO FINAL BLINDADA)
+// ==============================================// ============================================================
+// 🪄 MÁGICA: IMPORTAR DADOS DO WHATSAPP (VERSÃO FINAL COM ATIVADOR)
 // ============================================================
 
+// 1. Função de Abrir a Janela
+window.abrirModalColarZap = function() {
+    console.log("Abrindo janela do Zap..."); // Aviso no console pra gente saber que funcionou
+
+    const modalHtml = `
+    <div class="custom-modal-overlay active" id="modalZapOverlay" style="z-index: 10000;">
+        <div class="custom-modal-content" style="max-width: 90%; width: 400px;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0 text-success"><i class="bi bi-whatsapp"></i> Colar Dados</h5>
+                <button class="btn-back" id="btnFecharZap"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <p class="text-secondary small text-start">Copie a mensagem inteira do cliente e cole abaixo:</p>
+            <textarea id="textoZapInput" class="form-control mb-3" rows="8" placeholder="Ex: *Nome*: João..."></textarea>
+            <button class="btn btn-success w-100" id="btnProcessarZap">
+                <i class="bi bi-magic"></i> Preencher Automático
+            </button>
+        </div>
+    </div>`;
+
+    // Remove anterior se existir
+    const existente = document.getElementById('containerModalZap');
+    if (existente) existente.remove();
+
+    const div = document.createElement('div');
+    div.id = 'containerModalZap';
+    div.innerHTML = modalHtml;
+    document.body.appendChild(div);
+
+    // Ativa os botões de dentro da janela (Fechar e Processar)
+    setTimeout(() => {
+        document.getElementById('textoZapInput').focus();
+        document.getElementById('btnFecharZap').onclick = function() { 
+            document.getElementById('containerModalZap').remove(); 
+        };
+        document.getElementById('btnProcessarZap').onclick = window.processarTextoZap;
+    }, 100);
+};
+
+// 2. O Robô Inteligente (Que acha o nome mesmo sem rótulo)
 window.processarTextoZap = function() {
     const texto = document.getElementById('textoZapInput').value;
-    if (!texto.trim()) {
-        alert("Cole o texto primeiro!");
-        return;
-    }
+    if (!texto.trim()) { alert("Cole o texto primeiro!"); return; }
 
-    // 1. Limpeza inicial (separa em linhas e remove espaços vazios)
     const linhas = texto.split('\n').map(l => l.trim()).filter(l => l !== '');
-
-    // Função auxiliar de extração por rótulo
     const extrair = (chave) => {
         const regex = new RegExp(`${chave}[\\s\\*\\:]+([^\n]+)`, 'i');
         const match = texto.match(regex);
         return match ? match[1].trim() : '';
     };
 
-    // --- 🕵️‍♂️ 1. DETETIVE DE NOME (AGORA COM FILTRO ANTI-CPF) ---
-    
-    // Tentativa A: Pelo rótulo "Nome:"
+    // --- LÓGICA DE DETECÇÃO ---
     let nome = extrair('Nome completo') || extrair('Nome') || extrair('Comprador') || extrair('Cliente');
 
-    // Tentativa B: Se não achou rótulo, procura na lista de linhas
+    // Se não achou nome, tenta pegar a primeira linha válida (pulando CPF/Tel/Email)
     if (!nome && linhas.length > 0) {
-        // Percorre as primeiras 5 linhas procurando algo que pareça um nome
         for (let i = 0; i < Math.min(linhas.length, 5); i++) {
             let linha = linhas[i];
-            
-            // --- OS FILTROS DE SEGURANÇA ---
-            // Verifica se a linha é, na verdade, um CPF (muitos números)
-            const temCaraDeCPF = linha.replace(/\D/g, '').length >= 11;
-            
-            // Verifica se é telefone (começa com DDD ou tem muitos números)
-            const temCaraDeTel = linha.includes('(') || (linha.replace(/\D/g, '').length >= 8 && linha.replace(/\D/g, '').length <= 13);
-            
-            // Verifica se é email
-            const temCaraDeEmail = linha.includes('@');
-            
-            // Verifica se é lixo do cabeçalho
-            const lixo = linha.includes('Dados') || linha.includes('👇') || linha.includes('CPF') || linha.includes(':');
+            const soNumeros = linha.replace(/\D/g, '');
+            const ehCPF = soNumeros.length >= 11;
+            const ehTel = linha.includes('(') || (soNumeros.length >= 8 && soNumeros.length <= 13);
+            const ehEmail = linha.includes('@');
+            const ehLixo = linha.includes('Dados') || linha.includes('👇') || linha.includes(':');
 
-            // SE NÃO FOR NADA DISSO, ENTÃO É O NOME!
-            if (!temCaraDeCPF && !temCaraDeTel && !temCaraDeEmail && !lixo && linha.length > 2) {
-                // Limpa emojis antes de salvar
+            if (!ehCPF && !ehTel && !ehEmail && !ehLixo && linha.length > 2) {
                 nome = linha.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2580-\u27BF]|\uD83E[\uDD10-\uDDFF]/g, '').trim();
-                break; // Achamos! Para de procurar.
+                break;
             }
         }
     }
 
-    // --- 🆔 2. DETETIVE DE CPF ---
+    // CPF, Tel, Email
     let cpf = extrair('CPF').replace(/\D/g, ''); 
-    if (!cpf) {
-        // Procura CPF solto no texto (11 números seguidos ou formatados)
-        const matchCpfSolto = texto.match(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/);
-        if (matchCpfSolto) cpf = matchCpfSolto[0].replace(/\D/g, '');
-    }
+    if (!cpf) { const m = texto.match(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/); if(m) cpf = m[0].replace(/\D/g, ''); }
     if(cpf.length > 3) cpf = cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
 
-    // --- 📞 3. DETETIVE DE TELEFONE ---
     let tel = extrair('Whatsapp') || extrair('Telefone') || extrair('Celular');
-    if (!tel) {
-        const matchTel = texto.match(/\(?\d{2}\)?\s?9?\d{4}-?\d{4}/);
-        if (matchTel) tel = matchTel[0];
-    }
+    if (!tel) { const m = texto.match(/\(?\d{2}\)?\s?9?\d{4}-?\d{4}/); if(m) tel = m[0]; }
     tel = tel ? tel.replace(/\D/g, '') : '';
 
-    // --- 📧 4. DETETIVE DE E-MAIL ---
-    const regexEmail = /[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/;
-    const matchEmail = texto.match(regexEmail);
-    let email = matchEmail ? matchEmail[0] : '';
+    const mEmail = texto.match(/[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/);
+    let email = mEmail ? mEmail[0] : '';
 
-    // --- 📍 5. DETETIVE DE ENDEREÇO (CEP PRIMEIRO) ---
-    const matchCep = texto.match(/\b\d{5}[-.]?\d{3}\b/); // Aceita 74425390 ou 74425-390
-    let cepEncontrado = matchCep ? matchCep[0] : '';
-
-    const rua = extrair('Rua');
-    const numero = extrair('Número');
-    const setor = extrair('Setor') || extrair('Bairro');
-    const cidade = extrair('Cidade');
-    const complemento = extrair('Quadra e Lote') || extrair('Complemento') || extrair('Ponto de referência');
-
-    let enderecoCompleto = '';
+    // Endereço e CEP
+    const mCep = texto.match(/\b\d{5}[-.]?\d{3}\b/);
+    let cepEncontrado = mCep ? mCep[0] : '';
     
-    // Montagem inteligente
-    if (rua) enderecoCompleto += `${rua}`;
-    if (numero) enderecoCompleto += `, ${numero}`;
-    if (setor) enderecoCompleto += ` - ${setor}`;
-    if (cidade) enderecoCompleto += ` - ${cidade}`;
+    let endereco = '';
+    const camposEnd = [extrair('Rua'), extrair('Número'), extrair('Setor'), extrair('Bairro'), extrair('Cidade')];
+    endereco = camposEnd.filter(c => c).join(', ');
     
-    // Adiciona o CEP encontrado automaticamente
     if (cepEncontrado) {
-        if (enderecoCompleto === '') {
-            enderecoCompleto = `CEP: ${cepEncontrado}`;
-        } else if (!enderecoCompleto.includes(cepEncontrado)) { // Só adiciona se já não tiver
-            enderecoCompleto += ` (${cepEncontrado})`;
-        }
-    } else if (extrair('Cep')) {
-        enderecoCompleto += ` (${extrair('Cep')})`;
+        if (!endereco) endereco = `CEP: ${cepEncontrado}`;
+        else if (!endereco.includes(cepEncontrado)) endereco += ` (${cepEncontrado})`;
     }
 
-    // --- PREENCHIMENTO ---
-    let preencheuAlgo = false;
+    // Preenche
+    if (nome) document.getElementById('bookipNome').value = nome;
+    if (cpf) document.getElementById('bookipCpf').value = cpf;
+    if (tel) document.getElementById('bookipTelefone').value = tel;
+    if (email) document.getElementById('bookipEmail').value = email;
+    if (endereco.length > 5) document.getElementById('bookipEndereco').value = endereco;
 
-    if (nome) { document.getElementById('bookipNome').value = nome; preencheuAlgo = true; }
-    if (cpf) { document.getElementById('bookipCpf').value = cpf; preencheuAlgo = true; }
-    if (tel) { document.getElementById('bookipTelefone').value = tel; preencheuAlgo = true; }
-    if (email) { document.getElementById('bookipEmail').value = email; preencheuAlgo = true; }
-    if (enderecoCompleto.length > 5) { document.getElementById('bookipEndereco').value = enderecoCompleto; preencheuAlgo = true; }
-
-    fecharModalZap();
+    // Fecha janela
+    document.getElementById('containerModalZap').remove();
     
-    if (preencheuAlgo) {
-        if(typeof showCustomModal === 'function') {
-            showCustomModal({ message: "Dados processados! Confere se ficou certinho. 😉" });
-        } else {
-            alert("Dados processados!");
-        }
-    } else {
-        alert("Não entendi o texto. Tente copiar apenas os dados do cliente.");
-    }
+    if (typeof showCustomModal === 'function') showCustomModal({ message: "Dados Processados! ✅" });
+    else alert("Dados Processados!");
 };
 
+// 3. ATIVADOR DO BOTÃO (O SEGREDO!)
+// Isso procura o botão pelo ID e liga ele na força bruta
+setTimeout(() => {
+    const btnZap = document.getElementById('btnZapMagico');
+    if (btnZap) {
+        btnZap.addEventListener('click', (e) => {
+            e.preventDefault(); // Evita recarregar se estiver num form
+            window.abrirModalColarZap();
+        });
+        console.log("Botão Zap CONECTADO com sucesso!");
+    } else {
+        console.error("ERRO: Não achei o botão com id='btnZapMagico' no HTML");
+    }
+}, 1000); // Espera 1 segundo pra garantir que o HTML carregou
 
         });
