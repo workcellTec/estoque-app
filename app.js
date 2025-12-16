@@ -6128,43 +6128,10 @@ async function executarVarreduraReal() {
 
 
 // ============================================================
-// 🪄 MÁGICA: IMPORTAR DADOS DO WHATSAPP
+// ============================================================
+// 🪄 MÁGICA: IMPORTAR DADOS DO WHATSAPP (VERSÃO FINAL BLINDADA)
 // ============================================================
 
-// 1. Abre a janelinha para colar
-window.abrirModalColarZap = function() {
-    // Cria o HTML do modal dinamicamente (sem sujar seu index.html)
-    const modalHtml = `
-    <div class="custom-modal-overlay active" id="modalZapOverlay" style="z-index: 10000;">
-        <div class="custom-modal-content" style="max-width: 90%; width: 400px;">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0 text-success"><i class="bi bi-whatsapp"></i> Colar Dados</h5>
-                <button class="btn-back" onclick="fecharModalZap()"><i class="bi bi-x-lg"></i></button>
-            </div>
-            <p class="text-secondary small text-start">Copie a mensagem inteira do cliente e cole abaixo:</p>
-            <textarea id="textoZapInput" class="form-control mb-3" rows="8" placeholder="Ex: *Nome*: João... *CPF*: 000..."></textarea>
-            <button class="btn btn-success w-100" onclick="processarTextoZap()">
-                <i class="bi bi-magic"></i> Preencher Automático
-            </button>
-        </div>
-    </div>`;
-
-    // Adiciona na tela
-    const div = document.createElement('div');
-    div.id = 'containerModalZap';
-    div.innerHTML = modalHtml;
-    document.body.appendChild(div);
-
-    // Foca no campo para colar rápido
-    setTimeout(() => document.getElementById('textoZapInput').focus(), 100);
-};
-
-window.fecharModalZap = function() {
-    const el = document.getElementById('containerModalZap');
-    if (el) el.remove();
-};
-
-// 2. O Robô que lê o texto
 window.processarTextoZap = function() {
     const texto = document.getElementById('textoZapInput').value;
     if (!texto.trim()) {
@@ -6172,56 +6139,101 @@ window.processarTextoZap = function() {
         return;
     }
 
-    // --- FUNÇÃO DE EXTRAÇÃO (REGEX) ---
-    // Procura por "Chave : Valor" ignorando maiúsculas/minúsculas e asteriscos
+    // 1. Limpeza inicial (separa em linhas e remove espaços vazios)
+    const linhas = texto.split('\n').map(l => l.trim()).filter(l => l !== '');
+
+    // Função auxiliar de extração por rótulo
     const extrair = (chave) => {
-        // Regex explicado:
-        // 1. Procura a palavra chave (ex: CPF)
-        // 2. Aceita caracteres como * ou : ou espaço no meio
-        // 3. Pega tudo que vem depois até quebrar a linha (\n)
         const regex = new RegExp(`${chave}[\\s\\*\\:]+([^\n]+)`, 'i');
         const match = texto.match(regex);
         return match ? match[1].trim() : '';
     };
 
-    // --- CAPTURA DOS DADOS ---
+    // --- 🕵️‍♂️ 1. DETETIVE DE NOME (AGORA COM FILTRO ANTI-CPF) ---
     
-    // Nome (Tenta "Nome completo" ou só "Nome")
-    let nome = extrair('Nome completo') || extrair('Nome') || extrair('Comprador');
-    
-    // CPF (Limpa pontos e traços)
+    // Tentativa A: Pelo rótulo "Nome:"
+    let nome = extrair('Nome completo') || extrair('Nome') || extrair('Comprador') || extrair('Cliente');
+
+    // Tentativa B: Se não achou rótulo, procura na lista de linhas
+    if (!nome && linhas.length > 0) {
+        // Percorre as primeiras 5 linhas procurando algo que pareça um nome
+        for (let i = 0; i < Math.min(linhas.length, 5); i++) {
+            let linha = linhas[i];
+            
+            // --- OS FILTROS DE SEGURANÇA ---
+            // Verifica se a linha é, na verdade, um CPF (muitos números)
+            const temCaraDeCPF = linha.replace(/\D/g, '').length >= 11;
+            
+            // Verifica se é telefone (começa com DDD ou tem muitos números)
+            const temCaraDeTel = linha.includes('(') || (linha.replace(/\D/g, '').length >= 8 && linha.replace(/\D/g, '').length <= 13);
+            
+            // Verifica se é email
+            const temCaraDeEmail = linha.includes('@');
+            
+            // Verifica se é lixo do cabeçalho
+            const lixo = linha.includes('Dados') || linha.includes('👇') || linha.includes('CPF') || linha.includes(':');
+
+            // SE NÃO FOR NADA DISSO, ENTÃO É O NOME!
+            if (!temCaraDeCPF && !temCaraDeTel && !temCaraDeEmail && !lixo && linha.length > 2) {
+                // Limpa emojis antes de salvar
+                nome = linha.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2580-\u27BF]|\uD83E[\uDD10-\uDDFF]/g, '').trim();
+                break; // Achamos! Para de procurar.
+            }
+        }
+    }
+
+    // --- 🆔 2. DETETIVE DE CPF ---
     let cpf = extrair('CPF').replace(/\D/g, ''); 
-    if(cpf.length > 3) cpf = cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4"); // Formata bonito
+    if (!cpf) {
+        // Procura CPF solto no texto (11 números seguidos ou formatados)
+        const matchCpfSolto = texto.match(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/);
+        if (matchCpfSolto) cpf = matchCpfSolto[0].replace(/\D/g, '');
+    }
+    if(cpf.length > 3) cpf = cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
 
-    // Telefone
+    // --- 📞 3. DETETIVE DE TELEFONE ---
     let tel = extrair('Whatsapp') || extrair('Telefone') || extrair('Celular');
-    tel = tel.replace(/\D/g, ''); // Só números
+    if (!tel) {
+        const matchTel = texto.match(/\(?\d{2}\)?\s?9?\d{4}-?\d{4}/);
+        if (matchTel) tel = matchTel[0];
+    }
+    tel = tel ? tel.replace(/\D/g, '') : '';
 
-    // --- BUSCA INTELIGENTE DE E-MAIL (Detecta @hotmail, @outlook, @tudo) ---
-    // Procura qualquer padrão "texto@texto.com" no texto inteiro
+    // --- 📧 4. DETETIVE DE E-MAIL ---
     const regexEmail = /[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/;
     const matchEmail = texto.match(regexEmail);
     let email = matchEmail ? matchEmail[0] : '';
 
-    // Endereço (O Grande Truque: Junta tudo)
+    // --- 📍 5. DETETIVE DE ENDEREÇO (CEP PRIMEIRO) ---
+    const matchCep = texto.match(/\b\d{5}[-.]?\d{3}\b/); // Aceita 74425390 ou 74425-390
+    let cepEncontrado = matchCep ? matchCep[0] : '';
+
     const rua = extrair('Rua');
     const numero = extrair('Número');
     const setor = extrair('Setor') || extrair('Bairro');
     const cidade = extrair('Cidade');
-    const cep = extrair('Cep do local da entrega') || extrair('Cep');
-    const complemento = extrair('Quadra e Lote') || extrair('Complemento');
+    const complemento = extrair('Quadra e Lote') || extrair('Complemento') || extrair('Ponto de referência');
 
-    // Monta a frase do endereço
     let enderecoCompleto = '';
+    
+    // Montagem inteligente
     if (rua) enderecoCompleto += `${rua}`;
     if (numero) enderecoCompleto += `, ${numero}`;
-    if (complemento) enderecoCompleto += `, ${complemento}`;
     if (setor) enderecoCompleto += ` - ${setor}`;
     if (cidade) enderecoCompleto += ` - ${cidade}`;
-    if (cep) enderecoCompleto += ` (${cep})`;
-
-    // --- PREENCHIMENTO DOS CAMPOS ---
     
+    // Adiciona o CEP encontrado automaticamente
+    if (cepEncontrado) {
+        if (enderecoCompleto === '') {
+            enderecoCompleto = `CEP: ${cepEncontrado}`;
+        } else if (!enderecoCompleto.includes(cepEncontrado)) { // Só adiciona se já não tiver
+            enderecoCompleto += ` (${cepEncontrado})`;
+        }
+    } else if (extrair('Cep')) {
+        enderecoCompleto += ` (${extrair('Cep')})`;
+    }
+
+    // --- PREENCHIMENTO ---
     let preencheuAlgo = false;
 
     if (nome) { document.getElementById('bookipNome').value = nome; preencheuAlgo = true; }
@@ -6230,20 +6242,18 @@ window.processarTextoZap = function() {
     if (email) { document.getElementById('bookipEmail').value = email; preencheuAlgo = true; }
     if (enderecoCompleto.length > 5) { document.getElementById('bookipEndereco').value = enderecoCompleto; preencheuAlgo = true; }
 
-    // Fecha e Avisa
     fecharModalZap();
     
     if (preencheuAlgo) {
-        showCustomModal({ message: "Dados preenchidos com sucesso! 🚀" });
-        
-        // Dispara o autocomplete para salvar o cliente novo (se for o caso)
-        // (Isso já acontece quando você clica em Salvar depois)
+        if(typeof showCustomModal === 'function') {
+            showCustomModal({ message: "Dados processados! Confere se ficou certinho. 😉" });
+        } else {
+            alert("Dados processados!");
+        }
     } else {
-        showCustomModal({ message: "Não consegui encontrar os dados no texto. Verifique se copiou a mensagem certa." });
+        alert("Não entendi o texto. Tente copiar apenas os dados do cliente.");
     }
 };
-
-
 
 
         });
