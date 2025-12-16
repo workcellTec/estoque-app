@@ -5305,57 +5305,78 @@ setupProductTags();
 
 
 // ============================================================
-// 1. FÁBRICA DE RECIBOS "BLINDADA" (Layout em Tabelas Rígidas)
+// ============================================================
+// ============================================================
+// 1. FÁBRICA DE RECIBOS (CORREÇÃO DE ALINHAMENTO FORÇADA)
 // ============================================================
 function getReciboHTML(dados) {
-    // --- Configurações ---
+    // 1. Configurações
     const settings = (typeof receiptSettings !== 'undefined' && receiptSettings) ? receiptSettings : {};
     const headerHtml = (settings.header || "WORKCELL TECNOLOGIA").replace(/\n/g, '<br>');
     const rawTerms = (settings.terms || "Garantia legal de 90 dias.");
+    
     const termsHtml = rawTerms.split('\n').map(line => {
-        if(line.trim() === '') return '<div style="height: 5px;"></div>'; 
+        if(!line || line.trim() === '') return '<div style="height: 5px;"></div>'; 
         return `<div style="margin-bottom: 3px; text-align: justify; page-break-inside: avoid;">${line}</div>`;
     }).join('');
     
     const logoUrl = settings.logoBase64 || "https://i.imgur.com/H6BjyBS.png"; 
     const signatureUrl = settings.signatureBase64 || "https://i.imgur.com/Bh3fVLM.jpeg";
 
-    // --- Tratamento de Dados ---
+    // 2. Dados da Lista
     let lista = (dados.items && Array.isArray(dados.items)) ? dados.items : [];
-    if (lista.length === 0 && dados.prodNome) {
-        lista = [{ nome: dados.prodNome, qtd: parseInt(dados.prodQtd)||1, valor: parseFloat(dados.prodValor)||0, cor: dados.prodCor||'', obs: dados.obs||'' }];
+    if (lista.length === 0) {
+        if (dados.prodNome) {
+            lista = [{ 
+                nome: dados.prodNome, 
+                qtd: parseInt(dados.prodQtd) || 1, 
+                valor: parseFloat(dados.prodValor) || 0, 
+                cor: dados.prodCor || '', 
+                obs: dados.obs || '' 
+            }];
+        } else {
+            lista = [];
+        }
     }
-    const totalGeral = lista.reduce((acc, i) => acc + (i.valor * i.qtd), 0);
+    
+    const totalGeral = lista.reduce((acc, i) => acc + (parseFloat(i.valor || 0) * (parseInt(i.qtd) || 1)), 0);
 
-    // --- Datas ---
+    // 3. Datas
     let hoje, dataCompra;
     if (dados.dataVenda) {
-        const partes = dados.dataVenda.split('-');
-        hoje = new Date(partes[0], partes[1] - 1, partes[2]);
-        dataCompra = `${partes[2]}/${partes[1]}/${partes[0]}`;
+        try {
+            const partes = dados.dataVenda.split('-');
+            hoje = new Date(partes[0], partes[1] - 1, partes[2]);
+            dataCompra = `${partes[2]}/${partes[1]}/${partes[0]}`;
+        } catch (e) {
+            hoje = new Date();
+            dataCompra = hoje.toLocaleDateString('pt-BR');
+        }
     } else {
         hoje = dados.criadoEm ? new Date(dados.criadoEm) : new Date();
         dataCompra = hoje.toLocaleDateString('pt-BR');
     }
 
-    // --- Garantia ---
+    // 4. Garantia
     const dias = parseInt(dados.diasGarantia) || 0;
     let dataVencimento = "S/ Garantia";
     let txtGarantia = "Sem Garantia";
+    
     if (dias > 0) {
         const validade = new Date(hoje);
         validade.setDate(hoje.getDate() + dias);
         dataVencimento = validade.toLocaleDateString('pt-BR');
+        
         if (dias === 365) txtGarantia = "1 Ano";
         else if (dias === 180) txtGarantia = "6 Meses";
         else if (dias === 120) txtGarantia = "4 Meses";
         else if (dias === 30) txtGarantia = "30 Dias";
         else txtGarantia = `${dias} Dias`;
     }
+
     const docNum = dados.docNumber || '---';
 
-    // --- Monta Linhas da Tabela ---
-    // Usamos border-bottom cinza claro e padding fixo para não encavalar
+    // 5. Linhas da Tabela
     const linhas = lista.map(item => `
         <tr style="page-break-inside: avoid;">
             <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10pt; vertical-align: top;">
@@ -5372,7 +5393,6 @@ function getReciboHTML(dados) {
             <strong>Forma de Pagamento:</strong> ${dados.pagamento}
          </div>` : '';
 
-    // HTML ESTRUTURAL (FIXO 750px para A4)
     return `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750px; margin: 0 auto; box-sizing: border-box;">
             
@@ -5402,24 +5422,26 @@ function getReciboHTML(dados) {
                     </td>
 
                     <td style="width: 40%; vertical-align: top; padding-top: 15px; text-align: right;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 10pt;">
-                            <tr>
-                                <td style="padding-bottom: 3px; text-align: left;"><strong>Doc Nº:</strong></td>
-                                <td style="padding-bottom: 3px; text-align: right;"><span style="font-size: 11pt; font-weight: bold;">${docNum}</span></td>
-                            </tr>
-                            <tr>
-                                <td style="padding-bottom: 3px; text-align: left;"><strong>Data:</strong></td>
-                                <td style="padding-bottom: 3px; text-align: right;">${dataCompra}</td>
-                            </tr>
-                            <tr>
-                                <td style="padding-bottom: 3px; text-align: left;"><strong>Garantia:</strong></td>
-                                <td style="padding-bottom: 3px; text-align: right;">${txtGarantia}</td>
-                            </tr>
-                            <tr>
-                                <td style="text-align: left;"><strong>Vence:</strong></td>
-                                <td style="text-align: right;">${dataVencimento}</td>
-                            </tr>
-                        </table>
+                        <div style="display: inline-block; text-align: right;">
+                            <table style="width: auto; border-collapse: collapse; font-size: 10pt;">
+                                <tr>
+                                    <td style="text-align: right; padding-right: 8px; padding-bottom: 4px; white-space: nowrap;"><strong>Doc Nº:</strong></td>
+                                    <td style="text-align: left; padding-bottom: 4px; font-weight: bold; white-space: nowrap;">${docNum}</td>
+                                </tr>
+                                <tr>
+                                    <td style="text-align: right; padding-right: 8px; padding-bottom: 4px; white-space: nowrap;"><strong>Data:</strong></td>
+                                    <td style="text-align: left; padding-bottom: 4px; white-space: nowrap;">${dataCompra}</td>
+                                </tr>
+                                <tr>
+                                    <td style="text-align: right; padding-right: 8px; padding-bottom: 4px; white-space: nowrap;"><strong>Garantia:</strong></td>
+                                    <td style="text-align: left; padding-bottom: 4px; white-space: nowrap;">${txtGarantia}</td>
+                                </tr>
+                                <tr>
+                                    <td style="text-align: right; padding-right: 8px; white-space: nowrap;"><strong>Vence:</strong></td>
+                                    <td style="text-align: left; white-space: nowrap;">${dataVencimento}</td>
+                                </tr>
+                            </table>
+                        </div>
                     </td>
                 </tr>
             </table>
@@ -5433,9 +5455,7 @@ function getReciboHTML(dados) {
                         <th style="padding: 8px; text-align: right; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Total</th>
                     </tr>
                 </thead>
-                <tbody>
-                    ${linhas}
-                </tbody>
+                <tbody>${linhas}</tbody>
             </table>
 
             ${infoPagamento}
@@ -5446,12 +5466,10 @@ function getReciboHTML(dados) {
                 </div>
             </div>
 
-            <div style="border-bottom: 1px solid #000; margin-bottom: 10px; padding-bottom: 2px;">
+            <div style="border-bottom: 1px solid #000; margin-bottom: 10px;">
                 <strong style="font-size: 10pt; text-transform: uppercase;">Termos de Garantia</strong>
             </div>
-            <div style="font-size: 9pt; text-align: justify; line-height: 1.3; color: #333;">
-                ${termsHtml}
-            </div>
+            <div style="font-size: 9pt; line-height: 1.3; color: #333; text-align: justify;">${termsHtml}</div>
 
             <div style="width: 100%; text-align: right; margin-top: 40px; page-break-inside: avoid;">
                 <img src="${signatureUrl}" style="width: 200px; height: auto; display: inline-block;" onerror="this.style.display='none'">
@@ -5483,15 +5501,15 @@ function printBookip(dados) {
 
 // ============================================================
 // ============================================================
-// 1. FÁBRICA DE RECIBOS "BLINDADA" (Versão Completa & Segura)
+// ============================================================
+// 1. FÁBRICA DE RECIBOS (CORREÇÃO DE ALINHAMENTO FORÇADA)
 // ============================================================
 function getReciboHTML(dados) {
-    // 1. Configurações e Proteção contra erros
+    // 1. Configurações
     const settings = (typeof receiptSettings !== 'undefined' && receiptSettings) ? receiptSettings : {};
     const headerHtml = (settings.header || "WORKCELL TECNOLOGIA").replace(/\n/g, '<br>');
     const rawTerms = (settings.terms || "Garantia legal de 90 dias.");
     
-    // Tratamento dos Termos (Evita corte de página)
     const termsHtml = rawTerms.split('\n').map(line => {
         if(!line || line.trim() === '') return '<div style="height: 5px;"></div>'; 
         return `<div style="margin-bottom: 3px; text-align: justify; page-break-inside: avoid;">${line}</div>`;
@@ -5500,10 +5518,9 @@ function getReciboHTML(dados) {
     const logoUrl = settings.logoBase64 || "https://i.imgur.com/H6BjyBS.png"; 
     const signatureUrl = settings.signatureBase64 || "https://i.imgur.com/Bh3fVLM.jpeg";
 
-    // 2. Tratamento de Lista de Itens (Fallback de segurança)
+    // 2. Dados da Lista
     let lista = (dados.items && Array.isArray(dados.items)) ? dados.items : [];
     if (lista.length === 0) {
-        // Se a lista estiver vazia, tenta pegar do item único legado
         if (dados.prodNome) {
             lista = [{ 
                 nome: dados.prodNome, 
@@ -5513,13 +5530,13 @@ function getReciboHTML(dados) {
                 obs: dados.obs || '' 
             }];
         } else {
-            lista = []; // Lista realmente vazia
+            lista = [];
         }
     }
     
     const totalGeral = lista.reduce((acc, i) => acc + (parseFloat(i.valor || 0) * (parseInt(i.qtd) || 1)), 0);
 
-    // 3. Tratamento de Datas
+    // 3. Datas
     let hoje, dataCompra;
     if (dados.dataVenda) {
         try {
@@ -5535,7 +5552,7 @@ function getReciboHTML(dados) {
         dataCompra = hoje.toLocaleDateString('pt-BR');
     }
 
-    // 4. Cálculo de Garantia
+    // 4. Garantia
     const dias = parseInt(dados.diasGarantia) || 0;
     let dataVencimento = "S/ Garantia";
     let txtGarantia = "Sem Garantia";
@@ -5554,7 +5571,7 @@ function getReciboHTML(dados) {
 
     const docNum = dados.docNumber || '---';
 
-    // 5. Montagem das Linhas da Tabela (Onde a mágica do 'tr' acontece)
+    // 5. Linhas da Tabela
     const linhas = lista.map(item => `
         <tr style="page-break-inside: avoid;">
             <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10pt; vertical-align: top;">
@@ -5571,7 +5588,6 @@ function getReciboHTML(dados) {
             <strong>Forma de Pagamento:</strong> ${dados.pagamento}
          </div>` : '';
 
-    // 6. Retorna o HTML Final (Layout Tabela Fixa 750px)
     return `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750px; margin: 0 auto; box-sizing: border-box;">
             
@@ -5599,172 +5615,28 @@ function getReciboHTML(dados) {
                             <strong>Endereço:</strong> ${dados.end || 'Não inf.'}
                         </div>
                     </td>
+
                     <td style="width: 40%; vertical-align: top; padding-top: 15px; text-align: right;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 10pt;">
-                            <tr><td style="text-align: left;"><strong>Doc Nº:</strong></td><td style="text-align: right; font-weight: bold;">${docNum}</td></tr>
-                            <tr><td style="text-align: left;"><strong>Data:</strong></td><td style="text-align: right;">${dataCompra}</td></tr>
-                            <tr><td style="text-align: left;"><strong>Garantia:</strong></td><td style="text-align: right;">${txtGarantia}</td></tr>
-                            <tr><td style="text-align: left;"><strong>Vence:</strong></td><td style="text-align: right;">${dataVencimento}</td></tr>
-                        </table>
-                    </td>
-                </tr>
-            </table>
-
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 5px;">
-                <thead>
-                    <tr style="background-color: #6da037 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
-                        <th style="padding: 8px; text-align: left; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Item</th>
-                        <th style="padding: 8px; text-align: center; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Qtd</th>
-                        <th style="padding: 8px; text-align: right; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Unit</th>
-                        <th style="padding: 8px; text-align: right; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Total</th>
-                    </tr>
-                </thead>
-                <tbody>${linhas}</tbody>
-            </table>
-
-            ${infoPagamento}
-
-            <div style="text-align: right; margin-top: 15px; margin-bottom: 25px;">
-                <div style="display: inline-block; background-color: #f2f2f2; padding: 10px 20px; font-size: 12pt; font-weight: bold; border-radius: 4px; -webkit-print-color-adjust: exact;">
-                    Total: <span style="color: #2e7d32;">R$ ${totalGeral.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
-                </div>
-            </div>
-
-            <div style="border-bottom: 1px solid #000; margin-bottom: 10px;">
-                <strong style="font-size: 10pt; text-transform: uppercase;">Termos de Garantia</strong>
-            </div>
-            <div style="font-size: 9pt; line-height: 1.3; color: #333; text-align: justify;">${termsHtml}</div>
-
-            <div style="width: 100%; text-align: right; margin-top: 40px; page-break-inside: avoid;">
-                <img src="${signatureUrl}" style="width: 200px; height: auto; display: inline-block;" onerror="this.style.display='none'">
-            </div>
-        </div>
-    `;
-}
-// ============================================================
-// 1. FÁBRICA DE RECIBOS "BLINDADA" (Versão Completa & Segura)
-// ============================================================
-function getReciboHTML(dados) {
-    // 1. Configurações e Proteção contra erros
-    const settings = (typeof receiptSettings !== 'undefined' && receiptSettings) ? receiptSettings : {};
-    const headerHtml = (settings.header || "WORKCELL TECNOLOGIA").replace(/\n/g, '<br>');
-    const rawTerms = (settings.terms || "Garantia legal de 90 dias.");
-    
-    // Tratamento dos Termos (Evita corte de página)
-    const termsHtml = rawTerms.split('\n').map(line => {
-        if(!line || line.trim() === '') return '<div style="height: 5px;"></div>'; 
-        return `<div style="margin-bottom: 3px; text-align: justify; page-break-inside: avoid;">${line}</div>`;
-    }).join('');
-    
-    const logoUrl = settings.logoBase64 || "https://i.imgur.com/H6BjyBS.png"; 
-    const signatureUrl = settings.signatureBase64 || "https://i.imgur.com/Bh3fVLM.jpeg";
-
-    // 2. Tratamento de Lista de Itens (Fallback de segurança)
-    let lista = (dados.items && Array.isArray(dados.items)) ? dados.items : [];
-    if (lista.length === 0) {
-        // Se a lista estiver vazia, tenta pegar do item único legado
-        if (dados.prodNome) {
-            lista = [{ 
-                nome: dados.prodNome, 
-                qtd: parseInt(dados.prodQtd) || 1, 
-                valor: parseFloat(dados.prodValor) || 0, 
-                cor: dados.prodCor || '', 
-                obs: dados.obs || '' 
-            }];
-        } else {
-            lista = []; // Lista realmente vazia
-        }
-    }
-    
-    const totalGeral = lista.reduce((acc, i) => acc + (parseFloat(i.valor || 0) * (parseInt(i.qtd) || 1)), 0);
-
-    // 3. Tratamento de Datas
-    let hoje, dataCompra;
-    if (dados.dataVenda) {
-        try {
-            const partes = dados.dataVenda.split('-');
-            hoje = new Date(partes[0], partes[1] - 1, partes[2]);
-            dataCompra = `${partes[2]}/${partes[1]}/${partes[0]}`;
-        } catch (e) {
-            hoje = new Date();
-            dataCompra = hoje.toLocaleDateString('pt-BR');
-        }
-    } else {
-        hoje = dados.criadoEm ? new Date(dados.criadoEm) : new Date();
-        dataCompra = hoje.toLocaleDateString('pt-BR');
-    }
-
-    // 4. Cálculo de Garantia
-    const dias = parseInt(dados.diasGarantia) || 0;
-    let dataVencimento = "S/ Garantia";
-    let txtGarantia = "Sem Garantia";
-    
-    if (dias > 0) {
-        const validade = new Date(hoje);
-        validade.setDate(hoje.getDate() + dias);
-        dataVencimento = validade.toLocaleDateString('pt-BR');
-        
-        if (dias === 365) txtGarantia = "1 Ano";
-        else if (dias === 180) txtGarantia = "6 Meses";
-        else if (dias === 120) txtGarantia = "4 Meses";
-        else if (dias === 30) txtGarantia = "30 Dias";
-        else txtGarantia = `${dias} Dias`;
-    }
-
-    const docNum = dados.docNumber || '---';
-
-    // 5. Montagem das Linhas da Tabela (Onde a mágica do 'tr' acontece)
-    const linhas = lista.map(item => `
-        <tr style="page-break-inside: avoid;">
-            <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10pt; vertical-align: top;">
-                <strong style="color: #000;">${item.nome}</strong><br>
-                <span style="font-size: 8.5pt; color: #666;">${item.cor || ''} ${item.obs || ''}</span>
-            </td>
-            <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10pt; text-align: center; vertical-align: top;">${item.qtd}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10pt; text-align: right; vertical-align: top;">R$ ${parseFloat(item.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10pt; text-align: right; vertical-align: top;">R$ ${(item.valor * item.qtd).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
-        </tr>`).join('');
-
-    const infoPagamento = dados.pagamento ? 
-        `<div style="text-align: right; font-size: 9pt; color: #444; margin-top: 5px; padding-right: 5px;">
-            <strong>Forma de Pagamento:</strong> ${dados.pagamento}
-         </div>` : '';
-
-    // 6. Retorna o HTML Final (Layout Tabela Fixa 750px)
-    return `
-        <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750px; margin: 0 auto; box-sizing: border-box;">
-            
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-                <tr>
-                    <td style="width: 30%; vertical-align: top;">
-                        <img src="${logoUrl}" style="width: 160px; height: auto; object-fit: contain;" onerror="this.style.display='none'">
-                    </td>
-                    <td style="width: 70%; text-align: right; vertical-align: top; font-size: 9pt; color: #444;">
-                        <div style="font-size: 20pt; color: #000; line-height: 1.1;">Comprovante de</div>
-                        <div style="font-size: 20pt; font-weight: bold; color: #000; margin-bottom: 8px; line-height: 1.1;">compra / Garantia</div>
-                        ${headerHtml}
-                    </td>
-                </tr>
-            </table>
-
-            <table style="width: 100%; border-top: 1px solid #ccc; margin-bottom: 20px; border-collapse: collapse;">
-                <tr>
-                    <td style="width: 60%; vertical-align: top; padding-top: 15px; padding-right: 15px;">
-                        <div style="font-size: 11pt; margin-bottom: 2px;"><strong>Para</strong></div>
-                        <div style="font-size: 11pt; font-weight: bold; margin-bottom: 5px;">${dados.nome}</div>
-                        <div style="font-size: 10pt; line-height: 1.4;">
-                            <strong>CPF:</strong> ${dados.cpf || 'Não inf.'}<br>
-                            <strong>Número:</strong> ${dados.tel || 'Não inf.'}<br>
-                            <strong>Endereço:</strong> ${dados.end || 'Não inf.'}
+                        <div style="display: inline-block; text-align: right;">
+                            <table style="width: auto; border-collapse: collapse; font-size: 10pt;">
+                                <tr>
+                                    <td style="text-align: right; padding-right: 8px; padding-bottom: 4px; white-space: nowrap;"><strong>Doc Nº:</strong></td>
+                                    <td style="text-align: left; padding-bottom: 4px; font-weight: bold; white-space: nowrap;">${docNum}</td>
+                                </tr>
+                                <tr>
+                                    <td style="text-align: right; padding-right: 8px; padding-bottom: 4px; white-space: nowrap;"><strong>Data:</strong></td>
+                                    <td style="text-align: left; padding-bottom: 4px; white-space: nowrap;">${dataCompra}</td>
+                                </tr>
+                                <tr>
+                                    <td style="text-align: right; padding-right: 8px; padding-bottom: 4px; white-space: nowrap;"><strong>Garantia:</strong></td>
+                                    <td style="text-align: left; padding-bottom: 4px; white-space: nowrap;">${txtGarantia}</td>
+                                </tr>
+                                <tr>
+                                    <td style="text-align: right; padding-right: 8px; white-space: nowrap;"><strong>Vence:</strong></td>
+                                    <td style="text-align: left; white-space: nowrap;">${dataVencimento}</td>
+                                </tr>
+                            </table>
                         </div>
-                    </td>
-                    <td style="width: 40%; vertical-align: top; padding-top: 15px; text-align: right;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 10pt;">
-                            <tr><td style="text-align: left;"><strong>Doc Nº:</strong></td><td style="text-align: right; font-weight: bold;">${docNum}</td></tr>
-                            <tr><td style="text-align: left;"><strong>Data:</strong></td><td style="text-align: right;">${dataCompra}</td></tr>
-                            <tr><td style="text-align: left;"><strong>Garantia:</strong></td><td style="text-align: right;">${txtGarantia}</td></tr>
-                            <tr><td style="text-align: left;"><strong>Vence:</strong></td><td style="text-align: right;">${dataVencimento}</td></tr>
-                        </table>
                     </td>
                 </tr>
             </table>
@@ -5801,12 +5673,6 @@ function getReciboHTML(dados) {
     `;
 }
 
-
-
-// ============================================================
-// ============================================================
-
-// ============================================================
 // 3. FUNÇÃO PDF FINAL (COM CÓPIA DE E-MAIL AUTOMÁTICA)
 // ============================================================
 async function gerarPdfDoHistorico(dados, botao) {
