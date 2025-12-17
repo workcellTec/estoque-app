@@ -1614,80 +1614,81 @@ do que você precisa??</h2>
 
 <script>
 (function() {
-    console.log("🔧 Sistema de Navegação Nativa Iniciado...");
+    console.log("🔧 Sistema de Navegação (Prioridade Filhos) Iniciado...");
 
-    // 1. GATILHO: Quando clicar em qualquer botão de abrir tela, cria histórico
-    // Usamos 'capture' para pegar o clique antes de qualquer erro do app.js travar
+    // 1. GATILHO: Cria histórico ao clicar em botões de abrir tela
     document.addEventListener('click', function(e) {
-        // Verifica se o clique foi num botão de menu ou de abrir seção
-        // (Verifica o elemento clicado e seus pais, caso clique no ícone dentro do botão)
+        // Pega botões de menu ou cartões que abrem telas
         const target = e.target.closest('.btn-menu, .btn-action-sm, #btnAdminClients');
-        
         if (target) {
-            console.log("👉 Navegando para frente. Criando histórico.");
-            // Adiciona um ponto no histórico do navegador
+            // Cria o ponto de retorno
             window.history.pushState({ time: Date.now() }, "", "");
         }
     }, true);
 
-    // 2. REAÇÃO: Quando apertar VOLTAR no celular
+    // 2. REAÇÃO: Botão Voltar do Celular
     window.addEventListener('popstate', function(event) {
-        console.log("🔙 Botão Voltar do celular detectado!");
+        console.log("🔙 Voltar detectado! Procurando tela para fechar...");
 
-        // Estratégia "Controle Remoto": 
-        // Achar a tela que está aberta e clicar no botão "Voltar" dela via código.
-
-        // Lista de todas as telas possíveis (Pelo ID no HTML)
-        const containers = [
-            'calculatorHome', 'fecharVenda', 'repassarValores', 'calcularEmprestimo', 'calcularPorAparelho', // Calc
-            'documentsHome', 'areaContratoWrapper', 'areaBookipWrapper', // Docs
-            'stockContainer', 'clientsContainer', 'administracao' // Outros
+        // A LISTA DE PRIORIDADE (O Segredo está aqui)
+        // Primeiro listamos as telas "FILHAS" (Sub-telas).
+        // Depois listamos os menus "PAIS".
+        const ordemDeChecagem = [
+            // 1º Prioridade: Telas de Fundo (Sub-telas da Calculadora)
+            'fecharVenda', 
+            'repassarValores', 
+            'calcularEmprestimo', 
+            'calcularPorAparelho',
+            
+            // 2º Prioridade: Telas de Fundo (Sub-telas de Documentos)
+            'areaContratoWrapper', 
+            'areaBookipWrapper',
+            
+            // 3º Prioridade: Menus Intermediários (Se eles estiverem visíveis, volta pro Início)
+            'calculatorHome', 
+            'documentsHome',
+            
+            // 4º Prioridade: Telas Independentes
+            'stockContainer', 
+            'clientsContainer', 
+            'administracao'
         ];
 
         let clicou = false;
 
-        for (let id of containers) {
+        for (let id of ordemDeChecagem) {
             const tela = document.getElementById(id);
             
-            // Verifica se a tela está visível (sem classe hidden e display != none)
+            // Verifica se a tela existe E está visível
             if (tela && !tela.classList.contains('hidden') && tela.style.display !== 'none') {
                 
-                // Procura o botão de voltar DENTRO dessa tela (classe .btn-back)
+                // Procura o botão de voltar DENTRO desta tela específica
                 const botaoVoltar = tela.querySelector('.btn-back');
                 
                 if (botaoVoltar) {
-                    console.log("✅ Clicando automaticamente no botão:", botaoVoltar.id);
-                    // O PULO DO GATO: Simula o clique na setinha que já funciona!
-                    botaoVoltar.click(); 
+                    console.log(`✅ Tela filha detectada (${id}). Clicando em: ${botaoVoltar.id}`);
+                    botaoVoltar.click(); // Clica na setinha dessa tela
                     clicou = true;
-                    break; // Parar de procurar
+                    break; // PARE! Já achamos a tela certa, não procure as outras.
                 }
             }
         }
 
-        // Se não achou nenhum botão para clicar, tenta voltar ao menu principal
+        // Fallback: Se não achou nada, garante que o Menu Principal apareça
         if (!clicou) {
-            console.log("⚠️ Nenhuma subtela detectada. Forçando Menu Principal.");
             const mainMenu = document.getElementById('mainMenu');
-            // Esconde os containers principais conhecidos para garantir
-            document.getElementById('calculatorContainer').classList.add('hidden');
-            document.getElementById('contractContainer').classList.add('hidden');
-            document.getElementById('stockContainer').classList.add('hidden');
-            document.getElementById('administracao').classList.add('hidden');
-            
-            if(mainMenu) {
-                mainMenu.style.display = 'block';
-                mainMenu.classList.remove('hidden');
+            if(mainMenu && (mainMenu.style.display === 'none' || mainMenu.classList.contains('hidden'))) {
+                 // Se estivermos perdidos no limbo, mostra o menu
+                 if(typeof showMainSection === 'function') showMainSection('main');
             }
         }
     });
 
-    // 3. GARANTIA: Cria o estado inicial para não fechar o app no primeiro voltar
+    // 3. Estado Inicial
     window.history.replaceState(null, "", "");
 
 })();
 </script>
-
 
 </body>
 </html>
