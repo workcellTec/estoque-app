@@ -6493,282 +6493,68 @@ window.resetFormulariosBookip = function() {
 // ============================================================
 // ============================================================
 // ============================================================
-// 🧭 SISTEMA DE NAVEGAÇÃO PROFISSIONAL (CENTRAL ROUTER)
+// ============================================================
+// SOLUÇÃO CONTROLE REMOTO (BOTÃO FÍSICO = BOTÃO VIRTUAL)
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    // 1. MAPEAMENTO DE TODAS AS TELAS "RAIZ" (Que ocupam o fundo todo)
-    // Se uma dessas aparecer, todas as outras TÊM que sumir.
-    const TELAS_RAIZ = [
-        'mainMenu',                // Menu Principal
-        'calculatorContainer',     // Menu Calculadora (Pai dos ícones)
-        'fecharVenda',             // Tela Calc (No seu HTML ela é vizinha do menu)
-        'repassarValores',         // Tela Calc
-        'calcularEmprestimo',      // Tela Calc
-        'calcularPorAparelho',     // Tela Calc
-        'stockContainer',          // Estoque
-        'administracao',           // Admin
-        'clientsContainer',        // Clientes
-        'contractContainer'        // Documentos (Pai das telas de docs)
-    ];
-
-    // 2. MAPEAMENTO DE SUB-TELAS (Que moram dentro de 'contractContainer')
-    const SUB_TELAS_DOCS = [
-        'documentsHome',       // Menu de ícones dos Docs
-        'areaContratoWrapper', // Tela de Contrato
-        'areaBookipWrapper'    // Tela de Bookip
-    ];
-
-    // --- A FUNÇÃO "FAXINA" ---
-    // Garante que a tela esteja limpa antes de mostrar algo novo
-    function resetarTela() {
-        // 1. Esconde todos os blocos principais
-        TELAS_RAIZ.forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.style.display = 'none';
-                el.classList.remove('active'); // Remove classes extras se houver
-                el.classList.add('hidden');    // Garante compatibilidade com seu CSS
-            }
+    // 1. AVISA O CELULAR QUE NAVEGAMOS (CRIA O HISTÓRICO)
+    // Sem isso, o botão voltar fecha o app.
+    const botoesQueAbremTelas = document.querySelectorAll('.btn-menu, .btn-action-sm, #btnAdminClients');
+    
+    botoesQueAbremTelas.forEach(btn => {
+        btn.addEventListener('click', () => {
+            // Empurra um estado novo para o histórico
+            history.pushState({ time: Date.now() }, '', '');
         });
+    });
+
+    // 2. QUANDO APERTAR VOLTAR NO CELULAR...
+    window.onpopstate = function(event) {
         
-        // 2. Reseta scroll para o topo (UX Essencial)
-        window.scrollTo(0, 0);
-        document.body.scrollTop = 0;
-    }
+        // Estratégia: Achar qual tela está aberta e clicar no botão 'Voltar' dela.
+        
+        // Lista de telas possíveis (baseada no seu index.html)
+        const telas = [
+            'fecharVenda', 'repassarValores', 'calcularEmprestimo', 'calcularPorAparelho', // Telas Calc
+            'calculatorHome', // Menu Calc
+            'areaContratoWrapper', 'areaBookipWrapper', // Telas Docs
+            'documentsHome', // Menu Docs
+            'stockContainer', 'administracao', 'clientsContainer' // Outros
+        ];
 
-    // --- O ROUTER (O CHEFE) ---
-    // destino: string (nome interno da rota)
-    // pushHistory: boolean (se deve criar histórico ou só trocar a tela)
-    window.router = function(destino, pushHistory = true) {
-        // console.log(`[Router] Navegando para: ${destino}`); // Debug se precisar
+        let clicouEmAlgo = false;
 
-        // PASSO A: Limpa tudo
-        resetarTela();
-
-        // PASSO B: Lógica de Exibição baseada no Destino
-        switch (destino) {
-            case 'mainMenu':
-                mostrar('mainMenu');
-                break;
-
-            case 'calculatorMenu':
-                mostrar('calculatorContainer');
-                mostrar('calculatorHome'); // Garante que o menu interno apareça
-                break;
-
-            case 'fecharVenda':
-            case 'repassarValores':
-            case 'calcularEmprestimo':
-            case 'calcularPorAparelho':
-                mostrar(destino);
-                // Hooks específicos (Recalcular ao abrir)
-                if(destino === 'calcularPorAparelho' && typeof renderCarrinho === 'function') {
-                    renderCarrinho(); 
-                }
-                break;
-
-            case 'stockContainer':
-                if(typeof loadCheckedItems === 'function') { loadCheckedItems(); filterStockProducts(); }
-                mostrar('stockContainer');
-                break;
-
-            case 'administracao':
-                if(typeof filterAdminProducts === 'function') filterAdminProducts();
-                mostrar('administracao');
-                break;
-
-            case 'clientsContainer':
-                mostrar('clientsContainer');
-                break;
-
-            // --- TRATAMENTO ESPECIAL: DOCUMENTOS (HIERARQUIA ANINHADA) ---
-            case 'documentsMenu':
-                mostrar('contractContainer'); // Mostra o Pai
-                gerenciarSubTelaDocs('documentsHome'); // Mostra o Filho
-                break;
-
-            case 'contrato':
-                if(typeof loadContractDraft === 'function') loadContractDraft();
-                mostrar('contractContainer');
-                gerenciarSubTelaDocs('areaContratoWrapper');
-                break;
-
-            case 'bookip':
-                mostrar('contractContainer');
-                gerenciarSubTelaDocs('areaBookipWrapper');
-                break;
-
-            default:
-                console.warn(`Rota desconhecida: ${destino}. Voltando ao início.`);
-                mostrar('mainMenu');
-                destino = 'mainMenu';
-        }
-
-        // PASSO C: Atualiza o Histórico do Navegador
-        if (pushHistory) {
-            history.pushState({ rota: destino }, '', `#${destino}`);
-        }
-    };
-
-    // --- AUXILIARES ---
-    function mostrar(id) {
-        const el = document.getElementById(id);
-        if (el) {
-            el.style.display = 'block'; // Ou flex, dependendo do seu CSS, mas block é seguro
-            el.classList.remove('hidden');
-        }
-    }
-
-    function gerenciarSubTelaDocs(idAlvo) {
-        SUB_TELAS_DOCS.forEach(subId => {
-            const el = document.getElementById(subId);
-            if (el) {
-                if (subId === idAlvo) {
-                    el.style.display = 'block';
-                    el.classList.remove('hidden');
-                } else {
-                    el.style.display = 'none';
-                    el.classList.add('hidden');
+        // Procura qual tela está visível agora
+        for (let id of telas) {
+            const tela = document.getElementById(id);
+            // Se a tela existe e está visível (sem display:none e sem classe hidden)
+            if (tela && !tela.classList.contains('hidden') && tela.style.display !== 'none') {
+                
+                // Procura o botão de voltar DENTRO dessa tela
+                // No seu HTML, eles tem a classe .btn-back ou .btn-back-custom
+                const botaoVoltarDaTela = tela.querySelector('.btn-back, button[aria-label="Voltar"], button[id^="backFrom"]');
+                
+                if (botaoVoltarDaTela) {
+                    console.log(`📱 Celular apertou voltar -> Clicando automagicamente em: ${botaoVoltarDaTela.id}`);
+                    botaoVoltarDaTela.click(); // SIMULA O CLIQUE FÍSICO
+                    clicouEmAlgo = true;
+                    break; // Paramos de procurar
                 }
             }
-        });
-    }
-
-    // --- CONECTORES (PONTE ENTRE SEU CÓDIGO ANTIGO E O ROUTER) ---
-    // Isso faz seus botões antigos funcionarem sem você precisar mudar o HTML
-    
-    window.showMainSection = (section) => {
-        const mapa = {
-            'main': 'mainMenu',
-            'calculator': 'calculatorMenu',
-            'contract': 'documentsMenu',
-            'stock': 'stockContainer',
-            'administracao': 'administracao',
-            'clients': 'clientsContainer'
-        };
-        router(map[section] || 'mainMenu');
-    };
-
-    window.openCalculatorSection = (id) => {
-        // Se id for null ou 'home', vai pro menu. Senão vai pra tela específica.
-        const destino = (!id || id === 'calculatorHome') ? 'calculatorMenu' : id;
-        router(destino);
-    };
-
-    window.openDocumentsSection = (sub) => {
-        const mapa = { 'home': 'documentsMenu', 'contrato': 'contrato', 'bookip': 'bookip' };
-        router(map[sub] || 'documentsMenu');
-    };
-    
-    // Atalho para o "Novo Recibo"
-    const _oldAbrirRecibo = window.abrirReciboSimples;
-    window.abrirReciboSimples = function() {
-        if(_oldAbrirRecibo) _oldAbrirRecibo();
-        router('bookip');
-    };
-
-    // --- GERENCIADOR DO BOTÃO VOLTAR (POPSTATE) ---
-    window.addEventListener('popstate', (event) => {
-        if (event.state && event.state.rota) {
-            // Se tem histórico, o Router navega para lá (sem criar novo histórico)
-            router(event.state.rota, false);
-        } else {
-            // Se acabou o histórico, volta para o Menu Principal
-            router('mainMenu', false);
         }
-    });
 
-    // --- INICIALIZAÇÃO ---
-    // Define o estado inicial para que o botão voltar não quebre na primeira vez
-    history.replaceState({ rota: 'mainMenu' }, '', ' ');
-});
-
-
-
-// ==========================================
-// 🕵️‍♂️ ESPIÃO DE NAVEGAÇÃO (DIAGNÓSTICO)
-// ==========================================
-// Cole isso no final do app.js para ver o que está acontecendo na tela.
-
-document.addEventListener('DOMContentLoaded', () => {
-    // 1. Criar a "Caixa Preta" de logs na tela
-    const logBox = document.createElement('div');
-    logBox.id = 'debug-log-box';
-    logBox.style.cssText = `
-        position: fixed; top: 0; left: 0; width: 100%; height: 180px;
-        background: rgba(0,0,0,0.9); color: #00ff00; z-index: 99999;
-        font-family: monospace; font-size: 12px; overflow-y: scroll;
-        padding: 10px; pointer-events: none; border-bottom: 2px solid red;
-    `;
-    document.body.appendChild(logBox);
-
-    function log(msg) {
-        const time = new Date().toLocaleTimeString();
-        logBox.innerHTML = `[${time}] ${msg}<br>` + logBox.innerHTML;
-    }
-
-    log("=== INICIANDO DIAGNÓSTICO ===");
-
-    // 2. LISTA DE TELAS PARA MONITORAR
-    // Adicione aqui os IDs que você acha que estão sobrepondo
-    const screensToCheck = [
-        'mainMenu', 'calculatorContainer', 'calculatorHome',
-        'fecharVenda', 'repassarValores', 'calcularEmprestimo', 'calcularPorAparelho',
-        'contractContainer', 'documentsHome', 'areaContratoWrapper', 'areaBookipWrapper',
-        'stockContainer', 'administracao'
-    ];
-
-    // 3. FUNÇÃO QUE CHECA QUEM ESTÁ VISÍVEL
-    function checkVisibility() {
-        const visible = [];
-        screensToCheck.forEach(id => {
-            const el = document.getElementById(id);
-            if (el && el.style.display !== 'none' && !el.classList.contains('hidden')) {
-                visible.push(id);
-            }
-        });
-        return visible.join(', '); // Retorna ex: "calculatorContainer, fecharVenda"
-    }
-
-    // 4. MONITORAR O BOTÃO VOLTAR DO CELULAR
-    window.addEventListener('popstate', (event) => {
-        const estado = event.state ? JSON.stringify(event.state) : "NULL";
-        const visiveisAntes = checkVisibility();
-        
-        log(`🔙 BOTÃO VOLTAR PRESSIONADO!`);
-        log(`💾 Estado do Histórico: ${estado}`);
-        log(`👁️ Telas Visíveis AGORA: [${visiveisAntes}]`);
-        
-        // Pequeno delay para ver se o navegador mudou algo sozinho
-        setTimeout(() => {
-            const visiveisDepois = checkVisibility();
-            log(`⏱️ 500ms depois: [${visiveisDepois}]`);
-            if (visiveisAntes === visiveisDepois) {
-                log(`❌ ERRO: A tela não mudou! O JavaScript ignorou o voltar.`);
-            } else {
-                log(`✅ A tela mudou.`);
-            }
-        }, 500);
-    });
-
-    // 5. MONITORAR CLIQUES NOS BOTÕES DE NAVEGAÇÃO
-    document.body.addEventListener('click', (e) => {
-        // Tenta achar se clicou num botão importante
-        if (e.target.id && (e.target.id.startsWith('btn') || e.target.id.startsWith('open') || e.target.id.startsWith('go'))) {
-            setTimeout(() => {
-                log(`point_up_2: Clicou em: ${e.target.id}`);
-                log(`👁️ Visível: [${checkVisibility()}]`);
-            }, 100);
+        // Se não achou nenhum botão para clicar, significa que estamos no Menu Principal.
+        // Deixamos o histórico vazio para o navegador decidir (fechar ou minimizar).
+        if (!clicouEmAlgo) {
+            // Se quiser forçar ir pro menu principal sempre, descomente abaixo:
+            // if(typeof showMainSection === 'function') showMainSection('main');
         }
-    });
-    
-    // Status Inicial
-    setTimeout(() => {
-        log(`🚀 APP CARREGADO. Visível: [${checkVisibility()}]`);
-    }, 1000);
-});
+    };
 
+    // 3. GARANTIA DE INÍCIO
+    history.replaceState(null, '', '');
+});
 
         });
