@@ -50,6 +50,128 @@ let currentlySelectedProductForCalc = null;
 let aparelhoQuantity = 1;
 let carrinhoDeAparelhos = [];
 
+// Função para trocar visualmente entre Produto e Situação
+window.alternarModoInput = function() {
+    const tipo = document.querySelector('input[name="tipoInput"]:checked').value;
+    const divProd = document.getElementById('camposProduto');
+    const divSit = document.getElementById('camposSituacao');
+    
+    if (tipo === 'situacao') {
+        divProd.style.display = 'none';
+        divSit.style.display = 'block';
+    } else {
+        divProd.style.display = 'block';
+        divSit.style.display = 'none';
+    }
+};
+
+
+
+// ============================================================
+// ============================================================
+// SISTEMA DE CONTROLE DE TELA (RECIBO vs GARANTIA) - FINAL
+// ============================================================
+
+// FUNÇÃO BLINDADA: ABRIR NOVO RECIBO
+window.abrirReciboSimples = function() {
+    console.log("Abrindo Recibo Simples...");
+
+    // 1. Configura Variáveis Globais
+    window.isSimpleReceiptMode = true;
+    window.currentEditingBookipId = null; 
+    
+    // 2. Chama a Faxina (Limpa campos e zera produtos)
+    if(typeof window.resetFormulariosBookip === 'function') {
+        window.resetFormulariosBookip();
+    }
+
+    // 3. Configura Títulos
+    const titulo = document.querySelector('#areaBookipWrapper h3');
+    if (titulo) titulo.innerText = "Novo Recibo (Simples)";
+
+    const txtNovo = document.getElementById('txtToggleNovo');
+    if (txtNovo) txtNovo.innerHTML = '<i class="bi bi-plus-lg"></i> Novo Recibo';
+
+    // 4. Configura Interface (Esconde busca, mostra toggle)
+    const toggle = document.getElementById('toggleModoInputContainer');
+    if (toggle) toggle.style.display = 'flex'; 
+
+    const buscaContainer = document.querySelector('#camposProduto .search-wrapper');
+    if (buscaContainer) buscaContainer.classList.add('hidden'); 
+
+    // 5. Troca a Tela (Esconde menus, mostra Bookip)
+    const menus = document.querySelectorAll('#mainMenu, #documentsHome, .section-content');
+    menus.forEach(m => m.style.display = 'none');
+    
+    const tela = document.getElementById('areaBookipWrapper');
+    if (tela) tela.style.display = 'block';
+    
+    // Garante aba "Novo" ativa visualmente
+    const tabToggle = document.getElementById('bookipModeToggle');
+    if(tabToggle) {
+        tabToggle.checked = false; 
+        tabToggle.dispatchEvent(new Event('change'));
+    }
+};
+
+// 2. CORREÇÃO AUTOMÁTICA DO BOTÃO "GARANTIA"
+/// CONFIGURAÇÃO DOS BOTÕES AO CARREGAR A PÁGINA
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // --- BOTÃO GARANTIA (Lógica Blindada) ---
+    const btnGarantia = document.getElementById('openBookipView');
+    if (btnGarantia) {
+        btnGarantia.addEventListener('click', () => {
+            console.log("Abrindo Garantia...");
+            
+            // 1. Reset de Variáveis
+            window.isSimpleReceiptMode = false;
+            window.currentEditingBookipId = null; 
+            
+            // 2. Chama a Faxina
+            if(typeof window.resetFormulariosBookip === 'function') {
+                window.resetFormulariosBookip();
+            }
+
+            // 3. Configura Títulos
+            const titulo = document.querySelector('#areaBookipWrapper h3');
+            if (titulo) titulo.innerText = "Garantia (Bookip)";
+
+            const txtNovo = document.getElementById('txtToggleNovo');
+            if (txtNovo) txtNovo.innerHTML = '<i class="bi bi-plus-lg"></i> Nova Garantia';
+
+            // 4. Configura Interface (Garantia precisa da busca e NÃO tem toggle)
+            const toggle = document.getElementById('toggleModoInputContainer');
+            if (toggle) toggle.style.display = 'none'; 
+            
+            if(typeof alternarModoInput === 'function') alternarModoInput('produto'); 
+
+            const buscaContainer = document.querySelector('#camposProduto .search-wrapper');
+            if (buscaContainer) buscaContainer.classList.remove('hidden'); 
+
+            // 5. Abre a Tela
+            // (Usando o método manual para garantir)
+            const menus = document.querySelectorAll('#mainMenu, #documentsHome, .section-content');
+            menus.forEach(m => m.style.display = 'none');
+            
+            const tela = document.getElementById('areaBookipWrapper');
+            if (tela) tela.style.display = 'block';
+            
+            const tabToggle = document.getElementById('bookipModeToggle');
+            if(tabToggle) {
+                tabToggle.checked = false;
+                tabToggle.dispatchEvent(new Event('change'));
+            }
+            
+            if(typeof loadBookipHistory === 'function') loadBookipHistory();
+        });
+    }
+
+    // (Se houver outros listeners aqui dentro, mantenha-os abaixo, mas cuidado para não apagar o '});' final)
+});
+
+
+
 
 
 const APARELHO_FAVORITES_KEY = 'ctwAparelhoFavoritos';
@@ -4120,48 +4242,100 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
     // Variável para controlar a edição (null = criando novo)
     // Nota: editingItemIndex já foi declarado lá no topo, então usamos ele direto.
 
+        // ============================================================
+    // 2. LÓGICA DE ADICIONAR / EDITAR PRODUTO NA LISTA (ATUALIZADO)
+    // ============================================================
+    
     if (btnAddLista) {
         btnAddLista.addEventListener('click', (e) => {
             e.preventDefault(); 
 
-            // Pega os valores dos inputs
-            const nome = document.getElementById('bookipProdNomeTemp').value;
-            const qtd = parseInt(document.getElementById('bookipProdQtdTemp').value) || 1;
-            const valor = parseFloat(document.getElementById('bookipProdValorTemp').value) || 0;
-            const cor = document.getElementById('bookipProdCorTemp').value;
-            const obs = document.getElementById('bookipProdObsTemp').value;
+            // 1. DESCOBRE O MODO (PRODUTO vs SITUAÇÃO)
+            // Tenta pegar o radio selecionado. Se não existir (erro defensivo), assume 'produto'.
+            const radioAtivo = document.querySelector('input[name="tipoInput"]:checked');
+            const modo = radioAtivo ? radioAtivo.value : 'produto';
 
-            if (!nome) {
-                showCustomModal({ message: "Digite ou busque o nome do produto." });
-                return;
+            let itemObjeto = null;
+
+            if (modo === 'situacao') {
+                // --- MODO SITUAÇÃO: Pega o texto do relato ---
+                const campoTexto = document.getElementById('sitDescricao');
+                const texto = campoTexto ? campoTexto.value.trim() : "";
+
+                if (!texto) {
+                    showCustomModal({ message: "Por favor, descreva a situação ocorrida." });
+                    return;
+                }
+
+                // Cria o objeto especial "Situação"
+                itemObjeto = { 
+                    nome: texto, 
+                    qtd: 1, 
+                    valor: 0, 
+                    cor: "", 
+                    obs: "", 
+                    isSituation: true // <--- A CHAVE QUE O PDF VAI LER PARA MUDAR O VISUAL
+                };
+
+                // Limpa o campo de texto após adicionar
+                if(campoTexto) campoTexto.value = "";
+
+            } else {
+                // --- MODO PRODUTO: Lógica Original ---
+                const nomeInput = document.getElementById('bookipProdNomeTemp');
+                const qtdInput = document.getElementById('bookipProdQtdTemp');
+                const valorInput = document.getElementById('bookipProdValorTemp');
+                const corInput = document.getElementById('bookipProdCorTemp');
+                const obsInput = document.getElementById('bookipProdObsTemp');
+
+                const nome = nomeInput.value.trim();
+                const qtd = parseInt(qtdInput.value) || 1;
+                const valor = parseFloat(valorInput.value) || 0;
+                const cor = corInput.value;
+                const obs = obsInput.value;
+
+                if (!nome) {
+                    showCustomModal({ message: "Digite ou busque o nome do produto." });
+                    return;
+                }
+
+                itemObjeto = { 
+                    nome, 
+                    qtd, 
+                    valor, 
+                    cor, 
+                    obs,
+                    isSituation: false 
+                };
+
+                // Limpa os campos de produto
+                if(inputBuscaBookip) inputBuscaBookip.value = '';
+                nomeInput.value = '';
+                valorInput.value = '';
+                corInput.value = '';
+                obsInput.value = '';
+                qtdInput.value = '1';
             }
 
-            const itemObjeto = { nome, qtd, valor, cor, obs };
+            // --- 2. SALVA NA LISTA (Igual para os dois modos) ---
 
             if (editingItemIndex !== null) {
-                // --- MODO EDIÇÃO: Atualiza o existente ---
+                // MODO EDIÇÃO: Atualiza o item existente
                 bookipCartList[editingItemIndex] = itemObjeto;
-                editingItemIndex = null; // Sai do modo edição
+                editingItemIndex = null; 
                 
-                // Volta o botão para "Adicionar" (Azul)
-                btnAddLista.innerHTML = '<i class="bi bi-plus-lg"></i> Adicionar o Produto';
+                // Reseta o botão para o estado normal
+                btnAddLista.innerHTML = '<i class="bi bi-plus-lg"></i> Adicionar à Lista';
                 btnAddLista.classList.remove('btn-warning');
                 btnAddLista.classList.add('btn-primary');
                 
                 showCustomModal({ message: "Item atualizado!" });
             } else {
-                // --- MODO NOVO: Adiciona ao final ---
+                // MODO NOVO: Adiciona ao final da lista
                 bookipCartList.push(itemObjeto);
             }
 
-            // Limpa os campos
-            inputBuscaBookip.value = '';
-            document.getElementById('bookipProdNomeTemp').value = '';
-            document.getElementById('bookipProdValorTemp').value = '';
-            document.getElementById('bookipProdCorTemp').value = '';
-            document.getElementById('bookipProdObsTemp').value = '';
-            document.getElementById('bookipProdQtdTemp').value = '1';
-
+            // Atualiza o visual da lista na tela
             atualizarListaVisualBookip();
         });
     }
@@ -4275,29 +4449,35 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
 
 // CARREGAR HISTÓRICO (VERSÃO MASTER: TUDO INCLUSO 🏆)
 // ============================================================
+// CARREGAR HISTÓRICO (COM CORES POR TIPO 🎨)
+// ============================================================
 function loadBookipHistory() {
+    // Verificações de segurança originais
     if (!db || !isAuthReady) return;
     
     const bookipsRef = ref(db, 'bookips');
     const container = document.getElementById('historyBookipContent');
     
-    // Variáveis de Controle
+    // Variáveis de controle
     let listaCompletaCache = []; 
     let listaFiltradaCache = []; 
     let itensVisiveis = 50;      
     const incremento = 50;       
 
+    // Loading...
     container.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div><p class="mt-2 text-secondary">Carregando histórico...</p></div>';
 
+    // Remove listener antigo para não duplicar
     if (bookipListener) off(bookipsRef, 'value', bookipListener);
 
+    // Novo Listener do Firebase
     bookipListener = onValue(bookipsRef, (snapshot) => {
         if (snapshot.exists()) {
             const data = snapshot.val();
             // 1. Transforma em lista
             listaCompletaCache = Object.keys(data).map(key => ({ id: key, ...data[key] }));
             
-            // 2. Ordena (Data da Garantia mais recente no topo)
+            // 2. Ordena (Data mais recente no topo)
             listaCompletaCache.sort((a, b) => {
                 const dataA = a.dataVenda || (a.criadoEm ? a.criadoEm.split('T')[0] : '0000-00-00');
                 const dataB = b.dataVenda || (b.criadoEm ? b.criadoEm.split('T')[0] : '0000-00-00');
@@ -4306,31 +4486,23 @@ function loadBookipHistory() {
                 return 0;
             });
             
-            // 3. Configura os gatilhos e aplica o primeiro filtro
+            // 3. Configura e aplica filtros
             configurarFiltros();
             aplicarFiltrosCombinados();
-            
         } else {
             container.innerHTML = '<p class="text-center text-secondary mt-4">Nenhum recibo salvo.</p>';
         }
     });
 
-    // --- CONFIGURAÇÃO DOS GATILHOS (LISTENERS) ---
+    // --- FUNÇÕES INTERNAS DE FILTRO ---
     function configurarFiltros() {
         const searchInput = document.getElementById('bookipHistorySearch');
         const dateInput = document.getElementById('bookipHistoryDate');
         const iconDisplay = document.getElementById('calendarIconDisplay');
 
-        // Busca ao digitar (Texto)
-        if (searchInput) {
-            searchInput.oninput = aplicarFiltrosCombinados;
-        }
-        
-        // Busca ao mudar data
+        if (searchInput) searchInput.oninput = aplicarFiltrosCombinados;
         if (dateInput) {
             dateInput.onchange = aplicarFiltrosCombinados;
-
-            // Clique no ícone abre o calendário (para mobile)
             if (iconDisplay && iconDisplay.parentElement) {
                 iconDisplay.parentElement.onclick = function() {
                     if (dateInput.showPicker) dateInput.showPicker();
@@ -4340,9 +4512,7 @@ function loadBookipHistory() {
         }
     }
 
-    // --- A LÓGICA DE FILTRAGEM (CÉREBRO) 🧠 ---
     function aplicarFiltrosCombinados() {
-        // Pega elementos frescos
         const elTexto = document.getElementById('bookipHistorySearch');
         const elData = document.getElementById('bookipHistoryDate');
         const elIcone = document.getElementById('calendarIconDisplay');
@@ -4350,60 +4520,44 @@ function loadBookipHistory() {
         const termo = elTexto ? elTexto.value.toLowerCase().trim() : '';
         const dataFiltro = elData ? elData.value : ''; 
 
-        // 1. Atualiza visual do Ícone (Glass Effect)
+        // Visual do ícone de data
         if (elIcone) {
             if (dataFiltro) {
                 elIcone.className = "bi bi-calendar-check-fill";
                 elIcone.style.color = "var(--primary-color)"; 
                 elIcone.style.filter = "drop-shadow(0 0 5px rgba(0,255,0,0.3))";
-                const dataFormatada = dataFiltro.split('-').reverse().join('/');
-                elIcone.parentElement.title = `Filtrando por: ${dataFormatada}`;
             } else {
                 elIcone.className = "bi bi-calendar-event";
                 elIcone.style.color = "rgba(255, 255, 255, 0.5)";
                 elIcone.style.filter = "none";
-                elIcone.parentElement.title = "Filtrar por data";
             }
         }
 
-        // 2. Filtra a Lista
+        // Lógica de Filtragem
         listaFiltradaCache = listaCompletaCache.filter(item => {
-            // --- A. FILTRO DE TEXTO (COMPLETO) ---
             const nDoc = (item.docNumber || '').toLowerCase();
             const nome = (item.nome || '').toLowerCase();
             const cpf = (item.cpf || '').toLowerCase();
-            const email = (item.email || '').toLowerCase(); // <--- E-MAIL ESTÁ AQUI! ✅
+            const email = (item.email || '').toLowerCase(); 
             const telLimpo = (item.tel || '').toLowerCase().replace(/\D/g, ''); 
             const telOriginal = (item.tel || '').toLowerCase();
             
-            const matchTexto = termo === '' || 
-                               nDoc.includes(termo) || 
-                               nome.includes(termo) || 
-                               cpf.includes(termo) || 
-                               email.includes(termo) ||  // <--- CHECAGEM DE E-MAIL ✅
-                               telOriginal.includes(termo) ||
-                               telLimpo.includes(termo);
+            const matchTexto = termo === '' || nDoc.includes(termo) || nome.includes(termo) || cpf.includes(termo) || email.includes(termo) || telOriginal.includes(termo) || telLimpo.includes(termo);
 
-            // --- B. FILTRO DE DATA ---
             let matchData = true;
             if (dataFiltro) {
                 let dataItem = item.dataVenda || '';
-                // Fallback se não tiver dataVenda
-                if (!dataItem && item.criadoEm) {
-                    dataItem = item.criadoEm.split('T')[0];
-                }
+                if (!dataItem && item.criadoEm) dataItem = item.criadoEm.split('T')[0];
                 matchData = (dataItem === dataFiltro);
             }
-
-            // Tem que passar nos DOIS testes
             return matchTexto && matchData;
         });
 
-        itensVisiveis = 50; // Reseta paginação
+        itensVisiveis = 50; // Reseta paginação ao filtrar
         renderizarLote();
     }
 
-    // --- DESENHA NA TELA ---
+    // --- RENDERIZAÇÃO NA TELA ---
     function renderizarLote() {
         const fatia = listaFiltradaCache.slice(0, itensVisiveis);
         const temMais = listaFiltradaCache.length > itensVisiveis;
@@ -4425,11 +4579,30 @@ function loadBookipHistory() {
             
             const docNum = item.docNumber || '---';
 
+            // =========================================================
+            // LÓGICA DE CORES 🎨
+            // =========================================================
+            let badgeClass = 'bg-primary'; // Azul (Padrão / Garantia)
+            
+            // 1. SITUAÇÃO (Prioridade: Amarelo)
+            // Verifica o tipo novo 'situacao' OU se tem item antigo com flag isSituation
+            const isSituacao = (item.type === 'situacao') || (item.items && item.items[0] && item.items[0].isSituation);
+            
+            // 2. RECIBO (Verde)
+            const isRecibo = (item.type === 'recibo');
+
+            if (isSituacao) {
+                badgeClass = 'bg-warning text-dark'; // Amarelo
+            } else if (isRecibo) {
+                badgeClass = 'bg-success'; // Verde
+            }
+            // =========================================================
+
             return `
             <div class="accordion-item">
                 <h2 class="accordion-header" id="head-bk-${item.id}">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-bk-${item.id}">
-                        <span class="badge bg-primary me-2">Doc ${docNum}</span> 
+                        <span class="badge ${badgeClass} me-2">Doc ${docNum}</span> 
                         <span class="text-truncate" style="max-width: 150px;">${item.nome}</span> 
                         <span class="ms-auto small text-secondary">${dataVisual}</span>
                     </button>
@@ -4475,8 +4648,8 @@ function loadBookipHistory() {
 }
 
 
-
     // --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO ---
+        // --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO (CORRIGIDA) ---
     function carregarDadosParaEdicao(item) {
         if(!item) return;
 
@@ -4484,23 +4657,33 @@ function loadBookipHistory() {
         currentEditingBookipId = item.id;
 
         // 2. Muda visualmente para a aba "Novo"
-        document.getElementById('bookipModeToggle').checked = false;
-        document.getElementById('bookipModeToggle').dispatchEvent(new Event('change'));
+        const toggle = document.getElementById('bookipModeToggle');
+        if(toggle) {
+            toggle.checked = false;
+            toggle.dispatchEvent(new Event('change'));
+        }
 
-        // 3. Preenche os campos
-        document.getElementById('bookipNome').value = item.nome || '';
-        document.getElementById('bookipCpf').value = item.cpf || '';
-        document.getElementById('bookipTelefone').value = item.tel || '';
-        document.getElementById('bookipEndereco').value = item.end || '';
-        document.getElementById('bookipEmail').value = item.email || '';
-        document.getElementById('bookipDataManual').value = item.dataVenda || '';
+        // 3. Preenche os campos do cliente
+        const campos = {
+            'bookipNome': item.nome,
+            'bookipCpf': item.cpf,
+            'bookipTelefone': item.tel,
+            'bookipEndereco': item.end,
+            'bookipEmail': item.email,
+            'bookipDataManual': item.dataVenda
+        };
+        
+        for (let id in campos) {
+            const el = document.getElementById(id);
+            if(el) el.value = campos[id] || '';
+        }
 
         // 4. Preenche a lista de itens
         bookipCartList = item.items || [];
-        atualizarListaVisualBookip(); // (Essa função já existe no seu código, do passo anterior)
+        atualizarListaVisualBookip(); 
 
         // 5. Pagamento (Checkboxes)
-        document.querySelectorAll('.check-pagamento').forEach(chk => chk.checked = false); // Reseta
+        document.querySelectorAll('.check-pagamento').forEach(chk => chk.checked = false);
         if(item.pagamento) {
             const formas = item.pagamento.split(', ');
             formas.forEach(forma => {
@@ -4512,28 +4695,32 @@ function loadBookipHistory() {
         // 6. Garantia
         const selectGarantia = document.getElementById('bookipGarantiaSelect');
         const inputGarantia = document.getElementById('bookipGarantiaCustomInput');
-        const dias = parseInt(item.diasGarantia);
-        
-        // Verifica se é um dos valores padrão
-        const isPadrao = [30, 120, 180, 365].includes(dias);
-        if(isPadrao) {
-            selectGarantia.value = dias;
-            inputGarantia.classList.add('hidden');
-        } else {
-            selectGarantia.value = 'custom';
-            inputGarantia.value = dias;
-            inputGarantia.classList.remove('hidden');
+        if(selectGarantia) {
+            const dias = parseInt(item.diasGarantia);
+            const isPadrao = [30, 120, 180, 365].includes(dias);
+            if(isPadrao) {
+                selectGarantia.value = dias;
+                if(inputGarantia) inputGarantia.classList.add('hidden');
+            } else {
+                selectGarantia.value = 'custom';
+                if(inputGarantia) {
+                    inputGarantia.value = dias;
+                    inputGarantia.classList.remove('hidden');
+                }
+            }
         }
 
-        // 7. Muda o texto do botão salvar para avisar
-        const btnSalvar = document.getElementById('btnGerarBookip');
-        btnSalvar.innerHTML = `<i class="bi bi-pencil-square"></i> Atualizar Recibo (Doc ${item.docNumber || '---'})`;
-        btnSalvar.classList.remove('btn-success');
-        btnSalvar.classList.add('btn-info');
+        // 7. CORREÇÃO DO ERRO: Muda o botão certo (Adicionar à Lista)
+        // Usamos o ID que o sistema realmente usa para adicionar itens
+        const btnAdd = document.getElementById('btnAdicionarItemLista');
+        if (btnAdd) {
+            btnAdd.innerHTML = '<i class="bi bi-pencil-square"></i> Salvar Alteração';
+            btnAdd.classList.remove('btn-primary');
+            btnAdd.classList.add('btn-warning');
+        }
 
-        showCustomModal({ message: "Dados carregados! Faça as alterações e clique em Atualizar." });
+        showCustomModal({ message: "Dados carregados! Edite os itens ou o cliente e salve." });
     }
-
 
 
 
@@ -4561,6 +4748,7 @@ function loadBookipHistory() {
 
 
     // ============================================================
+// ============================================================
 // FLUXO DE GARANTIA LAPIDADO (SALVAR -> DEPOIS OPÇÕES)
 // ============================================================
 
@@ -4595,6 +4783,23 @@ if (btnSave) {
             const dataManualInput = document.getElementById('bookipDataManual').value;
             const dataFinalVenda = dataManualInput ? dataManualInput : new Date().toISOString().split('T')[0];
 
+            // =========================================================
+            // 🧠 NOVIDADE: DETECTA O TIPO DO DOCUMENTO PARA A COR
+            // =========================================================
+            let docType = 'garantia'; // O padrão é Azul (Garantia)
+            
+            // 1. Se tiver qualquer item marcado como "Situação", vira Situação (Amarelo)
+            const temSituacao = bookipCartList.some(i => i.isSituation === true);
+            
+            if (temSituacao) {
+                docType = 'situacao';
+            } 
+            // 2. Se não for situação e a chave "Modo Simples" estiver ligada, vira Recibo (Verde)
+            else if (window.isSimpleReceiptMode === true) {
+                docType = 'recibo';
+            }
+            // =========================================================
+
             // ---------------------------------------------------------
             // CORREÇÃO: GERAÇÃO DO NÚMERO DOC (EVITA DUPLICIDADE)
             // ---------------------------------------------------------
@@ -4617,7 +4822,6 @@ if (btnSave) {
                 if (snapshot.exists()) {
                     const todos = snapshot.val();
                     Object.values(todos).forEach(item => {
-                        // Converte o texto "005" para número 5
                         const num = parseInt(item.docNumber || '0', 10);
                         if (!isNaN(num) && num > maiorNumero) {
                             maiorNumero = num;
@@ -4625,15 +4829,14 @@ if (btnSave) {
                     });
                 }
                 
-                // O próximo será o Maior + 1 (Ex: Se o maior for 8, o novo é 009)
                 docNumberFormatted = String(maiorNumero + 1).padStart(3, '0');
             }
             // ---------------------------------------------------------
 
-
             // Objeto Final
             const dados = {
                 docNumber: docNumberFormatted,
+                type: docType, // <--- AQUI ESTÁ A NOVA ETIQUETA SALVA NO BANCO
                 nome: document.getElementById('bookipNome').value || 'Consumidor',
                 cpf: document.getElementById('bookipCpf').value || '',
                 tel: document.getElementById('bookipTelefone').value || '',
@@ -4684,6 +4887,8 @@ if (btnSave) {
         }
     });
 }
+
+
 
 // 2. AÇÃO: CLICAR EM "IMPRIMIR" (PÓS-SALVO)
 const btnPostPrint = document.getElementById('btnPostPrint');
@@ -5485,178 +5690,6 @@ setupProductTags();
 // ============================================================
 // ============================================================
 // ============================================================
-// 1. FÁBRICA DE RECIBOS (CORREÇÃO DE ALINHAMENTO FORÇADA)
-// ============================================================
-function getReciboHTML(dados) {
-    // 1. Configurações
-    const settings = (typeof receiptSettings !== 'undefined' && receiptSettings) ? receiptSettings : {};
-    const headerHtml = (settings.header || "WORKCELL TECNOLOGIA").replace(/\n/g, '<br>');
-    const rawTerms = (settings.terms || "Garantia legal de 90 dias.");
-    
-    const termsHtml = rawTerms.split('\n').map(line => {
-        if(!line || line.trim() === '') return '<div style="height: 5px;"></div>'; 
-        return `<div style="margin-bottom: 3px; text-align: justify; page-break-inside: avoid;">${line}</div>`;
-    }).join('');
-    
-    const logoUrl = settings.logoBase64 || "https://i.imgur.com/H6BjyBS.png"; 
-    const signatureUrl = settings.signatureBase64 || "https://i.imgur.com/Bh3fVLM.jpeg";
-
-    // 2. Dados da Lista
-    let lista = (dados.items && Array.isArray(dados.items)) ? dados.items : [];
-    if (lista.length === 0) {
-        if (dados.prodNome) {
-            lista = [{ 
-                nome: dados.prodNome, 
-                qtd: parseInt(dados.prodQtd) || 1, 
-                valor: parseFloat(dados.prodValor) || 0, 
-                cor: dados.prodCor || '', 
-                obs: dados.obs || '' 
-            }];
-        } else {
-            lista = [];
-        }
-    }
-    
-    const totalGeral = lista.reduce((acc, i) => acc + (parseFloat(i.valor || 0) * (parseInt(i.qtd) || 1)), 0);
-
-    // 3. Datas
-    let hoje, dataCompra;
-    if (dados.dataVenda) {
-        try {
-            const partes = dados.dataVenda.split('-');
-            hoje = new Date(partes[0], partes[1] - 1, partes[2]);
-            dataCompra = `${partes[2]}/${partes[1]}/${partes[0]}`;
-        } catch (e) {
-            hoje = new Date();
-            dataCompra = hoje.toLocaleDateString('pt-BR');
-        }
-    } else {
-        hoje = dados.criadoEm ? new Date(dados.criadoEm) : new Date();
-        dataCompra = hoje.toLocaleDateString('pt-BR');
-    }
-
-    // 4. Garantia
-    const dias = parseInt(dados.diasGarantia) || 0;
-    let dataVencimento = "S/ Garantia";
-    let txtGarantia = "Sem Garantia";
-    
-    if (dias > 0) {
-        const validade = new Date(hoje);
-        validade.setDate(hoje.getDate() + dias);
-        dataVencimento = validade.toLocaleDateString('pt-BR');
-        
-        if (dias === 365) txtGarantia = "1 Ano";
-        else if (dias === 180) txtGarantia = "6 Meses";
-        else if (dias === 120) txtGarantia = "4 Meses";
-        else if (dias === 30) txtGarantia = "30 Dias";
-        else txtGarantia = `${dias} Dias`;
-    }
-
-    const docNum = dados.docNumber || '---';
-
-    // 5. Linhas da Tabela
-    const linhas = lista.map(item => `
-        <tr style="page-break-inside: avoid;">
-            <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10pt; vertical-align: top;">
-                <strong style="color: #000;">${item.nome}</strong><br>
-                <span style="font-size: 8.5pt; color: #666;">${item.cor || ''} ${item.obs || ''}</span>
-            </td>
-            <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10pt; text-align: center; vertical-align: top;">${item.qtd}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10pt; text-align: right; vertical-align: top;">R$ ${parseFloat(item.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10pt; text-align: right; vertical-align: top;">R$ ${(item.valor * item.qtd).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
-        </tr>`).join('');
-
-    const infoPagamento = dados.pagamento ? 
-        `<div style="text-align: right; font-size: 9pt; color: #444; margin-top: 5px; padding-right: 5px;">
-            <strong>Forma de Pagamento:</strong> ${dados.pagamento}
-         </div>` : '';
-
-    return `
-        <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750px; margin: 0 auto; box-sizing: border-box;">
-            
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-                <tr>
-                    <td style="width: 30%; vertical-align: top;">
-                        <img src="${logoUrl}" style="width: 160px; height: auto; object-fit: contain;" onerror="this.style.display='none'">
-                    </td>
-                    <td style="width: 70%; text-align: right; vertical-align: top; font-size: 9pt; color: #444;">
-                        <div style="font-size: 20pt; color: #000; line-height: 1.1;">Comprovante de</div>
-                        <div style="font-size: 20pt; font-weight: bold; color: #000; margin-bottom: 8px; line-height: 1.1;">compra / Garantia</div>
-                        ${headerHtml}
-                    </td>
-                </tr>
-            </table>
-
-            <table style="width: 100%; border-top: 1px solid #ccc; margin-bottom: 20px; border-collapse: collapse;">
-                <tr>
-                    <td style="width: 60%; vertical-align: top; padding-top: 15px; padding-right: 15px;">
-                        <div style="font-size: 11pt; margin-bottom: 2px;"><strong>Para</strong></div>
-                        <div style="font-size: 11pt; font-weight: bold; margin-bottom: 5px;">${dados.nome}</div>
-                        <div style="font-size: 10pt; line-height: 1.4;">
-                            <strong>CPF:</strong> ${dados.cpf || 'Não inf.'}<br>
-                            <strong>Número:</strong> ${dados.tel || 'Não inf.'}<br>
-                            <strong>Endereço:</strong> ${dados.end || 'Não inf.'}
-                        </div>
-                    </td>
-
-                    <td style="width: 40%; vertical-align: top; padding-top: 15px; text-align: right;">
-                        <div style="display: inline-block; text-align: right;">
-                            <table style="width: auto; border-collapse: collapse; font-size: 10pt;">
-                                <tr>
-                                    <td style="text-align: right; padding-right: 8px; padding-bottom: 4px; white-space: nowrap;"><strong>Doc Nº:</strong></td>
-                                    <td style="text-align: left; padding-bottom: 4px; font-weight: bold; white-space: nowrap;">${docNum}</td>
-                                </tr>
-                                <tr>
-                                    <td style="text-align: right; padding-right: 8px; padding-bottom: 4px; white-space: nowrap;"><strong>Data:</strong></td>
-                                    <td style="text-align: left; padding-bottom: 4px; white-space: nowrap;">${dataCompra}</td>
-                                </tr>
-                                <tr>
-                                    <td style="text-align: right; padding-right: 8px; padding-bottom: 4px; white-space: nowrap;"><strong>Garantia:</strong></td>
-                                    <td style="text-align: left; padding-bottom: 4px; white-space: nowrap;">${txtGarantia}</td>
-                                </tr>
-                                <tr>
-                                    <td style="text-align: right; padding-right: 8px; white-space: nowrap;"><strong>Vence:</strong></td>
-                                    <td style="text-align: left; white-space: nowrap;">${dataVencimento}</td>
-                                </tr>
-                            </table>
-                        </div>
-                    </td>
-                </tr>
-            </table>
-
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 5px;">
-                <thead>
-                    <tr style="background-color: #6da037 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
-                        <th style="padding: 8px; text-align: left; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Item</th>
-                        <th style="padding: 8px; text-align: center; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Qtd</th>
-                        <th style="padding: 8px; text-align: right; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Unit</th>
-                        <th style="padding: 8px; text-align: right; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Total</th>
-                    </tr>
-                </thead>
-                <tbody>${linhas}</tbody>
-            </table>
-
-            ${infoPagamento}
-
-            <div style="text-align: right; margin-top: 15px; margin-bottom: 25px;">
-                <div style="display: inline-block; background-color: #f2f2f2; padding: 10px 20px; font-size: 12pt; font-weight: bold; border-radius: 4px; -webkit-print-color-adjust: exact;">
-                    Total: <span style="color: #2e7d32;">R$ ${totalGeral.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
-                </div>
-            </div>
-
-            <div style="border-bottom: 1px solid #000; margin-bottom: 10px;">
-                <strong style="font-size: 10pt; text-transform: uppercase;">Termos de Garantia</strong>
-            </div>
-            <div style="font-size: 9pt; line-height: 1.3; color: #333; text-align: justify;">${termsHtml}</div>
-
-            <div style="width: 100%; text-align: right; margin-top: 40px; page-break-inside: avoid;">
-                <img src="${signatureUrl}" style="width: 200px; height: auto; display: inline-block;" onerror="this.style.display='none'">
-            </div>
-        </div>
-    `;
-}
-
-// ============================================================
 // 2. FUNÇÃO IMPRIMIR
 // ============================================================
 function printBookip(dados) {
@@ -5680,14 +5713,34 @@ function printBookip(dados) {
 // ============================================================
 // ============================================================
 // ============================================================
-// 1. FÁBRICA DE RECIBOS (CORREÇÃO DE ALINHAMENTO FORÇADA)
+// ============================================================
+// GERADOR DE PDF (BASEADO NA VERSÃO ESTÁVEL + MODO SIMPLES)
+// ============================================================
+// ============================================================
+// GERADOR DE PDF (SEU DESIGN ORIGINAL + MODO RECIBO)
+// ============================================================
+// ============================================================
+// GERADOR DE PDF (DESIGN VERDE + MODO SITUAÇÃO)
+// ============================================================
+// ===========================================================
+// GERADOR DE PDF (DESIGN VERDE + MODO SITUAÇÃO LIMPO)
+// ============================================================
+// ============================================================
+// ============================================================
+// ============================================================
+// GERADOR DE PDF (DESIGN VERDE ORIGINAL + CORREÇÃO DE QUEBRA)
 // ============================================================
 function getReciboHTML(dados) {
-    // 1. Configurações
+    // 1. VERIFICAÇÕES DE MODO (RECIBO vs GARANTIA vs SITUAÇÃO)
+    const isSimple = (window.isSimpleReceiptMode === true);
+    const isSituation = (dados.type === 'situacao') || (dados.items && dados.items[0] && dados.items[0].isSituation);
+
+    // 2. CONFIGURAÇÕES (Design Mantido)
     const settings = (typeof receiptSettings !== 'undefined' && receiptSettings) ? receiptSettings : {};
     const headerHtml = (settings.header || "WORKCELL TECNOLOGIA").replace(/\n/g, '<br>');
     const rawTerms = (settings.terms || "Garantia legal de 90 dias.");
     
+    // CORREÇÃO: Adicionado 'page-break-inside: avoid' em cada linha dos termos
     const termsHtml = rawTerms.split('\n').map(line => {
         if(!line || line.trim() === '') return '<div style="height: 5px;"></div>'; 
         return `<div style="margin-bottom: 3px; text-align: justify; page-break-inside: avoid;">${line}</div>`;
@@ -5696,41 +5749,20 @@ function getReciboHTML(dados) {
     const logoUrl = settings.logoBase64 || "https://i.imgur.com/H6BjyBS.png"; 
     const signatureUrl = settings.signatureBase64 || "https://i.imgur.com/Bh3fVLM.jpeg";
 
-    // 2. Dados da Lista
-    let lista = (dados.items && Array.isArray(dados.items)) ? dados.items : [];
-    if (lista.length === 0) {
-        if (dados.prodNome) {
-            lista = [{ 
-                nome: dados.prodNome, 
-                qtd: parseInt(dados.prodQtd) || 1, 
-                valor: parseFloat(dados.prodValor) || 0, 
-                cor: dados.prodCor || '', 
-                obs: dados.obs || '' 
-            }];
-        } else {
-            lista = [];
-        }
-    }
-    
-    const totalGeral = lista.reduce((acc, i) => acc + (parseFloat(i.valor || 0) * (parseInt(i.qtd) || 1)), 0);
-
-    // 3. Datas
+    // 3. DATAS
     let hoje, dataCompra;
     if (dados.dataVenda) {
         try {
             const partes = dados.dataVenda.split('-');
             hoje = new Date(partes[0], partes[1] - 1, partes[2]);
             dataCompra = `${partes[2]}/${partes[1]}/${partes[0]}`;
-        } catch (e) {
-            hoje = new Date();
-            dataCompra = hoje.toLocaleDateString('pt-BR');
-        }
+        } catch (e) { hoje = new Date(); dataCompra = hoje.toLocaleDateString('pt-BR'); }
     } else {
         hoje = dados.criadoEm ? new Date(dados.criadoEm) : new Date();
         dataCompra = hoje.toLocaleDateString('pt-BR');
     }
 
-    // 4. Garantia
+    // 4. GARANTIA
     const dias = parseInt(dados.diasGarantia) || 0;
     let dataVencimento = "S/ Garantia";
     let txtGarantia = "Sem Garantia";
@@ -5739,44 +5771,81 @@ function getReciboHTML(dados) {
         const validade = new Date(hoje);
         validade.setDate(hoje.getDate() + dias);
         dataVencimento = validade.toLocaleDateString('pt-BR');
-        
         if (dias === 365) txtGarantia = "1 Ano";
         else if (dias === 180) txtGarantia = "6 Meses";
-        else if (dias === 120) txtGarantia = "4 Meses";
         else if (dias === 30) txtGarantia = "30 Dias";
         else txtGarantia = `${dias} Dias`;
     }
-
     const docNum = dados.docNumber || '---';
 
-    // 5. Linhas da Tabela
-    const linhas = lista.map(item => `
-        <tr style="page-break-inside: avoid;">
-            <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10pt; vertical-align: top;">
-                <strong style="color: #000;">${item.nome}</strong><br>
-                <span style="font-size: 8.5pt; color: #666;">${item.cor || ''} ${item.obs || ''}</span>
-            </td>
-            <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10pt; text-align: center; vertical-align: top;">${item.qtd}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10pt; text-align: right; vertical-align: top;">R$ ${parseFloat(item.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10pt; text-align: right; vertical-align: top;">R$ ${(item.valor * item.qtd).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
-        </tr>`).join('');
+    // 5. LÓGICA DA TABELA
+    let tableHeaderHTML = '';
+    let tableBodyHTML = '';
+    let totalGeral = 0;
 
-    const infoPagamento = dados.pagamento ? 
-        `<div style="text-align: right; font-size: 9pt; color: #444; margin-top: 5px; padding-right: 5px;">
-            <strong>Forma de Pagamento:</strong> ${dados.pagamento}
-         </div>` : '';
+    if (isSituation) {
+        const relato = (dados.items && dados.items[0]) ? dados.items[0].nome : "Sem relato.";
+        tableHeaderHTML = `<th style="padding: 8px; text-align: left; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Situação Ocorrida:</th>`;
+        tableBodyHTML = `<tr><td style="padding: 15px; border-bottom: 1px solid #eee; font-size: 10pt; text-align: justify; line-height: 1.5;">${relato.replace(/\n/g, '<br>')}</td></tr>`;
+    } else {
+        let lista = (dados.items && Array.isArray(dados.items)) ? dados.items : [];
+        totalGeral = lista.reduce((acc, i) => acc + (parseFloat(i.valor||0) * (parseInt(i.qtd)||1)), 0);
+        tableHeaderHTML = `
+            <th style="padding: 8px; text-align: left; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Item</th>
+            <th style="padding: 8px; text-align: center; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Qtd</th>
+            <th style="padding: 8px; text-align: right; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Unit</th>
+            <th style="padding: 8px; text-align: right; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Total</th>`;
+        tableBodyHTML = lista.map(item => `
+            <tr style="page-break-inside: avoid;">
+                <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10pt;">
+                    <strong>${item.nome}</strong><br><span style="color:#666; font-size:8.5pt;">${item.cor||''} ${item.obs||''}</span>
+                </td>
+                <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${item.qtd}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">R$ ${parseFloat(item.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">R$ ${(item.valor * item.qtd).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
+            </tr>`).join('');
+    }
+
+    const tituloLinha1 = isSituation ? "RELATÓRIO DE" : (isSimple ? "RECIBO DE" : "Comprovante de");
+    const tituloLinha2 = isSituation ? "SITUAÇÃO" : (isSimple ? "VENDA / PEDIDO" : "compra / Garantia");
+    
+    const showTotal = !isSituation;
+    const showGarantiaRow = !isSituation;
+    const showVenceRow = !isSituation && !isSimple;
+
+    // CORREÇÃO INTELIGENTE: PERFEITO NO PDF (SEM CORTES) E FLUIDO NA IMPRESSORA (SEM BURACOS)
+    const sectionTermos = (isSimple || isSituation) ? "" : `
+        <style>
+            /* Regra Padrão (Para o PDF gerado via imagem/tela) */
+            .termos-garantia {
+                page-break-inside: avoid; /* Segura o bloco junto no PDF */
+            }
+
+            /* Regra Específica para Impressão Física (Ctrl+P) */
+            @media print {
+                .termos-garantia {
+                    page-break-inside: auto !important; /* Permite quebrar suavemente no papel */
+                    margin-top: 5px !important; /* Ajusta margem pra economizar papel */
+                }
+            }
+        </style>
+
+        <div class="termos-garantia" style="border-top: 1px solid #000; padding-top: 10px; margin-top: 10px;">
+            <div style="margin-bottom: 10px;">
+                <strong style="font-size: 10pt; text-transform: uppercase;">Termos de Garantia</strong>
+            </div>
+            <div style="font-size: 9pt; line-height: 1.3; color: #333; text-align: justify;">${termsHtml}</div>
+        </div>`;
+
 
     return `
         <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750px; margin: 0 auto; box-sizing: border-box;">
-            
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <tr>
-                    <td style="width: 30%; vertical-align: top;">
-                        <img src="${logoUrl}" style="width: 160px; height: auto; object-fit: contain;" onerror="this.style.display='none'">
-                    </td>
+                    <td style="width: 30%; vertical-align: top;"><img src="${logoUrl}" style="width: 160px; height: auto; object-fit: contain;"></td>
                     <td style="width: 70%; text-align: right; vertical-align: top; font-size: 9pt; color: #444;">
-                        <div style="font-size: 20pt; color: #000; line-height: 1.1;">Comprovante de</div>
-                        <div style="font-size: 20pt; font-weight: bold; color: #000; margin-bottom: 8px; line-height: 1.1;">compra / Garantia</div>
+                        <div style="font-size: 20pt; color: #000; line-height: 1.1;">${tituloLinha1}</div>
+                        <div style="font-size: 20pt; font-weight: bold; color: #000; margin-bottom: 8px; line-height: 1.1;">${tituloLinha2}</div>
                         ${headerHtml}
                     </td>
                 </tr>
@@ -5785,36 +5854,21 @@ function getReciboHTML(dados) {
             <table style="width: 100%; border-top: 1px solid #ccc; margin-bottom: 20px; border-collapse: collapse;">
                 <tr>
                     <td style="width: 60%; vertical-align: top; padding-top: 15px; padding-right: 15px;">
-                        <div style="font-size: 11pt; margin-bottom: 2px;"><strong>Para</strong></div>
                         <div style="font-size: 11pt; font-weight: bold; margin-bottom: 5px;">${dados.nome}</div>
                         <div style="font-size: 10pt; line-height: 1.4;">
                             <strong>CPF:</strong> ${dados.cpf || 'Não inf.'}<br>
                             <strong>Número:</strong> ${dados.tel || 'Não inf.'}<br>
+                            <strong>E-mail:</strong> ${dados.email || 'Não inf.'}<br>
                             <strong>Endereço:</strong> ${dados.end || 'Não inf.'}
                         </div>
                     </td>
-
                     <td style="width: 40%; vertical-align: top; padding-top: 15px; text-align: right;">
-                        <div style="display: inline-block; text-align: right;">
-                            <table style="width: auto; border-collapse: collapse; font-size: 10pt;">
-                                <tr>
-                                    <td style="text-align: right; padding-right: 8px; padding-bottom: 4px; white-space: nowrap;"><strong>Doc Nº:</strong></td>
-                                    <td style="text-align: left; padding-bottom: 4px; font-weight: bold; white-space: nowrap;">${docNum}</td>
-                                </tr>
-                                <tr>
-                                    <td style="text-align: right; padding-right: 8px; padding-bottom: 4px; white-space: nowrap;"><strong>Data:</strong></td>
-                                    <td style="text-align: left; padding-bottom: 4px; white-space: nowrap;">${dataCompra}</td>
-                                </tr>
-                                <tr>
-                                    <td style="text-align: right; padding-right: 8px; padding-bottom: 4px; white-space: nowrap;"><strong>Garantia:</strong></td>
-                                    <td style="text-align: left; padding-bottom: 4px; white-space: nowrap;">${txtGarantia}</td>
-                                </tr>
-                                <tr>
-                                    <td style="text-align: right; padding-right: 8px; white-space: nowrap;"><strong>Vence:</strong></td>
-                                    <td style="text-align: left; white-space: nowrap;">${dataVencimento}</td>
-                                </tr>
-                            </table>
-                        </div>
+                        <table style="width: auto; border-collapse: collapse; font-size: 10pt; float: right;">
+                            <tr><td style="text-align: right; font-weight: bold; padding-bottom:4px;">Doc Nº:</td><td style="padding-left:10px; padding-bottom:4px;">${docNum}</td></tr>
+                            <tr><td style="text-align: right; padding-bottom:4px;">Data:</td><td style="padding-left:10px; padding-bottom:4px;">${dataCompra}</td></tr>
+                            ${showGarantiaRow ? `<tr><td style="text-align: right; padding-bottom:4px;">Garantia:</td><td style="padding-left:10px; padding-bottom:4px;">${txtGarantia}</td></tr>` : ''}
+                            ${showVenceRow ? `<tr><td style="text-align: right; padding-left:10px; padding-bottom:4px;">Vence:</td><td style="padding-left:10px; padding-bottom:4px;">${dataVencimento}</td></tr>` : ''}
+                        </table>
                     </td>
                 </tr>
             </table>
@@ -5822,30 +5876,23 @@ function getReciboHTML(dados) {
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 5px;">
                 <thead>
                     <tr style="background-color: #6da037 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
-                        <th style="padding: 8px; text-align: left; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Item</th>
-                        <th style="padding: 8px; text-align: center; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Qtd</th>
-                        <th style="padding: 8px; text-align: right; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Unit</th>
-                        <th style="padding: 8px; text-align: right; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Total</th>
+                        ${tableHeaderHTML}
                     </tr>
                 </thead>
-                <tbody>${linhas}</tbody>
+                <tbody>${tableBodyHTML}</tbody>
             </table>
 
-            ${infoPagamento}
-
+            ${showTotal ? `
             <div style="text-align: right; margin-top: 15px; margin-bottom: 25px;">
-                <div style="display: inline-block; background-color: #f2f2f2; padding: 10px 20px; font-size: 12pt; font-weight: bold; border-radius: 4px; -webkit-print-color-adjust: exact;">
+                <div style="display: inline-block; background-color: #f2f2f2; padding: 10px 20px; font-size: 12pt; font-weight: bold; border-radius: 4px;">
                     Total: <span style="color: #2e7d32;">R$ ${totalGeral.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
                 </div>
-            </div>
+            </div>` : '<div style="height:30px;"></div>'}
 
-            <div style="border-bottom: 1px solid #000; margin-bottom: 10px;">
-                <strong style="font-size: 10pt; text-transform: uppercase;">Termos de Garantia</strong>
-            </div>
-            <div style="font-size: 9pt; line-height: 1.3; color: #333; text-align: justify;">${termsHtml}</div>
+            ${sectionTermos}
 
             <div style="width: 100%; text-align: right; margin-top: 40px; page-break-inside: avoid;">
-                <img src="${signatureUrl}" style="width: 200px; height: auto; display: inline-block;" onerror="this.style.display='none'">
+                <img src="${signatureUrl}" style="width: 200px; height: auto; display: inline-block;">
             </div>
         </div>
     `;
@@ -6325,5 +6372,79 @@ setTimeout(() => {
         console.error("ERRO: Não achei o botão com id='btnZapMagico' no HTML");
     }
 }, 1000); // Espera 1 segundo pra garantir que o HTML carregou
+
+// ============================================================
+// FUNÇÃO DE FAXINA (LIMPA TUDO PARA EVITAR BUGS DE EDIÇÃO)
+// ============================================================
+// FUNÇÃO DE FAXINA (LIMPA TUDO: DADOS E VISUAL)
+// ============================================================
+window.resetFormulariosBookip = function() {
+    console.log("🧹 Executando faxina completa...");
+
+    // 1. Limpa Campos de Texto do Cliente
+    const camposCliente = ['bookipNome', 'bookipCpf', 'bookipTelefone', 'bookipEndereco', 'bookipEmail', 'bookipDataManual'];
+    camposCliente.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+
+    // 2. Limpa Campos de Produto (Temp)
+    const camposProd = ['bookipProductSearch', 'bookipProdNomeTemp', 'bookipProdValorTemp', 'bookipProdCorTemp', 'bookipProdObsTemp'];
+    camposProd.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    
+    // Reseta quantidade para 1
+    const qtd = document.getElementById('bookipProdQtdTemp');
+    if (qtd) qtd.value = '1';
+
+    // 3. Limpa Descrição de Situação
+    const sit = document.getElementById('sitDescricao');
+    if (sit) sit.value = '';
+
+    // 4. Reseta Checkboxes de Pagamento
+    document.querySelectorAll('.check-pagamento').forEach(c => c.checked = false);
+
+    // 5. Restaura o Botão de Salvar (Verde)
+    const btnSave = document.getElementById('btnSaveBookip');
+    if (btnSave) {
+        btnSave.innerHTML = '<i class="bi bi-check-circle-fill"></i> Finalizar e Salvar Documento';
+        btnSave.classList.remove('btn-warning', 'btn-info'); 
+        btnSave.classList.add('btn-success'); 
+        btnSave.disabled = false;
+    }
+    
+    // 6. Restaura o Botão de Adicionar Item (Azul)
+    const btnAdd = document.getElementById('btnAdicionarItemLista');
+    if (btnAdd) {
+        btnAdd.innerHTML = '<i class="bi bi-plus-lg"></i> Adicionar à Lista';
+        btnAdd.classList.remove('btn-warning');
+        btnAdd.classList.add('btn-primary');
+    }
+
+    // 7. ZERA A LISTA NA MEMÓRIA E NA TELA (O Pulo do Gato)
+    if (typeof bookipCartList !== 'undefined') {
+        bookipCartList = []; 
+    } else {
+        window.bookipCartList = [];
+    }
+    
+    // Força apagar os itens da tela visualmente
+    if (typeof window.atualizarListaVisualBookip === 'function') {
+        window.atualizarListaVisualBookip();
+    } else if (typeof atualizarListaVisualBookip === 'function') {
+        atualizarListaVisualBookip();
+    }
+
+    // 8. Esconde opções de pós-salvamento e mostra o form
+    const postSave = document.getElementById('postSaveOptions');
+    if(postSave) postSave.classList.add('hidden');
+    
+    const saveContainer = document.getElementById('saveActionContainer');
+    if(saveContainer) saveContainer.classList.remove('hidden');
+};
+
+
 
         });
