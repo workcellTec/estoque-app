@@ -6490,6 +6490,95 @@ window.resetFormulariosBookip = function() {
     if(saveContainer) saveContainer.classList.remove('hidden');
 };
 
+// ============================================================
+// CORREÇÃO DO BOTÃO VOLTAR DO CELULAR (HISTÓRICO DE NAVEGAÇÃO)
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // 1. Mapa de Navegação (Botão -> Onde ele leva)
+    // Aqui conectamos o ID do botão ao ID da tela que ele abre
+    const navigationMap = {
+        'goToCalculator': 'calculatorContainer',      // Menu Calc
+        'goToContract': 'contractContainer',          // Menu Docs
+        'goToStock': 'stockContainer',                // Menu Estoque
+        'goToAdmin': 'administracao',                 // Menu Admin
+        'openCalcularPorAparelho': 'calcularPorAparelho',
+        'openRepassarValores': 'repassarValores',
+        'openCalcularEmprestimo': 'calcularEmprestimo',
+        'openFecharVenda': 'fecharVenda',
+        'openBookipView': 'areaBookipWrapper',
+        'openContratoView': 'areaContratoWrapper',
+        'btnAdminClients': 'clientsContainer'
+    };
+
+    // 2. Adiciona o "Rastro" no histórico quando clica nos botões
+    Object.keys(navigationMap).forEach(btnId => {
+        const btn = document.getElementById(btnId);
+        if (btn) {
+            // Removemos listeners antigos para evitar duplicidade e adicionamos o novo
+            // Mas para não quebrar sua lógica, usamos um listener extra apenas para o histórico
+            btn.addEventListener('click', () => {
+                const targetId = navigationMap[btnId];
+                // Adiciona um novo estado no histórico do navegador
+                history.pushState({ screen: targetId }, '', `#${targetId}`);
+            });
+        }
+    });
+
+    // 3. O SEGREDO: Intercepta o Botão Voltar do Celular
+    window.onpopstate = function(event) {
+        // Primeiro: ESCONDE TUDO (A Faxina)
+        // Pega todas as telas principais e esconde
+        const allScreens = [
+            'mainMenu', 'calculatorContainer', 'stockContainer', 'administracao', 
+            'contractContainer', 'calcularPorAparelho', 'repassarValores', 
+            'calcularEmprestimo', 'fecharVenda', 'areaBookipWrapper', 
+            'areaContratoWrapper', 'clientsContainer', 'documentsHome'
+        ];
+        
+        allScreens.forEach(id => {
+            const el = document.getElementById(id);
+            if(el) {
+                el.style.display = 'none';
+                el.classList.add('hidden'); // Garante que a classe hidden seja aplicada
+            }
+        });
+
+        // Segundo: Verifica para onde devemos ir
+        if (event.state && event.state.screen) {
+            // Se o histórico diz que estamos em uma tela específica, mostra ela
+            const targetScreen = document.getElementById(event.state.screen);
+            if (targetScreen) {
+                targetScreen.style.display = 'block';
+                targetScreen.classList.remove('hidden');
+                
+                // Correção específica para submenus
+                if(event.state.screen === 'calculatorContainer') {
+                   // Se voltou para o menu da calculadora, garante que o menu interno apareça
+                   const calcHome = document.getElementById('calculatorHome');
+                   if(calcHome) calcHome.style.display = 'block';
+                }
+                
+                if(event.state.screen === 'contractContainer') {
+                   const docHome = document.getElementById('documentsHome');
+                   if(docHome) docHome.style.display = 'block';
+                }
+            }
+        } else {
+            // Se o estado é nulo (chegamos no início), mostra o MENU PRINCIPAL
+            const mainMenu = document.getElementById('mainMenu');
+            if (mainMenu) {
+                mainMenu.style.display = 'block';
+                mainMenu.classList.remove('hidden');
+            }
+            // Limpa hash da URL para ficar bonito
+            history.replaceState(null, '', ' ');
+        }
+    };
+
+    // 4. Estado Inicial (Para garantir que o Menu Principal seja o "ponto zero")
+    history.replaceState(null, '', ' ');
+});
 
 
         });
