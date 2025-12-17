@@ -6491,7 +6491,6 @@ window.resetFormulariosBookip = function() {
 };
 
 // ============================================================
-// CORREÇÃO DO BOTÃO VOLTAR DO CELULAR (HISTÓRICO DE NAVEGAÇÃO)
 // ============================================================
 // SISTEMA DE NAVEGAÇÃO MOBILE (CORREÇÃO DE SOBREPOSIÇÃO)
 // ============================================================
@@ -6598,7 +6597,5 @@ document.addEventListener('DOMContentLoaded', () => {
     // 6. ESTADO INICIAL (Define o ponto de partida)
     history.replaceState({ tela: 'mainMenu' }, '', ' ');
 });
-
-
 
         });
