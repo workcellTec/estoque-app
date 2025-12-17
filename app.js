@@ -677,18 +677,37 @@ function calculateFecharVenda() {
 function calculateRepassarValores() {
     const resultDiv = document.getElementById("resultRepassarValores");
     const exportContainer = document.getElementById('exportRepassarContainer');
-    if (!areRatesLoaded) return;
     
-    const valorDesejado = parseFloat(document.getElementById("repassarValue").value);
-    if (isNaN(valorDesejado) || valorDesejado <= 0) {
+    // Verificação de segurança para variáveis globais
+    if (typeof areRatesLoaded !== 'undefined' && !areRatesLoaded) return;
+    
+    // 1. PEGA O VALOR DIGITADO (PRINCIPAL)
+    const valorInput = parseFloat(document.getElementById("repassarValue").value);
+
+    // Validação: Se não digitou nada ou valor inválido, limpa e sai
+    if (isNaN(valorInput) || valorInput <= 0) {
         resultDiv.innerHTML = "";
-        exportContainer.style.display = 'none';
+        if(exportContainer) exportContainer.style.display = 'none';
         return;
     }
+
+    // 2. PEGA O LUCRO EXTRA (OCULTO)
+    // Se o campo existir, pega o valor. Se não, assume 0.
+    const elExtra = document.getElementById("repassarExtra");
+    let valorExtra = 0;
+    if (elExtra) {
+        valorExtra = parseFloat(elExtra.value);
+        if (isNaN(valorExtra)) valorExtra = 0; // Proteção contra valor vazio
+    }
+
+    // 3. SOMA TUDO (Esse é o valor real que será calculado)
+    const valorDesejado = valorInput + valorExtra;
     
-    const machine = document.getElementById("machine2").value, brand = document.getElementById("brand2").value;
+    const machine = document.getElementById("machine2").value; 
+    const brand = document.getElementById("brand2").value;
+    
     let maxInstallments = 0;
-    if (rates[machine]) {
+    if (typeof rates !== 'undefined' && rates[machine]) {
         switch(machine) {
             case "pagbank": maxInstallments = 18; break;
             case "infinity": maxInstallments = 12; break;
@@ -697,12 +716,15 @@ function calculateRepassarValores() {
     }
     
     let tableRows = "";
+    
+    // Cálculo Débito
     const debitTax = getRate(machine, brand, 0);
     if(debitTax !== null && debitTax !== undefined) {
         const valorBrutoDebito = valorDesejado / (1 - debitTax / 100);
         tableRows += `<tr class="debit-row"><td>Débito</td><td>-</td><td>${valorBrutoDebito.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td></tr>`;
     }
     
+    // Cálculo Crédito (Com sua lógica original de arredondamento)
     const arredondarAtivo = safeStorage.getItem('ctwArredondarEnabled') === 'true';
     for (let i = 1; i <= maxInstallments; i++) {
         const creditTax = getRate(machine, brand, i);
@@ -722,11 +744,13 @@ function calculateRepassarValores() {
     
     if (tableRows) {
         resultDiv.innerHTML = `<div class="table-responsive"><table class="table results-table"><thead><tr><th>Parcelas</th><th>Valor da Parcela</th><th>Total a Passar</th></tr></thead><tbody>${tableRows}</tbody></table></div>`;
+        if(exportContainer) exportContainer.style.display = 'block';
     } else {
         resultDiv.innerHTML = "";
+        if(exportContainer) exportContainer.style.display = 'none';
     }
-    exportContainer.style.display = tableRows.trim() !== "" ? 'block' : 'none';
 }
+
 
 function calculateEmprestimo() {
     const resultDiv = document.getElementById("resultCalcularEmprestimo");
@@ -3333,6 +3357,27 @@ document.addEventListener('DOMContentLoaded', () => {
 });
     document.getElementById('brand2').addEventListener('change', updateRepassarValoresUI);
     document.getElementById('repassarValue').addEventListener('input', calculateRepassarValores);
+
+// --- OUVINTES DO LUCRO EXTRA (REPASSAR) ---
+const inputRepassarExtra = document.getElementById('repassarExtra');
+if (inputRepassarExtra) {
+    // Garante que o valor 40 esteja lá
+    if(!inputRepassarExtra.value) inputRepassarExtra.value = "40";
+    inputRepassarExtra.addEventListener('input', calculateRepassarValores);
+}
+
+const btnToggleRepassar = document.getElementById('toggleRepassarExtraBtn');
+if (btnToggleRepassar) {
+    btnToggleRepassar.addEventListener('click', (e) => {
+        const btn = e.currentTarget;
+        const container = document.getElementById('repassarExtraContainer');
+        btn.classList.toggle('is-active');
+        container.classList.toggle('is-active');
+    });
+}
+
+
+
 
     document.getElementById('emprestimoValue').addEventListener('input', calculateEmprestimo);
     document.getElementById('machine4').addEventListener('change', (event) => {

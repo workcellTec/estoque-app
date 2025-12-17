@@ -643,11 +643,29 @@
                     <div class="col-12 col-md-6 mb-3" id="flagDisplayContainer2" style="display: none;"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton2"></button></div>
                 </div>
                 <div id="brand2Container" class="hidden"><select id="brand2"><option value="visa">Visa</option><option value="mastercard">Mastercard</option><option value="hiper">Hiper</option><option value="hipercard">Hipercard</option><option value="elo">Elo</option><option value="amex">Amex</option></select></div>
-                <div class="mb-3" style="max-width: 400px; margin: 0 auto 1rem;">
-                    <label class="form-label" for="repassarValue"><i class="bi bi-calculator"></i> Valor Desejado (líquido)</label>
-                    <input class="form-control form-control-lg" id="repassarValue" min="0" placeholder="Digite o valor desejado" step="0.01" type="number"/>
-                </div>
-                <div class="w-100 d-flex flex-column align-items-center" id="resultRepassarValores"></div>
+
+
+<div class="mb-3" style="max-width: 400px; margin: 0 auto 1rem;">
+    <label class="form-label" for="repassarValue"><i class="bi bi-calculator"></i> Valor Desejado (líquido)</label>
+    <input class="form-control form-control-lg" id="repassarValue" min="0" placeholder="Digite o valor desejado" step="0.01" type="number"/>
+</div>
+
+<div class="extra-value-toggle mx-auto mt-2">
+    <button class="btn-toggle-extra" id="toggleRepassarExtraBtn" aria-label="Adicionar lucro extra">
+        <i class="bi bi-chevron-down"></i>
+    </button>
+</div>
+
+<div class="extra-value-container mx-auto" id="repassarExtraContainer" style="max-width: 400px;">
+    <div class="mb-3">
+        <label class="form-label text-warning" for="repassarExtra"><i class="bi bi-piggy-bank-fill"></i> Adicional </label>
+        <input class="form-control" id="repassarExtra" min="0" placeholder="Ex: 50,00" step="0.01" type="number"/>
+    </div>
+</div>
+<div class="w-100 d-flex flex-column align-items-center" id="resultRepassarValores"></div>
+
+
+
                 <div class="text-center mt-3 w-100" id="exportRepassarContainer" style="display: none;">
                     <button class="btn btn-info" id="exportRepassarBtn"><i class="bi bi-camera-fill"></i> Exportar Imagem</button>
                 </div>
@@ -1583,16 +1601,10 @@ do que você precisa??</h2>
         self.addEventListener('activate', event => { const cacheWhitelist = [CACHE_NAME]; event.waitUntil( caches.keys().then(cacheNames => { return Promise.all( cacheNames.map(cacheName => { if (cacheWhitelist.indexOf(cacheName) === -1) { return caches.delete(cacheName); } }) ); }) ); });
     </script>
     
-<script>
-    window.onerror = function(msg, url, line, col, error) {
-        alert("🚨 ERRO ENCONTRADO:\n\n" + msg + "\n\nLinha: " + line);
-        return false;
-    };
-    
-    // Teste para ver se a armadilha está funcionando (deve aparecer um alerta 'Teste OK')
-    // Depois de ver esse alerta, pode apagar a linha abaixo
-    // setTimeout(() => { if(!window.testado) alert("Sistema rodando (Sem erros graves de sintaxe até agora)"); window.testado=true; }, 2000);
-</script>
+
+
+
+
 
 <script src="app.js?v=999" type="module"></script>
 
