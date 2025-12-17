@@ -6493,109 +6493,135 @@ window.resetFormulariosBookip = function() {
 // ============================================================
 // ============================================================
 // ============================================================
-// SISTEMA DE NAVEGAÇÃO "MAPEAMENTO REAL" (FINAL)
+// 🧭 SISTEMA DE NAVEGAÇÃO PROFISSIONAL (CENTRAL ROUTER)
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    // 1. LISTA DE TODOS OS BLOCOS QUE OCUPAM A TELA INTEIRA (Raiz)
-    // Se um aparece, todos os outros DEVEM sumir.
+    // 1. MAPEAMENTO DE TODAS AS TELAS "RAIZ" (Que ocupam o fundo todo)
+    // Se uma dessas aparecer, todas as outras TÊM que sumir.
     const TELAS_RAIZ = [
         'mainMenu',                // Menu Principal
-        'calculatorContainer',     // Menu Calculadora (O pai do menu de ícones)
-        'fecharVenda',             // Tela Calc (É vizinha, não filha)
+        'calculatorContainer',     // Menu Calculadora (Pai dos ícones)
+        'fecharVenda',             // Tela Calc (No seu HTML ela é vizinha do menu)
         'repassarValores',         // Tela Calc
         'calcularEmprestimo',      // Tela Calc
         'calcularPorAparelho',     // Tela Calc
         'stockContainer',          // Estoque
         'administracao',           // Admin
         'clientsContainer',        // Clientes
-        'contractContainer'        // Documentos (O pai de todos os docs)
+        'contractContainer'        // Documentos (Pai das telas de docs)
     ];
 
-    // 2. LISTA DE SUB-TELAS DENTRO DE "DOCUMENTOS"
-    // Elas moram dentro do 'contractContainer', então precisam de troca interna.
+    // 2. MAPEAMENTO DE SUB-TELAS (Que moram dentro de 'contractContainer')
     const SUB_TELAS_DOCS = [
-        'documentsHome', 
-        'areaContratoWrapper', 
-        'areaBookipWrapper'
+        'documentsHome',       // Menu de ícones dos Docs
+        'areaContratoWrapper', // Tela de Contrato
+        'areaBookipWrapper'    // Tela de Bookip
     ];
 
-    // 3. FUNÇÃO QUE LIMPA TUDO (O RESETA TELA)
-    function esconderTudo() {
-        // Esconde todos os blocos principais
+    // --- A FUNÇÃO "FAXINA" ---
+    // Garante que a tela esteja limpa antes de mostrar algo novo
+    function resetarTela() {
+        // 1. Esconde todos os blocos principais
         TELAS_RAIZ.forEach(id => {
             const el = document.getElementById(id);
             if (el) {
                 el.style.display = 'none';
-                el.classList.add('hidden');
+                el.classList.remove('active'); // Remove classes extras se houver
+                el.classList.add('hidden');    // Garante compatibilidade com seu CSS
             }
         });
-        // Rola pro topo para evitar bug visual
+        
+        // 2. Reseta scroll para o topo (UX Essencial)
         window.scrollTo(0, 0);
+        document.body.scrollTop = 0;
     }
 
-    // 4. O NAVEGADOR CENTRAL (ROUTER)
-    window.navegarPara = function(destino, salvarHistorico = true) {
-        // Passo A: Limpa a mesa
-        esconderTudo();
+    // --- O ROUTER (O CHEFE) ---
+    // destino: string (nome interno da rota)
+    // pushHistory: boolean (se deve criar histórico ou só trocar a tela)
+    window.router = function(destino, pushHistory = true) {
+        // console.log(`[Router] Navegando para: ${destino}`); // Debug se precisar
 
-        // Passo B: Mostra apenas o necessário baseado no destino
-        
-        // --- DESTINO: MENU PRINCIPAL ---
-        if (destino === 'mainMenu') {
-            mostrar('mainMenu');
-        }
-        
-        // --- DESTINO: MENU CALCULADORA ---
-        else if (destino === 'calculatorMenu') {
-            mostrar('calculatorContainer'); 
-            mostrar('calculatorHome'); // Garante que o menu interno apareça
-        }
-        
-        // --- DESTINO: TELAS DA CALCULADORA (Vizinhas) ---
-        else if (['fecharVenda', 'repassarValores', 'calcularEmprestimo', 'calcularPorAparelho'].includes(destino)) {
-            mostrar(destino);
-        }
-        
-        // --- DESTINO: MENU DOCUMENTOS ---
-        else if (destino === 'documentsMenu') {
-            mostrar('contractContainer'); // Mostra o Pai
-            trocarSubTelaDocs('documentsHome'); // Mostra o Filho Menu
-        }
-        
-        // --- DESTINO: TELAS DE DOCUMENTOS (Filhas) ---
-        else if (destino === 'contrato') {
-            mostrar('contractContainer');
-            trocarSubTelaDocs('areaContratoWrapper');
-        }
-        else if (destino === 'bookip') {
-            mostrar('contractContainer');
-            trocarSubTelaDocs('areaBookipWrapper');
-        }
-        
-        // --- OUTROS (Estoque, Admin, Clientes) ---
-        else if (['stockContainer', 'administracao', 'clientsContainer'].includes(destino)) {
-            mostrar(destino);
+        // PASSO A: Limpa tudo
+        resetarTela();
+
+        // PASSO B: Lógica de Exibição baseada no Destino
+        switch (destino) {
+            case 'mainMenu':
+                mostrar('mainMenu');
+                break;
+
+            case 'calculatorMenu':
+                mostrar('calculatorContainer');
+                mostrar('calculatorHome'); // Garante que o menu interno apareça
+                break;
+
+            case 'fecharVenda':
+            case 'repassarValores':
+            case 'calcularEmprestimo':
+            case 'calcularPorAparelho':
+                mostrar(destino);
+                // Hooks específicos (Recalcular ao abrir)
+                if(destino === 'calcularPorAparelho' && typeof renderCarrinho === 'function') {
+                    renderCarrinho(); 
+                }
+                break;
+
+            case 'stockContainer':
+                if(typeof loadCheckedItems === 'function') { loadCheckedItems(); filterStockProducts(); }
+                mostrar('stockContainer');
+                break;
+
+            case 'administracao':
+                if(typeof filterAdminProducts === 'function') filterAdminProducts();
+                mostrar('administracao');
+                break;
+
+            case 'clientsContainer':
+                mostrar('clientsContainer');
+                break;
+
+            // --- TRATAMENTO ESPECIAL: DOCUMENTOS (HIERARQUIA ANINHADA) ---
+            case 'documentsMenu':
+                mostrar('contractContainer'); // Mostra o Pai
+                gerenciarSubTelaDocs('documentsHome'); // Mostra o Filho
+                break;
+
+            case 'contrato':
+                if(typeof loadContractDraft === 'function') loadContractDraft();
+                mostrar('contractContainer');
+                gerenciarSubTelaDocs('areaContratoWrapper');
+                break;
+
+            case 'bookip':
+                mostrar('contractContainer');
+                gerenciarSubTelaDocs('areaBookipWrapper');
+                break;
+
+            default:
+                console.warn(`Rota desconhecida: ${destino}. Voltando ao início.`);
+                mostrar('mainMenu');
+                destino = 'mainMenu';
         }
 
-        // Passo C: Salva no Histórico do Celular
-        if (salvarHistorico) {
-            history.pushState({ tela: destino }, '', `#${destino}`);
+        // PASSO C: Atualiza o Histórico do Navegador
+        if (pushHistory) {
+            history.pushState({ rota: destino }, '', `#${destino}`);
         }
     };
 
-    // --- FUNÇÕES AUXILIARES ---
-    
+    // --- AUXILIARES ---
     function mostrar(id) {
         const el = document.getElementById(id);
         if (el) {
-            el.style.display = 'block';
+            el.style.display = 'block'; // Ou flex, dependendo do seu CSS, mas block é seguro
             el.classList.remove('hidden');
         }
     }
 
-    function trocarSubTelaDocs(idAlvo) {
+    function gerenciarSubTelaDocs(idAlvo) {
         SUB_TELAS_DOCS.forEach(subId => {
             const el = document.getElementById(subId);
             if (el) {
@@ -6610,66 +6636,54 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 5. SOBRESCREVENDO AS FUNÇÕES ANTIGAS (BRIDGE)
-    // Conecta seus botões existentes ao novo sistema
-    window.showMainSection = function(section) {
-        if(section === 'main') navegarPara('mainMenu');
-        if(section === 'calculator') navegarPara('calculatorMenu');
-        if(section === 'contract') navegarPara('documentsMenu');
-        if(section === 'stock') {
-            if(typeof loadCheckedItems === 'function') { loadCheckedItems(); filterStockProducts(); }
-            navegarPara('stockContainer');
-        }
-        if(section === 'administracao') {
-            if(typeof filterAdminProducts === 'function') filterAdminProducts();
-            navegarPara('administracao');
-        }
-        if(section === 'clients') navegarPara('clientsContainer');
+    // --- CONECTORES (PONTE ENTRE SEU CÓDIGO ANTIGO E O ROUTER) ---
+    // Isso faz seus botões antigos funcionarem sem você precisar mudar o HTML
+    
+    window.showMainSection = (section) => {
+        const mapa = {
+            'main': 'mainMenu',
+            'calculator': 'calculatorMenu',
+            'contract': 'documentsMenu',
+            'stock': 'stockContainer',
+            'administracao': 'administracao',
+            'clients': 'clientsContainer'
+        };
+        router(map[section] || 'mainMenu');
     };
 
-    window.openCalculatorSection = function(sectionId) {
-        if (!sectionId || sectionId === 'home') navegarPara('calculatorMenu');
-        else navegarPara(sectionId);
-        
-        // Lógica específica mantida
-        if(sectionId === 'calcularPorAparelho' && typeof renderCarrinho === 'function') {
-             if(typeof carrinhoDeAparelhos !== 'undefined') carrinhoDeAparelhos = [];
-             renderCarrinho();
-        }
-        if(sectionId === 'repassarValores' && typeof updateRepassarValoresUI === 'function') setTimeout(updateRepassarValoresUI, 50);
+    window.openCalculatorSection = (id) => {
+        // Se id for null ou 'home', vai pro menu. Senão vai pra tela específica.
+        const destino = (!id || id === 'calculatorHome') ? 'calculatorMenu' : id;
+        router(destino);
     };
 
-    window.openDocumentsSection = function(sectionId) {
-        if(sectionId === 'home') navegarPara('documentsMenu');
-        if(sectionId === 'contrato') {
-            if(typeof loadContractDraft === 'function') loadContractDraft();
-            navegarPara('contrato');
-        }
-        if(sectionId === 'bookip') navegarPara('bookip');
+    window.openDocumentsSection = (sub) => {
+        const mapa = { 'home': 'documentsMenu', 'contrato': 'contrato', 'bookip': 'bookip' };
+        router(map[sub] || 'documentsMenu');
     };
-
-    // Atalho para "Novo Recibo" usar a rota certa
+    
+    // Atalho para o "Novo Recibo"
     const _oldAbrirRecibo = window.abrirReciboSimples;
     window.abrirReciboSimples = function() {
         if(_oldAbrirRecibo) _oldAbrirRecibo();
-        navegarPara('bookip');
+        router('bookip');
     };
 
-    // 6. OUVINTE DO BOTÃO VOLTAR (ANDROID/IPHONE)
-    window.onpopstate = function(event) {
-        if (event.state && event.state.tela) {
-            // Se tem histórico, vai para a tela salva
-            navegarPara(event.state.tela, false);
+    // --- GERENCIADOR DO BOTÃO VOLTAR (POPSTATE) ---
+    window.addEventListener('popstate', (event) => {
+        if (event.state && event.state.rota) {
+            // Se tem histórico, o Router navega para lá (sem criar novo histórico)
+            router(event.state.rota, false);
         } else {
-            // Se não tem (ou acabou), volta para o Menu Principal
-            navegarPara('mainMenu', false);
+            // Se acabou o histórico, volta para o Menu Principal
+            router('mainMenu', false);
         }
-    };
+    });
 
-    // 7. INÍCIO
-    history.replaceState({ tela: 'mainMenu' }, '', ' ');
+    // --- INICIALIZAÇÃO ---
+    // Define o estado inicial para que o botão voltar não quebre na primeira vez
+    history.replaceState({ rota: 'mainMenu' }, '', ' ');
 });
-
 
 
         });
