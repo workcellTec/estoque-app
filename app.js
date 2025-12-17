@@ -6686,4 +6686,89 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
+
+// ==========================================
+// 🕵️‍♂️ ESPIÃO DE NAVEGAÇÃO (DIAGNÓSTICO)
+// ==========================================
+// Cole isso no final do app.js para ver o que está acontecendo na tela.
+
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. Criar a "Caixa Preta" de logs na tela
+    const logBox = document.createElement('div');
+    logBox.id = 'debug-log-box';
+    logBox.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 180px;
+        background: rgba(0,0,0,0.9); color: #00ff00; z-index: 99999;
+        font-family: monospace; font-size: 12px; overflow-y: scroll;
+        padding: 10px; pointer-events: none; border-bottom: 2px solid red;
+    `;
+    document.body.appendChild(logBox);
+
+    function log(msg) {
+        const time = new Date().toLocaleTimeString();
+        logBox.innerHTML = `[${time}] ${msg}<br>` + logBox.innerHTML;
+    }
+
+    log("=== INICIANDO DIAGNÓSTICO ===");
+
+    // 2. LISTA DE TELAS PARA MONITORAR
+    // Adicione aqui os IDs que você acha que estão sobrepondo
+    const screensToCheck = [
+        'mainMenu', 'calculatorContainer', 'calculatorHome',
+        'fecharVenda', 'repassarValores', 'calcularEmprestimo', 'calcularPorAparelho',
+        'contractContainer', 'documentsHome', 'areaContratoWrapper', 'areaBookipWrapper',
+        'stockContainer', 'administracao'
+    ];
+
+    // 3. FUNÇÃO QUE CHECA QUEM ESTÁ VISÍVEL
+    function checkVisibility() {
+        const visible = [];
+        screensToCheck.forEach(id => {
+            const el = document.getElementById(id);
+            if (el && el.style.display !== 'none' && !el.classList.contains('hidden')) {
+                visible.push(id);
+            }
+        });
+        return visible.join(', '); // Retorna ex: "calculatorContainer, fecharVenda"
+    }
+
+    // 4. MONITORAR O BOTÃO VOLTAR DO CELULAR
+    window.addEventListener('popstate', (event) => {
+        const estado = event.state ? JSON.stringify(event.state) : "NULL";
+        const visiveisAntes = checkVisibility();
+        
+        log(`🔙 BOTÃO VOLTAR PRESSIONADO!`);
+        log(`💾 Estado do Histórico: ${estado}`);
+        log(`👁️ Telas Visíveis AGORA: [${visiveisAntes}]`);
+        
+        // Pequeno delay para ver se o navegador mudou algo sozinho
+        setTimeout(() => {
+            const visiveisDepois = checkVisibility();
+            log(`⏱️ 500ms depois: [${visiveisDepois}]`);
+            if (visiveisAntes === visiveisDepois) {
+                log(`❌ ERRO: A tela não mudou! O JavaScript ignorou o voltar.`);
+            } else {
+                log(`✅ A tela mudou.`);
+            }
+        }, 500);
+    });
+
+    // 5. MONITORAR CLIQUES NOS BOTÕES DE NAVEGAÇÃO
+    document.body.addEventListener('click', (e) => {
+        // Tenta achar se clicou num botão importante
+        if (e.target.id && (e.target.id.startsWith('btn') || e.target.id.startsWith('open') || e.target.id.startsWith('go'))) {
+            setTimeout(() => {
+                log(`point_up_2: Clicou em: ${e.target.id}`);
+                log(`👁️ Visível: [${checkVisibility()}]`);
+            }, 100);
+        }
+    });
+    
+    // Status Inicial
+    setTimeout(() => {
+        log(`🚀 APP CARREGADO. Visível: [${checkVisibility()}]`);
+    }, 1000);
+});
+
+
         });
