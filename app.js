@@ -6492,72 +6492,171 @@ window.resetFormulariosBookip = function() {
 
 // ============================================================
 // ============================================================
-// NAVEGAÇÃO NATIVA (O JEITO PROFISSIONAL)
+// 🧭 SISTEMA DE NAVEGAÇÃO CENTRAL (ROUTER PROFISSIONAL)
 // ============================================================
-// Lógica: Ao abrir uma tela, criamos um "ponto de retorno" no histórico.
-// Ao apertar voltar, o sistema verifica o que está visível e fecha manualmente.
 
 document.addEventListener('DOMContentLoaded', () => {
-
-    // 1. MAPEAMENTO: Botões que abrem telas -> Adicionam histórico
-    const botoesDeNavegacao = [
-        'goToCalculator', 'goToContract', 'goToStock', 'goToAdmin', // Menus Principais
-        'openFecharVenda', 'openRepassarValores', 'openCalcularEmprestimo', 'openCalcularPorAparelho', // Calc Itens
-        'openContratoView', 'openBookipView', // Doc Itens
-        'btnAdminClients' // Clientes
+    
+    // 1. MAPEAMENTO DA ESTRUTURA DO SEU HTML
+    // Aqui definimos quem são os "Blocos Principais" que ocupam a tela inteira.
+    // Só UM desses pode estar visível por vez.
+    const BLOCOS_PRINCIPAIS = [
+        'mainMenu',                // Menu Inicial
+        'calculatorContainer',     // Menu Calculadora (contém o calculatorHome)
+        'fecharVenda',             // Tela Calc
+        'repassarValores',         // Tela Calc
+        'calcularEmprestimo',      // Tela Calc
+        'calcularPorAparelho',     // Tela Calc
+        'stockContainer',          // Estoque
+        'administracao',           // Admin
+        'clientsContainer',        // Clientes
+        'contractContainer'        // Wrapper de Documentos (Pai de todos os docs)
     ];
 
-    botoesDeNavegacao.forEach(id => {
-        const btn = document.getElementById(id);
-        if (btn) {
-            btn.addEventListener('click', () => {
-                // Empurra um estado "fake" para o navegador saber que navegamos
-                history.pushState({ time: Date.now() }, '', ''); 
-            });
-        }
-    });
+    // Sub-telas dentro do ContractContainer (que precisam de tratamento especial)
+    const SUB_TELAS_DOCS = ['documentsHome', 'areaContratoWrapper', 'areaBookipWrapper'];
 
-    // 2. O CÉREBRO: O que fazer quando apertar VOLTAR no celular
-    window.onpopstate = function(event) {
-        // Previne comportamento padrão bizarro
-        // Verifica o que está visível na tela e toma a decisão
-        
-        // A. Se estivermos em uma SUB-SEÇÃO da Calculadora (Ex: Fechar Venda)
-        if (isVisible('fecharVenda') || isVisible('repassarValores') || isVisible('calcularEmprestimo') || isVisible('calcularPorAparelho')) {
-            // É como se clicasse na setinha "Voltar" da calculadora
-            openCalculatorSection('calculatorHome'); 
-            return;
-        }
-
-        // B. Se estivermos em uma SUB-SEÇÃO de Documentos (Ex: Bookip/Contrato)
-        if (isVisible('areaContratoWrapper') || isVisible('areaBookipWrapper')) {
-            // É como se clicasse na setinha "Voltar" de documentos
-            if(typeof openDocumentsSection === 'function') openDocumentsSection('home');
-            else showMainSection('contract');
-            return;
-        }
-
-        // C. Se estivermos em um MENU PRINCIPAL (Calculadora, Estoque, Admin, Docs, Clientes)
-        if (isVisible('calculatorContainer') || isVisible('stockContainer') || isVisible('administracao') || isVisible('contractContainer') || isVisible('clientsContainer')) {
-            // Volta para o Menu Principal (Main)
-            showMainSection('main');
-            return;
-        }
-
-        // D. Se estiver no MENU PRINCIPAL, deixa o navegador fechar o app ou minimizar
-        // Não fazemos nada aqui.
-    };
-
-    // Função auxiliar para saber se um elemento está na tela
-    function isVisible(id) {
-        const el = document.getElementById(id);
-        // Verifica se existe, se não tem classe 'hidden' e se o display não é 'none'
-        return el && !el.classList.contains('hidden') && el.style.display !== 'none';
+    // 2. FUNÇÃO "FAXINA GERAL"
+    // Esconde todos os blocos principais para garantir tela limpa.
+    function limparTela() {
+        BLOCOS_PRINCIPAIS.forEach(id => {
+            const el = document.getElementById(id);
+            if(el) {
+                el.style.display = 'none';
+                el.classList.add('hidden');
+            }
+        });
+        window.scrollTo(0, 0); // Joga pro topo pra não bugar o scroll
     }
 
-    // Garante que o histórico comece limpo ao carregar
-    history.replaceState(null, '', '');
+    // 3. O "ROUTER" (CÉREBRO DA NAVEGAÇÃO)
+    window.routerNavigate = function(destino, adicionarAoHistorico = true) {
+        console.log(">>> Navegando para:", destino);
+        
+        // Passo A: Limpa tudo primeiro
+        limparTela();
+
+        // Passo B: Lógica Específica para cada destino
+        if (destino === 'mainMenu') {
+            mostrar('mainMenu');
+        } 
+        else if (destino === 'calculatorHome') {
+            mostrar('calculatorContainer');
+            // Garante que o menu interno esteja visível
+            mostrar('calculatorHome', false); 
+        }
+        else if (['fecharVenda', 'repassarValores', 'calcularEmprestimo', 'calcularPorAparelho'].includes(destino)) {
+            mostrar(destino);
+        }
+        else if (destino === 'documentsHome') {
+            mostrar('contractContainer');
+            gerenciarSubTelaDocs('documentsHome');
+        }
+        else if (destino === 'areaContratoWrapper') {
+            mostrar('contractContainer');
+            gerenciarSubTelaDocs('areaContratoWrapper');
+        }
+        else if (destino === 'areaBookipWrapper') {
+            mostrar('contractContainer');
+            gerenciarSubTelaDocs('areaBookipWrapper');
+        }
+        else if (['stockContainer', 'administracao', 'clientsContainer'].includes(destino)) {
+            mostrar(destino);
+        }
+
+        // Passo C: Atualiza Histórico (Para o botão voltar funcionar)
+        if (adicionarAoHistorico) {
+            history.pushState({ view: destino }, '', `#${destino}`);
+        }
+    };
+
+    // Auxiliar para mostrar elemento pelo ID
+    function mostrar(id, isPrincipal = true) {
+        const el = document.getElementById(id);
+        if(el) {
+            el.style.display = 'block';
+            el.classList.remove('hidden');
+        }
+    }
+
+    // Auxiliar para trocar abas dentro de Documentos
+    function gerenciarSubTelaDocs(subTelaAtiva) {
+        SUB_TELAS_DOCS.forEach(id => {
+            const el = document.getElementById(id);
+            if(el) {
+                if(id === subTelaAtiva) {
+                    el.style.display = 'block';
+                    el.classList.remove('hidden');
+                } else {
+                    el.style.display = 'none';
+                    el.classList.add('hidden');
+                }
+            }
+        });
+    }
+
+    // 4. INTERCEPTAR AS FUNÇÕES ANTIGAS (BRIDGE)
+    // Isso faz seus botões antigos funcionarem com o novo sistema sem mexer no HTML
+    window.showMainSection = function(section) {
+        const mapa = {
+            'main': 'mainMenu',
+            'calculator': 'calculatorHome',
+            'contract': 'documentsHome',
+            'stock': 'stockContainer',
+            'administracao': 'administracao',
+            'clients': 'clientsContainer'
+        };
+        // Lógicas de carregamento de dados (mantidas)
+        if(section === 'stock' && typeof loadCheckedItems === 'function') { loadCheckedItems(); filterStockProducts(); }
+        if(section === 'administracao' && typeof filterAdminProducts === 'function') { filterAdminProducts(); }
+        
+        routerNavigate(map[section] || 'mainMenu');
+    };
+
+    window.openCalculatorSection = function(sectionId) {
+        // Seções da calc são topo de linha, navega direto
+        routerNavigate(sectionId);
+        
+        // Mantém atualizações de UI
+        if(sectionId === 'calcularPorAparelho') {
+            if(typeof carrinhoDeAparelhos !== 'undefined') carrinhoDeAparelhos = [];
+            if(typeof renderCarrinho === 'function') renderCarrinho();
+        }
+    };
+
+    window.openDocumentsSection = function(subSection) {
+        const mapa = {
+            'home': 'documentsHome',
+            'contrato': 'areaContratoWrapper',
+            'bookip': 'areaBookipWrapper'
+        };
+        if(subSection === 'contrato' && typeof loadContractDraft === 'function') loadContractDraft();
+        
+        routerNavigate(map[subSection] || 'documentsHome');
+    };
+    
+    // Tratamento especial para o "Novo Recibo"
+    const originalAbrirRecibo = window.abrirReciboSimples;
+    window.abrirReciboSimples = function() {
+        if(originalAbrirRecibo) originalAbrirRecibo();
+        routerNavigate('areaBookipWrapper');
+    };
+
+    // 5. OUVINTE DO BOTÃO VOLTAR (ANDROID/IPHONE)
+    window.onpopstate = function(event) {
+        if (event.state && event.state.view) {
+            // Se tem histórico, vai pra tela salva (sem criar novo histórico)
+            routerNavigate(event.state.view, false);
+        } else {
+            // Se não tem, volta pro menu principal
+            routerNavigate('mainMenu', false);
+        }
+    };
+
+    // 6. ESTADO INICIAL
+    history.replaceState({ view: 'mainMenu' }, '', ' ');
 });
+
 
 
         });
