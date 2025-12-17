@@ -4494,13 +4494,13 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
 
 // CARREGAR HISTÓRICO (VERSÃO MASTER: TUDO INCLUSO 🏆)
 // ============================================================
-// CARREGAR HISTÓRICO (COM CORES POR TIPO 🎨)
-// ============================================================
 function loadBookipHistory() {
     // Verificações de segurança originais
     if (!db || !isAuthReady) return;
     
-    const bookipsRef = ref(db, 'bookips');
+    // NOTA: Se o seu banco for separado por usuário, lembre-se de usar 'bookips/' + userId
+    // Mas mantive exatamente como você mandou:
+    const bookipsRef = ref(db, 'bookips'); 
     const container = document.getElementById('historyBookipContent');
     
     // Variáveis de controle
@@ -4513,7 +4513,9 @@ function loadBookipHistory() {
     container.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div><p class="mt-2 text-secondary">Carregando histórico...</p></div>';
 
     // Remove listener antigo para não duplicar
-    if (bookipListener) off(bookipsRef, 'value', bookipListener);
+    if (typeof bookipListener !== 'undefined' && bookipListener) {
+        off(bookipsRef, 'value', bookipListener);
+    }
 
     // Novo Listener do Firebase
     bookipListener = onValue(bookipsRef, (snapshot) => {
@@ -4522,14 +4524,33 @@ function loadBookipHistory() {
             // 1. Transforma em lista
             listaCompletaCache = Object.keys(data).map(key => ({ id: key, ...data[key] }));
             
-            // 2. Ordena (Data mais recente no topo)
+            // ==========================================================
+            // 2. ORDENAÇÃO INTELIGENTE (MODIFICADO AQUI)
+            // ==========================================================
             listaCompletaCache.sort((a, b) => {
-                const dataA = a.dataVenda || (a.criadoEm ? a.criadoEm.split('T')[0] : '0000-00-00');
-                const dataB = b.dataVenda || (b.criadoEm ? b.criadoEm.split('T')[0] : '0000-00-00');
+                // Passo A: Normaliza a Data do Documento (YYYY-MM-DD)
+                const getData = (item) => {
+                    if (item.dataVenda) return item.dataVenda; 
+                    if (item.criadoEm) return new Date(item.criadoEm).toISOString().split('T')[0];
+                    return '0000-00-00';
+                };
+
+                const dataA = getData(a);
+                const dataB = getData(b);
+
+                // PRIORIDADE 1: DATA DO DOCUMENTO
+                // Se B for maior (futuro), B vem primeiro
                 if (dataB > dataA) return 1;
                 if (dataB < dataA) return -1;
-                return 0;
+
+                // PRIORIDADE 2: HORA DA CRIAÇÃO (Desempate)
+                // Se as datas são iguais, o cadastro mais recente (hora) vem primeiro
+                const horaA = a.criadoEm ? new Date(a.criadoEm).getTime() : 0;
+                const horaB = b.criadoEm ? new Date(b.criadoEm).getTime() : 0;
+                
+                return horaB - horaA; 
             });
+            // ==========================================================
             
             // 3. Configura e aplica filtros
             configurarFiltros();
@@ -4630,7 +4651,6 @@ function loadBookipHistory() {
             let badgeClass = 'bg-primary'; // Azul (Padrão / Garantia)
             
             // 1. SITUAÇÃO (Prioridade: Amarelo)
-            // Verifica o tipo novo 'situacao' OU se tem item antigo com flag isSituation
             const isSituacao = (item.type === 'situacao') || (item.items && item.items[0] && item.items[0].isSituation);
             
             // 2. RECIBO (Verde)
@@ -4691,7 +4711,6 @@ function loadBookipHistory() {
         }));
     }
 }
-
 
     // --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO ---
         // --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO (CORRIGIDA) ---
