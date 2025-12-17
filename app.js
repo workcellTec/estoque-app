@@ -6493,130 +6493,167 @@ window.resetFormulariosBookip = function() {
 // ============================================================
 // ============================================================
 // ============================================================
-// SISTEMA DE NAVEGAÇÃO BLINDADO (CORREÇÃO TOTAL DE HISTÓRICO)
+// SISTEMA DE NAVEGAÇÃO SUPREMO (CORREÇÃO DE SOBREPOSIÇÃO)
 // ============================================================
-document.addEventListener('DOMContentLoaded', () => {
+// Este código substitui as funções originais para garantir que NUNCA
+// duas telas fiquem abertas ao mesmo tempo.
 
-    // 1. LISTA COMPLETA DE TELAS (Para garantir que NADA fique aberto)
-    const allScreens = [
-        'mainMenu',                // Menu Principal
-        'calculatorContainer',     // Container Geral Calc
-        'calculatorHome',          // Menu Interno Calc
-        'contractContainer',       // Container Geral Docs
-        'documentsHome',           // Menu Interno Docs
-        'stockContainer',          // Estoque
-        'administracao',           // Admin
-        'clientsContainer',        // Clientes
-        'fecharVenda',             // Telas Calc...
-        'repassarValores',
-        'calcularEmprestimo',
-        'calcularPorAparelho',
-        'areaContratoWrapper',     // Telas Docs...
-        'areaBookipWrapper'
-    ];
+// 1. MAPEAMENTO TOTAL DAS TELAS (Quem é Pai e Quem é Filho)
+const NAV_CONFIG = {
+    // Telas Principais (Top Level)
+    mainMenu:           { parent: null },
+    stockContainer:     { parent: null },
+    administracao:      { parent: null },
+    clientsContainer:   { parent: null },
+    
+    // Calculadora e seus filhos
+    calculatorContainer: { parent: null },
+    calculatorHome:      { parent: 'calculatorContainer' },
+    fecharVenda:         { parent: 'calculatorContainer' },
+    repassarValores:     { parent: 'calculatorContainer' },
+    calcularEmprestimo:  { parent: 'calculatorContainer' },
+    calcularPorAparelho: { parent: 'calculatorContainer' },
 
-    // 2. FUNÇÃO "FAXINA NUCLEAR" (Esconde tudo sem dó)
-    function hideAllScreens() {
-        allScreens.forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.style.display = 'none';
-                el.classList.add('hidden');
-            }
-        });
-        window.scrollTo(0, 0); // Joga pro topo pra não bugar o rodapé
-    }
+    // Documentos e seus filhos
+    contractContainer:   { parent: null },
+    documentsHome:       { parent: 'contractContainer' },
+    areaContratoWrapper: { parent: 'contractContainer' },
+    areaBookipWrapper:   { parent: 'contractContainer' }
+};
 
-    // 3. FUNÇÃO INTELIGENTE DE MOSTRAR TELA
-    function showScreen(screenId) {
-        // Primeiro: Limpa tudo
-        hideAllScreens();
+// 2. FUNÇÃO MESTRE DE NAVEGAÇÃO
+function navigationMaster(targetId, updateHistory = true) {
+    console.log("Navegando para:", targetId);
 
-        // Segundo: Mostra a tela pedida
-        const target = document.getElementById(screenId);
-        if (target) {
-            target.style.display = 'block';
-            target.classList.remove('hidden');
-
-            // --- CORREÇÃO DE HIERARQUIA (O Pulo do Gato) ---
-            // Se abrir o menu da Calculadora, garante que o submenu apareça e o container também
-            if (screenId === 'calculatorContainer') {
-                const home = document.getElementById('calculatorHome');
-                if (home) {
-                    home.style.display = 'block';
-                    home.classList.remove('hidden');
-                }
-            }
-            // Se abrir o menu de Documentos, garante que o submenu apareça
-            if (screenId === 'contractContainer') {
-                const home = document.getElementById('documentsHome');
-                if (home) {
-                    home.style.display = 'block';
-                    home.classList.remove('hidden');
-                }
-            }
-            // Se abrir uma tela interna (ex: Aparelho), garante que o container pai esteja visível
-            if (['fecharVenda', 'repassarValores', 'calcularEmprestimo', 'calcularPorAparelho'].includes(screenId)) {
-                const parent = document.getElementById('calculatorContainer');
-                if (parent) {
-                    parent.style.display = 'block';
-                    parent.classList.remove('hidden');
-                }
-            }
-            // Se abrir uma tela interna de Docs (ex: Bookip), garante o pai visível
-            if (['areaContratoWrapper', 'areaBookipWrapper'].includes(screenId)) {
-                const parent = document.getElementById('contractContainer');
-                if (parent) {
-                    parent.style.display = 'block';
-                    parent.classList.remove('hidden');
-                }
-            }
-        }
-    }
-
-    // 4. MAPA DE NAVEGAÇÃO (Botão -> ID da Tela)
-    const navMap = {
-        'goToCalculator': 'calculatorContainer',
-        'goToContract': 'contractContainer',
-        'goToStock': 'stockContainer',
-        'goToAdmin': 'administracao',
-        'btnAdminClients': 'clientsContainer',
-        'openFecharVenda': 'fecharVenda',
-        'openRepassarValores': 'repassarValores',
-        'openCalcularEmprestimo': 'calcularEmprestimo',
-        'openCalcularPorAparelho': 'calcularPorAparelho',
-        'openContratoView': 'areaContratoWrapper',
-        'openBookipView': 'areaBookipWrapper'
-    };
-
-    // 5. INTERCEPTAR CLIQUES (Adiciona ao histórico)
-    Object.keys(navMap).forEach(btnId => {
-        const btn = document.getElementById(btnId);
-        if (btn) {
-            btn.addEventListener('click', (e) => {
-                // Adiciona um novo passo no histórico do celular
-                const targetId = navMap[btnId];
-                history.pushState({ screen: targetId }, '', `#${targetId}`);
-                // Chama nossa função que limpa tudo antes de mostrar
-                showScreen(targetId);
-            });
+    // PASSO A: Esconde TODAS as telas listadas no mapa
+    Object.keys(NAV_CONFIG).forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.style.display = 'none';
+            el.classList.add('hidden');
         }
     });
+    
+    // Esconde controles extras por segurança
+    const controls = document.getElementById('top-right-controls');
+    if(controls) controls.classList.add('hidden');
 
-    // 6. INTERCEPTAR O BOTÃO VOLTAR DO CELULAR (Popstate)
-    window.onpopstate = function(event) {
-        if (event.state && event.state.screen) {
-            // Se tem histórico salvo, abre a tela salva
-            showScreen(event.state.screen);
-        } else {
-            // Se chegou no início (sem histórico), abre o Menu Principal
-            showScreen('mainMenu');
+    // PASSO B: Identifica a hierarquia (Quem deve aparecer)
+    const config = NAV_CONFIG[targetId];
+    if (!config) {
+        console.warn("Tela não mapeada:", targetId);
+        // Se der erro, joga pro menu principal
+        return navigationMaster('mainMenu', false);
+    }
+
+    // 1. Mostra o Pai (se houver)
+    if (config.parent) {
+        const parentEl = document.getElementById(config.parent);
+        if (parentEl) {
+            parentEl.style.display = 'block';
+            parentEl.classList.remove('hidden');
         }
-    };
+    }
 
-    // 7. ESTADO INICIAL (Ponto Zero)
+    // 2. Mostra o Alvo
+    const targetEl = document.getElementById(targetId);
+    if (targetEl) {
+        // Se for flex (como menus), usa flex. Se não, block.
+        const isFlex = ['mainMenu', 'stockContainer', 'administracao', 'clientsContainer', 'documentsHome', 'calculatorHome'].includes(targetId);
+        targetEl.style.display = isFlex ? 'flex' : 'block';
+        targetEl.classList.remove('hidden');
+    }
+
+    // 3. Mostra controles do topo apenas no Menu Principal
+    if (targetId === 'mainMenu' && controls) {
+        controls.classList.remove('hidden');
+    }
+
+    // PASSO C: Atualiza o Histórico do Navegador (Para o botão voltar funcionar)
+    if (updateHistory) {
+        const currentHash = window.location.hash.replace('#', '');
+        if (currentHash !== targetId) {
+            history.pushState({ screen: targetId }, '', `#${targetId}`);
+        }
+    }
+
+    // PASSO D: Rola para o topo (Essencial para não parecer que bugou)
+    window.scrollTo(0, 0);
+}
+
+// 3. SOBRESCREVENDO AS FUNÇÕES ANTIGAS (O Pulo do Gato 🐱)
+// Aqui nós "sequestramos" as chamadas antigas e redirecionamos para o nosso mestre.
+
+window.showMainSection = function(sectionId) {
+    // Traduz os IDs antigos para os novos
+    const map = {
+        'main': 'mainMenu',
+        'calculator': 'calculatorHome', // Vai direto pro menu da calc
+        'contract': 'documentsHome',    // Vai direto pro menu de docs
+        'stock': 'stockContainer',
+        'administracao': 'administracao',
+        'clients': 'clientsContainer'
+    };
+    const target = map[sectionId] || 'mainMenu';
+    
+    // Carrega dados específicos se necessário
+    if (sectionId === 'stock') { loadCheckedItems(); filterStockProducts(); }
+    if (sectionId === 'administracao') { filterAdminProducts(); }
+    
+    navigationMaster(target);
+};
+
+window.openCalculatorSection = function(sectionId) {
+    // Garante que o ID existe, senão vai pro home da calc
+    const target = (sectionId && NAV_CONFIG[sectionId]) ? sectionId : 'calculatorHome';
+    
+    // Lógica específica de inicialização da tela (mantida)
+    if (target === 'calcularPorAparelho') {
+        carrinhoDeAparelhos = [];
+        if(typeof renderCarrinho === 'function') renderCarrinho();
+    } else {
+        currentlySelectedProductForCalc = null;
+    }
+    
+    // Executa updates de UI necessários (mantido do original)
+    if (target === 'fecharVenda' && typeof updateFecharVendaUI === 'function') setTimeout(updateFecharVendaUI, 50);
+    if (target === 'repassarValores' && typeof updateRepassarValoresUI === 'function') setTimeout(updateRepassarValoresUI, 50);
+    if (target === 'calcularEmprestimo' && typeof updateCalcularEmprestimoUI === 'function') setTimeout(updateCalcularEmprestimoUI, 50);
+    if (target === 'calcularPorAparelho' && typeof updateCalcularPorAparelhoUI === 'function') setTimeout(updateCalcularPorAparelhoUI, 50);
+
+    navigationMaster(target);
+};
+
+window.openDocumentsSection = function(subSectionId) {
+    const map = {
+        'home': 'documentsHome',
+        'contrato': 'areaContratoWrapper',
+        'bookip': 'areaBookipWrapper'
+    };
+    const target = map[subSectionId] || 'documentsHome';
+    
+    if (subSectionId === 'contrato' && typeof loadContractDraft === 'function') loadContractDraft();
+    
+    navigationMaster(target);
+};
+
+// 4. GERENCIADOR DO BOTÃO VOLTAR (ANDROID/iOS)
+window.onpopstate = function(event) {
+    if (event.state && event.state.screen) {
+        // Se tem histórico, vai pra tela salva (sem criar novo histórico)
+        navigationMaster(event.state.screen, false);
+    } else {
+        // Se não tem, volta pro menu principal
+        navigationMaster('mainMenu', false);
+    }
+};
+
+// 5. INICIALIZAÇÃO SEGURA
+document.addEventListener('DOMContentLoaded', () => {
+    // Define o estado inicial corretamente
     history.replaceState({ screen: 'mainMenu' }, '', ' ');
 });
+
 
 
         });
