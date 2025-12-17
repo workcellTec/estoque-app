@@ -1611,84 +1611,106 @@ do que você precisa??</h2>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-
 <script>
 (function() {
-    console.log("🔧 Sistema de Navegação (Prioridade Filhos) Iniciado...");
+    console.log("🚀 Sistema de Navegação CSS Computado Iniciado...");
 
-    // 1. GATILHO: Cria histórico ao clicar em botões de abrir tela
+    // 1. GATILHO: Adiciona histórico ao clicar para abrir telas
     document.addEventListener('click', function(e) {
-        // Pega botões de menu ou cartões que abrem telas
+        // Pega qualquer botão que pareça ser de navegação
         const target = e.target.closest('.btn-menu, .btn-action-sm, #btnAdminClients');
         if (target) {
-            // Cria o ponto de retorno
             window.history.pushState({ time: Date.now() }, "", "");
         }
     }, true);
 
-    // 2. REAÇÃO: Botão Voltar do Celular
+    // 2. FUNÇÃO INFALÍVEL PARA CHECAR VISIBILIDADE
+    // Essa função ignora se está "por baixo" ou "por cima". 
+    // Ela só retorna TRUE se o elemento estiver realmente ocupando espaço na tela.
+    function isRealmenteVisivel(id) {
+        const el = document.getElementById(id);
+        if (!el) return false;
+        
+        // Pega o estilo FINAL calculado pelo navegador (não o inline)
+        const style = window.getComputedStyle(el);
+        
+        // Se display for 'none', não está visível.
+        // Se visibility for 'hidden', não está visível.
+        // Se a classe 'hidden' estiver presente, não está visível (redundância de segurança).
+        return style.display !== 'none' && 
+               style.visibility !== 'hidden' && 
+               !el.classList.contains('hidden');
+    }
+
+    // 3. REAÇÃO AO BOTÃO VOLTAR
     window.addEventListener('popstate', function(event) {
-        console.log("🔙 Voltar detectado! Procurando tela para fechar...");
+        console.log("🔙 Voltar detectado. Analisando tela ativa...");
 
-        // A LISTA DE PRIORIDADE (O Segredo está aqui)
-        // Primeiro listamos as telas "FILHAS" (Sub-telas).
-        // Depois listamos os menus "PAIS".
-        const ordemDeChecagem = [
-            // 1º Prioridade: Telas de Fundo (Sub-telas da Calculadora)
-            'fecharVenda', 
-            'repassarValores', 
-            'calcularEmprestimo', 
-            'calcularPorAparelho',
-            
-            // 2º Prioridade: Telas de Fundo (Sub-telas de Documentos)
-            'areaContratoWrapper', 
-            'areaBookipWrapper',
-            
-            // 3º Prioridade: Menus Intermediários (Se eles estiverem visíveis, volta pro Início)
-            'calculatorHome', 
-            'documentsHome',
-            
-            // 4º Prioridade: Telas Independentes
-            'stockContainer', 
-            'clientsContainer', 
-            'administracao'
-        ];
+        // === NIVEL 1: TELAS FILHAS (PRIORIDADE MÁXIMA) ===
+        // Se qualquer uma dessas estiver visível, ELA manda.
+        // Ignoramos menus pais por enquanto.
 
-        let clicou = false;
-
-        for (let id of ordemDeChecagem) {
-            const tela = document.getElementById(id);
-            
-            // Verifica se a tela existe E está visível
-            if (tela && !tela.classList.contains('hidden') && tela.style.display !== 'none') {
-                
-                // Procura o botão de voltar DENTRO desta tela específica
-                const botaoVoltar = tela.querySelector('.btn-back');
-                
-                if (botaoVoltar) {
-                    console.log(`✅ Tela filha detectada (${id}). Clicando em: ${botaoVoltar.id}`);
-                    botaoVoltar.click(); // Clica na setinha dessa tela
-                    clicou = true;
-                    break; // PARE! Já achamos a tela certa, não procure as outras.
-                }
-            }
+        if (isRealmenteVisivel('fecharVenda')) {
+            document.getElementById('backFromFecharVenda').click(); return;
+        }
+        if (isRealmenteVisivel('repassarValores')) {
+            document.getElementById('backFromRepassarValores').click(); return;
+        }
+        if (isRealmenteVisivel('calcularEmprestimo')) {
+            document.getElementById('backFromCalcularEmprestimo').click(); return;
+        }
+        if (isRealmenteVisivel('calcularPorAparelho')) {
+            document.getElementById('backFromCalcularPorAparelho').click(); return;
+        }
+        
+        // Docs (Filhos)
+        if (isRealmenteVisivel('areaContratoWrapper')) {
+            document.getElementById('backFromContratoView').click(); return;
+        }
+        if (isRealmenteVisivel('areaBookipWrapper')) {
+            document.getElementById('backFromBookipView').click(); return;
         }
 
-        // Fallback: Se não achou nada, garante que o Menu Principal apareça
-        if (!clicou) {
-            const mainMenu = document.getElementById('mainMenu');
-            if(mainMenu && (mainMenu.style.display === 'none' || mainMenu.classList.contains('hidden'))) {
-                 // Se estivermos perdidos no limbo, mostra o menu
-                 if(typeof showMainSection === 'function') showMainSection('main');
-            }
+
+        // === NIVEL 2: MENUS INTERMEDIÁRIOS ===
+        // Só verificamos isso se NENHUM filho acima foi encontrado.
+        
+        if (isRealmenteVisivel('calculatorHome')) {
+            document.getElementById('backFromCalculatorHome').click(); return;
+        }
+        if (isRealmenteVisivel('documentsHome')) {
+            document.getElementById('backFromDocumentsHome').click(); return;
+        }
+
+
+        // === NIVEL 3: TELAS INDEPENDENTES ===
+        
+        if (isRealmenteVisivel('stockContainer')) {
+            document.getElementById('backFromStock').click(); return;
+        }
+        if (isRealmenteVisivel('clientsContainer')) {
+            document.getElementById('backFromClients').click(); return;
+        }
+        if (isRealmenteVisivel('administracao')) {
+            document.getElementById('backFromAdmin').click(); return;
+        }
+
+        // Se chegou aqui, estamos no Menu Principal ou perdidos.
+        // Garante que o Menu Principal apareça.
+        const mainMenu = document.getElementById('mainMenu');
+        if (mainMenu && window.getComputedStyle(mainMenu).display === 'none') {
+             if(typeof showMainSection === 'function') showMainSection('main');
         }
     });
 
-    // 3. Estado Inicial
+    // 4. Estado Inicial
     window.history.replaceState(null, "", "");
 
 })();
 </script>
+
+
+
 
 </body>
 </html>
