@@ -5588,15 +5588,16 @@ window.editarCliente = function(id) {
 // ============================================================
 // BOTÃO NOVA GARANTIA: LIMPEZA MANUAL (SEM RECARREGAR)
 // ============================================================
+// BOTÃO NOVA GARANTIA: LIMPEZA MANUAL CORRIGIDA (SEM MATAR O BOTÃO)
+// ============================================================
 document.addEventListener('click', function(e) {
     const btn = e.target.closest('#btnNewBookipCycle');
     
     if (btn) {
         e.preventDefault(); 
-        console.log("🧹 Iniciando limpeza manual forçada...");
+        console.log("🧹 Limpando tela para nova garantia...");
 
-        // 1. LIMPA AS VARIÁVEIS DO SISTEMA
-        // Forçamos null em tudo que possa guardar memória
+        // 1. LIMPA VARIÁVEIS GLOBAIS
         window.currentEditingBookipId = null;
         if(typeof currentEditingBookipId !== 'undefined') currentEditingBookipId = null;
         
@@ -5606,41 +5607,32 @@ document.addEventListener('click', function(e) {
         window.bookipCartList = [];
         if(typeof bookipCartList !== 'undefined') bookipCartList = [];
 
-        // 2. LIMPA TODOS OS CAMPOS DE TEXTO (Input e Textarea)
-        // Pega todos os campos dentro da área de garantia
+        // 2. LIMPA CAMPOS DE TEXTO
         const areaGarantia = document.getElementById('newBookipContent');
         if (areaGarantia) {
-            const inputs = areaGarantia.querySelectorAll('input, textarea, select');
-            inputs.forEach(campo => {
-                campo.value = ''; // Apaga o texto
-            });
+            areaGarantia.querySelectorAll('input, textarea, select').forEach(c => c.value = '');
         }
-
-        // 3. CORRIGE A QUANTIDADE PARA 1
+        
         const qtd = document.getElementById('bookipProdQtdTemp');
         if(qtd) qtd.value = '1';
 
-        // 4. LIMPA A LISTA VISUAL DE PRODUTOS
+        // 3. LIMPA LISTA VISUAL
         const lista = document.getElementById('bookipListaItens');
         if(lista) lista.innerHTML = '<li class="list-group-item text-center text-muted small bg-transparent">Nenhum item adicionado.</li>';
         
         const total = document.getElementById('bookipTotalDisplay');
         if(total) total.innerText = 'R$ 0,00';
 
-        // 5. RESETA O BOTÃO DE "ADICIONAR PRODUTO" (Tira o amarelo de edição)
+        // 4. RESETA O BOTÃO DE ADICIONAR (A CORREÇÃO ESTÁ AQUI)
         const btnAdd = document.getElementById('btnAdicionarItemLista');
         if (btnAdd) {
+            // Apenas muda o visual, NÃO substitui o elemento
             btnAdd.innerHTML = '<i class="bi bi-plus-lg"></i> Adicionar à Lista';
-            btnAdd.className = 'btn btn-primary w-100'; // Força ficar azul
-            // Remove qualquer evento antigo clonando o botão (truque para limpar memória de clique)
-            const novoBtn = btnAdd.cloneNode(true);
-            btnAdd.parentNode.replaceChild(novoBtn, btnAdd);
-            // Reatribui a função de clique original (se estiver acessível globalmente) ou apenas limpa
-            // Nota: Se o seu botão usa addEventListener no inicio do arquivo, clonar remove o evento.
-            // MELHOR: Apenas mudar a classe visualmente já ajuda o usuário.
+            btnAdd.className = 'btn btn-primary w-100'; // Volta a ser azul
+            // Removemos o cloneNode que estava matando o clique
         }
 
-        // 6. RESETA O BOTÃO DE "SALVAR DOCUMENTO"
+        // 5. RESTAURA O BOTÃO SALVAR DOCUMENTO
         const btnSave = document.getElementById('btnSaveBookip');
         if(btnSave) {
             btnSave.innerHTML = '<i class="bi bi-check-circle-fill"></i> Finalizar e Salvar Documento';
@@ -5648,27 +5640,21 @@ document.addEventListener('click', function(e) {
             btnSave.disabled = false;
         }
 
-        // 7. ESCONDE O POPUP DE SUCESSO E MOSTRA O FORMULÁRIO
+        // 6. VISIBILIDADE
         const popup = document.getElementById('postSaveOptions');
         if(popup) popup.classList.add('hidden');
         
         const saveContainer = document.getElementById('saveActionContainer');
         if(saveContainer) saveContainer.classList.remove('hidden');
 
-        // 8. DESMARCA PAGAMENTOS
-        document.querySelectorAll('.check-pagamento').forEach(c => c.checked = false);
-
-        // 9. SOBE A TELA
+        // 7. SCROLL
         document.getElementById('areaBookipWrapper').scrollIntoView({ behavior: 'smooth' });
-
-        alert("Tela limpa! Pode fazer uma nova garantia.");
+        
+        // Remove pagamentos
+        document.querySelectorAll('.check-pagamento').forEach(c => c.checked = false);
     }
 });
 
-// ============================================================
-// LÓGICA DOS ATALHOS (NOVO / SEMINOVO)
-// ============================================================
-// ============================================================
 // LÓGICA DOS ATALHOS (INTELIGENTE E EXCLUSIVA)
 // ============================================================
 const setupProductTags = () => {
