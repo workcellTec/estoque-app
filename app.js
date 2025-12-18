@@ -4880,10 +4880,11 @@ if (btnSave) {
         btnSave.disabled = true;
 
         try {
-            // Prepara Dados (Igual antes)
+            // --- BLOCO CIRÚRGICO: CAPTURAR PAGAMENTO ---
             const pags = [];
             document.querySelectorAll('.check-pagamento:checked').forEach(c => pags.push(c.value));
-            const txtPag = pags.length > 0 ? pags.join(', ') : '';
+            const txtPag = pags.length > 0 ? pags.join(', ') : 'Não informado';
+            // --------------------------------------------
 
             let dias = 365;
             const sel = document.getElementById('bookipGarantiaSelect').value;
@@ -4946,14 +4947,16 @@ if (btnSave) {
             // Objeto Final
             const dados = {
                 docNumber: docNumberFormatted,
-                type: docType, // <--- AQUI ESTÁ A NOVA ETIQUETA SALVA NO BANCO
+                type: docType,
                 nome: document.getElementById('bookipNome').value || 'Consumidor',
                 cpf: document.getElementById('bookipCpf').value || '',
                 tel: document.getElementById('bookipTelefone').value || '',
                 end: document.getElementById('bookipEndereco').value || '',
                 email: document.getElementById('bookipEmail').value || '',
                 items: bookipCartList,
-                pagamento: txtPag,
+                
+                pagamento: txtPag, // <--- ADICIONE ESTA LINHA AQUI
+                
                 diasGarantia: dias,
                 dataVenda: dataFinalVenda,
                 criadoEm: new Date().toISOString()
