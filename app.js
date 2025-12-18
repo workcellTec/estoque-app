@@ -4704,8 +4704,24 @@ function loadBookipHistory() {
             }
             // =========================================================
 
-            return `
-            <div class="accordion-item">
+            // --- CÓDIGO NOVO (Lógica Visual de Envio) ---
+            const foiEnviado = (item.statusEnvio === true);
+            
+            // Define se a borda fica verde e o fundo claro
+            const styleCard = foiEnviado ? 'border-left: 6px solid #28a745; background-color: #f0fff4;' : '';
+            
+            // Define se o botão fica cinza (check) ou amarelo (email)
+            const classBtnEnvio = foiEnviado ? 'btn-dark' : 'btn-warning';
+            const iconBtnEnvio = foiEnviado ? 'bi-check-circle-fill text-success' : 'bi-envelope-at-fill';
+            const titleBtnEnvio = foiEnviado ? 'Já enviado (Reenviar)' : 'PDF/Email';
+            // --------------------------------------------
+
+
+                        return `
+            <div class="accordion-item" style="${styleCard}">
+
+
+
                 <h2 class="accordion-header" id="head-bk-${item.id}">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-bk-${item.id}">
                         <span class="badge ${badgeClass} me-2">Doc ${docNum}</span> 
@@ -4721,7 +4737,10 @@ function loadBookipHistory() {
                         </ul>
                         <div class="d-flex justify-content-end gap-2 mt-2">
                             <button class="btn btn-sm btn-info edit-bookip-btn" data-id="${item.id}" title="Editar"><i class="bi bi-pencil-square"></i></button>
-                            <button class="btn btn-sm btn-warning email-history-btn" data-id="${item.id}" title="PDF/Email"><i class="bi bi-envelope-at-fill"></i></button>
+
+<button class="btn btn-sm ${classBtnEnvio} email-history-btn" data-id="${item.id}" title="${titleBtnEnvio}"><i class="bi ${iconBtnEnvio}"></i></button>
+
+
                             <button class="btn btn-sm btn-primary print-old-bookip" data-id="${item.id}" title="Imprimir"><i class="bi bi-printer"></i></button>
                             <button class="btn btn-sm btn-outline-danger delete-bookip-btn" data-id="${item.id}" title="Apagar"><i class="bi bi-trash"></i></button>
                         </div>
@@ -6036,10 +6055,19 @@ async function gerarPdfDoHistorico(dados, botao) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             try {
                 await navigator.clipboard.writeText(textToCopy);
-            } catch (err) {
-                // Se der erro (bloqueio de segurança), aciona o plano B
-                copiarJeitoAntigo(textToCopy);
+                         } catch (err) {
+                // Se der erro ou o usuário cancelar, NÃO BAIXA MAIS AUTOMATICAMENTE.
+                console.warn("Compartilhamento cancelado ou falhou:", err);
+
+                // Se não for apenas um cancelamento do usuário (AbortError), avisa.
+                if (err.name !== 'AbortError') {
+                    alert("Não foi possível abrir o compartilhamento direto.");
+                }
+                
+                // Opcional: Reseta o botão para "Enviar" caso queira tentar de novo
+                novoBotao.innerHTML = '<i class="bi bi-whatsapp"></i> Tentar Novamente';
             }
+
         } else {
             // Se o navegador for velho e nem tiver clipboard, vai direto no plano B
             copiarJeitoAntigo(textToCopy);
@@ -6218,61 +6246,81 @@ async function gerarPdfDoHistorico(dados, botao) {
             jsPDF:        { unit: 'px', format: [794, 1123], orientation: 'portrait' } 
         };
 
+                // ... (Mantenha o código acima igual, até chegar nesta linha abaixo) ...
         const blob = await html2pdf().set(opt).from(printContainer).output('blob');
-
-
-        // ... (Você manteve a linha do blob acima) ...
+        
+        // --- DAQUI PRA BAIXO É O CÓDIGO NOVO ---
+        
         const file = new File([blob], nomeFinalArquivo, { type: 'application/pdf' });
-
-        // 1. Tira o Loading da tela (O PDF já existe na memória)
         removerLoading();
 
-        // 2. TRANSFORMAÇÃO DO BOTÃO (O Pulo do Gato 🐈)
-        // Mudamos o botão para um estado de "Pronto para Enviar"
-        botao.innerHTML = '📤 Enviar PDF'; // Texto novo
-        botao.classList.remove('btn-primary', 'btn-warning'); // Limpa cores antigas
-        botao.classList.add('btn-success'); // Cor VERDE de sucesso
-        botao.disabled = false; // Destrava o botão
+        // 1. O BOTÃO VIRA "ENVIAR" (Verde)
+        botao.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
+        botao.classList.remove('btn-primary', 'btn-warning', 'btn-secondary', 'btn-dark'); 
+        botao.classList.add('btn-success'); 
+        botao.disabled = false; 
 
-        // 3. CRIA O NOVO COMPORTAMENTO (CLIQUE FRESCO)
-        // Clonamos o botão para limpar qualquer evento antigo e evitar loops
+        // 2. PREPARA O NOVO CLIQUE (Limpa eventos antigos)
         const novoBotao = botao.cloneNode(true);
         botao.parentNode.replaceChild(novoBotao, botao);
 
-        // Agora, quando clicar, o PDF já está pronto, então o share é INSTANTÂNEO
+        // 3. CLIQUE DE ENVIO
         novoBotao.addEventListener('click', async () => {
             try {
+                let compartilhou = false;
+
+                // Tenta compartilhar nativo
                 if (navigator.canShare && navigator.canShare({ files: [file] })) {
                     await navigator.share({
                         files: [file],
                         title: tituloCompartilhamento,
                         text: textoCompartilhamento
                     });
+                    compartilhou = true;
                 } else {
-                    throw new Error("Não suportado");
+                    throw new Error("Share não suportado, indo para download.");
                 }
+
+                // --- SE DEU CERTO: MARCA TUDO ---
+                if (compartilhou) {
+                    // A. Visual do Botão
+                    novoBotao.innerHTML = '<i class="bi bi-check-circle-fill"></i> Enviado!';
+                    novoBotao.classList.remove('btn-success');
+                    novoBotao.classList.add('btn-dark'); 
+                    
+                    // B. Visual da Lista (Borda Verde)
+                    const cardPai = novoBotao.closest('.list-group-item') || novoBotao.closest('.card') || novoBotao.parentNode.parentNode;
+                    if (cardPai) {
+                        cardPai.style.borderLeft = "6px solid #28a745"; 
+                        cardPai.style.backgroundColor = "#f0fff4"; 
+                    }
+
+                    // C. Salva no Firebase (Memória Eterna)
+                    if (dados.id || dados.docId) {
+                        marcarComoEnviadoNoBanco(dados.id || dados.docId);
+                    }
+                }
+
             } catch (err) {
-                // Se mesmo no botão novo der erro (ou pc sem share), baixa o arquivo
-                console.warn("Share falhou, baixando...", err);
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = opt.filename;
-                link.click();
+                // Apenas avisa no console, NÃO baixa mais nada
+                console.warn("Compartilhamento cancelado ou erro:", err);
+                
+                // Opcional: Se quiser que o botão volte a ficar verde pra tentar de novo:
+                // novoBotao.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar PDF';
             }
+
         });
 
-        // Opcional: Vibra o celular para avisar que terminou
-        if (navigator.vibrate) navigator.vibrate(200);
+        // Vibra para avisar que está pronto
+        if (navigator.vibrate) navigator.vibrate(100);
 
     } catch (e) {
-        // ERRO GERAL (Se falhar na GERAÇÃO do PDF)
         removerLoading();
         alert("Erro ao gerar: " + e.message);
         console.error(e);
         botao.innerHTML = textoOriginal;
         botao.disabled = false;
     }
-    // FIM DA FUNÇÃO (Não precisamos de 'finally' aqui pois o botão mudou de função)
 }
 
 
@@ -6652,6 +6700,36 @@ document.addEventListener('DOMContentLoaded', () => {
     history.replaceState(null, '', '');
 });
 
+
+
+// ============================================================
+// FUNÇÃO AUXILIAR: ATUALIZA STATUS NO FIREBASE
+// ============================================================
+// ============================================================
+// CORREÇÃO: SALVAR NO REALTIME DATABASE (Compatível com seu histórico)
+// ============================================================
+async function marcarComoEnviadoNoBanco(idDocumento) {
+    if (!idDocumento) return;
+
+    try {
+        // 1. Cria a referência para o item específico dentro da pasta 'bookips'
+        // ATENÇÃO: O 'db' aqui deve ser o mesmo objeto que você usa no loadBookipHistory
+        // Se der erro de 'ref is not defined', certifique-se que importou { ref, update } do firebase
+        const itemRef = ref(db, `bookips/${idDocumento}`);
+        
+        // 2. Atualiza apenas o status
+        await update(itemRef, {
+            statusEnvio: true,
+            dataEnvio: new Date().toISOString()
+        });
+        
+        console.log("✅ (Realtime DB) Status salvo com sucesso!");
+    } catch (error) {
+        console.error("Erro ao atualizar no Realtime DB:", error);
+        // Tenta mostrar o erro na tela pra ajudar a debugar
+        alert("Erro ao salvar status: " + error.message);
+    }
+}
 
 
 
