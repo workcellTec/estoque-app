@@ -5586,53 +5586,63 @@ window.editarCliente = function(id) {
 // AÇÃO DO BOTÃO: RECARREGAR PÁGINA E VOLTAR PARA GARANTIA
 // ============================================================
 // ============================================================
-// BOTÃO NOVA GARANTIA: LIMPEZA MANUAL (SEM RECARREGAR)
 // ============================================================
-// BOTÃO NOVA GARANTIA: LIMPEZA MANUAL CORRIGIDA (SEM MATAR O BOTÃO)
+// CORREÇÃO FINAL: MATAR O DOCUMENTO "FANTASMA"
 // ============================================================
 document.addEventListener('click', function(e) {
     const btn = e.target.closest('#btnNewBookipCycle');
     
     if (btn) {
         e.preventDefault(); 
-        console.log("🧹 Limpando tela para nova garantia...");
+        console.log("👻 Exorcizando documento antigo e limpando tela...");
 
-        // 1. LIMPA VARIÁVEIS GLOBAIS
-        window.currentEditingBookipId = null;
+        // 1. BALA DE PRATA: MATAR A MEMÓRIA DO DOCUMENTO ANTIGO
+        // Isso impede que o botão "Enviar" pegue o PDF velho
+        if(typeof lastSavedBookipData !== 'undefined') lastSavedBookipData = null;
+        window.lastSavedBookipData = null; 
+
+        // 2. MATAR A REFERÊNCIA DE EDIÇÃO
         if(typeof currentEditingBookipId !== 'undefined') currentEditingBookipId = null;
+        window.currentEditingBookipId = null;
         
-        window.editingItemIndex = null;
-        if(typeof editingItemIndex !== 'undefined') editingItemIndex = null;
-        
-        window.bookipCartList = [];
-        if(typeof bookipCartList !== 'undefined') bookipCartList = [];
+        // 3. ESCONDER O BANNER DE SUCESSO (NA MARRA)
+        const popup = document.getElementById('postSaveOptions');
+        if(popup) {
+            popup.classList.add('hidden'); // Classe CSS
+            popup.style.display = 'none';  // Força bruta do CSS inline
+        }
 
-        // 2. LIMPA CAMPOS DE TEXTO
+        // 4. MOSTRAR O BOTÃO DE SALVAR NOVAMENTE
+        const saveContainer = document.getElementById('saveActionContainer');
+        if(saveContainer) {
+            saveContainer.classList.remove('hidden');
+            saveContainer.style.display = 'block'; // Garante que apareça
+        }
+
+        // 5. LIMPAR CAMPOS DE TEXTO
         const areaGarantia = document.getElementById('newBookipContent');
         if (areaGarantia) {
             areaGarantia.querySelectorAll('input, textarea, select').forEach(c => c.value = '');
         }
         
-        const qtd = document.getElementById('bookipProdQtdTemp');
-        if(qtd) qtd.value = '1';
+        // 6. LIMPAR VARIÁVEIS DE LISTA
+        if(typeof bookipCartList !== 'undefined') bookipCartList = [];
+        window.bookipCartList = [];
 
-        // 3. LIMPA LISTA VISUAL
+        // 7. LIMPAR LISTA VISUAL
         const lista = document.getElementById('bookipListaItens');
         if(lista) lista.innerHTML = '<li class="list-group-item text-center text-muted small bg-transparent">Nenhum item adicionado.</li>';
-        
         const total = document.getElementById('bookipTotalDisplay');
         if(total) total.innerText = 'R$ 0,00';
 
-        // 4. RESETA O BOTÃO DE ADICIONAR (A CORREÇÃO ESTÁ AQUI)
+        // 8. RESETAR O BOTÃO "ADICIONAR" (Visual)
         const btnAdd = document.getElementById('btnAdicionarItemLista');
         if (btnAdd) {
-            // Apenas muda o visual, NÃO substitui o elemento
             btnAdd.innerHTML = '<i class="bi bi-plus-lg"></i> Adicionar à Lista';
-            btnAdd.className = 'btn btn-primary w-100'; // Volta a ser azul
-            // Removemos o cloneNode que estava matando o clique
+            btnAdd.className = 'btn btn-primary w-100'; 
         }
 
-        // 5. RESTAURA O BOTÃO SALVAR DOCUMENTO
+        // 9. RESETAR O BOTÃO SALVAR (Visual e Estado)
         const btnSave = document.getElementById('btnSaveBookip');
         if(btnSave) {
             btnSave.innerHTML = '<i class="bi bi-check-circle-fill"></i> Finalizar e Salvar Documento';
@@ -5640,18 +5650,13 @@ document.addEventListener('click', function(e) {
             btnSave.disabled = false;
         }
 
-        // 6. VISIBILIDADE
-        const popup = document.getElementById('postSaveOptions');
-        if(popup) popup.classList.add('hidden');
-        
-        const saveContainer = document.getElementById('saveActionContainer');
-        if(saveContainer) saveContainer.classList.remove('hidden');
-
-        // 7. SCROLL
+        // 10. SCROLL E CHECKBOXES
         document.getElementById('areaBookipWrapper').scrollIntoView({ behavior: 'smooth' });
-        
-        // Remove pagamentos
         document.querySelectorAll('.check-pagamento').forEach(c => c.checked = false);
+        
+        // Zera quantidade
+        const qtd = document.getElementById('bookipProdQtdTemp');
+        if(qtd) qtd.value = '1';
     }
 });
 
