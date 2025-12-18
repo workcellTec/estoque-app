@@ -5583,66 +5583,63 @@ window.editarCliente = function(id) {
 // ============================================================
 // CORREÇÃO DEFINITIVA: RESET TOTAL (NOVA GARANTIA)
 // ============================================================
-// AÇÃO DO BOTÃO: RECARREGAR PÁGINA E VOLTAR PARA GARANTIA
 // ============================================================
-// ============================================================
-// ============================================================
-// CORREÇÃO FINAL: MATAR O DOCUMENTO "FANTASMA"
+// CORREÇÃO DE ESCOPO: MATAR O DOCUMENTO FANTASMA
 // ============================================================
 document.addEventListener('click', function(e) {
     const btn = e.target.closest('#btnNewBookipCycle');
     
     if (btn) {
         e.preventDefault(); 
-        console.log("👻 Exorcizando documento antigo e limpando tela...");
+        console.log("💀 Matando documento antigo (Escopo do Módulo)...");
 
-        // 1. BALA DE PRATA: MATAR A MEMÓRIA DO DOCUMENTO ANTIGO
-        // Isso impede que o botão "Enviar" pegue o PDF velho
-        if(typeof lastSavedBookipData !== 'undefined') lastSavedBookipData = null;
-        window.lastSavedBookipData = null; 
+        // 1. LIMPA A VARIÁVEL REAL (Sem 'window', acessando a variável do arquivo)
+        // Isso é crucial. Se usar window. aqui, não funciona!
+        try { lastSavedBookipData = null; } catch(err) { console.log("Var data não existe"); }
+        try { currentEditingBookipId = null; } catch(err) { console.log("Var ID não existe"); }
+        try { editingItemIndex = null; } catch(err) { console.log("Var Index não existe"); }
+        try { bookipCartList = []; } catch(err) { console.log("Lista não existe"); }
 
-        // 2. MATAR A REFERÊNCIA DE EDIÇÃO
-        if(typeof currentEditingBookipId !== 'undefined') currentEditingBookipId = null;
-        window.currentEditingBookipId = null;
-        
-        // 3. ESCONDER O BANNER DE SUCESSO (NA MARRA)
+        // 2. ESCONDE O BANNER DE "ENVIAR" NA MARRA (CSS Inline + Class)
+        // Isso impede que você clique em enviar sem querer
         const popup = document.getElementById('postSaveOptions');
         if(popup) {
-            popup.classList.add('hidden'); // Classe CSS
-            popup.style.display = 'none';  // Força bruta do CSS inline
+            popup.classList.add('hidden'); 
+            popup.style.display = 'none !important'; // Força bruta
         }
 
-        // 4. MOSTRAR O BOTÃO DE SALVAR NOVAMENTE
+        // 3. MOSTRA O FORMULÁRIO E O BOTÃO SALVAR
         const saveContainer = document.getElementById('saveActionContainer');
         if(saveContainer) {
             saveContainer.classList.remove('hidden');
-            saveContainer.style.display = 'block'; // Garante que apareça
+            saveContainer.style.display = 'block'; 
         }
 
-        // 5. LIMPAR CAMPOS DE TEXTO
+        // 4. LIMPA OS CAMPOS VISUAIS
         const areaGarantia = document.getElementById('newBookipContent');
         if (areaGarantia) {
             areaGarantia.querySelectorAll('input, textarea, select').forEach(c => c.value = '');
         }
         
-        // 6. LIMPAR VARIÁVEIS DE LISTA
-        if(typeof bookipCartList !== 'undefined') bookipCartList = [];
-        window.bookipCartList = [];
+        // Zera quantidade
+        const qtd = document.getElementById('bookipProdQtdTemp');
+        if(qtd) qtd.value = '1';
 
-        // 7. LIMPAR LISTA VISUAL
+        // 5. LIMPA A LISTA VISUAL (HTML)
         const lista = document.getElementById('bookipListaItens');
         if(lista) lista.innerHTML = '<li class="list-group-item text-center text-muted small bg-transparent">Nenhum item adicionado.</li>';
+        
         const total = document.getElementById('bookipTotalDisplay');
         if(total) total.innerText = 'R$ 0,00';
 
-        // 8. RESETAR O BOTÃO "ADICIONAR" (Visual)
+        // 6. RESTAURA O BOTÃO "ADICIONAR" (Azul)
         const btnAdd = document.getElementById('btnAdicionarItemLista');
         if (btnAdd) {
             btnAdd.innerHTML = '<i class="bi bi-plus-lg"></i> Adicionar à Lista';
             btnAdd.className = 'btn btn-primary w-100'; 
         }
 
-        // 9. RESETAR O BOTÃO SALVAR (Visual e Estado)
+        // 7. RESTAURA O BOTÃO "SALVAR" (Verde e Habilitado)
         const btnSave = document.getElementById('btnSaveBookip');
         if(btnSave) {
             btnSave.innerHTML = '<i class="bi bi-check-circle-fill"></i> Finalizar e Salvar Documento';
@@ -5650,17 +5647,15 @@ document.addEventListener('click', function(e) {
             btnSave.disabled = false;
         }
 
-        // 10. SCROLL E CHECKBOXES
-        document.getElementById('areaBookipWrapper').scrollIntoView({ behavior: 'smooth' });
-        document.querySelectorAll('.check-pagamento').forEach(c => c.checked = false);
+        // 8. ROLA A TELA PRA CIMA
+        const topo = document.getElementById('areaBookipWrapper');
+        if(topo) topo.scrollIntoView({ behavior: 'smooth' });
         
-        // Zera quantidade
-        const qtd = document.getElementById('bookipProdQtdTemp');
-        if(qtd) qtd.value = '1';
+        // Desmarca pagamentos
+        document.querySelectorAll('.check-pagamento').forEach(c => c.checked = false);
     }
 });
-
-// LÓGICA DOS ATALHOS (INTELIGENTE E EXCLUSIVA)
+NTE E EXCLUSIVA)
 // ============================================================
 const setupProductTags = () => {
     const btnNovo = document.getElementById('tagAddNovo');
