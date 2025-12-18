@@ -4252,7 +4252,12 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                         </div>`;
                     
                     item.addEventListener('click', () => {
-                        document.getElementById('bookipProdNomeTemp').value = p.nome;
+
+
+                                            // AQUI A MÁGICA: Chama a função que limpa o emoji antes de preencher
+                    document.getElementById('bookipProdNomeTemp').value = limparTextoEmoji(p.nome);
+
+
                         document.getElementById('bookipProdValorTemp').value = p.valor;
                         const cor = (p.cores && p.cores.length > 0) ? p.cores[0].nome : '';
                         document.getElementById('bookipProdCorTemp').value = cor;
@@ -4278,14 +4283,6 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             }
         });
     }
-
-    // ============================================================
-    // ============================================================
-    // 2. LÓGICA DE ADICIONAR / EDITAR PRODUTO NA LISTA (FINAL)
-    // ============================================================
-    
-    // Variável para controlar a edição (null = criando novo)
-    // Nota: editingItemIndex já foi declarado lá no topo, então usamos ele direto.
 
         // ============================================================
     // 2. LÓGICA DE ADICIONAR / EDITAR PRODUTO NA LISTA (ATUALIZADO)
@@ -4335,7 +4332,27 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
 
                 const nome = nomeInput.value.trim();
                 const qtd = parseInt(qtdInput.value) || 1;
-                const valor = parseFloat(valorInput.value) || 0;
+
+
+                            // --- CORREÇÃO DE VALOR (Lê R$ corretamente) ---
+            let valorRaw = valorInput.value;
+            let valorFinal = 0;
+            
+            if (valorRaw.includes(',') || valorRaw.includes('.')) {
+                // Tira o ponto de milhar e troca vírgula por ponto (1.500,00 -> 1500.00)
+                valorRaw = valorRaw.replace(/\./g, '').replace(',', '.');
+                valorFinal = parseFloat(valorRaw);
+            } else {
+                valorFinal = parseFloat(valorRaw);
+            }
+            if(isNaN(valorFinal)) valorFinal = 0;
+            
+            // Agora use 'valorFinal' no seu objeto, em vez de 'valor'
+            // Ex: valor: valorFinal,
+
+
+
+
                 const cor = corInput.value;
                 const obs = obsInput.value;
 
@@ -4344,14 +4361,16 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                     return;
                 }
 
-                itemObjeto = { 
-                    nome, 
-                    qtd, 
-                    valor, 
-                    cor, 
-                    obs,
-                    isSituation: false 
-                };
+            // CRIA O OBJETO (Corrigido para usar valorFinal)
+            itemObjeto = { 
+                nome, 
+                qtd, 
+                valor: valorFinal, // <--- O SEGREDO TÁ AQUI (antes era 'valor')
+                cor, 
+                obs,
+                isSituation: false 
+            };
+
 
                 // Limpa os campos de produto
                 if(inputBuscaBookip) inputBuscaBookip.value = '';
@@ -4384,6 +4403,28 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             atualizarListaVisualBookip();
         });
     }
+
+
+// FERRAMENTA: Limpa Emojis 🧹
+function limparTextoEmoji(texto) {
+    if (!texto) return "";
+    return texto.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '')
+                .replace(/\s+/g, ' ').trim();
+}
+
+// MÁSCARA: Formata R$ ao digitar 💰
+const inputValorBookip = document.getElementById('bookipProdValorTemp');
+if (inputValorBookip) {
+    inputValorBookip.type = "text"; 
+    inputValorBookip.addEventListener('input', (e) => {
+        let value = e.target.value.replace(/\D/g, ""); // Só números
+        if (value === "") { e.target.value = ""; return; }
+        // Divide por 100 pra virar centavos
+        e.target.value = (parseFloat(value) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+    });
+}
+
+
 
     // 3. Função para Atualizar a Lista Visual (USANDO SEU CSS NOVO)
     function atualizarListaVisualBookip() {
@@ -5774,22 +5815,8 @@ function printBookip(dados) {
     } catch (e) { alert("Erro: " + e.message); document.body.classList.remove('print-bookip'); }
 }
 
-// ============================================================
-// ============================================================
-// ============================================================
-// ============================================================
-// GERADOR DE PDF (BASEADO NA VERSÃO ESTÁVEL + MODO SIMPLES)
-// ============================================================
-// ============================================================
-// GERADOR DE PDF (SEU DESIGN ORIGINAL + MODO RECIBO)
-// ============================================================
-// ============================================================
-// GERADOR DE PDF (DESIGN VERDE + MODO SITUAÇÃO)
-// ============================================================
-// ===========================================================
+
 // GERADOR DE PDF (DESIGN VERDE + MODO SITUAÇÃO LIMPO)
-// ============================================================
-// ============================================================
 // ============================================================
 // ============================================================
 // GERADOR DE PDF (DESIGN VERDE ORIGINAL + CORREÇÃO DE QUEBRA)
@@ -5947,10 +5974,20 @@ function getReciboHTML(dados) {
             </table>
 
             ${showTotal ? `
-            <div style="text-align: right; margin-top: 15px; margin-bottom: 25px;">
-                <div style="display: inline-block; background-color: #f2f2f2; padding: 10px 20px; font-size: 12pt; font-weight: bold; border-radius: 4px;">
-                    Total: <span style="color: #2e7d32;">R$ ${totalGeral.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
-                </div>
+            <div style="margin-top: 10px; margin-bottom: 25px; border-top: 1px solid #eee; padding-top: 10px;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="text-align: left; vertical-align: middle; font-size: 10pt; color: #444;">
+                            <strong>Forma de Pagamento:</strong> <span style="color: #000; font-weight: 500;">${dados.pagamento || 'Não informado'}</span>
+                        </td>
+                        
+                        <td style="text-align: right; vertical-align: middle;">
+                            <div style="display: inline-block; background-color: #f2f2f2; padding: 10px 20px; font-size: 12pt; font-weight: bold; border-radius: 4px;">
+                                Total: <span style="color: #2e7d32;">R$ ${totalGeral.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                            </div>
+                        </td>
+                    </tr>
+                </table>
             </div>` : '<div style="height:30px;"></div>'}
 
             ${sectionTermos}
@@ -6079,7 +6116,7 @@ async function gerarPdfDoHistorico(dados, botao) {
     // --- GERAÇÃO HTML ---
     const containerTemp = document.createElement('div');
     // MUDANÇA: 'left: -9999px' joga para fora da tela e 'position: fixed' evita esticar o site
-    containerTemp.style.cssText = `position: fixed; top: 0; left: -9999px; width: 794px; background: white; z-index: -100; margin: 0; padding: 0;`;
+        containerTemp.style.cssText = "position: fixed; top: 0; left: -9999px; width: 794px; background: white; z-index: -100; margin: 0; padding: 0; letter-spacing: 0.2px; font-variant-ligatures: none;";
 
     
     if (typeof getReciboHTML === 'function') {
@@ -6101,7 +6138,7 @@ async function gerarPdfDoHistorico(dados, botao) {
     try {
         window.scrollTo(0,0);
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 2500));
 
         updateLoading("Processando imagens...");
 
@@ -6116,7 +6153,9 @@ async function gerarPdfDoHistorico(dados, botao) {
         const pdfRatio = 297 / 210; 
         const pageHeightPixels = Math.floor(fullCanvas.width * pdfRatio);
         const margemSeguranca = 50; 
-        const contentHeightPerPage = pageHeightPixels - (margemSeguranca * 2);
+        
+        // AQUI: Diminuímos 15px da altura útil para criar o respiro no final da folha
+        const contentHeightPerPage = pageHeightPixels - (margemSeguranca * 2) - 15;
 
         const totalHeight = fullCanvas.height;
         let currentHeight = 0;
@@ -6139,10 +6178,14 @@ async function gerarPdfDoHistorico(dados, botao) {
             const heightLeft = totalHeight - currentHeight;
             const sliceHeight = Math.min(contentHeightPerPage, heightLeft);
 
+            // --- AJUSTE CIRÚRGICO PÁGINA 2+ ---
+            // Se for página 2 ou mais, desce 15px (ajusteVisual) para não colar no topo
+            const ajusteVisual = (pageCount > 1) ? 20 : 0; 
+
             ctx.drawImage(
                 fullCanvas, 
                 0, currentHeight, fullCanvas.width, sliceHeight,
-                0, margemSeguranca, fullCanvas.width, sliceHeight 
+                0, margemSeguranca + ajusteVisual, fullCanvas.width, sliceHeight 
             );
 
             if (sliceHeight >= contentHeightPerPage) {
@@ -6176,34 +6219,67 @@ async function gerarPdfDoHistorico(dados, botao) {
         };
 
         const blob = await html2pdf().set(opt).from(printContainer).output('blob');
+
+
+        // ... (Você manteve a linha do blob acima) ...
         const file = new File([blob], nomeFinalArquivo, { type: 'application/pdf' });
 
+        // 1. Tira o Loading da tela (O PDF já existe na memória)
         removerLoading();
 
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({
-                files: [file],
-                title: tituloCompartilhamento,
-                text: textoCompartilhamento
-            });
-        } else {
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = opt.filename;
-            link.click();
-        }
+        // 2. TRANSFORMAÇÃO DO BOTÃO (O Pulo do Gato 🐈)
+        // Mudamos o botão para um estado de "Pronto para Enviar"
+        botao.innerHTML = '📤 Enviar PDF'; // Texto novo
+        botao.classList.remove('btn-primary', 'btn-warning'); // Limpa cores antigas
+        botao.classList.add('btn-success'); // Cor VERDE de sucesso
+        botao.disabled = false; // Destrava o botão
+
+        // 3. CRIA O NOVO COMPORTAMENTO (CLIQUE FRESCO)
+        // Clonamos o botão para limpar qualquer evento antigo e evitar loops
+        const novoBotao = botao.cloneNode(true);
+        botao.parentNode.replaceChild(novoBotao, botao);
+
+        // Agora, quando clicar, o PDF já está pronto, então o share é INSTANTÂNEO
+        novoBotao.addEventListener('click', async () => {
+            try {
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                        files: [file],
+                        title: tituloCompartilhamento,
+                        text: textoCompartilhamento
+                    });
+                } else {
+                    throw new Error("Não suportado");
+                }
+            } catch (err) {
+                // Se mesmo no botão novo der erro (ou pc sem share), baixa o arquivo
+                console.warn("Share falhou, baixando...", err);
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = opt.filename;
+                link.click();
+            }
+        });
+
+        // Opcional: Vibra o celular para avisar que terminou
+        if (navigator.vibrate) navigator.vibrate(200);
 
     } catch (e) {
+        // ERRO GERAL (Se falhar na GERAÇÃO do PDF)
         removerLoading();
-        alert("Erro ao gerar PDF: " + e.message);
+        alert("Erro ao gerar: " + e.message);
         console.error(e);
-    } finally {
         botao.innerHTML = textoOriginal;
         botao.disabled = false;
     }
+    // FIM DA FUNÇÃO (Não precisamos de 'finally' aqui pois o botão mudou de função)
 }
 
-// ============================================================
+
+        
+// =====================================
+
+// ==============
 // ============================================================
 // 🧹 FAXINA DO FIREBASE (GLOBAL)
 // ============================================================
@@ -6575,5 +6651,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // 3. GARANTIA DE INÍCIO
     history.replaceState(null, '', '');
 });
+
+
+
 
         });
