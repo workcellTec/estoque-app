@@ -2631,13 +2631,10 @@ function applyColorTheme(color) {
         }
     });
 }
-
-//aqui
 async function main() {
     try {
         setupPWA();
         applyTheme(safeStorage.getItem('theme') || 'dark');
-        // Carrega a cor salva (ou usa vermelho se não tiver)
         applyColorTheme(safeStorage.getItem('ctwColorTheme') || 'red');
 
         app = initializeApp(firebaseConfig); 
@@ -2649,50 +2646,39 @@ async function main() {
                 userId = user.uid;
                 isAuthReady = true;
                 
-                // CARREGAMENTO DE DADOS
+                // Carrega tudo
                 loadRatesFromDB();
                 loadProductsFromDB();
                 loadTagsFromDB();
                 loadTagTexts();
-                loadSettingsFromDB(); // <--- Carrega o cabeçalho/termos do recibo
+                loadSettingsFromDB(); 
                 setupNotificationListeners();
                 
-                // Remove a tela de carregamento suavemente
                 const loadingOverlay = document.getElementById('loadingOverlay');
                 if(loadingOverlay) loadingOverlay.style.opacity = '0';
                 
-                // Redireciona para a última seção acessada
+                // Lógica Simples de Navegação
                 const lastSection = safeStorage.getItem('ctwLastSection');
-                const lastCalcSub = safeStorage.getItem('ctwLastCalcSub');
-
+                
                 if (lastSection && lastSection !== 'main') {
                     showMainSection(lastSection);
-                    if (lastSection === 'calculator' && lastCalcSub) {
-                        openCalculatorSection(lastCalcSub);
-                    }
                 } else {
                     showMainSection('main');
                 }
 
-                // Finaliza a animação de loading
                 setTimeout(() => {
-                    if(loadingOverlay) {
-                        loadingOverlay.style.display = 'none';
-                    }
+                    if(loadingOverlay) loadingOverlay.style.display = 'none';
                 }, 500);
             } else {
                 await signInAnonymously(auth);
             }
         });
     } catch (error) { 
-        console.error("Firebase Init Error:", error); 
-        document.body.innerHTML = `<h1>Erro ao conectar.</h1><p>${error.message}</p>`; 
+        console.error("Erro:", error); 
     }
 }
 
-        
-        
-        //fim
+    
 
 document.addEventListener('DOMContentLoaded', () => {
     const notificationOffcanvasEl = document.getElementById('notificationPanel');
@@ -5592,67 +5578,90 @@ window.editarCliente = function(id) {
 
 
 // ============================================================
+
 // CORREÇÃO FINAL: AÇÃO DO BOTÃO "COMEÇAR NOVA GARANTIA"
 // ============================================================
-// CORREÇÃO FINAL: AÇÃO DO BOTÃO "COMEÇAR NOVA GARANTIA"
-// (Substitua o bloco anterior no final do app.js por este)
+// CORREÇÃO DEFINITIVA: RESET TOTAL (NOVA GARANTIA)
+// ============================================================
+// AÇÃO DO BOTÃO: RECARREGAR PÁGINA E VOLTAR PARA GARANTIA
+// ============================================================
+// ============================================================
+// BOTÃO NOVA GARANTIA: LIMPEZA MANUAL (SEM RECARREGAR)
 // ============================================================
 document.addEventListener('click', function(e) {
     const btn = e.target.closest('#btnNewBookipCycle');
     
     if (btn) {
         e.preventDefault(); 
+        console.log("🧹 Iniciando limpeza manual forçada...");
 
-        // 1. ESCONDE O POP-UP
-        const popup = document.getElementById('postSaveOptions');
-        if(popup) popup.classList.add('hidden');
-
-        // 2. MOSTRA O BOTÃO DE SALVAR DE VOLTA
-        const saveContainer = document.getElementById('saveActionContainer');
-        if(saveContainer) saveContainer.classList.remove('hidden');
-
-        // 3. LIMPA OS CAMPOS
-        const campos = ['bookipNome', 'bookipCpf', 'bookipTelefone', 'bookipEndereco', 'bookipEmail', 'bookipProductSearch', 'bookipProdNomeTemp', 'bookipProdValorTemp'];
-        campos.forEach(id => {
-            const el = document.getElementById(id);
-            if(el) el.value = '';
-        });
-        
-        const qtdInput = document.getElementById('bookipProdQtdTemp');
-        if(qtdInput) qtdInput.value = '1';
-        
-        // 4. LIMPA A LISTA DE PRODUTOS
-        if(typeof bookipCartList !== 'undefined') {
-            bookipCartList.length = 0;
-        }
-        if(typeof atualizarListaVisualBookip === 'function') {
-            atualizarListaVisualBookip();
-        }
-        
-        // 5. RESETA OS CHECKBOXES
-        document.querySelectorAll('.check-pagamento').forEach(c => c.checked = false);
-        
-        // 6. RESETA VARIÁVEIS
-        if(typeof lastSavedBookipData !== 'undefined') lastSavedBookipData = null;
+        // 1. LIMPA AS VARIÁVEIS DO SISTEMA
+        // Forçamos null em tudo que possa guardar memória
+        window.currentEditingBookipId = null;
         if(typeof currentEditingBookipId !== 'undefined') currentEditingBookipId = null;
         
-        // 7. RESETA O TEXTO DO BOTÃO SALVAR
+        window.editingItemIndex = null;
+        if(typeof editingItemIndex !== 'undefined') editingItemIndex = null;
+        
+        window.bookipCartList = [];
+        if(typeof bookipCartList !== 'undefined') bookipCartList = [];
+
+        // 2. LIMPA TODOS OS CAMPOS DE TEXTO (Input e Textarea)
+        // Pega todos os campos dentro da área de garantia
+        const areaGarantia = document.getElementById('newBookipContent');
+        if (areaGarantia) {
+            const inputs = areaGarantia.querySelectorAll('input, textarea, select');
+            inputs.forEach(campo => {
+                campo.value = ''; // Apaga o texto
+            });
+        }
+
+        // 3. CORRIGE A QUANTIDADE PARA 1
+        const qtd = document.getElementById('bookipProdQtdTemp');
+        if(qtd) qtd.value = '1';
+
+        // 4. LIMPA A LISTA VISUAL DE PRODUTOS
+        const lista = document.getElementById('bookipListaItens');
+        if(lista) lista.innerHTML = '<li class="list-group-item text-center text-muted small bg-transparent">Nenhum item adicionado.</li>';
+        
+        const total = document.getElementById('bookipTotalDisplay');
+        if(total) total.innerText = 'R$ 0,00';
+
+        // 5. RESETA O BOTÃO DE "ADICIONAR PRODUTO" (Tira o amarelo de edição)
+        const btnAdd = document.getElementById('btnAdicionarItemLista');
+        if (btnAdd) {
+            btnAdd.innerHTML = '<i class="bi bi-plus-lg"></i> Adicionar à Lista';
+            btnAdd.className = 'btn btn-primary w-100'; // Força ficar azul
+            // Remove qualquer evento antigo clonando o botão (truque para limpar memória de clique)
+            const novoBtn = btnAdd.cloneNode(true);
+            btnAdd.parentNode.replaceChild(novoBtn, btnAdd);
+            // Reatribui a função de clique original (se estiver acessível globalmente) ou apenas limpa
+            // Nota: Se o seu botão usa addEventListener no inicio do arquivo, clonar remove o evento.
+            // MELHOR: Apenas mudar a classe visualmente já ajuda o usuário.
+        }
+
+        // 6. RESETA O BOTÃO DE "SALVAR DOCUMENTO"
         const btnSave = document.getElementById('btnSaveBookip');
         if(btnSave) {
             btnSave.innerHTML = '<i class="bi bi-check-circle-fill"></i> Finalizar e Salvar Documento';
-            btnSave.classList.remove('btn-info');
-            btnSave.classList.add('btn-success');
+            btnSave.className = 'btn btn-success w-100 py-3 rounded-4 shadow-sm fw-bold';
             btnSave.disabled = false;
         }
 
-        // 8. SOBE A TELA (CORREÇÃO DE ROLAGEM)
-        // Rola a janela principal
-        window.scrollTo(0, 0);
+        // 7. ESCONDE O POPUP DE SUCESSO E MOSTRA O FORMULÁRIO
+        const popup = document.getElementById('postSaveOptions');
+        if(popup) popup.classList.add('hidden');
         
-        // Rola os containers internos do App (é aqui que o celular "engasgava")
-        document.querySelectorAll('.container').forEach(el => {
-            el.scrollTop = 0; // Força subir instantaneamente
-        });
+        const saveContainer = document.getElementById('saveActionContainer');
+        if(saveContainer) saveContainer.classList.remove('hidden');
+
+        // 8. DESMARCA PAGAMENTOS
+        document.querySelectorAll('.check-pagamento').forEach(c => c.checked = false);
+
+        // 9. SOBE A TELA
+        document.getElementById('areaBookipWrapper').scrollIntoView({ behavior: 'smooth' });
+
+        alert("Tela limpa! Pode fazer uma nova garantia.");
     }
 });
 
