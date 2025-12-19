@@ -5068,6 +5068,13 @@ if (btnPostShare) {
 const btnNewCycle = document.getElementById('btnNewBookipCycle');
 if (btnNewCycle) {
     btnNewCycle.addEventListener('click', () => {
+
+  const btnPrint = document.getElementById('btnPostPrint');
+        if (btnPrint) {
+            btnPrint.style.display = 'inline-block'; // Ou 'block', dependendo do seu layout
+}
+
+
         // 1. ESCONDE O POP-UP (Adiciona a classe hidden)
         const popup = document.getElementById('postSaveOptions');
         if(popup) popup.classList.add('hidden');
@@ -6199,11 +6206,18 @@ async function gerarPdfDoHistorico(dados, botao) {
         const file = new File([blob], nomeFinalArquivo, { type: 'application/pdf' });
         removerLoading();
 
-        // 1. O BOTÃO VIRA "ENVIAR" (Verde)
+// 1. O BOTÃO VIRA "ENVIAR" (Verde)
         botao.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
         botao.classList.remove('btn-primary', 'btn-warning', 'btn-secondary', 'btn-dark'); 
         botao.classList.add('btn-success'); 
         botao.disabled = false; 
+
+        // --- CÓDIGO NOVO: ESCONDE O BOTÃO IMPRIMIR AQUI ---
+        const btnPrint = document.getElementById('btnPostPrint');
+        if (btnPrint) {
+            btnPrint.style.display = 'none'; // Some com o botão Imprimir
+        }
+
 
         // 2. PREPARA O NOVO CLIQUE (Limpa eventos antigos)
         const novoBotao = botao.cloneNode(true);
