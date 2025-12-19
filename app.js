@@ -6854,56 +6854,68 @@ window.unificarClientesDuplicados = async function() {
 
 
 // ============================================================
-// 4. RESET TOTAL: CLICAR EM "COMEÇAR NOVA GARANTIA"
 // ============================================================
-// Coloque isso no FINAL do app.js para garantir que carregue por último
+// ============================================================
+// 🔓 DESTRAVADOR UNIVERSAL: BOTÃO "SAIR E COMEÇAR NOVA"
+// ============================================================
+// Este código ignora IDs e busca o botão pelo TEXTO dele.
+// Funciona mesmo dentro do Modal ou se houver IDs duplicados.
 
-document.addEventListener('DOMContentLoaded', () => {
-    const btnNewCycle = document.getElementById('btnNewBookipCycle');
+document.addEventListener('click', function(e) {
+    // 1. Verifica se o que foi clicado (ou o pai dele) é um botão
+    const alvo = e.target.closest('button') || e.target.closest('.btn') || e.target.closest('div');
     
-    if (btnNewCycle) {
-        // Truque do Clone: Remove listeners antigos/bugados e cria um novinho
-        const novoBotao = btnNewCycle.cloneNode(true);
-        btnNewCycle.parentNode.replaceChild(novoBotao, btnNewCycle);
+    if (alvo && alvo.innerText) {
+        // 2. Verifica se o texto do botão é o do Modal
+        // Usamos includes para pegar "Sair e Começar" mesmo se tiver ícone junto
+        if (alvo.innerText.includes('Sair e Começar Nova Garantia') || 
+            alvo.innerText.includes('Começar um Novo Recibo')) {
+            
+            console.log("🔓 Destravador Universal acionado via texto!");
+            e.preventDefault(); // Evita recarregar a página
+            e.stopPropagation(); // Garante prioridade
 
-        novoBotao.addEventListener('click', (e) => {
-            e.preventDefault(); // <--- O SEGREDO! Impede bugs de navegação
-            console.log("Botão Reset acionado!");
+            // --- AQUI VAI A LÓGICA DE RESET ---
 
-            // 1. LIMPA A TELA VISUALMENTE
+            // 1. Esconde o Banner de Sucesso
             const popup = document.getElementById('postSaveOptions');
-            if(popup) popup.classList.add('hidden'); // Some com o Pop-up
+            if(popup) popup.classList.add('hidden');
 
-            const saveContainer = document.getElementById('saveActionContainer');
-            if(saveContainer) saveContainer.classList.remove('hidden'); // Volta o botão Salvar
-
-            // 2. RESETA BOTÕES DE AÇÃO (Imprimir/Enviar) PARA O PADRÃO
+            // 2. Traz o Botão Imprimir de volta (Para a próxima vez)
             const btnPrint = document.getElementById('btnPostPrint');
             if (btnPrint) {
-                btnPrint.style.display = 'flex'; // Garante que volta a aparecer
+                btnPrint.style.display = 'flex'; // Garante que volta visível
             }
-            
+
+            // 3. Reseta o Botão de Enviar (Tira o verde)
             const btnShare = document.getElementById('btnPostShare');
             if (btnShare) {
-                btnShare.className = 'btn btn-success w-100 mb-2'; // Volta a ser verde
+                btnShare.className = 'btn btn-warning w-100 mb-2'; // Volta cor original
                 btnShare.innerHTML = '<i class="bi bi-whatsapp"></i> Salvar Online / PDF';
                 btnShare.disabled = false;
             }
 
-            // 3. LIMPA OS DADOS (Chama sua função de faxina)
+            // 4. Mostra o botão Finalizar principal
+            const saveContainer = document.getElementById('saveActionContainer');
+            if(saveContainer) saveContainer.classList.remove('hidden');
+
+            // 5. Limpa os formulários
             if(typeof window.resetFormulariosBookip === 'function') {
                 window.resetFormulariosBookip();
+            } else {
+                // Faxina manual de garantia
+                document.getElementById('bookipNome').value = '';
+                document.getElementById('bookipCpf').value = '';
+                document.getElementById('bookipTelefone').value = '';
+                if(typeof atualizarListaVisualBookip === 'function') atualizarListaVisualBookip();
             }
 
-            // 4. ZERA VARIÁVEIS DE CONTROLE
-            window.lastSavedBookipData = null;
-            window.currentEditingBookipId = null;
-
-            // 5. SOBE A TELA SUAVEMENTE
+            // 6. Sobe a tela
             window.scrollTo({ top: 0, behavior: 'smooth' });
-        });
+        }
     }
 });
+
 
 
         });
