@@ -2673,67 +2673,6 @@ function applyColorTheme(color) {
         }
     });
 }
-
-
-
-// === CORREÇÃO INFALÍVEL 2.0: BOTÃO "SAIR E COMEÇAR NOVA" ===
-document.addEventListener('click', function(e) {
-    // Detecta o clique no botão de Sair/Novo (mesmo se clicar no ícone)
-    if (e.target.closest('#btnNewBookipCycle')) {
-        
-        // 1. Chama a função de limpeza (Faxina geral dos campos)
-        if (typeof window.resetFormulariosBookip === 'function') {
-            window.resetFormulariosBookip();
-        } else if (typeof resetFormulariosBookip === 'function') {
-             resetFormulariosBookip();
-        }
-        
-        // 2. Esconde o cartão de sucesso e mostra o botão de salvar de novo
-        const popup = document.getElementById('postSaveOptions');
-        if(popup) popup.classList.add('hidden');
-        
-        const saveContainer = document.getElementById('saveActionContainer');
-        if(saveContainer) saveContainer.classList.remove('hidden');
-
-        // 3. (O PULO DO GATO) Reseta o botão de Enviar para ele esquecer o documento velho
-        const btnShare = document.getElementById('btnPostShare');
-        if (btnShare) {
-            // Clona o botão para matar os eventos antigos (que seguravam o PDF velho)
-            const newBtn = btnShare.cloneNode(true);
-            
-            // Reseta a aparência dele para o original (Preto)
-            newBtn.className = 'btn btn-dark w-100 p-3 border-secondary';
-            newBtn.innerHTML = '<i class="bi bi-whatsapp fs-2 d-block mb-2 text-success"></i><span class="small text-light">Salvar Online</span>';
-            newBtn.disabled = false;
-
-            // Ensina ele a funcionar de novo (Pegando sempre o DADO MAIS RECENTE da memória)
-            newBtn.addEventListener('click', () => {
-                // Tenta pegar a variável global com os dados salvos AGORA
-                const dadosAtuais = (typeof lastSavedBookipData !== 'undefined') ? lastSavedBookipData : window.lastSavedBookipData;
-
-                if (dadosAtuais) {
-                    // Copia email se tiver
-                    if (dadosAtuais.email) {
-                        navigator.clipboard.writeText(dadosAtuais.email).catch(()=>{});
-                        showCustomModal({ message: "E-mail copiado! Gerando PDF..." });
-                    }
-                    // Gera o PDF com os dados NOVOS
-                    gerarPdfDoHistorico(dadosAtuais, newBtn);
-                } else {
-                     showCustomModal({ message: "Erro: Nenhum documento salvo encontrado. Salve novamente." });
-                }
-            });
-
-            // Troca o botão "viciado" pelo novo botão "limpo" na tela
-            btnShare.parentNode.replaceChild(newBtn, btnShare);
-        }
-
-        // 4. Joga a tela para o topo
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-});
-
-
 async function main() {
     try {
         setupPWA();
