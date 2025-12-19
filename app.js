@@ -15,6 +15,34 @@ const firebaseConfig = {
 // Adicione junto com as outras variáveis globais (perto de userId, products, etc.)
 let currentEditingBookipId = null; // Guarda o ID se estiver editando
 
+
+
+
+// === FUNÇÃO MÁGICA DE CARREGAMENTO (Cria a tela sozinha) ===
+function toggleLoader(show, text = 'Aguarde...') {
+    let loader = document.getElementById('loaderMagico');
+    
+    // Se a tela não existir, cria ela agora mesmo!
+    if (!loader) {
+        loader = document.createElement('div');
+        loader.id = 'loaderMagico';
+        // Estilo forçado para garantir que apareça em cima de tudo (Z-Index alto)
+        loader.style.cssText = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 2147483647; display: none; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(5px);";
+        loader.innerHTML = '<div class="spinner-border text-primary" style="width: 4rem; height: 4rem;" role="status"></div><h4 class="mt-4 text-white" id="loaderTexto" style="font-weight: 300;">Processando...</h4>';
+        document.body.appendChild(loader);
+    }
+    
+    const txt = document.getElementById('loaderTexto');
+    if (txt) txt.innerText = text;
+
+    if (show) {
+        loader.style.display = 'flex';
+    } else {
+        loader.style.display = 'none';
+    }
+}
+
+
 let app, db, auth, userId = null, isAuthReady = false, areRatesLoaded = false;
 let products = [], fuse, selectedAparelhoValue = 0, fecharVendaPrecoBase = 0;
 let activeTagFilter = null; // Guarda a etiqueta selecionada (ex: 'Xiaomi')
@@ -457,14 +485,18 @@ function parseBrazilianCurrencyToFloat(valueString) { let cleaned = String(value
 function openCalculatorSection(sectionId) {
     if (!sectionId || !document.getElementById(sectionId)) sectionId = 'calculatorHome';
     
-    // 1. Esconde tudo primeiro
-    ['calculatorHome', 'fecharVenda', 'repassarValores', 'calcularEmprestimo', 'calcularPorAparelho'].forEach(id => {
-        document.getElementById(id).style.display = 'none';
+    // 1. Esconde tudo primeiro (ADICIONEI 'emprestarValores' AQUI NA LISTA)
+    ['calculatorHome', 'fecharVenda', 'repassarValores', 'calcularEmprestimo', 'calcularPorAparelho', 'emprestarValores'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.style.display = 'none';
     });
 
     if (sectionId !== 'calcularPorAparelho') {
         currentlySelectedProductForCalc = null;
     }
+
+    // ... o resto da função continua igual ...
+
 
     // 2. Limpeza ao entrar na aba
     if (sectionId === 'calcularPorAparelho') {
@@ -1025,6 +1057,10 @@ function handleProductSelectionForVenda(product) {
     updateFecharVendaUI();
 }
 async function exportResultsToImage(resultsContainerId, fileName = 'calculo-taxas.png', customTitle = '') {
+
+    toggleLoader(true, 'Criando Imagem...'); // LIGA A TELA
+
+
     try {
         const resultsEl = document.getElementById(resultsContainerId);
         if (!resultsEl || !resultsEl.innerHTML.trim()) {
@@ -1217,6 +1253,9 @@ async function exportResultsToImage(resultsContainerId, fileName = 'calculo-taxa
         link.click();
         
         document.body.removeChild(exportContainer);
+    toggleLoader(false); // DESLIGA A TELA (Sucesso)
+
+
 
     } catch (error) {
         console.error('Erro na exportação:', error);
@@ -1224,6 +1263,9 @@ async function exportResultsToImage(resultsContainerId, fileName = 'calculo-taxa
         // Limpeza de emergência
         const oldContainer = document.querySelector('.export-container-temp');
         if(oldContainer) document.body.removeChild(oldContainer);
+
+        toggleLoader(false); // DESLIGA A TELA (Erro)
+
     }
 }
 
@@ -4040,29 +4082,28 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             showCustomModal({ message: `Arredondamento ${arredondarToggle.checked ? 'ATIVADO' : 'DESATIVADO'}.` });
         });
     }
-    
-    document.addEventListener('backbutton', function (e) {
-        e.preventDefault();
-        const currentSection = document.querySelector('.container:not(.hidden):not([style*="display: none"])');
-        if (currentSection && currentSection.id !== 'mainMenu' && currentSection.id !== 'calculatorHome') {
-            showMainSection('main');
-        } else if (currentSection && currentSection.id === 'calculatorHome') {
-            showMainSection('main');
-        } else {
-            if(navigator.app){
-                navigator.app.exitApp();
-            }
-        }
-    }, false);
-    
-    window.addEventListener('popstate', function () {
-        const currentSection = document.querySelector('.container:not(.hidden):not([style*="display: none"])');
-        if (currentSection && currentSection.id !== 'mainMenu') {
-            showMainSection('main');
-            history.pushState(null, null, location.href);
-        }
-    });
-    history.pushState(null, null, location.href);
+//
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     // Visibility Toggles for Machines
     const DISABLED_MACHINES_KEY = 'disabledMachines';
@@ -5582,107 +5623,21 @@ window.editarCliente = function(id) {
 
 // ============================================================
 
-// CORREÇÃO FINAL: AÇÃO DO BOTÃO "COMEÇAR NOVA GARANTIA"
-// ============================================================
-// CORREÇÃO DEFINITIVA: RESET TOTAL (NOVA GARANTIA)
-// ============================================================
-// AÇÃO DO BOTÃO: RECARREGAR PÁGINA E VOLTAR PARA GARANTIA
-// ============================================================
-// ============================================================
-// ===========================================================
-// ============================================================
-// CORREÇÃO DEFINITIVA: RESET TOTAL + RECRIAR BOTÃO DE ENVIAR
-// ============================================================
-document.addEventListener('click', function(e) {
-    const btn = e.target.closest('#btnNewBookipCycle');
-    
-    if (btn) {
-        e.preventDefault(); 
-        console.log("♻️ Iniciando ciclo de Nova Garantia...");
 
-        // 1. LIMPA VARIÁVEIS NA MEMÓRIA
-        try { lastSavedBookipData = null; } catch(e) {}
-        try { currentEditingBookipId = null; } catch(e) {}
-        try { editingItemIndex = null; } catch(e) {}
-        try { bookipCartList = []; } catch(e) {}
 
-        // 2. LIMPA CAMPOS DE TEXTO
-        const areaGarantia = document.getElementById('newBookipContent');
-        if (areaGarantia) {
-            areaGarantia.querySelectorAll('input, textarea, select').forEach(c => c.value = '');
-        }
-        document.getElementById('bookipProdQtdTemp').value = '1';
 
-        // 3. LIMPA A LISTA DE PRODUTOS (VISUAL)
-        const lista = document.getElementById('bookipListaItens');
-        const total = document.getElementById('bookipTotalDisplay');
-        if(lista) lista.innerHTML = '<li class="list-group-item text-center text-muted small bg-transparent">Nenhum item adicionado.</li>';
-        if(total) total.innerText = 'R$ 0,00';
 
-        // 4. RESTAURA BOTÕES (ADICIONAR E SALVAR)
-        const btnAdd = document.getElementById('btnAdicionarItemLista');
-        if (btnAdd) {
-            btnAdd.innerHTML = '<i class="bi bi-plus-lg"></i> Adicionar à Lista';
-            btnAdd.className = 'btn btn-primary btn-sm w-100'; 
-        }
 
-        const btnSave = document.getElementById('btnSaveBookip');
-        if(btnSave) {
-            btnSave.innerHTML = '<i class="bi bi-check-circle-fill"></i> Finalizar e Salvar Documento';
-            btnSave.className = 'btn btn-success w-100 py-3 fw-bold';
-            btnSave.disabled = false;
-        }
 
-        // ============================================================
-        // 5. O PULO DO GATO: RESETAR O BOTÃO DE ENVIAR (btnPostShare)
-        // Isso remove a memória do PDF antigo
-        // ============================================================
-        const oldShareBtn = document.getElementById('btnPostShare');
-        if (oldShareBtn) {
-            // Clona o botão para matar todos os eventos antigos (inclusive o do PDF velho)
-            const newShareBtn = oldShareBtn.cloneNode(true);
-            oldShareBtn.parentNode.replaceChild(newShareBtn, oldShareBtn);
 
-            // Reseta a aparência dele
-            newShareBtn.innerHTML = '<i class="bi bi-whatsapp fs-2 d-block mb-2 text-success"></i> <span class="small text-light">Enviar</span>';
-            newShareBtn.className = 'btn btn-dark w-100 p-3 border-secondary';
-            newShareBtn.disabled = false;
 
-            // Re-adiciona a lógica original (gerar NOVO pdf quando clicar)
-            newShareBtn.addEventListener('click', () => {
-                if (typeof lastSavedBookipData !== 'undefined' && lastSavedBookipData) {
-                    // Copia email se tiver
-                    if (lastSavedBookipData.email) {
-                        navigator.clipboard.writeText(lastSavedBookipData.email).catch(()=>{});
-                        showCustomModal({ message: "E-mail copiado! Gerando PDF..." });
-                    }
-                    // Gera o PDF com os dados NOVOS
-                    gerarPdfDoHistorico(lastSavedBookipData, newShareBtn);
-                } else {
-                    showCustomModal({ message: "Salve o documento antes de enviar." });
-                }
-            });
-        }
-        // ============================================================
 
-        // 6. TROCA AS TELAS (Esconde popup, mostra formulário)
-        const popup = document.getElementById('postSaveOptions');
-        if(popup) {
-            popup.classList.add('hidden'); 
-            popup.style.display = 'none'; // Força bruta CSS
-        }
-        
-        const saveContainer = document.getElementById('saveActionContainer');
-        if(saveContainer) {
-            saveContainer.classList.remove('hidden');
-            saveContainer.style.display = 'block';
-        }
 
-        // 7. FINALIZAÇÃO
-        document.querySelectorAll('.check-pagamento').forEach(c => c.checked = false);
-        document.getElementById('areaBookipWrapper').scrollIntoView({ behavior: 'smooth' });
-    }
-});
+
+
+
+
+
 
 // LÓGICA DOS ATALHOS (INTELIGENTE E EXCLUSIVA)
 // ============================================================
@@ -6657,72 +6612,84 @@ window.resetFormulariosBookip = function() {
     if(saveContainer) saveContainer.classList.remove('hidden');
 };
 
-// ============================================================
-// ============================================================
-// ============================================================
-// ============================================================
-// SOLUÇÃO CONTROLE REMOTO (BOTÃO FÍSICO = BOTÃO VIRTUAL)
-// ============================================================
 
-document.addEventListener('DOMContentLoaded', () => {
 
-    // 1. AVISA O CELULAR QUE NAVEGAMOS (CRIA O HISTÓRICO)
-    // Sem isso, o botão voltar fecha o app.
-    const botoesQueAbremTelas = document.querySelectorAll('.btn-menu, .btn-action-sm, #btnAdminClients');
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // --- GATILHOS CORRIGIDOS: EMPRESTAR VALORES ---
+    // ============================================================
     
-    botoesQueAbremTelas.forEach(btn => {
-        btn.addEventListener('click', () => {
-            // Empurra um estado novo para o histórico
-            history.pushState({ time: Date.now() }, '', '');
-        });
+    // 1. Botões de Navegação
+    const btnOpenEmprestar = document.getElementById('openEmprestarValores');
+    if(btnOpenEmprestar) btnOpenEmprestar.addEventListener('click', () => openCalculatorSection('emprestarValores'));
+    
+    const btnBackEmprestar = document.getElementById('backFromEmprestarValores');
+    if(btnBackEmprestar) btnBackEmprestar.addEventListener('click', () => openCalculatorSection('calculatorHome'));
+
+    // 2. OUVINTE GERAL (Atualiza a conta se mexer em QUALQUER coisa)
+    const itensParaVigiar = ['emprestarValorBase', 'emprestarLucroReais', 'emprestarEntrada', 'machine5', 'brand5'];
+    
+    itensParaVigiar.forEach(id => {
+        const el = document.getElementById(id);
+        if(el) {
+            // "input" serve para quando você digita números
+            el.addEventListener('input', calculateEmprestarValores);
+            // "change" é CRUCIAL para quando você troca a maquininha ou bandeira
+            el.addEventListener('change', calculateEmprestarValores);
+        }
     });
 
-    // 2. QUANDO APERTAR VOLTAR NO CELULAR...
-    window.onpopstate = function(event) {
-        
-        // Estratégia: Achar qual tela está aberta e clicar no botão 'Voltar' dela.
-        
-        // Lista de telas possíveis (baseada no seu index.html)
-        const telas = [
-            'fecharVenda', 'repassarValores', 'calcularEmprestimo', 'calcularPorAparelho', // Telas Calc
-            'calculatorHome', // Menu Calc
-            'areaContratoWrapper', 'areaBookipWrapper', // Telas Docs
-            'documentsHome', // Menu Docs
-            'stockContainer', 'administracao', 'clientsContainer' // Outros
-        ];
-
-        let clicouEmAlgo = false;
-
-        // Procura qual tela está visível agora
-        for (let id of telas) {
-            const tela = document.getElementById(id);
-            // Se a tela existe e está visível (sem display:none e sem classe hidden)
-            if (tela && !tela.classList.contains('hidden') && tela.style.display !== 'none') {
-                
-                // Procura o botão de voltar DENTRO dessa tela
-                // No seu HTML, eles tem a classe .btn-back ou .btn-back-custom
-                const botaoVoltarDaTela = tela.querySelector('.btn-back, button[aria-label="Voltar"], button[id^="backFrom"]');
-                
-                if (botaoVoltarDaTela) {
-                    console.log(`📱 Celular apertou voltar -> Clicando automagicamente em: ${botaoVoltarDaTela.id}`);
-                    botaoVoltarDaTela.click(); // SIMULA O CLIQUE FÍSICO
-                    clicouEmAlgo = true;
-                    break; // Paramos de procurar
+    // 3. Lógica Especial da Maquininha (Troca Visual + Recalculo)
+    const maquina5 = document.getElementById('machine5');
+    if(maquina5) {
+        maquina5.addEventListener('change', (event) => {
+            // 1. Atualiza a visibilidade da bandeira
+            const containerFlag = document.getElementById("flagDisplayContainer5");
+            if(containerFlag) {
+                 if(maquina5.value !== "pagbank") {
+                    containerFlag.style.display = 'block';
+                    // Tenta atualizar o ícone da bandeira se a função existir
+                    if(typeof updateFlagDisplay === 'function') updateFlagDisplay('5');
+                } else {
+                    containerFlag.style.display = 'none';
                 }
             }
-        }
+            
+            // 2. Abre o modal de bandeiras (se não for pagbank e for clique real do usuário)
+            if(event.isTrusted && maquina5.value !== 'pagbank' && typeof openFlagModal === 'function') {
+                openFlagModal(maquina5);
+            }
 
-        // Se não achou nenhum botão para clicar, significa que estamos no Menu Principal.
-        // Deixamos o histórico vazio para o navegador decidir (fechar ou minimizar).
-        if (!clicouEmAlgo) {
-            // Se quiser forçar ir pro menu principal sempre, descomente abaixo:
-            // if(typeof showMainSection === 'function') showMainSection('main');
-        }
-    };
+            // 3. FORÇA O CÁLCULO IMEDIATAMENTE
+            calculateEmprestarValores();
+        });
+    }
 
-    // 3. GARANTIA DE INÍCIO
-    history.replaceState(null, '', '');
-});
+    // 4. Botão de Exportar
+    const btnExportEmprestimo = document.getElementById('exportEmprestarBtn');
+    if(btnExportEmprestimo) {
+        // Clona para garantir que não tenha eventos duplicados
+        const newBtn = btnExportEmprestimo.cloneNode(true);
+        btnExportEmprestimo.parentNode.replaceChild(newBtn, btnExportEmprestimo);
+        
+        newBtn.addEventListener('click', () => {
+            const nomeProd = document.getElementById('emprestarNomeProduto').value;
+            const titulo = nomeProd ? nomeProd : "Simulação de Empréstimo";
+            exportResultsToImage('resultEmprestarValores', 'simulacao-emprestimo.png', titulo);
+        });
+    }
+
 
 
 
@@ -6755,6 +6722,213 @@ async function marcarComoEnviadoNoBanco(idDocumento) {
     }
 }
 
+// ============================================================
+// FUNÇÕES DA CALCULADORA "EMPRESTAR VALORES" (FINAL DO ARQUIVO)
+// ============================================================
+// FUNÇÃO: EMPRESTAR VALORES (CÁLCULO REVERSO + COLUNA LUCRO)
+// ============================================================
+// FUNÇÃO: EMPRESTAR VALORES (CORREÇÃO DE VISIBILIDADE MODO CLARO)
+// ============================================================
+function calculateEmprestarValores() {
+    const resultDiv = document.getElementById("resultEmprestarValores");
+    const exportContainer = document.getElementById('exportEmprestarContainer');
+    
+    // 1. Pega os valores
+    const valorInvestido = parseFloat(document.getElementById("emprestarValorBase").value) || 0;
+    const lucroDesejado = parseFloat(document.getElementById("emprestarLucroReais").value) || 0;
+    const valorEntrada = parseFloat(document.getElementById("emprestarEntrada").value) || 0;
+    
+    // Configurações da Máquina
+    const machineEl = document.getElementById("machine5");
+    const brandEl = document.getElementById("brand5");
+    const machine = machineEl ? machineEl.value : 'valorante';
+    const brand = brandEl ? brandEl.value : 'visa';
+    
+    if (valorInvestido <= 0 && lucroDesejado <= 0) {
+        if(resultDiv) resultDiv.innerHTML = "";
+        if(exportContainer) exportContainer.style.display = 'none';
+        return;
+    }
+
+    // 2. META
+    const valorLiquidoMeta = valorInvestido + lucroDesejado;
+
+    // 3. ENTRADA VISUAL
+    let entradaHtml = '';
+    if (valorEntrada > 0) {
+        entradaHtml = `
+        <div style="display: flex; justify-content: center; width: 100%; margin-bottom: 20px;">
+            <div style="background-color: #000; color: #28a745; padding: 12px 35px; border-radius: 50px; font-size: 2rem; font-weight: 800; box-shadow: 0 4px 15px rgba(0,0,0,0.2); text-align: center; line-height: 1;">
+                ENTRADA: R$ ${valorEntrada.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+            </div>
+        </div>`;
+    }
+
+    // 4. AVISO
+    const avisoHtml = `
+        <div style="margin-top: 15px; margin-bottom: 50px; padding: 15px 10px; background-color: #f8f9fa; border-radius: 12px; text-align: center; border: 1px solid #e9ecef; width: 90%; max-width: 450px; margin-left: auto; margin-right: auto;">
+            <h5 style="color: #000; font-weight: 800; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; margin-bottom: 8px;">CONDIÇÕES VÁLIDAS POR TEMPO LIMITADO</h5>
+            <p style="color: #555; font-size: 10px; margin: 0; line-height: 2.0; font-weight: 600; letter-spacing: 0.5px;">Os valores apresentados são uma estimativa e podem sofrer alterações sem aviso prévio. Consulte a disponibilidade.</p>
+        </div>
+    `;
+
+    // 5. TABELA
+    let tableRows = "";
+    
+    for (let i = 1; i <= 12; i++) {
+        const taxa = (typeof getRate === 'function') ? getRate(machine, brand, i) : 0;
+        
+        let valorBrutoTotal = 0;
+        if(taxa < 100) {
+             valorBrutoTotal = valorLiquidoMeta / (1 - (taxa / 100));
+        }
+
+        let valorParcela = valorBrutoTotal / i;
+        let lucroParaExibir = valorBrutoTotal - valorInvestido;
+        
+
+        tableRows += `
+        <tr class="copyable-row">
+            <td class="fw-bold" style="font-size: 1.1rem;">${i}x</td>
+            <td class="text-primary fw-bold" style="font-size: 1.1rem;">${valorParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+            <td class="text-secondary small">${valorBrutoTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+            
+            <td class="text-success fw-bold small text-end" style="font-size: 0.85rem; border-left: 1px solid #333;">
+                Lucro: ${lucroParaExibir.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            </td>
+        </tr>`;
+    }
+
+    // 6. RENDERIZA
+    if (resultDiv) {
+        resultDiv.innerHTML = `
+        ${entradaHtml}
+        ${avisoHtml}
+        <div class="table-responsive w-100" style="max-width: 500px;">
+            <table class="table results-table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th style="font-size: 1.1rem;">X</th>
+                        <th style="font-size: 1.1rem;">Parcela</th>
+                        <th style="font-size: 1.1rem;">Total</th>
+                        <th class="text-success text-end" style="font-size: 0.9rem;">Lucro</th>
+                    </tr>
+                </thead>
+                <tbody>${tableRows}</tbody>
+            </table>
+        </div>
+        `;
+        if(exportContainer) exportContainer.style.display = 'block';
+    }
+}
+
+
+
+// ============================================================
+// NAVEGAÇÃO NATIVA (BOTÃO VOLTAR DO CELULAR) - FINAL
+// ============================================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // 1. MAPEAMENTO DE ROTAS (Associa um "nome" à função do seu app)
+    const routes = {
+        'main': () => window.showMainSection('main'),
+        
+        // Menus Principais
+        'menu-calc': () => window.openCalculatorSection('calculatorHome'),
+        'menu-docs': () => {
+             // Tenta usar a função nova se existir, senão usa a antiga
+             if(typeof window.openDocumentsSection === 'function') window.openDocumentsSection('home');
+             else window.showMainSection('contract'); 
+        },
+        'menu-stock': () => window.showMainSection('stock'),
+        'menu-admin': () => window.showMainSection('administracao'),
+        'menu-clients': () => window.showMainSection('clients'),
+
+        // Telas Finais (Calculadora)
+        'calc-aparelho': () => window.openCalculatorSection('calcularPorAparelho'),
+        'calc-fechar': () => window.openCalculatorSection('fecharVenda'),
+        'calc-repassar': () => window.openCalculatorSection('repassarValores'),
+        'calc-emprestimo': () => window.openCalculatorSection('calcularEmprestimo'),
+        'calc-emprestar-valores': () => window.openCalculatorSection('emprestarValores'),
+
+        // Telas Finais (Docs)
+        'doc-contrato': () => {
+             if(typeof window.openDocumentsSection === 'function') window.openDocumentsSection('contrato');
+             else window.openContratoView();
+        },
+        'doc-bookip': () => {
+             if(typeof window.openDocumentsSection === 'function') window.openDocumentsSection('bookip');
+             else window.openBookipView();
+        }
+    };
+
+    // 2. FUNÇÃO QUE CHAMA A TELA (Sem criar histórico duplicado)
+    function renderScreen(screenName) {
+        if (routes[screenName]) {
+            console.log("Navigating to:", screenName);
+            routes[screenName]();
+        }
+    }
+
+    // 3. INTERCEPTADORES (Ouve quando você clica nos botões)
+    
+    // A. Intercepta Menu Principal
+    const oldMain = window.showMainSection;
+    window.showMainSection = function(id) {
+        oldMain(id);
+        if(id === 'main') pushHistory('main');
+        else if(id === 'stock') pushHistory('menu-stock');
+        else if(id === 'administracao') pushHistory('menu-admin');
+        else if(id === 'clients') pushHistory('menu-clients');
+    };
+
+    // B. Intercepta Calculadoras
+    const oldCalc = window.openCalculatorSection;
+    window.openCalculatorSection = function(id) {
+        oldCalc(id);
+        if(id === 'calculatorHome') pushHistory('menu-calc');
+        else if(id === 'calcularPorAparelho') pushHistory('calc-aparelho');
+        else if(id === 'fecharVenda') pushHistory('calc-fechar');
+        else if(id === 'repassarValores') pushHistory('calc-repassar');
+        else if(id === 'calcularEmprestimo') pushHistory('calc-emprestimo');
+        else if(id === 'emprestarValores') pushHistory('calc-emprestar-valores');
+    };
+
+    // C. Intercepta Documentos (se a função existir)
+    if (typeof window.openDocumentsSection === 'function') {
+        const oldDocs = window.openDocumentsSection;
+        window.openDocumentsSection = function(id) {
+            oldDocs(id);
+            if(id === 'home') pushHistory('menu-docs');
+            else if(id === 'contrato') pushHistory('doc-contrato');
+            else if(id === 'bookip') pushHistory('doc-bookip');
+        };
+    }
+
+    // 4. GERENCIADOR DE HISTÓRICO
+    function pushHistory(screenName) {
+        // Só adiciona se for diferente da tela atual
+        const current = history.state ? history.state.screen : null;
+        if (current !== screenName) {
+            history.pushState({ screen: screenName }, "", "");
+        }
+    }
+
+    // 5. OUVINTE DO BOTÃO VOLTAR DO CELULAR
+    window.onpopstate = function(event) {
+        if (event.state && event.state.screen) {
+            // Se tem histórico, abre a tela salva
+            renderScreen(event.state.screen);
+        } else {
+            // Se acabou o histórico, volta pro Menu Principal
+            window.showMainSection('main');
+        }
+    };
+
+    // Inicia no Main
+    history.replaceState({ screen: 'main' }, "", "");
+});
 
 
         });
