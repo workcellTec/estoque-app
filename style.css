@@ -1953,6 +1953,35 @@ body[data-color="orange"] {
     box-shadow: 0 0 15px rgba(0,0,0,0.2);
 }
 
+
+
+
+/* --- CORREÇÃO DO POP-UP DE SUCESSO (CENTRALIZADO) --- */
+#postSaveOptions {
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Centraliza horizontalmente */
+    justify-content: center;
+    gap: 15px; /* Espaço entre os botões */
+    width: 100%;
+    padding: 10px 0;
+}
+
+/* Padroniza o tamanho dos botões */
+#btnPostPrint,
+#btnPostShare, 
+#btnNewBookipCycle {
+    width: 100% !important;
+    max-width: 280px !important; /* Largura ideal para não ficar esticado demais */
+    margin: 0 auto !important; /* Força o centro */
+    display: flex !important;
+    justify-content: center;
+    align-items: center;
+    height: 48px !important; /* Altura confortável para o dedo */
+    font-size: 1rem !important;
+}
+
+
 /* VERSÃO BLINDADA CONTRA O "PISCA" E O EFEITO ELÁSTICO */
 html, body {
     /* 1. Trava o elástico com prioridade máxima */

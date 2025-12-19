@@ -6851,4 +6851,59 @@ window.unificarClientesDuplicados = async function() {
     });
 };
 
+
+
+// ============================================================
+// 4. RESET TOTAL: CLICAR EM "COMEÇAR NOVA GARANTIA"
+// ============================================================
+// Coloque isso no FINAL do app.js para garantir que carregue por último
+
+document.addEventListener('DOMContentLoaded', () => {
+    const btnNewCycle = document.getElementById('btnNewBookipCycle');
+    
+    if (btnNewCycle) {
+        // Truque do Clone: Remove listeners antigos/bugados e cria um novinho
+        const novoBotao = btnNewCycle.cloneNode(true);
+        btnNewCycle.parentNode.replaceChild(novoBotao, btnNewCycle);
+
+        novoBotao.addEventListener('click', (e) => {
+            e.preventDefault(); // <--- O SEGREDO! Impede bugs de navegação
+            console.log("Botão Reset acionado!");
+
+            // 1. LIMPA A TELA VISUALMENTE
+            const popup = document.getElementById('postSaveOptions');
+            if(popup) popup.classList.add('hidden'); // Some com o Pop-up
+
+            const saveContainer = document.getElementById('saveActionContainer');
+            if(saveContainer) saveContainer.classList.remove('hidden'); // Volta o botão Salvar
+
+            // 2. RESETA BOTÕES DE AÇÃO (Imprimir/Enviar) PARA O PADRÃO
+            const btnPrint = document.getElementById('btnPostPrint');
+            if (btnPrint) {
+                btnPrint.style.display = 'flex'; // Garante que volta a aparecer
+            }
+            
+            const btnShare = document.getElementById('btnPostShare');
+            if (btnShare) {
+                btnShare.className = 'btn btn-success w-100 mb-2'; // Volta a ser verde
+                btnShare.innerHTML = '<i class="bi bi-whatsapp"></i> Salvar Online / PDF';
+                btnShare.disabled = false;
+            }
+
+            // 3. LIMPA OS DADOS (Chama sua função de faxina)
+            if(typeof window.resetFormulariosBookip === 'function') {
+                window.resetFormulariosBookip();
+            }
+
+            // 4. ZERA VARIÁVEIS DE CONTROLE
+            window.lastSavedBookipData = null;
+            window.currentEditingBookipId = null;
+
+            // 5. SOBE A TELA SUAVEMENTE
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    }
+});
+
+
         });
