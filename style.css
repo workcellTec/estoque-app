@@ -1953,3 +1953,26 @@ body[data-color="orange"] {
     box-shadow: 0 0 15px rgba(0,0,0,0.2);
 }
 
+/* VERSÃO BLINDADA CONTRA O "PISCA" E O EFEITO ELÁSTICO */
+html, body {
+    /* 1. Trava o elástico com prioridade máxima */
+    overscroll-behavior-y: none !important;
+    overscroll-behavior: none !important;
+
+    /* 2. Fixa a altura para o navegador não tentar "esticar" a página */
+    height: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    
+    /* 3. Garante que o fundo do seu tema não tenha "buraco" branco ou azul embaixo */
+    background-attachment: fixed !important;
+    overflow-x: hidden;
+}
+
+/* Garante que o efeito se aplique ao container que segura o seu app */
+#main {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}

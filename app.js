@@ -2976,17 +2976,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('backFromStock').addEventListener('click', () => showMainSection('main'));
     document.getElementById('backFromAdmin').addEventListener('click', () => showMainSection('main'));
 
-    // ... outros botões acima ...
-    document.getElementById('backFromStock').addEventListener('click', () => showMainSection('main'));
-    
-    // ESTA É A LINHA DE REFERÊNCIA 👇
-    document.getElementById('backFromAdmin').addEventListener('click', () => showMainSection('main'));
+   
 
-    // =======================================================
-    // >>> COLE O BLOCO 3 AQUI (NESSE ESPAÇO) <<<
-    // =======================================================
-
-    // --- BOTÕES DA TELA DE CLIENTES ---
 
     // 1. Botão que está DENTRO da Administração para ir aos Clientes
     const btnAdminClients = document.getElementById('btnAdminClients');
@@ -5316,7 +5307,8 @@ function ativarAutocomplete() {
 // Inicia a função assim que o código carrega
 ativarAutocomplete();
 
-// 3. Função de Preencher (Pequeno ajuste para fechar a lista certa)
+
+//Função de Preencher  (Pequeno ajuste para fechar a lista certa)
 window.preencherCliente = function(id, idListaParaFechar) {
     const cliente = window.dbClientsCache.find(c => c.id === id);
     
@@ -5348,33 +5340,7 @@ window.preencherCliente = function(id, idListaParaFechar) {
 // Inicia a função
 ativarAutocomplete();
 
-// 3. Função de Preencher
-window.preencherCliente = function(id) {
-    const cliente = dbClientsCache.find(c => c.id === id);
-    if (cliente) {
-        document.getElementById('bookipNome').value = cliente.nome || '';
-        document.getElementById('bookipCpf').value = cliente.cpf || '';
-        document.getElementById('bookipTelefone').value = cliente.tel || '';
-        document.getElementById('bookipEndereco').value = cliente.end || '';
-        document.getElementById('bookipEmail').value = cliente.email || '';
-        
-        // Esconde a lista
-        document.getElementById('clientSuggestionsList').style.display = 'none';
-        
-        // Faz o campo piscar verde rapidinho pra confirmar
-        const inputNome = document.getElementById('bookipNome');
-        inputNome.classList.add('is-valid');
-        setTimeout(() => inputNome.classList.remove('is-valid'), 1000);
-    }
-};
 
-// ============================================================
-// LÓGICA DA TELA DE CLIENTES (TABELA E EXCLUSÃO)
-// ============================================================
-
-// ============================================================
-// MÓDULO DE CLIENTES (FINAL - PROTEGIDO CONTRA ERROS)
-// ============================================================
 
 // 1. Variável Global (Janela para os dados)
 window.dbClientsCache = []; 
@@ -6302,12 +6268,6 @@ async function gerarPdfDoHistorico(dados, botao) {
     }
 }
 
-
-        
-// =====================================
-
-// ==============
-// ============================================================
 // 🧹 FAXINA DO FIREBASE (GLOBAL)
 // ============================================================
 window.limparImportacaoErrada = async function() {
@@ -6409,10 +6369,7 @@ async function executarVarreduraReal() {
 }
 
 
-// ============================================================
-// ============================================================
-// 🪄 MÁGICA: IMPORTAR DADOS DO WHATSAPP (VERSÃO FINAL BLINDADA)
-// ==============================================// ============================================================
+
 // 🪄 MÁGICA: IMPORTAR DADOS DO WHATSAPP (VERSÃO FINAL COM ATIVADOR)
 // ============================================================
 
@@ -6540,9 +6497,7 @@ setTimeout(() => {
     }
 }, 1000); // Espera 1 segundo pra garantir que o HTML carregou
 
-// ============================================================
-// FUNÇÃO DE FAXINA (LIMPA TUDO PARA EVITAR BUGS DE EDIÇÃO)
-// ============================================================
+
 // FUNÇÃO DE FAXINA (LIMPA TUDO: DADOS E VISUAL)
 // ============================================================
 window.resetFormulariosBookip = function() {
@@ -6612,22 +6567,7 @@ window.resetFormulariosBookip = function() {
     if(saveContainer) saveContainer.classList.remove('hidden');
 };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // --- GATILHOS CORRIGIDOS: EMPRESTAR VALORES ---
+    // ---EMPRESTAR VALORES ---
     // ============================================================
     
     // 1. Botões de Navegação
@@ -6693,10 +6633,7 @@ window.resetFormulariosBookip = function() {
 
 
 
-// ============================================================
-// FUNÇÃO AUXILIAR: ATUALIZA STATUS NO FIREBASE
-// ============================================================
-// ============================================================
+
 // CORREÇÃO: SALVAR NO REALTIME DATABASE (Compatível com seu histórico)
 // ============================================================
 async function marcarComoEnviadoNoBanco(idDocumento) {
@@ -6722,11 +6659,7 @@ async function marcarComoEnviadoNoBanco(idDocumento) {
     }
 }
 
-// ============================================================
-// FUNÇÕES DA CALCULADORA "EMPRESTAR VALORES" (FINAL DO ARQUIVO)
-// ============================================================
-// FUNÇÃO: EMPRESTAR VALORES (CÁLCULO REVERSO + COLUNA LUCRO)
-// ============================================================
+
 // FUNÇÃO: EMPRESTAR VALORES (CORREÇÃO DE VISIBILIDADE MODO CLARO)
 // ============================================================
 function calculateEmprestarValores() {
@@ -6822,113 +6755,86 @@ function calculateEmprestarValores() {
     }
 }
 
-
-
+// ===========================================================
 // ============================================================
-// NAVEGAÇÃO NATIVA (BOTÃO VOLTAR DO CELULAR) - FINAL
+// 🤖 ROBÔ DE UNIFICAÇÃO AGRESSIVA (PONTE CPF + TELEFONE)
 // ============================================================
+window.unificarClientesDuplicados = async function() {
+    if (!db) return;
 
-document.addEventListener('DOMContentLoaded', () => {
-    
-    // 1. MAPEAMENTO DE ROTAS (Associa um "nome" à função do seu app)
-    const routes = {
-        'main': () => window.showMainSection('main'),
-        
-        // Menus Principais
-        'menu-calc': () => window.openCalculatorSection('calculatorHome'),
-        'menu-docs': () => {
-             // Tenta usar a função nova se existir, senão usa a antiga
-             if(typeof window.openDocumentsSection === 'function') window.openDocumentsSection('home');
-             else window.showMainSection('contract'); 
-        },
-        'menu-stock': () => window.showMainSection('stock'),
-        'menu-admin': () => window.showMainSection('administracao'),
-        'menu-clients': () => window.showMainSection('clients'),
+    showCustomModal({
+        message: "O robô irá mesclar cadastros que compartilham o mesmo CPF OU o mesmo final de telefone, unificando-os mesmo que um esteja incompleto. Continuar?",
+        confirmText: "Sim, Mesclar Geral",
+        onConfirm: async () => {
+            toggleLoader(true, 'Limpando duplicados...');
+            try {
+                const snapshot = await get(ref(db, 'clientes'));
+                if (!snapshot.exists()) {
+                    toggleLoader(false);
+                    return;
+                }
 
-        // Telas Finais (Calculadora)
-        'calc-aparelho': () => window.openCalculatorSection('calcularPorAparelho'),
-        'calc-fechar': () => window.openCalculatorSection('fecharVenda'),
-        'calc-repassar': () => window.openCalculatorSection('repassarValores'),
-        'calc-emprestimo': () => window.openCalculatorSection('calcularEmprestimo'),
-        'calc-emprestar-valores': () => window.openCalculatorSection('emprestarValores'),
+                const clientesRaw = snapshot.val();
+                const mapaIdentidade = {}; // Chave: CPF ou FinalTel -> Valor: Objeto Mestre
+                const updates = {};
+                let contador = 0;
 
-        // Telas Finais (Docs)
-        'doc-contrato': () => {
-             if(typeof window.openDocumentsSection === 'function') window.openDocumentsSection('contrato');
-             else window.openContratoView();
-        },
-        'doc-bookip': () => {
-             if(typeof window.openDocumentsSection === 'function') window.openDocumentsSection('bookip');
-             else window.openBookipView();
+                // PASSO 1: Criar o Mapa de Identidades
+                Object.keys(clientesRaw).forEach(id => {
+                    const c = clientesRaw[id];
+                    const cpf = (c.cpf || '').replace(/\D/g, '');
+                    const tel = (c.tel || '').replace(/\D/g, '');
+                    const final8 = tel.length >= 8 ? tel.slice(-8) : null;
+
+                    // Procura se já existe alguém com esse CPF ou esse Telefone
+                    let mestre = (cpf && mapaIdentidade[cpf]) || (final8 && mapaIdentidade[final8]);
+
+                    if (!mestre) {
+                        // Novo cliente único encontrado
+                        mestre = { ...c, idOriginal: id };
+                        if (cpf) mapaIdentidade[cpf] = mestre;
+                        if (final8) mapaIdentidade[final8] = mestre;
+                    } else {
+                        // Achamos uma conexão! Vamos enriquecer o mestre
+                        if (id !== mestre.idOriginal) {
+                            updates[`clientes/${id}`] = null; // Apaga o duplicado
+                            
+                            // Inteligência de Sobrevivência (Dados mais longos/completos)
+                            if ((c.nome || '').length > (mestre.nome || '').length) mestre.nome = c.nome;
+                            if (tel.length > (mestre.tel || '').replace(/\D/g, '').length) mestre.tel = c.tel;
+                            
+                            // Preenche o que falta
+                            mestre.cpf = mestre.cpf || c.cpf;
+                            mestre.email = mestre.email || c.email;
+                            mestre.end = mestre.end || c.end;
+
+                            // Atualiza as pontes (Se o mestre não tinha CPF e agora tem, vincula)
+                            if (!mapaIdentidade[cpf] && cpf) mapaIdentidade[cpf] = mestre;
+                            if (!mapaIdentidade[final8] && final8) mapaIdentidade[final8] = mestre;
+                            
+                            updates[`clientes/${mestre.idOriginal}`] = mestre;
+                            contador++;
+                        }
+                    }
+                });
+
+                if (contador > 0) {
+                    await update(ref(db), updates);
+                    toggleLoader(false);
+                    showCustomModal({ message: `Sucesso! O robô unificou ${contador} cadastros. Agora os dados estão cruzados!` });
+                    if (typeof renderClientsTable === 'function') renderClientsTable();
+                } else {
+                    toggleLoader(false);
+                    showCustomModal({ message: "Nenhum duplicado pendente encontrado." });
+                }
+
+            } catch (error) {
+                console.error(error);
+                toggleLoader(false);
+                showCustomModal({ message: "Erro: " + error.message });
+            }
         }
-    };
-
-    // 2. FUNÇÃO QUE CHAMA A TELA (Sem criar histórico duplicado)
-    function renderScreen(screenName) {
-        if (routes[screenName]) {
-            console.log("Navigating to:", screenName);
-            routes[screenName]();
-        }
-    }
-
-    // 3. INTERCEPTADORES (Ouve quando você clica nos botões)
-    
-    // A. Intercepta Menu Principal
-    const oldMain = window.showMainSection;
-    window.showMainSection = function(id) {
-        oldMain(id);
-        if(id === 'main') pushHistory('main');
-        else if(id === 'stock') pushHistory('menu-stock');
-        else if(id === 'administracao') pushHistory('menu-admin');
-        else if(id === 'clients') pushHistory('menu-clients');
-    };
-
-    // B. Intercepta Calculadoras
-    const oldCalc = window.openCalculatorSection;
-    window.openCalculatorSection = function(id) {
-        oldCalc(id);
-        if(id === 'calculatorHome') pushHistory('menu-calc');
-        else if(id === 'calcularPorAparelho') pushHistory('calc-aparelho');
-        else if(id === 'fecharVenda') pushHistory('calc-fechar');
-        else if(id === 'repassarValores') pushHistory('calc-repassar');
-        else if(id === 'calcularEmprestimo') pushHistory('calc-emprestimo');
-        else if(id === 'emprestarValores') pushHistory('calc-emprestar-valores');
-    };
-
-    // C. Intercepta Documentos (se a função existir)
-    if (typeof window.openDocumentsSection === 'function') {
-        const oldDocs = window.openDocumentsSection;
-        window.openDocumentsSection = function(id) {
-            oldDocs(id);
-            if(id === 'home') pushHistory('menu-docs');
-            else if(id === 'contrato') pushHistory('doc-contrato');
-            else if(id === 'bookip') pushHistory('doc-bookip');
-        };
-    }
-
-    // 4. GERENCIADOR DE HISTÓRICO
-    function pushHistory(screenName) {
-        // Só adiciona se for diferente da tela atual
-        const current = history.state ? history.state.screen : null;
-        if (current !== screenName) {
-            history.pushState({ screen: screenName }, "", "");
-        }
-    }
-
-    // 5. OUVINTE DO BOTÃO VOLTAR DO CELULAR
-    window.onpopstate = function(event) {
-        if (event.state && event.state.screen) {
-            // Se tem histórico, abre a tela salva
-            renderScreen(event.state.screen);
-        } else {
-            // Se acabou o histórico, volta pro Menu Principal
-            window.showMainSection('main');
-        }
-    };
-
-    // Inicia no Main
-    history.replaceState({ screen: 'main' }, "", "");
-});
-
+    });
+};
 
         });
