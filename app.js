@@ -2673,6 +2673,33 @@ function applyColorTheme(color) {
         }
     });
 }
+
+
+
+// === CORREÇÃO INFALÍVEL: BOTÃO "SAIR E COMEÇAR NOVA" ===
+document.addEventListener('click', function(e) {
+    // Detecta o clique no botão (mesmo se clicar no ícone dentro dele)
+    if (e.target.closest('#btnNewBookipCycle')) {
+        
+        // 1. Chama a função de limpeza (Faxina)
+        if (typeof window.resetFormulariosBookip === 'function') {
+            window.resetFormulariosBookip();
+        }
+        
+        // 2. Força esconder a tela de sucesso
+        const popup = document.getElementById('postSaveOptions');
+        if(popup) popup.classList.add('hidden');
+        
+        const saveContainer = document.getElementById('saveActionContainer');
+        if(saveContainer) saveContainer.classList.remove('hidden');
+
+        // 3. Garante que suba para o topo
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+});
+
+
+
 async function main() {
     try {
         setupPWA();
