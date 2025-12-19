@@ -6207,22 +6207,22 @@ async function gerarPdfDoHistorico(dados, botao) {
         removerLoading();
 
 
-// 1. O BOTÃO VIRA "ENVIAR" (Verde)
+// 1. O BOTÃO VIRA "ENVIAR" (Verde e Gigante)
         botao.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
         botao.classList.remove('btn-primary', 'btn-warning', 'btn-secondary', 'btn-dark'); 
         botao.classList.add('btn-success'); 
+        
+        // --- A MÁGICA: Força ele a ocupar 100% do espaço agora ---
+        botao.style.width = '100%'; 
+        // ---------------------------------------------------------
+        
         botao.disabled = false; 
 
-        // --- CÓDIGO NOVO: ESCONDE O BOTÃO IMPRIMIR AQUI ---
+        // 2. ESCONDE O BOTÃO IMPRIMIR
         const btnPrint = document.getElementById('btnPostPrint');
         if (btnPrint) {
-            btnPrint.style.display = 'none'; // Some com o botão Imprimir
+            btnPrint.style.display = 'none'; 
         }
-
-
-        // 2. PREPARA O NOVO CLIQUE (Limpa eventos antigos)
-        const novoBotao = botao.cloneNode(true);
-        botao.parentNode.replaceChild(novoBotao, botao);
 
         // 3. CLIQUE DE ENVIO
         novoBotao.addEventListener('click', async () => {
@@ -6888,14 +6888,18 @@ document.addEventListener('click', function(e) {
                 btnPrint.style.display = 'flex'; // Garante que volta visível
             }
 
-            // 3. Reseta o Botão de Enviar (Tira o verde)
+// 3. Reseta o Botão de Enviar (Tira o verde e o tamanho forçado)
             const btnShare = document.getElementById('btnPostShare');
             if (btnShare) {
-                btnShare.className = 'btn btn-warning w-100 mb-2'; // Volta cor original
+                btnShare.className = 'btn btn-warning w-100 mb-2'; // Classes padrão
                 btnShare.innerHTML = '<i class="bi bi-whatsapp"></i> Salvar Online / PDF';
+                
+                // --- A MÁGICA: Remove a largura forçada para ele dividir espaço de novo ---
+                btnShare.style.width = ''; // Limpa o estilo inline
+                // ------------------------------------------------------------------------
+                
                 btnShare.disabled = false;
             }
-
             // 4. Mostra o botão Finalizar principal
             const saveContainer = document.getElementById('saveActionContainer');
             if(saveContainer) saveContainer.classList.remove('hidden');
