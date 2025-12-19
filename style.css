@@ -1953,75 +1953,16 @@ body[data-color="orange"] {
     box-shadow: 0 0 15px rgba(0,0,0,0.2);
 }
 
-
-
-
-/* ============================================================
-   CORREÇÃO DO POP-UP INTELIGENTE (Flexbox Elástico)
-   ============================================================ */
-
-/* 1. O Container permite que os botões fiquem lado a lado */
-#postSaveOptions {
-    display: flex;
-    flex-wrap: wrap; /* Permite que o botão "Sair" caia para a linha de baixo */
-    justify-content: space-between;
-    gap: 10px; /* Espacinho entre eles */
-    width: 100%;
-    padding: 5px 0;
-}
-
-/* 2. Botões de Ação (Imprimir e Salvar/Enviar) */
-#btnPostPrint,
-#btnPostShare {
-    flex: 1; /* O SEGREDO: Eles esticam para preencher o espaço! */
-    min-width: 40%; /* Garante que nunca fiquem espremidos demais */
-    height: 48px !important;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.95rem;
-}
-
-/* 3. Botão de Sair e Começar Nova (Sempre embaixo e cheio) */
-#btnNewBookipCycle {
-    flex-basis: 100%; /* Força quebra de linha: ocupa 100% da largura horizontal */
-    width: 100%;
-    margin-top: 5px;
-    height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-/* 4. A REGRA SUPREMA (Para o botão Imprimir sumir de verdade) */
-#btnPostPrint[style*="display: none"] {
-    display: none !important;
-}
-
-
-
-
-
-/* VERSÃO BLINDADA CONTRA O "PISCA" E O EFEITO ELÁSTICO */
 html, body {
-    /* 1. Trava o elástico com prioridade máxima */
-    overscroll-behavior-y: none !important;
-    overscroll-behavior: none !important;
+    /* 1. TRAVA O ELÁSTICO: Impede que a tela "quique" e mostre o fundo vazio */
+    overscroll-behavior-y: none;
 
-    /* 2. Fixa a altura para o navegador não tentar "esticar" a página */
-    height: 100% !important;
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    
-    /* 3. Garante que o fundo do seu tema não tenha "buraco" branco ou azul embaixo */
-    background-attachment: fixed !important;
-    overflow-x: hidden;
-}
-
-/* Garante que o efeito se aplique ao container que segura o seu app */
-#main {
+    /* 2. Garante que seu tema de fumaça cubra a tela toda (até em celulares altos) */
     min-height: 100vh;
-    display: flex;
-    flex-direction: column;
+    width: 100%;
+
+    /* 3. Ajustes básicos de layout (sem mexer em cores) */
+    margin: 0;
+    padding: 0;
+    scroll-behavior: smooth;
 }

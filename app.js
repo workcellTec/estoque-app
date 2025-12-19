@@ -5068,13 +5068,6 @@ if (btnPostShare) {
 const btnNewCycle = document.getElementById('btnNewBookipCycle');
 if (btnNewCycle) {
     btnNewCycle.addEventListener('click', () => {
-
-  const btnPrint = document.getElementById('btnPostPrint');
-        if (btnPrint) {
-            btnPrint.style.display = 'inline-block'; // Ou 'block', dependendo do seu layout
-}
-
-
         // 1. ESCONDE O POP-UP (Adiciona a classe hidden)
         const popup = document.getElementById('postSaveOptions');
         if(popup) popup.classList.add('hidden');
@@ -5315,7 +5308,7 @@ function ativarAutocomplete() {
 ativarAutocomplete();
 
 
-//Função de Preencher  (Pequeno ajuste para fechar a lista certa)
+// 1 Função de Preencher  (Pequeno ajuste para fechar a lista certa)
 window.preencherCliente = function(id, idListaParaFechar) {
     const cliente = window.dbClientsCache.find(c => c.id === id);
     
@@ -6206,79 +6199,62 @@ async function gerarPdfDoHistorico(dados, botao) {
         const file = new File([blob], nomeFinalArquivo, { type: 'application/pdf' });
         removerLoading();
 
-
-        // ---------------------------------------------------------
-        // BLOCO CORRIGIDO: BOTÕES E COMPARTILHAMENTO
-        // ---------------------------------------------------------
-
-        // 1. O BOTÃO VIRA "ENVIAR" (Verde e Gigante)
+        // 1. O BOTÃO VIRA "ENVIAR" (Verde)
         botao.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
-        
-        // AQUI ESTÁ O SEGREDO DO LAYOUT:
-        // 'btn btn-success' = Verde
-        // 'w-100' = Ocupa 100% da largura (substitui o style.width)
-        botao.className = 'btn btn-success w-100'; 
-        
+        botao.classList.remove('btn-primary', 'btn-warning', 'btn-secondary', 'btn-dark'); 
+        botao.classList.add('btn-success'); 
         botao.disabled = false; 
 
-        // 2. ESCONDE O BOTÃO IMPRIMIR (Bootstrap + Inline para garantir)
-        const btnPrint = document.getElementById('btnPostPrint');
-        if (btnPrint) {
-            btnPrint.classList.add('d-none'); // Classe que esconde
-            btnPrint.style.display = 'none';  // Garantia extra
-        }
-
-        // 3. RECRIA O BOTÃO (Para limpar cliques antigos)
+        // 2. PREPARA O NOVO CLIQUE (Limpa eventos antigos)
         const novoBotao = botao.cloneNode(true);
         botao.parentNode.replaceChild(novoBotao, botao);
 
-        // 4. CLIQUE DE ENVIO (Lógica de Compartilhar)
+        // 3. CLIQUE DE ENVIO
         novoBotao.addEventListener('click', async () => {
             try {
                 let compartilhou = false;
 
-                // Tenta compartilhamento nativo (Celular)
+                // Tenta compartilhar nativo
                 if (navigator.canShare && navigator.canShare({ files: [file] })) {
                     await navigator.share({
                         files: [file],
-                        title: tituloCompartilhamento || 'Documento', // Evita erro se for null
-                        text: textoCompartilhamento || 'Segue seu documento em PDF.'
+                        title: tituloCompartilhamento,
+                        text: textoCompartilhamento
                     });
                     compartilhou = true;
                 } else {
-                    // Se não suportar share nativo, apenas avisa (ou aqui você poderia forçar download)
-                    throw new Error("Share nativo não suportado neste dispositivo.");
+                    throw new Error("Share não suportado, indo para download.");
                 }
 
                 // --- SE DEU CERTO: MARCA TUDO ---
                 if (compartilhou) {
-                    // A. Visual do Botão (Vira Cinza/Escuro)
+                    // A. Visual do Botão
                     novoBotao.innerHTML = '<i class="bi bi-check-circle-fill"></i> Enviado!';
-                    novoBotao.className = 'btn btn-dark w-100'; // Mantém ele gigante (w-100)
+                    novoBotao.classList.remove('btn-success');
+                    novoBotao.classList.add('btn-dark'); 
                     
-                    // B. Visual da Lista (Se existir card pai, pinta borda de verde)
-                    const cardPai = novoBotao.closest('.list-group-item') || novoBotao.closest('.card');
+                    // B. Visual da Lista (Borda Verde)
+                    const cardPai = novoBotao.closest('.list-group-item') || novoBotao.closest('.card') || novoBotao.parentNode.parentNode;
                     if (cardPai) {
                         cardPai.style.borderLeft = "6px solid #28a745"; 
                         cardPai.style.backgroundColor = "#f0fff4"; 
                     }
 
-                    // C. Salva no Firebase (Se tiver ID)
-                    if (dados && (dados.id || dados.docId)) {
-                        // Verifica se a função existe antes de chamar
-                        if (typeof marcarComoEnviadoNoBanco === 'function') {
-                            marcarComoEnviadoNoBanco(dados.id || dados.docId);
-                        }
+                    // C. Salva no Firebase (Memória Eterna)
+                    if (dados.id || dados.docId) {
+                        marcarComoEnviadoNoBanco(dados.id || dados.docId);
                     }
                 }
 
             } catch (err) {
+                // Apenas avisa no console, NÃO baixa mais nada
                 console.warn("Compartilhamento cancelado ou erro:", err);
-                // Dica: Se quiser, pode descomentar abaixo para resetar o texto se der erro
+                
+                // Opcional: Se quiser que o botão volte a ficar verde pra tentar de novo:
                 // novoBotao.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar PDF';
             }
-        });
 
+        });
 
         // Vibra para avisar que está pronto
         if (navigator.vibrate) navigator.vibrate(100);
@@ -6292,6 +6268,12 @@ async function gerarPdfDoHistorico(dados, botao) {
     }
 }
 
+
+        
+// =====================================
+
+// ==============
+// ============================================================
 // 🧹 FAXINA DO FIREBASE (GLOBAL)
 // ============================================================
 window.limparImportacaoErrada = async function() {
@@ -6393,7 +6375,10 @@ async function executarVarreduraReal() {
 }
 
 
-
+// ============================================================
+// ============================================================
+// 🪄 MÁGICA: IMPORTAR DADOS DO WHATSAPP (VERSÃO FINAL BLINDADA)
+// ==============================================// ============================================================
 // 🪄 MÁGICA: IMPORTAR DADOS DO WHATSAPP (VERSÃO FINAL COM ATIVADOR)
 // ============================================================
 
@@ -6521,7 +6506,9 @@ setTimeout(() => {
     }
 }, 1000); // Espera 1 segundo pra garantir que o HTML carregou
 
-
+// ============================================================
+// FUNÇÃO DE FAXINA (LIMPA TUDO PARA EVITAR BUGS DE EDIÇÃO)
+// ============================================================
 // FUNÇÃO DE FAXINA (LIMPA TUDO: DADOS E VISUAL)
 // ============================================================
 window.resetFormulariosBookip = function() {
@@ -6591,7 +6578,22 @@ window.resetFormulariosBookip = function() {
     if(saveContainer) saveContainer.classList.remove('hidden');
 };
 
-    // ---EMPRESTAR VALORES ---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // --- GATILHOS CORRIGIDOS: EMPRESTAR VALORES ---
     // ============================================================
     
     // 1. Botões de Navegação
@@ -6657,7 +6659,10 @@ window.resetFormulariosBookip = function() {
 
 
 
-
+// ============================================================
+// FUNÇÃO AUXILIAR: ATUALIZA STATUS NO FIREBASE
+// ============================================================
+// ============================================================
 // CORREÇÃO: SALVAR NO REALTIME DATABASE (Compatível com seu histórico)
 // ============================================================
 async function marcarComoEnviadoNoBanco(idDocumento) {
@@ -6683,7 +6688,11 @@ async function marcarComoEnviadoNoBanco(idDocumento) {
     }
 }
 
-
+// ============================================================
+// FUNÇÕES DA CALCULADORA "EMPRESTAR VALORES" (FINAL DO ARQUIVO)
+// ============================================================
+// FUNÇÃO: EMPRESTAR VALORES (CÁLCULO REVERSO + COLUNA LUCRO)
+// ============================================================
 // FUNÇÃO: EMPRESTAR VALORES (CORREÇÃO DE VISIBILIDADE MODO CLARO)
 // ============================================================
 function calculateEmprestarValores() {
@@ -6779,168 +6788,7 @@ function calculateEmprestarValores() {
     }
 }
 
-// ===========================================================
-// ============================================================
-// 🤖 ROBÔ DE UNIFICAÇÃO AGRESSIVA (PONTE CPF + TELEFONE)
-// ============================================================
-window.unificarClientesDuplicados = async function() {
-    if (!db) return;
 
-    showCustomModal({
-        message: "O robô irá mesclar cadastros que compartilham o mesmo CPF OU o mesmo final de telefone, unificando-os mesmo que um esteja incompleto. Continuar?",
-        confirmText: "Sim, Mesclar Geral",
-        onConfirm: async () => {
-            toggleLoader(true, 'Limpando duplicados...');
-            try {
-                const snapshot = await get(ref(db, 'clientes'));
-                if (!snapshot.exists()) {
-                    toggleLoader(false);
-                    return;
-                }
-
-                const clientesRaw = snapshot.val();
-                const mapaIdentidade = {}; // Chave: CPF ou FinalTel -> Valor: Objeto Mestre
-                const updates = {};
-                let contador = 0;
-
-                // PASSO 1: Criar o Mapa de Identidades
-                Object.keys(clientesRaw).forEach(id => {
-                    const c = clientesRaw[id];
-                    const cpf = (c.cpf || '').replace(/\D/g, '');
-                    const tel = (c.tel || '').replace(/\D/g, '');
-                    const final8 = tel.length >= 8 ? tel.slice(-8) : null;
-
-                    // Procura se já existe alguém com esse CPF ou esse Telefone
-                    let mestre = (cpf && mapaIdentidade[cpf]) || (final8 && mapaIdentidade[final8]);
-
-                    if (!mestre) {
-                        // Novo cliente único encontrado
-                        mestre = { ...c, idOriginal: id };
-                        if (cpf) mapaIdentidade[cpf] = mestre;
-                        if (final8) mapaIdentidade[final8] = mestre;
-                    } else {
-                        // Achamos uma conexão! Vamos enriquecer o mestre
-                        if (id !== mestre.idOriginal) {
-                            updates[`clientes/${id}`] = null; // Apaga o duplicado
-                            
-                            // Inteligência de Sobrevivência (Dados mais longos/completos)
-                            if ((c.nome || '').length > (mestre.nome || '').length) mestre.nome = c.nome;
-                            if (tel.length > (mestre.tel || '').replace(/\D/g, '').length) mestre.tel = c.tel;
-                            
-                            // Preenche o que falta
-                            mestre.cpf = mestre.cpf || c.cpf;
-                            mestre.email = mestre.email || c.email;
-                            mestre.end = mestre.end || c.end;
-
-                            // Atualiza as pontes (Se o mestre não tinha CPF e agora tem, vincula)
-                            if (!mapaIdentidade[cpf] && cpf) mapaIdentidade[cpf] = mestre;
-                            if (!mapaIdentidade[final8] && final8) mapaIdentidade[final8] = mestre;
-                            
-                            updates[`clientes/${mestre.idOriginal}`] = mestre;
-                            contador++;
-                        }
-                    }
-                });
-
-                if (contador > 0) {
-                    await update(ref(db), updates);
-                    toggleLoader(false);
-                    showCustomModal({ message: `Sucesso! O robô unificou ${contador} cadastros. Agora os dados estão cruzados!` });
-                    if (typeof renderClientsTable === 'function') renderClientsTable();
-                } else {
-                    toggleLoader(false);
-                    showCustomModal({ message: "Nenhum duplicado pendente encontrado." });
-                }
-
-            } catch (error) {
-                console.error(error);
-                toggleLoader(false);
-                showCustomModal({ message: "Erro: " + error.message });
-            }
-        }
-    });
-};
-
-
-
-// ============================================================
-// ============================================================
-// ============================================================
-// 🔓 DESTRAVADOR UNIVERSAL: BOTÃO "SAIR E // ============================================================
-// 🔓 DESTRAVADOR UNIVERSAL: BOTÃO "SAIR E COMEÇAR NOVA"
-// ============================================================
-// Este código ignora IDs e busca o botão pelo TEXTO dele.
-// Funciona mesmo dentro do Modal ou se houver IDs duplicados.
-
-document.addEventListener('click', function(e) {
-    // 1. Verifica se o que foi clicado (ou o pai dele) é um botão
-    const alvo = e.target.closest('button') || e.target.closest('.btn') || e.target.closest('div');
-    
-    if (alvo && alvo.innerText) {
-        // 2. Verifica se o texto do botão é o do Modal
-        // Usamos includes para pegar "Sair e Começar" mesmo se tiver ícone junto
-        if (alvo.innerText.includes('Sair e Começar Nova Garantia') || 
-            alvo.innerText.includes('Começar um Novo Recibo')) {
-            
-            console.log("🔓 Destravador Universal acionado via texto!");
-            e.preventDefault(); // Evita recarregar a página
-            e.stopPropagation(); // Garante prioridade
-
-            // --- AQUI VAI A LÓGICA DE RESET ---
-
-            // 1. Esconde o Banner de Sucesso
-            const popup = document.getElementById('postSaveOptions');
-            if(popup) popup.classList.add('hidden');
-
-            // 2. Traz o Botão Imprimir de volta (Para a próxima vez)
-            const btnPrint = document.getElementById('btnPostPrint');
-            if (btnPrint) {
-                btnPrint.classList.remove('d-none'); // <--- CRUCIAL: Remove o bloqueio do Bootstrap
-                btnPrint.style.display = 'flex'; // Garante que volta visível
-            }
-
-            // 3. Reseta o Botão de Enviar (Tira o verde e o tamanho forçado)
-            const btnShare = document.getElementById('btnPostShare');
-            if (btnShare) {
-                // <--- CORREÇÃO AQUI: Removemos 'w-100' para ele voltar a dividir espaço
-                btnShare.className = 'btn btn-warning mb-2'; 
-                
-                btnShare.innerHTML = '<i class="bi bi-whatsapp"></i> Salvar Online / PDF';
-                
-                // --- A MÁGICA: Remove a largura forçada para ele dividir espaço de novo ---
-                btnShare.style.width = ''; // Limpa o estilo inline
-                // ------------------------------------------------------------------------
-                
-                btnShare.disabled = false;
-            }
-
-            // 4. Mostra o botão Finalizar principal
-            const saveContainer = document.getElementById('saveActionContainer');
-            if(saveContainer) saveContainer.classList.remove('hidden');
-
-            // 5. Limpa os formulários
-            if(typeof window.resetFormulariosBookip === 'function') {
-                window.resetFormulariosBookip();
-            } else {
-                // Faxina manual de garantia (caso a função principal falhe)
-                const campos = ['bookipNome', 'bookipCpf', 'bookipTelefone', 'bookipEndereco', 'bookipEmail'];
-                campos.forEach(id => {
-                    const el = document.getElementById(id);
-                    if(el) el.value = '';
-                });
-                
-                if(typeof atualizarListaVisualBookip === 'function') atualizarListaVisualBookip();
-            }
-
-            // 6. Reseta variáveis globais de controle
-            if(typeof window.lastSavedBookipData !== 'undefined') window.lastSavedBookipData = null;
-            if(typeof window.currentEditingBookipId !== 'undefined') window.currentEditingBookipId = null;
-
-            // 7. Sobe a tela
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-    }
-});
 
 
         });
