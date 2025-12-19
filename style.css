@@ -1956,7 +1956,11 @@ body[data-color="orange"] {
 
 
 
-/* --- CORREÇÃO DO POP-UP DE SUCESSO (CENTRALIZADO) --- */
+/* ============================================================
+   CORREÇÃO DO POP-UP DE SUCESSO (VISUAL + FUNCIONAL)
+   ============================================================ */
+
+/* 1. Container dos botões: Alinha tudo em coluna no centro */
 #postSaveOptions {
     display: flex;
     flex-direction: column;
@@ -1967,19 +1971,31 @@ body[data-color="orange"] {
     padding: 10px 0;
 }
 
-/* Padroniza o tamanho dos botões */
+/* 2. Botões: Define tamanho igual e centralização forçada */
 #btnPostPrint,
 #btnPostShare, 
 #btnNewBookipCycle {
     width: 100% !important;
-    max-width: 280px !important; /* Largura ideal para não ficar esticado demais */
-    margin: 0 auto !important; /* Força o centro */
-    display: flex !important;
+    max-width: 280px !important; /* Largura máxima para não esticar demais */
+    margin: 0 auto !important; /* Margem automática centraliza o bloco */
+    
+    display: flex !important; /* Mantém o ícone e texto alinhados */
     justify-content: center;
     align-items: center;
-    height: 48px !important; /* Altura confortável para o dedo */
+    
+    height: 48px !important; /* Altura confortável para o toque */
     font-size: 1rem !important;
 }
+
+/* 3. A REGRA DE OURO (CORREÇÃO DO BUG DE NÃO SUMIR) */
+/* Isso obriga o CSS a obedecer quando o JavaScript manda esconder o botão,
+   mesmo que tenhamos usado !important ali em cima. */
+#btnPostPrint[style*="display: none"] {
+    display: none !important;
+}
+
+
+
 
 
 /* VERSÃO BLINDADA CONTRA O "PISCA" E O EFEITO ELÁSTICO */

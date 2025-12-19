@@ -6206,6 +6206,7 @@ async function gerarPdfDoHistorico(dados, botao) {
         const file = new File([blob], nomeFinalArquivo, { type: 'application/pdf' });
         removerLoading();
 
+
 // 1. O BOTÃO VIRA "ENVIAR" (Verde)
         botao.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
         botao.classList.remove('btn-primary', 'btn-warning', 'btn-secondary', 'btn-dark'); 
