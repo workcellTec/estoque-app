@@ -1953,16 +1953,26 @@ body[data-color="orange"] {
     box-shadow: 0 0 15px rgba(0,0,0,0.2);
 }
 
+/* === TRAVA ELÁSTICO (CSS) === */
 html, body {
-    /* 1. TRAVA O ELÁSTICO: Impede que a tela "quique" e mostre o fundo vazio */
-    overscroll-behavior-y: none;
+    /* 1. O SEGREDO: Impede a tela de quicar (overscroll) */
+    overscroll-behavior-y: none; 
+    overscroll-behavior: none; /* Garante em todos os navegadores */
 
-    /* 2. Garante que seu tema de fumaça cubra a tela toda (até em celulares altos) */
+    /* 2. Fixa a altura para não sobrar espaço */
     min-height: 100vh;
+    height: 100%;
     width: 100%;
 
-    /* 3. Ajustes básicos de layout (sem mexer em cores) */
+    /* 3. Remove margens que causam rolagem fantasma */
     margin: 0;
     padding: 0;
+    
+    /* 4. Rolagem suave interna */
     scroll-behavior: smooth;
+    
+    /* 5. Fundo fixo para garantir a cor */
+    background-color: var(--tertiary-color); 
+    overflow-x: hidden; /* Impede balançar para os lados */
 }
+
