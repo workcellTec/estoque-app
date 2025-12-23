@@ -5064,54 +5064,50 @@ if (btnPostShare) {
     });
 }
 
-// 4. AÇÃO: CLICAR EM "COMEÇAR NOVA GARANTIA" (RESETAR)
-const btnNewCycle = document.getElementById('btnNewBookipCycle');
-if (btnNewCycle) {
-    btnNewCycle.addEventListener('click', () => {
-        // 1. ESCONDE O POP-UP (Adiciona a classe hidden)
-        const popup = document.getElementById('postSaveOptions');
-        if(popup) popup.classList.add('hidden');
+// ============================================================
+// 4. AÇÃO: CLICAR EM "COMEÇAR NOVA GARANTIA" (RESETAR) - CORRIGIDO
+// ============================================================
+// 4. AÇÃO: BOTÕES DE "NOVA GARANTIA" (Link Pequeno e Botão Grande) [CORRIGIDO]
+// ============================================================
 
-        // 2. MOSTRA O BOTÃO DE SALVAR DE VOLTA
-        const saveContainer = document.getElementById('saveActionContainer');
-        if(saveContainer) saveContainer.classList.remove('hidden');
+// Lista com os IDs dos dois botões (o do formulário e o do banner de sucesso)
+const botoesReset = ['btnNewBookipCycle', 'btnResetSuccess'];
 
-        // 3. LIMPA OS CAMPOS DO FORMULÁRIO
-        document.getElementById('bookipNome').value = '';
-        document.getElementById('bookipCpf').value = '';
-        document.getElementById('bookipTelefone').value = '';
-        document.getElementById('bookipEndereco').value = '';
-        document.getElementById('bookipEmail').value = '';
-        document.getElementById('bookipProductSearch').value = '';
-        // Limpa campos temporários de produto também
-        document.getElementById('bookipProdNomeTemp').value = '';
-        document.getElementById('bookipProdValorTemp').value = '';
-        document.getElementById('bookipProdQtdTemp').value = '1';
-        
-        // 4. LIMPA A LISTA DE PRODUTOS
-        bookipCartList = [];
-        if(typeof atualizarListaVisualBookip === 'function') atualizarListaVisualBookip();
-        
-        // 5. RESETA OS CHECKBOXES DE PAGAMENTO
-        document.querySelectorAll('.check-pagamento').forEach(c => c.checked = false);
-        
-        // 6. RESETA VARIÁVEIS INTERNAS
-        lastSavedBookipData = null;
-        currentEditingBookipId = null; // Sai do modo de edição
-        
-        // 7. RESETA O TEXTO DO BOTÃO SALVAR (Caso estivesse editando antes)
-        const btnSave = document.getElementById('btnSaveBookip');
-        if(btnSave) {
-            btnSave.innerHTML = '<i class="bi bi-check-circle-fill"></i> Finalizar e Salvar Documento';
-            btnSave.classList.remove('btn-info'); // Remove cor azul de edição
-            btnSave.classList.add('btn-success'); // Volta para verde
-            btnSave.disabled = false;
-        }
+botoesReset.forEach(idBotao => {
+    const btn = document.getElementById(idBotao);
+    
+    if (btn) {
+        // Usamos onclick direto para garantir que funcione
+        btn.onclick = function(e) {
+            if(e) e.preventDefault();
+            console.log("🔄 Reiniciando ciclo pelo botão:", idBotao);
 
-        // 8. ROLA A TELA SUAVEMENTE PARA O TOPO (Para começar de novo)
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-}
+            // 1. Chama a sua função mestre de limpeza (Limpa dados, lista e reseta botões)
+            if(typeof window.resetFormulariosBookip === 'function') {
+                window.resetFormulariosBookip();
+            }
+
+            // 2. Garante visualmente que o banner de sucesso suma
+            const popup = document.getElementById('postSaveOptions');
+            if(popup) popup.classList.add('hidden');
+
+            // 3. Garante que o container de salvar volte a aparecer
+            const saveContainer = document.getElementById('saveActionContainer');
+            if(saveContainer) saveContainer.classList.remove('hidden');
+
+            // 4. Se estiver na aba Histórico, força voltar para a aba Novo
+            const toggle = document.getElementById('bookipModeToggle');
+            if(toggle && toggle.checked) {
+                toggle.checked = false; 
+                toggle.dispatchEvent(new Event('change'));
+            }
+
+            // 5. Rola suavemente para o topo da tela
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+    }
+});
+
 
 
 // ============================================================
@@ -6789,6 +6785,41 @@ function calculateEmprestarValores() {
 }
 
 
+// ============================================================
+// FUNÇÃO QUE FALTAVA: LIMPAR FORMULÁRIO DE GARANTIA
+// ============================================================
+function resetGarantiaForm() {
+    // 1. Limpa os campos de texto (Nome, CPF, Aparelho, IMEI, Valor)
+    const camposParaLimpar = [
+        'warrantyClientName', 
+        'warrantyClientCPF', 
+        'warrantyDevice', 
+        'warrantyIMEI', 
+        'warrantyValue'
+    ];
+
+    camposParaLimpar.forEach(id => {
+        const elemento = document.getElementById(id);
+        if (elemento) elemento.value = '';
+    });
+
+    // 2. Reseta Data e Hora para o momento atual (pra não ficar em branco)
+    const agora = new Date();
+    
+    const inputData = document.getElementById('warrantyDate');
+    if (inputData) inputData.valueAsDate = agora;
+
+    const inputHora = document.getElementById('warrantyTime');
+    if (inputHora) {
+        const horas = String(agora.getHours()).padStart(2, '0');
+        const minutos = String(agora.getMinutes()).padStart(2, '0');
+        inputHora.value = `${horas}:${minutos}`;
+    }
+
+    // 3. Foca no primeiro campo (Nome do Cliente) para agilizar
+    const inputNome = document.getElementById('warrantyClientName');
+    if (inputNome) inputNome.focus();
+}
 
 
         });
