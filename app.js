@@ -4869,15 +4869,35 @@ function loadBookipHistory() {
         bookipCartList = item.items || [];
         atualizarListaVisualBookip(); 
 
-        // 5. Pagamento (Checkboxes)
-        document.querySelectorAll('.check-pagamento').forEach(chk => chk.checked = false);
-        if(item.pagamento) {
-            const formas = item.pagamento.split(', ');
-            formas.forEach(forma => {
-                const chk = Array.from(document.querySelectorAll('.check-pagamento')).find(c => c.value === forma);
-                if(chk) chk.checked = true;
+        // 5. Pagamento (Checkboxes) - VERSÃO CORRIGIDA E MAIS INTELIGENTE
+        document.querySelectorAll('.check-pagamento').forEach(chk => chk.checked = false); // Limpa tudo antes
+        
+        if (item.pagamento) {
+            // Divide por vírgula, ignorando se tem espaço ou não depois da vírgula
+            // Ex: Aceita "Pix, Crédito" e também "Pix,Crédito"
+            const formasSalvas = item.pagamento.split(/,\s*/).map(s => s.trim().toLowerCase());
+
+            document.querySelectorAll('.check-pagamento').forEach(chk => {
+                const valorCheckbox = chk.value.toLowerCase(); // Ex: "dinheiro/pix"
+                
+                // Verifica se o valor salvo bate com o checkbox
+                const deveMarcar = formasSalvas.some(salva => {
+                    // Teste 1: É exatamente igual? (ex: "crédito" == "crédito")
+                    if (salva === valorCheckbox) return true;
+                    
+                    // Teste 2: É parecido? (ex: salvou "pix", mas o checkbox é "dinheiro/pix")
+                    // Isso ajuda se você mudou os nomes dos botões recentemente
+                    if (valorCheckbox.includes(salva) && salva.length > 2) return true;
+                    
+                    return false;
+                });
+
+                if (deveMarcar) {
+                    chk.checked = true;
+                }
             });
         }
+
 
         // 6. Garantia
         const selectGarantia = document.getElementById('bookipGarantiaSelect');
