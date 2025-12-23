@@ -113,6 +113,7 @@ window.abrirReciboSimples = function() {
         window.resetFormulariosBookip();
     }
 
+
     // 3. Configura Títulos
     const titulo = document.querySelector('#areaBookipWrapper h3');
     if (titulo) titulo.innerText = "Novo Recibo (Simples)";
@@ -4587,6 +4588,9 @@ if (inputValorBookip) {
                 document.getElementById('bookipProdNomeTemp').scrollIntoView({ behavior: 'smooth', block: 'center' });
             });
         });
+// Adicione isso no final da função atualizarListaVisualBookip
+if(typeof salvarRascunhoBookip === 'function') window.salvarRascunhoBookip();
+
     }
 
 
@@ -7019,5 +7023,167 @@ document.addEventListener('click', function(e) {
         salvarTaxasDefinitivo();
     }
 });
+
+// ============================================================
+// SISTEMA DE RASCUNHO AUTOMÁTICO (BOOKIP / GARANTIA)
+// ============================================================
+// Usamos var ou window para evitar erro de "variável já declarada" se o código rodar 2x
+window.BOOKIP_DRAFT_KEY = 'ctwBookipDraft_v1';
+
+// 1. SALVA TUDO O QUE ESTÁ NA TELA
+window.salvarRascunhoBookip = function() {
+    const elNome = document.getElementById('bookipNome');
+    // Proteção: Se a tela não existir, não faz nada
+    if (!elNome) return;
+
+    const nome = elNome.value;
+    const temItens = window.bookipCartList && window.bookipCartList.length > 0;
+
+    if (!nome && !temItens) return; 
+
+    const pags = [];
+    document.querySelectorAll('.check-pagamento:checked').forEach(function(c) {
+        pags.push(c.value);
+    });
+
+    const draftData = {
+        nome: nome,
+        cpf: document.getElementById('bookipCpf').value || '',
+        tel: document.getElementById('bookipTelefone').value || '',
+        end: document.getElementById('bookipEndereco').value || '',
+        email: document.getElementById('bookipEmail').value || '',
+        dataManual: document.getElementById('bookipDataManual').value || '',
+        garantia: document.getElementById('bookipGarantiaSelect').value,
+        garantiaCustom: document.getElementById('bookipGarantiaCustomInput').value,
+        pagamentos: pags,
+        listaProdutos: window.bookipCartList || [],
+        timestamp: Date.now()
+    };
+
+    localStorage.setItem(window.BOOKIP_DRAFT_KEY, JSON.stringify(draftData));
+    checarVisualRascunho(); 
+};
+
+// 2. RECUPERA OS DADOS PARA A TELA
+window.recuperarRascunhoBookip = function() {
+    const raw = localStorage.getItem(window.BOOKIP_DRAFT_KEY);
+    if (!raw) return;
+
+    const dados = JSON.parse(raw);
+
+    showCustomModal({
+        message: "Deseja preencher a tela com o rascunho salvo?",
+        confirmText: "Sim, Recuperar",
+        onConfirm: function() {
+            if(document.getElementById('bookipNome')) document.getElementById('bookipNome').value = dados.nome || '';
+            if(document.getElementById('bookipCpf')) document.getElementById('bookipCpf').value = dados.cpf || '';
+            if(document.getElementById('bookipTelefone')) document.getElementById('bookipTelefone').value = dados.tel || '';
+            if(document.getElementById('bookipEndereco')) document.getElementById('bookipEndereco').value = dados.end || '';
+            if(document.getElementById('bookipEmail')) document.getElementById('bookipEmail').value = dados.email || '';
+            if(document.getElementById('bookipDataManual')) document.getElementById('bookipDataManual').value = dados.dataManual || '';
+
+            const selGar = document.getElementById('bookipGarantiaSelect');
+            if(selGar) {
+                selGar.value = dados.garantia || '365';
+                const inputGar = document.getElementById('bookipGarantiaCustomInput');
+                if(inputGar) inputGar.value = dados.garantiaCustom || '';
+                selGar.dispatchEvent(new Event('change')); 
+            }
+
+            document.querySelectorAll('.check-pagamento').forEach(function(c) { c.checked = false; });
+            if (dados.pagamentos) {
+                dados.pagamentos.forEach(function(val) {
+                    // Aspas simples no seletor para evitar erro de sintaxe com template string
+                    const check = document.querySelector('.check-pagamento[value="' + val + '"]');
+                    if (check) check.checked = true;
+                });
+            }
+
+            window.bookipCartList = dados.listaProdutos || [];
+            if (typeof atualizarListaVisualBookip === 'function') {
+                atualizarListaVisualBookip();
+            }
+
+            showCustomModal({ message: "Rascunho recuperado com sucesso!" });
+        },
+        onCancel: function() {}
+    });
+};
+
+// 3. APAGA O RASCUNHO
+window.apagarRascunhoBookip = function(silencioso) {
+    if (silencioso === true) {
+        localStorage.removeItem(window.BOOKIP_DRAFT_KEY);
+        checarVisualRascunho();
+        return;
+    }
+
+    showCustomModal({
+        message: "Tem certeza que deseja descartar este rascunho?",
+        confirmText: "Apagar",
+        onConfirm: function() {
+            localStorage.removeItem(window.BOOKIP_DRAFT_KEY);
+            checarVisualRascunho();
+            showCustomModal({ message: "Rascunho apagado." });
+        },
+        onCancel: function() {}
+    });
+};
+
+// 4. VISUAL DO AVISO
+window.checarVisualRascunho = function() {
+    const aviso = document.getElementById('bookipDraftNotice');
+    if (!aviso) return;
+
+    if (localStorage.getItem(window.BOOKIP_DRAFT_KEY)) {
+        aviso.classList.remove('hidden');
+    } else {
+        aviso.classList.add('hidden');
+    }
+};
+
+// 5. ATIVADOR
+window.ativarSalvamentoAutomatico = function() {
+    const ids = ['bookipNome', 'bookipCpf', 'bookipTelefone', 'bookipEndereco', 'bookipEmail', 'bookipDataManual', 'bookipGarantiaSelect', 'bookipGarantiaCustomInput'];
+    
+    ids.forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', window.salvarRascunhoBookip);
+    });
+
+    document.querySelectorAll('.check-pagamento').forEach(function(chk) {
+        chk.addEventListener('change', window.salvarRascunhoBookip);
+    });
+
+    window.checarVisualRascunho();
+};
+
+// INICIA O SISTEMA
+// Verificação extra para não quebrar se o DOM já carregou
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', iniciarRascunho);
+} else {
+    iniciarRascunho();
+}
+
+function iniciarRascunho() {
+    window.ativarSalvamentoAutomatico();
+    
+    const btnOpenBookip = document.getElementById('openBookipView');
+    if(btnOpenBookip) {
+        // Removemos listener anterior clonando, se necessário, ou apenas adicionamos
+        btnOpenBookip.addEventListener('click', function() {
+             if (localStorage.getItem(window.BOOKIP_DRAFT_KEY)) {
+                 setTimeout(function() {
+                     const elNome = document.getElementById('bookipNome');
+                     if(elNome && !elNome.value) {
+                        window.recuperarRascunhoBookip();
+                     }
+                 }, 500);
+             }
+        });
+    }
+}
+
 
         });
