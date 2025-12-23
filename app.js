@@ -5070,7 +5070,8 @@ if (btnPostShare) {
 
 // ============================================================
 // ============================================================
-// 4. AÇÃO: BOTÕES DE "NOVA GARANTIA" (CORREÇÃO FINAL: VARIÁVEL DE DADOS)
+// ============================================================
+// 4. AÇÃO: BOTÕES DE "NOVA GARANTIA" (RESET COMPLETO + APAGAR RASCUNHO)
 // ============================================================
 
 const botoesReset = ['btnNewBookipCycle', 'btnResetSuccess'];
@@ -5087,6 +5088,14 @@ botoesReset.forEach(idBotao => {
             if(typeof window.resetFormulariosBookip === 'function') {
                 window.resetFormulariosBookip();
             }
+
+            // --- AQUI ESTÁ A NOVIDADE ---
+            // Como o usuário clicou explicitamente em "Novo", apagamos o rascunho sem dó.
+            if(typeof window.apagarRascunhoBookip === 'function') {
+                window.apagarRascunhoBookip(true); 
+            }
+            // -----------------------------
+
             // FORÇA LIMPEZA DA VARIÁVEL LOCAL (Importante!)
             if(typeof lastSavedBookipData !== 'undefined') {
                 lastSavedBookipData = null;
@@ -6615,7 +6624,7 @@ window.resetFormulariosBookip = function() {
         btnAdd.classList.add('btn-primary');
     }
 
-    // 7. ZERA A LISTA NA MEMÓRIA E NA TELA (O Pulo do Gato)
+    // 7. ZERA A LISTA NA MEMÓRIA E NA TELA
     if (typeof bookipCartList !== 'undefined') {
         bookipCartList = []; 
     } else {
@@ -6635,16 +6644,10 @@ window.resetFormulariosBookip = function() {
     
     const saveContainer = document.getElementById('saveActionContainer');
     if(saveContainer) saveContainer.classList.remove('hidden');
-// Adicione isso no final da função resetFormulariosBookip
-// Apaga o rascunho silenciosamente pois já foi salvo ou cancelado
-if(typeof apagarRascunhoBookip === 'function') apagarRascunhoBookip(true); 
 
+    // IMPORTANTE: NÃO apagamos o rascunho aqui. 
+    // Assim, se a tela for aberta, o rascunho sobrevive.
 };
-
-
-
-
-
 
 
 
