@@ -5065,10 +5065,8 @@ if (btnPostShare) {
 }
 
 // ============================================================
-// 4. AÇÃO: CLICAR EM "COMEÇAR NOVA GARANTIA" (RESETAR) - CORRIGIDO
 // ============================================================
-// ============================================================
-// 4. AÇÃO: BOTÕES DE "NOVA GARANTIA" (RESET COMPLETO E BLINDADO)
+// 4. AÇÃO: BOTÕES DE "NOVA GARANTIA" (CORREÇÃO FINAL: VARIÁVEL DE DADOS)
 // ============================================================
 
 const botoesReset = ['btnNewBookipCycle', 'btnResetSuccess'];
@@ -5081,9 +5079,13 @@ botoesReset.forEach(idBotao => {
             if(e) e.preventDefault();
             console.log("🔄 Reiniciando ciclo e RESETANDO botões de ação...");
 
-            // 1. Faxina de Dados
+            // 1. Faxina de Dados (Chama a função e limpa a variável local também)
             if(typeof window.resetFormulariosBookip === 'function') {
                 window.resetFormulariosBookip();
+            }
+            // FORÇA LIMPEZA DA VARIÁVEL LOCAL (Importante!)
+            if(typeof lastSavedBookipData !== 'undefined') {
+                lastSavedBookipData = null;
             }
 
             // 2. Esconde o Banner de Sucesso
@@ -5094,7 +5096,7 @@ botoesReset.forEach(idBotao => {
             const saveContainer = document.getElementById('saveActionContainer');
             if(saveContainer) saveContainer.classList.remove('hidden');
 
-            // 4. Reset de Abas
+            // 4. Reset de Abas (Volta para "Novo")
             const toggle = document.getElementById('bookipModeToggle');
             if(toggle && toggle.checked) {
                 toggle.checked = false; 
@@ -5103,32 +5105,40 @@ botoesReset.forEach(idBotao => {
 
             // ============================================================
             // O PULO DO GATO: RESETAR O BOTÃO "SALVAR ONLINE"
-            // (Isso impede que ele envie o PDF antigo)
+            // (Agora lendo a variável correta: lastSavedBookipData)
             // ============================================================
             const btnShareAntigo = document.getElementById('btnPostShare');
             if(btnShareAntigo) {
                 // Clona para matar eventos velhos
                 const btnShareNovo = btnShareAntigo.cloneNode(true);
                 
-                // Restaura o visual original (Ícone do Zap/Salvar)
+                // Restaura o visual original
                 btnShareNovo.innerHTML = '<i class="bi bi-whatsapp fs-2 d-block mb-2 text-success"></i> <span class="small text-light">Salvar Online</span>';
                 btnShareNovo.className = 'btn btn-dark w-100 p-3 border-secondary';
                 btnShareNovo.disabled = false;
                 
-                // Adiciona a lógica original de GERAR (e não só enviar)
+                // Adiciona a lógica de GERAR com a variável correta
                 btnShareNovo.onclick = function() {
-                    if (window.lastSavedBookipData) {
+                    // CORREÇÃO AQUI: Removemos o "window." para ler a variável do módulo
+                    if (typeof lastSavedBookipData !== 'undefined' && lastSavedBookipData) {
+                        
                         // Copia e-mail se tiver
-                        if (window.lastSavedBookipData.email) {
-                            navigator.clipboard.writeText(window.lastSavedBookipData.email).catch(()=>{});
+                        if (lastSavedBookipData.email) {
+                            navigator.clipboard.writeText(lastSavedBookipData.email).catch(()=>{});
                             if(typeof showCustomModal === 'function') showCustomModal({ message: "E-mail copiado! Gerando PDF..." });
                         }
+                        
                         // GERA O PDF NOVO
                         if(typeof gerarPdfDoHistorico === 'function') {
-                            gerarPdfDoHistorico(window.lastSavedBookipData, btnShareNovo);
+                            gerarPdfDoHistorico(lastSavedBookipData, btnShareNovo);
                         }
                     } else {
-                        alert("Erro: Nenhum dado salvo encontrado. Salve novamente.");
+                        // Se cair aqui, tenta recuperar do window por segurança
+                        if(window.lastSavedBookipData) {
+                             gerarPdfDoHistorico(window.lastSavedBookipData, btnShareNovo);
+                        } else {
+                             alert("Erro: Nenhum dado salvo encontrado. Salve novamente.");
+                        }
                     }
                 };
 
@@ -5138,9 +5148,18 @@ botoesReset.forEach(idBotao => {
 
             // (Opcional) Reseta o visual do card pai se ficou verde
             const cardShare = document.getElementById('btnPostShare')?.closest('.col-6');
-            if(cardShare) {
-                cardShare.style.border = ''; 
-                cardShare.style.backgroundColor = '';
+            if(cardShare) { // Tenta pegar o novo ou o velho
+                const cardReal = document.getElementById('btnPostShare').closest('.col-6') || cardShare;
+                if (cardReal) {
+                    cardReal.style.border = ''; 
+                    cardReal.style.backgroundColor = '';
+                }
+            }
+            // Remove borda verde do card pai do botão (caso exista classe específica)
+            const parentCard = document.getElementById('btnPostShare')?.parentElement; 
+            if(parentCard) {
+                 parentCard.style.borderLeft = ""; 
+                 parentCard.style.backgroundColor = "";
             }
 
             // 5. Rola para o topo
