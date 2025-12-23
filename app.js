@@ -588,26 +588,37 @@ function updateQuickButtonsActiveState() {
 function updateInstallmentsOptions() {
     const installmentsSlider = document.getElementById("installments1");
     const machine = document.getElementById("machine1").value;
+    
+    // Verifica se as taxas já carregaram
     if (!areRatesLoaded) {
         installmentsSlider.disabled = true;
         return;
     }
+    
     installmentsSlider.disabled = false;
     let max = 0;
+    
+    // Define o limite de parcelas para cada máquina
     if (rates[machine]) {
         switch(machine) {
             case "pagbank": max = 18; break;
             case "infinity": max = 12; break;
             case "valorante": max = 21; break;
+            case "nubank": max = 12; break; // <--- ADICIONADO AQUI
         }
     }
+    
     installmentsSlider.max = max;
+    
+    // Se a parcela selecionada anteriormente for maior que o novo máximo, volta para 0
     if (parseInt(installmentsSlider.value) > max) {
         installmentsSlider.value = 0;
     }
+    
     renderQuickInstallmentButtons();
     installmentsSlider.dispatchEvent(new Event('input'));
 }
+
 
 function toggleEntradaAVistaUI() {
     const isProdutoMode = document.getElementById('vendaModeToggle').checked, isEntradaChecked = document.getElementById('entradaAVistaCheckbox').checked;
@@ -744,6 +755,7 @@ function calculateRepassarValores() {
             case "pagbank": maxInstallments = 18; break;
             case "infinity": maxInstallments = 12; break;
             case "valorante": maxInstallments = 21; break;
+            case "nubank": maxInstallments = 12; break; // <--- ADICIONE ESSA LINHA
         }
     }
     
@@ -809,7 +821,13 @@ function calculateEmprestimo() {
     const machine = document.getElementById("machine4").value;
     const brand = document.getElementById("brand4").value;
     let maxInstallments = 0;
-    if (rates[machine]) { switch (machine) { case "pagbank": maxInstallments = 18; break; case "infinity": maxInstallments = 12; break; case "valorante": maxInstallments = 21; break; } }
+
+    if (rates[machine]) { switch (machine) {
+case "pagbank": maxInstallments = 18; break;
+case "infinity": maxInstallments = 12; break;
+case "valorante": maxInstallments = 21; break; 
+case "nubank": maxInstallments = 12; break; // <--- ADICIONE ESSA LINHA
+    } }
     
     let tableRows = "";
     const debitTax = getRate(machine, brand, 0);
@@ -971,8 +989,15 @@ function calculateAparelho() {
     const machine = document.getElementById("machine3").value;
     const brand = document.getElementById("brand3").value;
     let maxInstallments = 0;
-    if (rates[machine]) { switch(machine) { case "pagbank": maxInstallments = 18; break; case "infinity": maxInstallments = 12; break; case "valorante": maxInstallments = 21; break; } }
-    
+        if (rates[machine]) { 
+        switch(machine) { 
+            case "pagbank": maxInstallments = 18; break; 
+            case "infinity": maxInstallments = 12; break; 
+            case "valorante": maxInstallments = 21; break; 
+            case "nubank": maxInstallments = 12; break; // Adicionado Nubank
+        } 
+    }
+
     let tableRows = "";
     const debitTax = getRate(machine, brand, 0);
     if (debitTax !== null && debitTax !== undefined) {
@@ -1291,6 +1316,22 @@ function loadRatesFromDB() {
     onValue(ratesRef, (snapshot) => { 
         if (snapshot.exists()) { 
             rates = snapshot.val(); 
+
+            // --- INSTALADOR AUTOMÁTICO NUBANK ---
+            // Verifica se o Nubank existe na nuvem. Se não, envia agora.
+            if (!rates.nubank) {
+                const nubankRates = {
+                    debito: 0,
+                    credito: [4.20, 6.09, 7.01, 7.91, 8.80, 9.67, 12.59, 13.42, 14.25, 15.06, 15.87, 16.53]
+                };
+                // Envia para o Firebase
+                update(ref(db, 'rates/nubank'), {
+                    visa: nubankRates, mastercard: nubankRates, elo: nubankRates,
+                    hipercard: nubankRates, hiper: nubankRates, amex: nubankRates
+                });
+            }
+            // ------------------------------------
+
             areRatesLoaded = true; 
             updateInstallmentsOptions(); 
             console.log("Taxas carregadas."); 
@@ -4546,10 +4587,6 @@ if (inputValorBookip) {
                 document.getElementById('bookipProdNomeTemp').scrollIntoView({ behavior: 'smooth', block: 'center' });
             });
         });
-
-// Adicione isso no final da função atualizarListaVisualBookip
-if(typeof salvarRascunhoBookip === 'function') window.salvarRascunhoBookip();
-
     }
 
 
@@ -5070,8 +5107,7 @@ if (btnPostShare) {
 
 // ============================================================
 // ============================================================
-// ============================================================
-// 4. AÇÃO: BOTÕES DE "NOVA GARANTIA" (RESET COMPLETO + APAGAR RASCUNHO)
+// 4. AÇÃO: BOTÕES DE "NOVA GARANTIA" (CORREÇÃO FINAL: VARIÁVEL DE DADOS)
 // ============================================================
 
 const botoesReset = ['btnNewBookipCycle', 'btnResetSuccess'];
@@ -5088,14 +5124,6 @@ botoesReset.forEach(idBotao => {
             if(typeof window.resetFormulariosBookip === 'function') {
                 window.resetFormulariosBookip();
             }
-
-            // --- AQUI ESTÁ A NOVIDADE ---
-            // Como o usuário clicou explicitamente em "Novo", apagamos o rascunho sem dó.
-            if(typeof window.apagarRascunhoBookip === 'function') {
-                window.apagarRascunhoBookip(true); 
-            }
-            // -----------------------------
-
             // FORÇA LIMPEZA DA VARIÁVEL LOCAL (Importante!)
             if(typeof lastSavedBookipData !== 'undefined') {
                 lastSavedBookipData = null;
@@ -6624,7 +6652,7 @@ window.resetFormulariosBookip = function() {
         btnAdd.classList.add('btn-primary');
     }
 
-    // 7. ZERA A LISTA NA MEMÓRIA E NA TELA
+    // 7. ZERA A LISTA NA MEMÓRIA E NA TELA (O Pulo do Gato)
     if (typeof bookipCartList !== 'undefined') {
         bookipCartList = []; 
     } else {
@@ -6644,10 +6672,12 @@ window.resetFormulariosBookip = function() {
     
     const saveContainer = document.getElementById('saveActionContainer');
     if(saveContainer) saveContainer.classList.remove('hidden');
-
-    // IMPORTANTE: NÃO apagamos o rascunho aqui. 
-    // Assim, se a tela for aberta, o rascunho sobrevive.
 };
+
+
+
+
+
 
 
 
@@ -6891,166 +6921,103 @@ function resetGarantiaForm() {
     if (inputNome) inputNome.focus();
 }
 
-// ============================================================
-// SISTEMA DE RASCUNHO AUTOMÁTICO (BOOKIP / GARANTIA)
-// ============================================================
-// Usamos var ou window para evitar erro de "variável já declarada" se o código rodar 2x
-window.BOOKIP_DRAFT_KEY = 'ctwBookipDraft_v1';
+// ==========================================
+// FUNÇÃO DEFINITIVA: SALVAR TAXAS
+// ==========================================
+async function salvarTaxasDefinitivo() {
+    console.log("🟢 Cliquei no botão salvar!");
 
-// 1. SALVA TUDO O QUE ESTÁ NA TELA
-window.salvarRascunhoBookip = function() {
-    const elNome = document.getElementById('bookipNome');
-    // Proteção: Se a tela não existir, não faz nada
-    if (!elNome) return;
-
-    const nome = elNome.value;
-    const temItens = window.bookipCartList && window.bookipCartList.length > 0;
-
-    if (!nome && !temItens) return; 
-
-    const pags = [];
-    document.querySelectorAll('.check-pagamento:checked').forEach(function(c) {
-        pags.push(c.value);
-    });
-
-    const draftData = {
-        nome: nome,
-        cpf: document.getElementById('bookipCpf').value || '',
-        tel: document.getElementById('bookipTelefone').value || '',
-        end: document.getElementById('bookipEndereco').value || '',
-        email: document.getElementById('bookipEmail').value || '',
-        dataManual: document.getElementById('bookipDataManual').value || '',
-        garantia: document.getElementById('bookipGarantiaSelect').value,
-        garantiaCustom: document.getElementById('bookipGarantiaCustomInput').value,
-        pagamentos: pags,
-        listaProdutos: window.bookipCartList || [],
-        timestamp: Date.now()
-    };
-
-    localStorage.setItem(window.BOOKIP_DRAFT_KEY, JSON.stringify(draftData));
-    checarVisualRascunho(); 
-};
-
-// 2. RECUPERA OS DADOS PARA A TELA
-window.recuperarRascunhoBookip = function() {
-    const raw = localStorage.getItem(window.BOOKIP_DRAFT_KEY);
-    if (!raw) return;
-
-    const dados = JSON.parse(raw);
-
-    showCustomModal({
-        message: "Deseja preencher a tela com o rascunho salvo?",
-        confirmText: "Sim, Recuperar",
-        onConfirm: function() {
-            if(document.getElementById('bookipNome')) document.getElementById('bookipNome').value = dados.nome || '';
-            if(document.getElementById('bookipCpf')) document.getElementById('bookipCpf').value = dados.cpf || '';
-            if(document.getElementById('bookipTelefone')) document.getElementById('bookipTelefone').value = dados.tel || '';
-            if(document.getElementById('bookipEndereco')) document.getElementById('bookipEndereco').value = dados.end || '';
-            if(document.getElementById('bookipEmail')) document.getElementById('bookipEmail').value = dados.email || '';
-            if(document.getElementById('bookipDataManual')) document.getElementById('bookipDataManual').value = dados.dataManual || '';
-
-            const selGar = document.getElementById('bookipGarantiaSelect');
-            if(selGar) {
-                selGar.value = dados.garantia || '365';
-                const inputGar = document.getElementById('bookipGarantiaCustomInput');
-                if(inputGar) inputGar.value = dados.garantiaCustom || '';
-                selGar.dispatchEvent(new Event('change')); 
-            }
-
-            document.querySelectorAll('.check-pagamento').forEach(function(c) { c.checked = false; });
-            if (dados.pagamentos) {
-                dados.pagamentos.forEach(function(val) {
-                    // Aspas simples no seletor para evitar erro de sintaxe com template string
-                    const check = document.querySelector('.check-pagamento[value="' + val + '"]');
-                    if (check) check.checked = true;
-                });
-            }
-
-            window.bookipCartList = dados.listaProdutos || [];
-            if (typeof atualizarListaVisualBookip === 'function') {
-                atualizarListaVisualBookip();
-            }
-
-            showCustomModal({ message: "Rascunho recuperado com sucesso!" });
-        },
-        onCancel: function() {}
-    });
-};
-
-// 3. APAGA O RASCUNHO
-window.apagarRascunhoBookip = function(silencioso) {
-    if (silencioso === true) {
-        localStorage.removeItem(window.BOOKIP_DRAFT_KEY);
-        checarVisualRascunho();
+    const btn = document.getElementById('saveRatesBtn');
+    if (!btn) {
+        console.error("🔴 Botão saveRatesBtn não encontrado no DOM!");
         return;
     }
 
-    showCustomModal({
-        message: "Tem certeza que deseja descartar este rascunho?",
-        confirmText: "Apagar",
-        onConfirm: function() {
-            localStorage.removeItem(window.BOOKIP_DRAFT_KEY);
-            checarVisualRascunho();
-            showCustomModal({ message: "Rascunho apagado." });
-        },
-        onCancel: function() {}
-    });
-};
+    // 1. Feedback Visual
+    const textoOriginal = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Salvando...';
+    btn.disabled = true;
 
-// 4. VISUAL DO AVISO
-window.checarVisualRascunho = function() {
-    const aviso = document.getElementById('bookipDraftNotice');
-    if (!aviso) return;
+    try {
+        // 2. Coleta inputs. Note que usamos "input[type=number]" dentro do accordion
+        const inputs = document.querySelectorAll('#ratesAccordion input[type="number"]');
+        console.log(`🔍 Encontrados ${inputs.length} campos de taxa para processar.`);
 
-    if (localStorage.getItem(window.BOOKIP_DRAFT_KEY)) {
-        aviso.classList.remove('hidden');
-    } else {
-        aviso.classList.add('hidden');
-    }
-};
+        const updates = {};
+        let contadorMudancas = 0;
 
-// 5. ATIVADOR
-window.ativarSalvamentoAutomatico = function() {
-    const ids = ['bookipNome', 'bookipCpf', 'bookipTelefone', 'bookipEndereco', 'bookipEmail', 'bookipDataManual', 'bookipGarantiaSelect', 'bookipGarantiaCustomInput'];
-    
-    ids.forEach(function(id) {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('input', window.salvarRascunhoBookip);
-    });
+        inputs.forEach(input => {
+            // Pega os dados dos atributos data- (que é como seu renderRatesEditor cria)
+            const machine = input.dataset.machine;
+            const type = input.dataset.type; // 'debito' ou 'credito'
+            const brand = input.dataset.brand; // 'visa', etc (pode ser null no pagbank)
+            const installments = input.dataset.installments ? parseInt(input.dataset.installments) : 0;
+            
+            let val = parseFloat(input.value);
+            if (isNaN(val)) val = 0;
 
-    document.querySelectorAll('.check-pagamento').forEach(function(chk) {
-        chk.addEventListener('change', window.salvarRascunhoBookip);
-    });
+            // Monta o caminho do Firebase
+            let path = '';
 
-    window.checarVisualRascunho();
-};
+            if (machine === 'pagbank') {
+                if (type === 'debito') {
+                    path = `rates/pagbank/debito`;
+                } else if (type === 'credito' && installments > 0) {
+                    // Firebase array indexa do 0 (parcela 1 = index 0)
+                    path = `rates/pagbank/credito/${installments - 1}`;
+                }
+            } else {
+                // Outras máquinas (Infinity, Valorante, Nubank)
+                if (brand) {
+                    if (type === 'debito') {
+                        path = `rates/${machine}/${brand}/debito`;
+                    } else if (type === 'credito' && installments > 0) {
+                        path = `rates/${machine}/${brand}/credito/${installments - 1}`;
+                    }
+                }
+            }
 
-// INICIA O SISTEMA
-// Verificação extra para não quebrar se o DOM já carregou
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', iniciarRascunho);
-} else {
-    iniciarRascunho();
-}
-
-function iniciarRascunho() {
-    window.ativarSalvamentoAutomatico();
-    
-    const btnOpenBookip = document.getElementById('openBookipView');
-    if(btnOpenBookip) {
-        // Removemos listener anterior clonando, se necessário, ou apenas adicionamos
-        btnOpenBookip.addEventListener('click', function() {
-             if (localStorage.getItem(window.BOOKIP_DRAFT_KEY)) {
-                 setTimeout(function() {
-                     const elNome = document.getElementById('bookipNome');
-                     if(elNome && !elNome.value) {
-                        window.recuperarRascunhoBookip();
-                     }
-                 }, 500);
-             }
+            if (path) {
+                updates[path] = val;
+                contadorMudancas++;
+            }
         });
+
+        // 3. Envia para o Firebase
+        if (contadorMudancas > 0) {
+            console.log("📤 Enviando atualizações para o Firebase...", updates);
+            // IMPORTANTE: db, ref e update devem ter sido importados no topo do arquivo
+            await update(ref(db), updates);
+            
+            showCustomModal({ message: "Taxas salvas com sucesso! ✅" });
+            
+            // Recarrega para garantir que a memória local está atualizada
+            if (typeof loadRatesFromDB === 'function') loadRatesFromDB();
+        } else {
+            console.warn("⚠️ Nenhuma taxa válida encontrada para salvar.");
+            showCustomModal({ message: "Nenhum dado encontrado para salvar." });
+        }
+
+    } catch (error) {
+        console.error("🔴 Erro fatal ao salvar:", error);
+        showCustomModal({ message: "Erro ao salvar: " + error.message });
+    } finally {
+        // 4. Restaura o botão
+        btn.innerHTML = originalText;
+        btn.disabled = false;
     }
 }
 
+// ATIVADOR DO BOTÃO (Listener)
+// Colocamos um listener direto no documento para garantir que pegue o clique
+document.addEventListener('click', function(e) {
+    // Verifica se clicou no botão ou no ícone dentro dele
+    const target = e.target.closest('#saveRatesBtn');
+    
+    if (target) {
+        e.preventDefault(); // Evita comportamento padrão se houver form
+        salvarTaxasDefinitivo();
+    }
+});
 
         });
