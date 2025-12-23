@@ -5067,47 +5067,87 @@ if (btnPostShare) {
 // ============================================================
 // 4. AÇÃO: CLICAR EM "COMEÇAR NOVA GARANTIA" (RESETAR) - CORRIGIDO
 // ============================================================
-// 4. AÇÃO: BOTÕES DE "NOVA GARANTIA" (Link Pequeno e Botão Grande) [CORRIGIDO]
+// ============================================================
+// 4. AÇÃO: BOTÕES DE "NOVA GARANTIA" (RESET COMPLETO E BLINDADO)
 // ============================================================
 
-// Lista com os IDs dos dois botões (o do formulário e o do banner de sucesso)
 const botoesReset = ['btnNewBookipCycle', 'btnResetSuccess'];
 
 botoesReset.forEach(idBotao => {
     const btn = document.getElementById(idBotao);
     
     if (btn) {
-        // Usamos onclick direto para garantir que funcione
         btn.onclick = function(e) {
             if(e) e.preventDefault();
-            console.log("🔄 Reiniciando ciclo pelo botão:", idBotao);
+            console.log("🔄 Reiniciando ciclo e RESETANDO botões de ação...");
 
-            // 1. Chama a sua função mestre de limpeza (Limpa dados, lista e reseta botões)
+            // 1. Faxina de Dados
             if(typeof window.resetFormulariosBookip === 'function') {
                 window.resetFormulariosBookip();
             }
 
-            // 2. Garante visualmente que o banner de sucesso suma
+            // 2. Esconde o Banner de Sucesso
             const popup = document.getElementById('postSaveOptions');
             if(popup) popup.classList.add('hidden');
 
-            // 3. Garante que o container de salvar volte a aparecer
+            // 3. Mostra o botão de Salvar novamente
             const saveContainer = document.getElementById('saveActionContainer');
             if(saveContainer) saveContainer.classList.remove('hidden');
 
-            // 4. Se estiver na aba Histórico, força voltar para a aba Novo
+            // 4. Reset de Abas
             const toggle = document.getElementById('bookipModeToggle');
             if(toggle && toggle.checked) {
                 toggle.checked = false; 
                 toggle.dispatchEvent(new Event('change'));
             }
 
-            // 5. Rola suavemente para o topo da tela
+            // ============================================================
+            // O PULO DO GATO: RESETAR O BOTÃO "SALVAR ONLINE"
+            // (Isso impede que ele envie o PDF antigo)
+            // ============================================================
+            const btnShareAntigo = document.getElementById('btnPostShare');
+            if(btnShareAntigo) {
+                // Clona para matar eventos velhos
+                const btnShareNovo = btnShareAntigo.cloneNode(true);
+                
+                // Restaura o visual original (Ícone do Zap/Salvar)
+                btnShareNovo.innerHTML = '<i class="bi bi-whatsapp fs-2 d-block mb-2 text-success"></i> <span class="small text-light">Salvar Online</span>';
+                btnShareNovo.className = 'btn btn-dark w-100 p-3 border-secondary';
+                btnShareNovo.disabled = false;
+                
+                // Adiciona a lógica original de GERAR (e não só enviar)
+                btnShareNovo.onclick = function() {
+                    if (window.lastSavedBookipData) {
+                        // Copia e-mail se tiver
+                        if (window.lastSavedBookipData.email) {
+                            navigator.clipboard.writeText(window.lastSavedBookipData.email).catch(()=>{});
+                            if(typeof showCustomModal === 'function') showCustomModal({ message: "E-mail copiado! Gerando PDF..." });
+                        }
+                        // GERA O PDF NOVO
+                        if(typeof gerarPdfDoHistorico === 'function') {
+                            gerarPdfDoHistorico(window.lastSavedBookipData, btnShareNovo);
+                        }
+                    } else {
+                        alert("Erro: Nenhum dado salvo encontrado. Salve novamente.");
+                    }
+                };
+
+                // Substitui o botão velho pelo novo
+                btnShareAntigo.parentNode.replaceChild(btnShareNovo, btnShareAntigo);
+            }
+
+            // (Opcional) Reseta o visual do card pai se ficou verde
+            const cardShare = document.getElementById('btnPostShare')?.closest('.col-6');
+            if(cardShare) {
+                cardShare.style.border = ''; 
+                cardShare.style.backgroundColor = '';
+            }
+
+            // 5. Rola para o topo
             window.scrollTo({ top: 0, behavior: 'smooth' });
         };
     }
 });
-
 
 
 // ============================================================
