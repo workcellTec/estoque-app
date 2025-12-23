@@ -1166,6 +1166,16 @@ do que você precisa??</h2>
         <div id="areaBookipWrapper" class="container" style="display: none;">
             <div class="section-header">
                 <h3>Garantia (Bookip)</h3>
+<div id="bookipDraftNotice" class="alert alert-warning d-flex justify-content-between align-items-center p-2 mb-3 hidden" style="border-radius: 10px;">
+    <span class="small"><i class="bi bi-hdd-fill"></i> Há um rascunho salvo.</span>
+    <div>
+        <button class="btn btn-sm btn-success py-0" onclick="recuperarRascunhoBookip()" title="Recuperar"><i class="bi bi-arrow-counterclockwise"></i></button>
+        <button class="btn btn-sm btn-danger py-0" onclick="apagarRascunhoBookip()" title="Apagar"><i class="bi bi-trash"></i></button>
+    </div>
+</div>
+
+
+
                 <button aria-label="Voltar" class="btn-back" id="backFromBookipView"><i class="bi bi-arrow-left"></i></button>
             </div>
 
