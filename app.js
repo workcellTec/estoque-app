@@ -4672,6 +4672,8 @@ function loadBookipHistory() {
         } else {
             container.innerHTML = '<p class="text-center text-secondary mt-4">Nenhum recibo salvo.</p>';
         }
+
+
     });
 
     // --- FUNÇÕES INTERNAS DE FILTRO ---
@@ -4714,6 +4716,8 @@ function loadBookipHistory() {
         }
 
         // Lógica de Filtragem
+                // Dentro da função aplicarFiltrosCombinados...
+        
         listaFiltradaCache = listaCompletaCache.filter(item => {
             const nDoc = (item.docNumber || '').toLowerCase();
             const nome = (item.nome || '').toLowerCase();
@@ -4721,8 +4725,20 @@ function loadBookipHistory() {
             const email = (item.email || '').toLowerCase(); 
             const telLimpo = (item.tel || '').toLowerCase().replace(/\D/g, ''); 
             const telOriginal = (item.tel || '').toLowerCase();
+
+            // --- NOVO: Pega o nome de TODOS os produtos dessa venda ---
+            const produtosTexto = (item.items || []).map(p => p.nome).join(' ').toLowerCase(); 
+            // ----------------------------------------------------------
             
-            const matchTexto = termo === '' || nDoc.includes(termo) || nome.includes(termo) || cpf.includes(termo) || email.includes(termo) || telOriginal.includes(termo) || telLimpo.includes(termo);
+            // Adicionamos "|| produtosTexto.includes(termo)" no final
+            const matchTexto = termo === '' || 
+                               nDoc.includes(termo) || 
+                               nome.includes(termo) || 
+                               cpf.includes(termo) || 
+                               email.includes(termo) || 
+                               telOriginal.includes(termo) || 
+                               telLimpo.includes(termo) ||
+                               produtosTexto.includes(termo); // <--- AQUI A MÁGICA
 
             let matchData = true;
             if (dataFiltro) {
