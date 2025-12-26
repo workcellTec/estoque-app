@@ -2713,6 +2713,16 @@ function applyColorTheme(color) {
             btn.classList.add('active');
             btn.innerHTML = '<i class="bi bi-check-lg"></i>';
         }
+
+// Exemplo: Coloque onde você troca o tema
+function atualizarCorNavegador(corHex) {
+    // Muda a cor da barra de status/fundo do navegador
+    document.querySelector('meta[name="theme-color"]').setAttribute('content', corHex);
+    // Força o fundo do HTML a ser igual
+    document.documentElement.style.backgroundColor = corHex;
+    document.body.style.backgroundColor = corHex;
+}
+
     });
 }
 async function main() {

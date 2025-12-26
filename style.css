@@ -1966,3 +1966,38 @@ html, body {
     padding: 0;
     scroll-behavior: smooth;
 }
+/* --- SOLUÇÃO ANTI-ELÁSTICO (NUCLEAR) --- */
+
+html, body {
+    /* 1. Trava a página inteira na tela */
+    position: fixed !important;
+    width: 100% !important;
+    height: 100% !important;
+    
+    /* 2. Proíbe rolagem na raiz (mata o elástico do navegador) */
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+    
+    /* 3. Garante que o fundo do "buraco" seja da cor do seu app */
+    background-color: var(--tertiary-color) !important;
+}
+
+/* Agora, quem rola é SÓ o container, não a página */
+.container {
+    /* Ocupa todo o espaço disponível */
+    height: 100% !important;
+    width: 100% !important;
+    
+    /* Habilita rolagem interna */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    
+    /* Rolagem macia no iOS */
+    -webkit-overflow-scrolling: touch !important;
+    
+    /* Mantém o elástico só DENTRO do app (opcional, fica mais nativo) */
+    overscroll-behavior-y: contain; 
+    
+    /* Espaço extra no final para não cortar conteúdo */
+    padding-bottom: 120px !important; 
+}
