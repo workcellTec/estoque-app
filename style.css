@@ -2084,3 +2084,23 @@ html, body {
 #documentsHome {
     min-height: 100vh;
 }
+
+/* === CORREÇÃO DE ROLAGEM DA ABA DOCUMENTOS === */
+#contractContainer {
+    position: fixed;   /* Solta a aba da trava do corpo do site */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;      /* Ocupa a tela toda */
+    overflow-y: auto;  /* OBRIGA a barra de rolagem aparecer */
+    z-index: 50;       /* Garante prioridade */
+    padding-bottom: 150px; /* Espaço para o botão salvar */
+    
+    /* Garante rolagem macia no iPhone */
+    -webkit-overflow-scrolling: touch; 
+}
+
+/* Mantém o comportamento de esconder */
+#contractContainer.hidden {
+    display: none !important;
+}

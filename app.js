@@ -439,16 +439,16 @@ function showMainSection(sectionId) {
         calculatorContainer.style.display = 'block';
         openCalculatorSection('calculatorHome');
     } 
-                   else if (sectionId === 'contract') {
-        // 👇 CÓDIGO LIMPO (IGUAL À CALCULADORA)
+    else if (sectionId === 'contract') {
         contractContainer.classList.remove('hidden');
-        contractContainer.style.display = 'block'; 
+        contractContainer.style.display = 'block'; // SÓ ISSO!
         
-        // Garante que o menu interno apareça certo
         document.getElementById('documentsHome').style.display = 'flex'; 
         document.getElementById('areaContratoWrapper').style.display = 'none';
         document.getElementById('areaBookipWrapper').style.display = 'none';
     } 
+
+
 
 
     else if (sectionId === 'stock') {
@@ -7652,68 +7652,9 @@ window.filtrarHistoricoPorPerfil = function(perfil, btn) {
     const searchInput = document.getElementById('bookipHistorySearch');
     if(searchInput) searchInput.dispatchEvent(new Event('input'));
 }
-// ============================================================
-// 🤖 BOT DE DIAGNÓSTICO DE ROLAGEM (Remova depois de consertar)
-// ============================================================
-window.ativarBotDiagnostico = function() {
-    // Cria o botão vermelho no topo da tela
-    const btn = document.createElement('button');
-    btn.innerHTML = "🚨 CLIQUE PARA DIAGNOSTICAR";
-    btn.style.cssText = "position: fixed; top: 50px; left: 50%; transform: translateX(-50%); z-index: 999999; background: red; color: white; padding: 10px 20px; font-weight: bold; border-radius: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 2px solid white;";
-    
-    btn.onclick = () => {
-        const container = document.getElementById('contractContainer');
-        
-        if (!container || container.classList.contains('hidden')) {
-            alert("❌ ERRO: Abra a aba 'DOCUMENTOS' antes de clicar aqui!");
-            return;
-        }
 
-        const estilo = window.getComputedStyle(container);
-        const corpo = window.getComputedStyle(document.body);
-        const alturaTela = window.innerHeight;
-        const alturaContainer = container.offsetHeight;
 
-        let veredito = "";
-        
-        // 1. Checa se o Scroll está ativado
-        if (estilo.overflowY !== 'auto' && estilo.overflowY !== 'scroll') {
-            veredito += "❌ O CSS não mandou rolar (overflow-y está '" + estilo.overflowY + "').\n";
-        } else {
-            veredito += "✅ Comando de rolar está ATIVO.\n";
-        }
 
-        // 2. Checa se tem altura definida
-        if (alturaContainer < alturaTela) {
-            veredito += "⚠️ O container é MENOR que a tela (não precisa rolar ainda).\n";
-        } else {
-            veredito += "ℹ️ O conteúdo é maior que a tela (precisa rolar).\n";
-        }
-
-        // 3. Checa se a altura está travada errada
-        if (estilo.position !== 'fixed' && corpo.overflow === 'hidden') {
-            veredito += "❌ PERIGO: O site está travado (body hidden) e sua aba não é 'fixed'. Ela está presa no fundo!\n";
-        }
-
-        const relatorio = 
-            "📊 RELATÓRIO TÉCNICO:\n" +
-            "-----------------------------\n" +
-            "📱 Altura da Tela: " + alturaTela + "px\n" +
-            "📄 Altura da Aba: " + alturaContainer + "px\n" +
-            "🔒 Body Travado? " + corpo.overflow + "\n" +
-            "📜 Scroll da Aba: " + estilo.overflowY + "\n" +
-            "📌 Posição: " + estilo.position + "\n" +
-            "-----------------------------\n" +
-            "📢 CONCLUSÃO:\n" + veredito;
-
-        alert(relatorio);
-    };
-
-    document.body.appendChild(btn);
-}
-
-// Ativa o bot 2 segundos depois de abrir o site
-setTimeout(window.ativarBotDiagnostico, 2000);
 
 
         });
