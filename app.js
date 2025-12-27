@@ -439,17 +439,17 @@ function showMainSection(sectionId) {
         calculatorContainer.style.display = 'block';
         openCalculatorSection('calculatorHome');
     } 
-               else if (sectionId === 'contract') {
+                   else if (sectionId === 'contract') {
+        // 👇 CÓDIGO LIMPO (IGUAL À CALCULADORA)
         contractContainer.classList.remove('hidden');
         contractContainer.style.display = 'block'; 
         
-        // CORREÇÃO: Não carregamos o rascunho aqui ainda!
-        // Apenas abrimos o menu de escolha.
-        
-        document.getElementById('documentsHome').style.display = 'flex'; // Garante o display correto
+        // Garante que o menu interno apareça certo
+        document.getElementById('documentsHome').style.display = 'flex'; 
         document.getElementById('areaContratoWrapper').style.display = 'none';
         document.getElementById('areaBookipWrapper').style.display = 'none';
     } 
+
 
     else if (sectionId === 'stock') {
         stockContainer.classList.remove('hidden');

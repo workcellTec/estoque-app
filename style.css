@@ -2072,6 +2072,15 @@ html, body {
 }
 
 .container {
+    min-height: 100vh;
     height: auto;
+    overflow-y: visible;
+}
+html, body {
+    height: auto;
+    min-height: 100%;
+    overflow-y: auto;
+}
+#documentsHome {
     min-height: 100vh;
 }
