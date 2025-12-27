@@ -21,46 +21,107 @@ let currentUserProfile = localStorage.getItem('ctwUserProfile') || '';
 // A lista de perfis agora é uma variável que vem do banco
 let teamProfilesList = {}; 
 
-// 1. Ouvinte do Firebase (LISTA DE PERFIS CORRIGIDA)
-function setupTeamProfilesListener() {
-    const profilesRef = ref(db, 'team_profiles');
+// ============================================================
+
+// ============================================================
+// 🚀 SISTEMA DE EQUIPE (CACHE + VISUAL GRID + ORDENAÇÃO)
+// ============================================================
+
+// 1. Salva no celular
+function salvarCacheEquipe(dados) {
+    if(!dados) return;
+    localStorage.setItem('cache_equipe_local', JSON.stringify(dados));
+}
+
+// 2. Carrega do celular (Instantâneo)
+function carregarCacheEquipe() {
+    const cache = localStorage.getItem('cache_equipe_local');
+    if (cache) {
+        try {
+            const dados = JSON.parse(cache);
+            if (typeof renderizarEquipeNaTela === 'function') {
+                renderizarEquipeNaTela(dados);
+                console.log("⚡ Equipe carregada do Cache!");
+            }
+        } catch (e) { console.error("Erro cache", e); }
+    }
+}
+
+// 3. O Desenhista (Cria o HTML bonito)
+function renderizarEquipeNaTela(listaPerfis) {
+    const container = document.getElementById('profilesList');
+    if(!container) return;
     
-    onValue(profilesRef, (snapshot) => {
-        const container = document.getElementById('profilesList');
-        if (!container) return;
-        container.innerHTML = ''; 
+    container.innerHTML = ''; 
 
-        if (snapshot.exists()) {
-            teamProfilesList = snapshot.val(); 
-            const entries = Object.entries(teamProfilesList); 
-            
-            // Ordena por nome alfabético
-            entries.sort((a, b) => a[1].name.localeCompare(b[1].name));
+    // A. Converte Objeto em Array
+    let arrayPerfis = Object.entries(listaPerfis).map(([key, value]) => {
+        return { id: key, ...value };
+    });
 
-            entries.forEach(([key, data]) => {
-                const nome = data.name;
-                
-                // Gera cor baseada no nome
-                const cores = ['#EF5350', '#2979FF', '#00E676', '#FFD600', '#AB47BC', '#FF7043'];
-                const cor = cores[nome.length % cores.length];
-                const inicial = nome.charAt(0).toUpperCase();
+    // B. ORDENAÇÃO (Admin -> Ordem de Chegada)
+    arrayPerfis.sort((a, b) => {
+        // Regra 1: Admin/Dono CONTINUA no topo (Opcional, se não quiser avisa)
+        const aAdmin = (a.role === 'admin' || a.role === 'dono') ? 1 : 0;
+        const bAdmin = (b.role === 'admin' || b.role === 'dono') ? 1 : 0;
+        
+        if (aAdmin > bAdmin) return -1;
+        if (aAdmin < bAdmin) return 1;
 
-                const item = document.createElement('div');
-                item.className = 'd-flex gap-2 align-items-center mb-2';
-                item.innerHTML = `
-                    <button onclick="setProfile('${nome}')" class="btn p-3 flex-grow-1 d-flex align-items-center gap-3 text-start profile-btn" style="border: 1px solid var(--glass-border); color: var(--text-color); background: rgba(128, 128, 128, 0.05);">
-                        <div style="width: 40px; height: 40px; background: ${cor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.3); flex-shrink: 0;">${inicial}</div>
-                        <span class="fw-bold text-truncate">${nome}</span>
-                        ${nome === currentUserProfile ? '<i class="bi bi-check-circle-fill text-success ms-auto"></i>' : ''}
-                    </button>
-                    <button onclick="apagarPerfil('${key}', '${nome}')" class="btn btn-outline-danger p-0 d-flex align-items-center justify-content-center" style="width: 40px; height: 50px; opacity: 0.5;" title="Apagar da Equipe">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                `;
-                container.appendChild(item);
-            });
+        // Regra 2: Ordem de CRIAÇÃO (Quem foi criado antes aparece antes)
+        // Se não tiver data (perfis antigos), usa o ID do Firebase que também é cronológico
+        const dataA = a.createdAt || a.id;
+        const dataB = b.createdAt || b.id;
+        
+        // Compara as datas (Texto simples funciona para data ISO)
+        return dataA.localeCompare(dataB);
+    });
+
+    // C. Desenha os cartões
+    arrayPerfis.forEach(perfil => {
+        const nome = perfil.name;
+        
+        const cores = ['#EF5350', '#2979FF', '#00E676', '#FFD600', '#AB47BC', '#FF7043'];
+        const cor = cores[nome.length % cores.length];
+        const inicial = nome.charAt(0).toUpperCase();
+
+        const card = document.createElement('div');
+        card.className = 'team-card'; 
+
+        card.innerHTML = `
+            <div onclick="apagarPerfil('${perfil.id}', '${nome}')" class="btn-delete-card">
+                <i class="bi bi-trash"></i>
+            </div>
+            <div onclick="setProfile('${nome}')" style="width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor: pointer;">
+                <div class="team-avatar" style="background: ${cor};">${inicial}</div>
+                <div class="text-truncate w-100 fw-bold" style="color: var(--text-color); font-size: 0.9rem;">${nome}</div>
+                <div class="mt-1 d-flex gap-1 justify-content-center flex-wrap">
+                    ${nome === currentUserProfile ? '<span class="badge bg-success" style="font-size: 0.6rem">VOCÊ</span>' : ''}
+                    ${perfil.role === 'admin' || perfil.role === 'dono' ? '<span class="badge bg-primary" style="font-size: 0.6rem">ADMIN</span>' : ''}
+                </div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+
+// 4. Conexão Principal (Listener)
+function setupTeamProfilesListener() {
+    const db = getDatabase();
+    const profilesRef = ref(db, 'team_profiles');
+
+    carregarCacheEquipe(); // Carrega rápido
+
+    onValue(profilesRef, (snapshot) => { // Ouve o banco
+        const data = snapshot.val();
+        if (data) {
+            teamProfilesList = data;
+            salvarCacheEquipe(data);
+            renderizarEquipeNaTela(data);
         } else {
-            container.innerHTML = '<div class="text-center text-secondary py-3">Nenhum perfil criado na equipe.</div>';
+            const container = document.getElementById('profilesList');
+            if(container) container.innerHTML = '<div class="text-center text-muted py-4">Nenhum perfil encontrado.</div>';
         }
     });
 }
