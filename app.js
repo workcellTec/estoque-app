@@ -7714,6 +7714,74 @@ window.filtrarHistoricoPorPerfil = function(perfil, btn) {
     if(searchInput) searchInput.dispatchEvent(new Event('input'));
 }
 
+// ============================================================
+// ============================================================
+// 🖨️ IMPRESSÃO QUE RESPEITA O DESIGN MAS DESTRAVA AS PÁGINAS
+// ============================================================
+window.imprimirUniversal = function() {
+    // 1. Identifica qual documento está na tela
+    const contratoDiv = document.getElementById('contractPreview');
+    const bookipDiv = document.getElementById('bookipPreview');
+    
+    let conteudo = "";
+    let titulo = "Documento";
+
+    // Verifica quem tem texto
+    if (contratoDiv && contratoDiv.innerHTML.replace(/<[^>]*>?/gm, '').trim().length > 20) {
+        conteudo = contratoDiv.innerHTML;
+        titulo = "Contrato";
+    } else if (bookipDiv && bookipDiv.innerHTML.replace(/<[^>]*>?/gm, '').trim().length > 20) {
+        conteudo = bookipDiv.innerHTML;
+        titulo = "Garantia";
+    } else {
+        alert("Nada para imprimir! Gere o documento primeiro.");
+        return;
+    }
+
+    // 2. Abre uma janela nova (Clone)
+    const janela = window.open('', '_blank', 'height=900,width=800');
+    
+    // 3. Monta o HTML puxando o seu CSS original + A Correção de Rolagem
+    janela.document.write(`
+        <html>
+            <head>
+                <title>${titulo}</title>
+                <link rel="stylesheet" href="style.css?v=${Date.now()}">
+                <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+                
+                <style>
+                    /* AQUI ESTÁ O SEGRED0: DESTRAVA SÓ NESSA JANELA */
+                    html, body {
+                        height: auto !important;
+                        overflow: visible !important;
+                        background: white !important;
+                        color: black !important;
+                        display: block !important;
+                    }
+                    /* Remove botões e coisas inúteis se tiverem vindo junto */
+                    .no-print, button, .btn { display: none !important; }
+                    
+                    /* Ajustes de margem para papel */
+                    @page { margin: 10mm; }
+                    body { padding: 20px; }
+                </style>
+            </head>
+            <body>
+                ${conteudo}
+                <script>
+                    // Espera carregar o CSS antes de imprimir
+                    window.onload = function() {
+                        setTimeout(() => {
+                            window.print();
+                            // window.close(); // Se quiser fechar sozinho depois
+                        }, 1000);
+                    };
+                </script>
+            </body>
+        </html>
+    `);
+    janela.document.close();
+};
 
 
 

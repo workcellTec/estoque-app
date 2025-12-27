@@ -2165,3 +2165,25 @@ html, body {
     padding: 5px;
     color: #ff4d4d;
 }
+
+@media print {
+    body, html {
+        background: #FFF !important;
+        color: #000 !important;
+        
+        /* O SEGREDO: Destrava a altura e a rolagem para a impressora ver tudo */
+        height: auto !important;
+        overflow: visible !important;
+        position: static !important;
+    }
+
+    body::before {
+        display: none !important;
+    }
+
+    /* O restante do seu código print continua aqui... */
+    body > *:not(#contractPreview):not(#reportPreview):not(#bookipPreview) {
+        display: none !important;
+    }
+    /* ... */
+}
