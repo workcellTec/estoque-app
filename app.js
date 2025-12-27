@@ -6631,13 +6631,19 @@ async function gerarPdfDoHistorico(dados, botao) {
 
         updateLoading("Finalizando PDF...");
 
-        const opt = {
-            margin:       0, 
+                const opt = {
+            margin:       [0, 0, 0, 0], // Sem margem (o HTML já tem padding)
             filename:     nomeFinalArquivo,
-            image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 1, useCORS: true }, 
-            jsPDF:        { unit: 'px', format: [794, 1123], orientation: 'portrait' } 
+            image:        { type: 'jpeg', quality: 1 }, // Qualidade Máxima
+            html2canvas:  { 
+                scale: 4, // 👈 O SEGREDO DA ALTA RESOLUÇÃO (4x mais nítido)
+                useCORS: true, 
+                letterRendering: true, 
+                scrollY: 0 
+            },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
         };
+
 
                 // ... (Mantenha o código acima igual, até chegar nesta linha abaixo) ...
         const blob = await html2pdf().set(opt).from(printContainer).output('blob');
