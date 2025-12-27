@@ -21,7 +21,7 @@ let currentUserProfile = localStorage.getItem('ctwUserProfile') || '';
 // A lista de perfis agora é uma variável que vem do banco
 let teamProfilesList = {}; 
 
-// 1. Ouvinte do Firebase (Mantém a lista atualizada em tempo real)
+// 1. Ouvinte do Firebase (LISTA DE PERFIS CORRIGIDA)
 function setupTeamProfilesListener() {
     const profilesRef = ref(db, 'team_profiles');
     
@@ -31,10 +31,10 @@ function setupTeamProfilesListener() {
         container.innerHTML = ''; 
 
         if (snapshot.exists()) {
-            teamProfilesList = snapshot.val(); // Guarda os dados
-            const entries = Object.entries(teamProfilesList); // Transforma em array [id, dados]
+            teamProfilesList = snapshot.val(); 
+            const entries = Object.entries(teamProfilesList); 
             
-            // Ordena por nome alfabético pra ficar organizado
+            // Ordena por nome alfabético
             entries.sort((a, b) => a[1].name.localeCompare(b[1].name));
 
             entries.forEach(([key, data]) => {
@@ -46,9 +46,9 @@ function setupTeamProfilesListener() {
                 const inicial = nome.charAt(0).toUpperCase();
 
                 const item = document.createElement('div');
-                item.className = 'd-flex gap-2 align-items-center';
+                item.className = 'd-flex gap-2 align-items-center mb-2';
                 item.innerHTML = `
-                    <button onclick="setProfile('${nome}')" class="btn btn-outline-light p-3 flex-grow-1 d-flex align-items-center gap-3 text-start profile-btn" style="border: 1px solid rgba(255,255,255,0.1);">
+                    <button onclick="setProfile('${nome}')" class="btn p-3 flex-grow-1 d-flex align-items-center gap-3 text-start profile-btn" style="border: 1px solid var(--glass-border); color: var(--text-color); background: rgba(128, 128, 128, 0.05);">
                         <div style="width: 40px; height: 40px; background: ${cor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.3); flex-shrink: 0;">${inicial}</div>
                         <span class="fw-bold text-truncate">${nome}</span>
                         ${nome === currentUserProfile ? '<i class="bi bi-check-circle-fill text-success ms-auto"></i>' : ''}
@@ -2557,54 +2557,52 @@ function checkForDueInstallments(initialNotifications = []) {
 }
 
 
-// SUBSTITUA A FUNÇÃO updateNotificationUI INTEIRA POR ESTA:
+// SUBSTITUA A FUNÇÃO updateNotificationUI POR ESTA:
 
 function updateNotificationUI(notifications) {
     console.log("🔔 Sistema de Notificação Acionado:", notifications.length, "mensagens.");
 
-    // 1. Elementos Antigos (Mantidos para compatibilidade)
+    // Elementos
     const oldBadge = document.querySelector('#notification-bell .notification-badge');
     const notificationList = document.getElementById('notificationList');
-    
-    // 2. Elementos do NOVO MENU (Avatar) - Conexão Direta
     const avatarBadge = document.getElementById('avatar-badge');
     const menuArea = document.getElementById('menu-notification-area');
     const menuText = document.getElementById('menu-notification-text');
 
     if (notifications.length > 0) {
-        // --- ATUALIZA O VISUAL (Força Bruta) ---
-        
         // 1. Acende a bolinha no Avatar
         if (avatarBadge) {
             avatarBadge.classList.remove('hidden');
-            avatarBadge.style.display = 'block'; // Garante que apareça mesmo se o CSS falhar
+            avatarBadge.style.display = 'block';
         }
 
-        // 2. Prepara o texto para o Menu
+        // 2. Prepara o texto
         let textoNotificacao = "Nova notificação recebida";
         if (notifications[0] && notifications[0].message) {
-            // Truque para remover HTML (negrito, cores) e pegar só o texto limpo
             const tempDiv = document.createElement("div");
             tempDiv.innerHTML = notifications[0].message;
             textoNotificacao = tempDiv.textContent || tempDiv.innerText || "";
         }
 
-        // 3. Mostra a área de notificação dentro do menu e coloca o texto
+        // 3. Mostra a notificação no menu
         if (menuArea) {
             menuArea.classList.remove('hidden');
             menuArea.style.display = 'block';
         }
+        
         if (menuText) {
             menuText.innerText = textoNotificacao;
+            // 👇 A CORREÇÃO MÁGICA É ESTA LINHA AQUI: 👇
+            localStorage.setItem('sys_ultimo_aviso', textoNotificacao); 
         }
 
-        // 4. Atualiza o contador antigo (só por segurança)
+        // 4. Atualiza badge antigo
         if (oldBadge) {
             oldBadge.textContent = notifications.length;
             oldBadge.classList.remove('hidden');
         }
         
-        // 5. Renderiza a lista lateral (Painel de Notificações)
+        // 5. Renderiza lista lateral
         if (notificationList) {
             notificationList.innerHTML = notifications.map(notif => {
                 if (notif.isGeneral) {
@@ -2620,14 +2618,13 @@ function updateNotificationUI(notifications) {
                         </button>
                     </div>`;
                 }
-            }).join('') + '<div class="text-secondary small text-center mt-3" style="opacity: 0.6;">As notificações limpas somem apenas para você.</div>';
+            }).join('');
             
-            // Reativa os botões de fechar (X)
+            // Reativa botões de fechar...
             document.querySelectorAll('.dismiss-notif-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const notifId = e.currentTarget.dataset.id;
-                    
                     const dismissedKey = 'ctwDismissedNotifs';
                     let dismissedList = [];
                     try { dismissedList = JSON.parse(localStorage.getItem(dismissedKey) || '[]'); } catch(err) { dismissedList = []; }
@@ -2636,33 +2633,21 @@ function updateNotificationUI(notifications) {
                         dismissedList.push(notifId);
                         localStorage.setItem(dismissedKey, JSON.stringify(dismissedList));
                     }
-
                     const itemRow = document.getElementById(`notif-item-${notifId}`);
                     if (itemRow) {
                         itemRow.style.opacity = '0';
                         setTimeout(() => itemRow.remove(), 300);
-                    }
-
-                    // Se limpou tudo, esconde os avisos
-                    const currentCount = document.querySelectorAll('.notification-item').length; // Conta real na tela
-                    if (currentCount <= 1) { // <= 1 porque acabamos de remover um mas o DOM pode não ter atualizado ainda
-                         if (avatarBadge) avatarBadge.classList.add('hidden');
-                         if (menuArea) menuArea.classList.add('hidden');
-                         if (oldBadge) oldBadge.classList.add('hidden');
-                         notificationList.innerHTML = '<div class="list-group-item bg-transparent text-secondary text-center border-0 p-4">Nenhuma notificação pendente.</div>';
                     }
                 });
             });
         }
 
     } else {
-        // --- SE NÃO TIVER NOTIFICAÇÃO, ESCONDE TUDO ---
+        // Esconde tudo se não tiver notificação
         if (avatarBadge) avatarBadge.classList.add('hidden');
         if (menuArea) menuArea.classList.add('hidden');
         if (oldBadge) oldBadge.classList.add('hidden');
-        if (notificationList) {
-            notificationList.innerHTML = '<div class="list-group-item bg-transparent text-secondary text-center border-0 p-4">Nenhuma notificação pendente.</div>';
-        }
+        localStorage.removeItem('sys_ultimo_aviso'); // Limpa a memória
     }
 }
 
