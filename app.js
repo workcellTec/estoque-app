@@ -6631,18 +6631,22 @@ async function gerarPdfDoHistorico(dados, botao) {
 
         updateLoading("Finalizando PDF...");
 
-                const opt = {
-            margin:       [0, 0, 0, 0], // Sem margem (o HTML já tem padding)
+                // 👇 SUBSTITUA SÓ ISSO AQUI 👇
+        const opt = {
+            margin:       0, 
             filename:     nomeFinalArquivo,
-            image:        { type: 'jpeg', quality: 1 }, // Qualidade Máxima
+            image:        { type: 'jpeg', quality: 0.98 },
             html2canvas:  { 
-                scale: 4, // 👈 O SEGREDO DA ALTA RESOLUÇÃO (4x mais nítido)
+                scale: 2, // 2x é o equilíbrio perfeito (Nítido e leve)
                 useCORS: true, 
-                letterRendering: true, 
-                scrollY: 0 
+                letterRendering: true,
+                scrollY: 0
             },
-            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            // A CORREÇÃO DO SALTO DE PÁGINAS ESTÁ AQUI:
+            pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] } 
         };
+        // 👆 ATÉ AQUI 👆
 
 
                 // ... (Mantenha o código acima igual, até chegar nesta linha abaixo) ...
