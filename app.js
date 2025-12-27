@@ -6526,7 +6526,8 @@ async function gerarPdfDoHistorico(dados, botao) {
     // --- GERAÇÃO HTML ---
     const containerTemp = document.createElement('div');
     // MUDANÇA: 'left: -9999px' joga para fora da tela e 'position: fixed' evita esticar o site
-        containerTemp.style.cssText = "position: fixed; top: 0; left: -9999px; width: 794px; background: white; z-index: -100; margin: 0; padding: 0; letter-spacing: 0.2px; font-variant-ligatures: none;";
+        // 👇 AJUSTE DE LARGURA: 790px para caber no A4 sem criar folha lateral extra
+    containerTemp.style.cssText = "position: absolute; left: -9999px; top: 0; width: 790px; background: white; margin: 0; padding: 0;";
 
     
     if (typeof getReciboHTML === 'function') {
@@ -6631,22 +6632,22 @@ async function gerarPdfDoHistorico(dados, botao) {
 
         updateLoading("Finalizando PDF...");
 
-                // 👇 SUBSTITUA SÓ ISSO AQUI 👇
+        // 👇 CONFIGURAÇÃO BLINDADA: HD (Scale 2) + SEM CORTES
         const opt = {
             margin:       0, 
             filename:     nomeFinalArquivo,
             image:        { type: 'jpeg', quality: 0.98 },
             html2canvas:  { 
-                scale: 2, // 2x é o equilíbrio perfeito (Nítido e leve)
+                scale: 2, // Resolução HD (Fica nítido no zoom)
                 useCORS: true, 
                 letterRendering: true,
-                scrollY: 0
+                scrollY: 0,
+                width: 790 // Força a largura interna também
             },
             jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
-            // A CORREÇÃO DO SALTO DE PÁGINAS ESTÁ AQUI:
+            // Evita criar páginas em branco e protege textos de serem cortados
             pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] } 
         };
-        // 👆 ATÉ AQUI 👆
 
 
                 // ... (Mantenha o código acima igual, até chegar nesta linha abaixo) ...
