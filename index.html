@@ -561,23 +561,45 @@
                    overflow: hidden;
                    border-radius: 16px;">
             
-            <li id="menu-notification-area" class="hidden" style="background: rgba(var(--primary-color-rgb), 0.1); border-bottom: 1px solid var(--glass-border);">
-                <button class="dropdown-item py-3" onclick="document.getElementById('notification-bell').click();">
+            <li class="px-3 py-3 mb-1" style="border-bottom: 1px solid var(--glass-border); background: rgba(255,255,255,0.03);">
+                <small class="d-block text-secondary text-uppercase fw-bold" style="font-size: 0.65rem; letter-spacing: 1px;">Logado como:</small>
+                <div class="d-flex align-items-center gap-2 mt-1">
+                    <span id="displayProfileIcon" style="width: 8px; height: 8px; background: #00E676; border-radius: 50%; box-shadow: 0 0 10px #00E676;"></span>
+                    <span id="displayProfileName" class="fw-bold fs-5" style="color: var(--text-color);">Visitante</span>
+                </div>
+            </li>
+            
+
+
+
+                                 <li id="menu-notification-area" class="hidden" style="border-bottom: 1px solid var(--glass-border); background: rgba(255, 255, 255, 0.05);">
+                <button class="dropdown-item py-3" onclick="document.getElementById('notification-bell').click();" style="white-space: normal;">
                     <div class="d-flex align-items-start gap-2">
                         <div class="mt-1 position-relative">
-                            <i class="bi bi-bell-fill text-danger"></i>
-                            <span class="position-absolute top-0 start-100 translate-middle bg-danger rounded-circle" style="width: 6px; height: 6px; animation: pulseRed 2s infinite;"></span>
+                            <i class="bi bi-bell-fill text-danger fs-5"></i>
+                            <span class="position-absolute top-0 start-100 translate-middle bg-danger rounded-circle" style="width: 8px; height: 8px; box-shadow: 0 0 8px red;"></span>
                         </div>
+                        
                         <div style="overflow: hidden; width: 100%;">
-                            <span class="d-block fw-bold mb-1" style="font-size: 0.75rem; color: var(--primary-color); text-transform: uppercase; letter-spacing: 0.5px;">Nova Mensagem</span>
-                            <small class="text-secondary d-block" id="menu-notification-text" 
-                                   style="font-size: 0.85rem; line-height: 1.3; font-weight: 500; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: normal;">
+                            <span class="d-block fw-bold mb-1" style="font-size: 0.70rem; color: var(--primary-color); text-transform: uppercase; letter-spacing: 1px;">
+                                Nova Mensagem
+                            </span>
+                            
+                            <small class="d-block" id="menu-notification-text" 
+                                   style="font-size: 0.85rem; line-height: 1.3; opacity: 0.9; color: var(--text-color); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;">
                                 Carregando...
                             </small>
                         </div>
                     </div>
                 </button>
             </li>
+            
+
+
+
+
+
+
 
             <li class="p-2">
                 <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2" 
@@ -598,15 +620,17 @@
                         <div class="icon-box bg-success bg-opacity-10 text-success"><i class="bi bi-download"></i></div>
                         <span>Instalar App</span>
                     </button>
-                </div>
-            </li>
-
-            <li style="display: none !important;"><hr class="dropdown-divider m-0 opacity-25"></li>
-            <li class="p-2" style="display: none !important;">
-                <button class="dropdown-item rounded py-2 text-danger d-flex align-items-center gap-2" onclick="if(window.logout) window.logout()">
-                    <i class="bi bi-box-arrow-right"></i> Sair
+                <li class="p-2">
+                <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2" 
+                        onclick="document.getElementById('profileSelectorModal').classList.add('active');" 
+                        style="color: var(--text-color);">
+                    <div class="icon-box bg-primary bg-opacity-10 text-primary">
+                        <i class="bi bi-people-fill"></i>
+                    </div>
+                    <span>Trocar Usuário</span>
                 </button>
             </li>
+
         </ul>
     </div>
 
@@ -1853,6 +1877,29 @@ do que você precisa??</h2>
 
         </div>
     </div>
+
+
+<div class="custom-modal-overlay" id="profileSelectorModal" style="z-index: 20000; background: rgba(0,0,0,0.9);">
+    <div class="custom-modal-content" style="max-width: 400px;">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3 class="m-0">Quem é você?</h3>
+            <button class="btn btn-sm btn-outline-secondary rounded-circle" onclick="document.getElementById('profileSelectorModal').classList.remove('active')" style="width: 32px; height: 32px; padding: 0;"><i class="bi bi-x-lg"></i></button>
+        </div>
+        
+        <div id="profilesList" class="d-grid gap-2" style="max-height: 300px; overflow-y: auto;"></div>
+
+        <hr class="border-secondary opacity-25 my-3">
+
+        <button onclick="criarNovoPerfil()" class="btn btn-outline-success w-100 py-2 border-dashed">
+            <i class="bi bi-plus-lg"></i> Criar Novo Perfil
+        </button>
+        
+        <p class="mt-3 text-secondary small">Isso serve apenas para controle interno da equipe.</p>
+    </div>
+</div>
+
+<style> .border-dashed { border-style: dashed !important; } </style>
+
 
 
 

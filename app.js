@@ -12,6 +12,166 @@ const firebaseConfig = {
     appId: "1:37459949616:web:bf2e722a491f45880a55f5"
 };
 
+// ============================================================
+// 👥 SISTEMA DE PERFIS EM NUVEM (FIREBASE)
+// ============================================================
+
+// O perfil ATUAL (quem sou eu) continua salvo só no meu celular
+let currentUserProfile = localStorage.getItem('ctwUserProfile') || '';
+// A lista de perfis agora é uma variável que vem do banco
+let teamProfilesList = {}; 
+
+// 1. Ouvinte do Firebase (Mantém a lista atualizada em tempo real)
+function setupTeamProfilesListener() {
+    const profilesRef = ref(db, 'team_profiles');
+    
+    onValue(profilesRef, (snapshot) => {
+        const container = document.getElementById('profilesList');
+        if (!container) return;
+        container.innerHTML = ''; 
+
+        if (snapshot.exists()) {
+            teamProfilesList = snapshot.val(); // Guarda os dados
+            const entries = Object.entries(teamProfilesList); // Transforma em array [id, dados]
+            
+            // Ordena por nome alfabético pra ficar organizado
+            entries.sort((a, b) => a[1].name.localeCompare(b[1].name));
+
+            entries.forEach(([key, data]) => {
+                const nome = data.name;
+                
+                // Gera cor baseada no nome
+                const cores = ['#EF5350', '#2979FF', '#00E676', '#FFD600', '#AB47BC', '#FF7043'];
+                const cor = cores[nome.length % cores.length];
+                const inicial = nome.charAt(0).toUpperCase();
+
+                const item = document.createElement('div');
+                item.className = 'd-flex gap-2 align-items-center';
+                item.innerHTML = `
+                    <button onclick="setProfile('${nome}')" class="btn btn-outline-light p-3 flex-grow-1 d-flex align-items-center gap-3 text-start profile-btn" style="border: 1px solid rgba(255,255,255,0.1);">
+                        <div style="width: 40px; height: 40px; background: ${cor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.3); flex-shrink: 0;">${inicial}</div>
+                        <span class="fw-bold text-truncate">${nome}</span>
+                        ${nome === currentUserProfile ? '<i class="bi bi-check-circle-fill text-success ms-auto"></i>' : ''}
+                    </button>
+                    <button onclick="apagarPerfil('${key}', '${nome}')" class="btn btn-outline-danger p-0 d-flex align-items-center justify-content-center" style="width: 40px; height: 50px; opacity: 0.5;" title="Apagar da Equipe">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                `;
+                container.appendChild(item);
+            });
+        } else {
+            container.innerHTML = '<div class="text-center text-secondary py-3">Nenhum perfil criado na equipe.</div>';
+        }
+    });
+}
+
+// SUBSTITUA A FUNÇÃO window.setProfile POR ESTA:
+
+window.setProfile = function(name) {
+    currentUserProfile = name;
+    localStorage.setItem('ctwUserProfile', name);
+    
+    // 1. Atualiza o visual da lista (Check verde)
+    if(typeof setupTeamProfilesListener === 'function') setupTeamProfilesListener(); 
+    
+    // 2. ATUALIZA O NOME NO MENU DO AVATAR (A Mágica acontece aqui)
+    const displayMenu = document.getElementById('displayProfileName');
+    if(displayMenu) displayMenu.innerText = name;
+    
+    // 3. Atualiza a mensagem de Bem-vindo na tela inicial
+    const tituloPrincipal = document.querySelector('#mainMenu h2');
+    if(tituloPrincipal) {
+        tituloPrincipal.innerHTML = `Bem-vindo(a), <span class="text-primary">${name}</span><br/>O que você quer fazer?`;
+    }
+
+    // 4. Fecha a janela e confirma
+    setTimeout(() => {
+        const modal = document.getElementById('profileSelectorModal');
+        if(modal) modal.classList.remove('active');
+        
+        if(typeof showCustomModal === 'function') showCustomModal({ message: `Perfil definido: ${name} 🚀` });
+    }, 200);
+}
+
+
+// SUBSTITUA A FUNÇÃO window.criarNovoPerfil POR ESTA:
+
+window.criarNovoPerfil = function() {
+    if(typeof showCustomModal === 'function') {
+        // Truque para o modal de senha/input ficar ACIMA do modal de perfil
+        const modalInput = document.getElementById('customModalOverlay');
+        if(modalInput) modalInput.style.zIndex = "20005"; // Mais alto que o perfil (20000)
+
+        showCustomModal({
+            message: "Nome do novo membro da equipe:",
+            showPassword: true, 
+            confirmText: "Salvar e Entrar",
+            onConfirm: (novoNome) => {
+                if(novoNome && novoNome.trim() !== "") {
+                    const nomeLimpo = novoNome.trim();
+                    
+                    // 1. Salva no Firebase
+                    push(ref(db, 'team_profiles'), {
+                        name: nomeLimpo,
+                        createdAt: new Date().toISOString()
+                    }).then(() => {
+                        // 2. A MÁGICA: Já seleciona e fecha a janela na hora!
+                        setProfile(nomeLimpo);
+                        
+                        // Restaura o z-index original do modal
+                        if(modalInput) modalInput.style.zIndex = ""; 
+                    }).catch(err => alert("Erro ao criar: " + err.message));
+                }
+            },
+            onCancel: () => {
+                // Restaura o z-index se cancelar
+                if(modalInput) modalInput.style.zIndex = ""; 
+            }
+        });
+        
+        // Ajuste visual do input
+        setTimeout(() => {
+            const input = document.getElementById('customModalPasswordInput');
+            if(input) { input.type = "text"; input.placeholder = "Ex: Vendedor Tarde"; input.focus(); }
+        }, 50);
+    }
+}
+
+// 4. Apagar (Remove do Firebase para todos)
+window.apagarPerfil = function(key, nome) {
+    if(confirm(`Tem certeza que deseja remover "${nome}" da equipe? Isso sumirá para todos.`)) {
+        const profileRef = ref(db, `team_profiles/${key}`);
+        remove(profileRef).catch(err => alert("Erro ao apagar: " + err.message));
+    }
+}
+
+// 5. Inicialização
+document.addEventListener('DOMContentLoaded', () => {
+    
+    if (!currentUserProfile) {
+        // Se NÃO tem usuário, abre a janela depois de 2 segundos
+        setTimeout(() => document.getElementById('profileSelectorModal').classList.add('active'), 2000);
+    } else {
+        // --- SE JÁ TEM USUÁRIO, MOSTRA O NOME NOS LUGARES CERTOS ---
+        
+        // 1. Texto pequeno "Usuário: Brendon" (Mantém o original)
+        const topoTitulo = document.querySelector('.d-flex.flex-column small');
+        if(topoTitulo) topoTitulo.innerText = "Usuário: " + currentUserProfile;
+
+        // 2. No Menu do Avatar (Cartão de Visita) - NOVO
+        const displayMenu = document.getElementById('displayProfileName');
+        if(displayMenu) displayMenu.innerText = currentUserProfile;
+
+        // 3. Título Principal "Bem-vindo(a), Brendon" - NOVO
+        const tituloPrincipal = document.querySelector('#mainMenu h2');
+        if(tituloPrincipal) {
+            tituloPrincipal.innerHTML = `Bem-vindo(a), <span class="text-primary">${currentUserProfile}</span><br/>O que você quer fazer?`;
+        }
+    }
+});
+
+
+
 // Adicione junto com as outras variáveis globais (perto de userId, products, etc.)
 let currentEditingBookipId = null; // Guarda o ID se estiver editando
 
@@ -2792,7 +2952,8 @@ async function main() {
                 loadTagTexts();
                 loadSettingsFromDB(); 
                 setupNotificationListeners();
-                
+                                setupTeamProfilesListener(); // <--- ✅ COLE AQUI (Onde o banco já existe)
+
                 const loadingOverlay = document.getElementById('loadingOverlay');
                 if(loadingOverlay) loadingOverlay.style.opacity = '0';
                 
@@ -4297,32 +4458,39 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
 
 
 
-    // --- TOGGLE NOVO / HISTÓRICO DO BOOKIP ---
-        // --- TOGGLE NOVO / HISTÓRICO DO BOOKIP (CORRIGIDO) ---
+    // --- TOGGLE NOVO / HISTÓRICO DO BOOKIP (CORRIGIDO) ---
     const bookipToggle = document.getElementById('bookipModeToggle');
-    // Pegamos o novo container de busca que criamos no HTML
     const searchContainer = document.getElementById('bookipSearchContainer');
 
     if(bookipToggle) {
         bookipToggle.addEventListener('change', (e) => {
             const showHistory = e.target.checked;
             
-            // Alterna as telas principais
+            // 1. Alterna as telas principais (Conteúdo)
             document.getElementById('newBookipContent').classList.toggle('hidden', showHistory);
             document.getElementById('historyBookipContent').classList.toggle('hidden', !showHistory);
             
-            // Alterna a barra de busca separadamente (Segurança contra erro de impressão)
+            // 2. Alterna a barra de busca
             if (searchContainer) {
                 searchContainer.classList.toggle('hidden', !showHistory);
             }
 
+            // 3. CORREÇÃO: Alterna também os botões de filtro (Meus Arquivos)
+            const filterBar = document.getElementById('filterBarProfiles');
+            if (filterBar) {
+                // Se for histórico, mostra (remove hidden). Se for novo, esconde (add hidden).
+                filterBar.classList.toggle('hidden', !showHistory);
+                
+                // Força visual caso a classe hidden não funcione por CSS específico
+                filterBar.style.display = showHistory ? 'flex' : 'none';
+            }
+
+            // 4. Carrega o histórico se necessário
             if (showHistory) {
                 loadBookipHistory();
             }
         });
     }
-
-
 
     // ============================================================
     // CORREÇÃO: LÓGICA DE BUSCA E ADIÇÃO DE ITENS NO BOOKIP
@@ -4671,6 +4839,27 @@ function loadBookipHistory() {
     // Loading...
     container.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div><p class="mt-2 text-secondary">Carregando histórico...</p></div>';
 
+// --- CRIA BARRA DE FILTROS ---
+        // --- CRIA BARRA DE FILTROS (Com Seleção Automática) ---
+        if (!document.getElementById('filterBarProfiles')) {
+            // Define qual botão começa aceso
+            const filtroAtual = window.activeProfileFilter || 'todos';
+            const clsTodos = filtroAtual === 'todos' ? 'btn-light active fw-bold' : 'btn-outline-light';
+            const clsMeus = filtroAtual !== 'todos' ? 'btn-light active fw-bold' : 'btn-outline-light';
+
+            const filterHTML = `
+            <div id="filterBarProfiles" class="d-flex gap-2 mb-3 overflow-auto pb-2">
+                <button class="btn btn-sm ${clsTodos} filter-profile-btn" onclick="filtrarHistoricoPorPerfil('todos', this)" style="border-radius: 20px; padding: 5px 15px;">Todos</button>
+                <button class="btn btn-sm ${clsMeus} filter-profile-btn" onclick="filtrarHistoricoPorPerfil('${currentUserProfile}', this)" style="border-radius: 20px; padding: 5px 15px;">
+                    <i class="bi bi-person-fill me-1"></i> Meus Arquivos
+                </button>
+            </div>`;
+            const searchBox = document.getElementById('bookipSearchContainer');
+            if(searchBox) searchBox.insertAdjacentHTML('beforebegin', filterHTML);
+        }
+
+
+
     // Remove listener antigo para não duplicar
     if (typeof bookipListener !== 'undefined' && bookipListener) {
         off(bookipsRef, 'value', bookipListener);
@@ -4760,9 +4949,7 @@ function loadBookipHistory() {
             }
         }
 
-        // Lógica de Filtragem
-                // Dentro da função aplicarFiltrosCombinados...
-        
+        // Lógica de Filtragem CORRIGIDA
         listaFiltradaCache = listaCompletaCache.filter(item => {
             const nDoc = (item.docNumber || '').toLowerCase();
             const nome = (item.nome || '').toLowerCase();
@@ -4771,11 +4958,9 @@ function loadBookipHistory() {
             const telLimpo = (item.tel || '').toLowerCase().replace(/\D/g, ''); 
             const telOriginal = (item.tel || '').toLowerCase();
 
-            // --- NOVO: Pega o nome de TODOS os produtos dessa venda ---
+            // Pega o nome de TODOS os produtos dessa venda
             const produtosTexto = (item.items || []).map(p => p.nome).join(' ').toLowerCase(); 
-            // ----------------------------------------------------------
             
-            // Adicionamos "|| produtosTexto.includes(termo)" no final
             const matchTexto = termo === '' || 
                                nDoc.includes(termo) || 
                                nome.includes(termo) || 
@@ -4783,7 +4968,7 @@ function loadBookipHistory() {
                                email.includes(termo) || 
                                telOriginal.includes(termo) || 
                                telLimpo.includes(termo) ||
-                               produtosTexto.includes(termo); // <--- AQUI A MÁGICA
+                               produtosTexto.includes(termo);
 
             let matchData = true;
             if (dataFiltro) {
@@ -4791,12 +4976,24 @@ function loadBookipHistory() {
                 if (!dataItem && item.criadoEm) dataItem = item.criadoEm.split('T')[0];
                 matchData = (dataItem === dataFiltro);
             }
-            return matchTexto && matchData;
+
+            // --- AQUI ESTÁ A CORREÇÃO (O FILTRO DE PERFIL AGORA FUNCIONA) ---
+            let matchPerfil = true;
+            // Se o filtro NÃO for 'todos', verifica se o criador é igual ao filtro ativo
+            if (window.activeProfileFilter && window.activeProfileFilter !== 'todos') {
+                matchPerfil = item.criadoPor === window.activeProfileFilter;
+            }
+
+            // Retorna apenas se TUDO for verdadeiro (Texto E Data E Perfil)
+            return matchTexto && matchData && matchPerfil;
         });
 
         itensVisiveis = 50; // Reseta paginação ao filtrar
         renderizarLote();
     }
+
+
+
 
     // --- RENDERIZAÇÃO NA TELA ---
     function renderizarLote() {
@@ -4896,7 +5093,7 @@ function loadBookipHistory() {
             const titleBtnEnvio = foiEnviado ? 'Já enviado (Reenviar)' : 'PDF/Email';
 
             return `
-            <div class="accordion-item" style="${styleCard}">
+                       <div class="accordion-item" style="${styleCard}">
                 <h2 class="accordion-header" id="head-bk-${item.id}">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-bk-${item.id}">
                         
@@ -4907,9 +5104,15 @@ function loadBookipHistory() {
                             <span style="font-size: 0.75rem; color: ${textoCor}; font-weight: 700; text-transform: uppercase;">${textoStatus}</span>
                         </div>
 
-                        <span class="ms-auto small text-secondary">${dataVisual}</span>
-                    </button>
+                        <div class="text-end ms-auto" style="min-width: 80px;">
+                            <small class="d-block text-secondary" style="font-size: 0.7rem;">${dataVisual}</small>
+                            <span class="badge bg-secondary bg-opacity-25 text-light border border-secondary border-opacity-25" style="font-size: 0.65rem; font-weight: normal; letter-spacing: 0.5px;">
+                                <i class="bi bi-person me-1"></i>${item.criadoPor || 'Geral'}
+                            </span>
+                        </div>
+                        </button>
                 </h2>
+                
                 <div id="collapse-bk-${item.id}" class="accordion-collapse collapse" data-bs-parent="#bookipAccordion">
                     <div class="accordion-body">
                         <p><strong>Cliente:</strong> ${item.nome}</p>
@@ -4917,6 +5120,10 @@ function loadBookipHistory() {
                             ${(item.items || []).map(i => `<li>${i.qtd}x ${i.nome} - R$ ${parseFloat(i.valor).toFixed(2)}</li>`).join('')}
                         </ul>
                         <div class="d-flex justify-content-end gap-2 mt-2">
+
+
+
+
                             <button class="btn btn-sm btn-info edit-bookip-btn" data-id="${item.id}" title="Editar"><i class="bi bi-pencil-square"></i></button>
 
                             <button class="btn btn-sm ${classBtnEnvio} email-history-btn" data-id="${item.id}" title="${titleBtnEnvio}"><i class="bi ${iconBtnEnvio}"></i></button>
@@ -5173,7 +5380,8 @@ if (btnSave) {
                 
                 diasGarantia: dias,
                 dataVenda: dataFinalVenda,
-                criadoEm: new Date().toISOString()
+                criadoEm: new Date().toISOString(),
+criadoPor: currentUserProfile || "Desconhecido", 
             };
 
             // SALVA NO FIREBASE
@@ -6131,7 +6339,14 @@ function getReciboHTML(dados) {
 
 
     return `
-        <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750px; margin: 0 auto; box-sizing: border-box;">
+        <div style="font-family: 'Segoe UI',
+
+
+
+
+
+
+Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750px; margin: 0 auto; box-sizing: border-box;">
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <tr>
                     <td style="width: 30%; vertical-align: top;"><img src="${logoUrl}" style="width: 160px; height: auto; object-fit: contain;"></td>
@@ -6331,6 +6546,17 @@ async function gerarPdfDoHistorico(dados, botao) {
     
     if (typeof getReciboHTML === 'function') {
         containerTemp.innerHTML = getReciboHTML(dados);
+
+ // 👇 CORREÇÃO DE COR (Sem mexer no layout) 👇
+        const styleFix = document.createElement('style');
+        styleFix.innerHTML = `
+            #pdf-temp-fix, #pdf-temp-fix * { color: #000000 !important; text-shadow: none !important; }
+            #pdf-temp-fix th { color: #ffffff !important; } 
+        `;
+        containerTemp.id = 'pdf-temp-fix'; // Batiza o container
+        containerTemp.appendChild(styleFix); // Injeta a vacina de cor
+        // 👆 FIM DA CORREÇÃO 👆
+
     } else {
         alert("Erro: Fábrica não encontrada.");
         removerLoading();
@@ -7422,6 +7648,25 @@ function iniciarRascunho() {
     
     console.log("🚀 Sistema de Animação Tímida Iniciado!");
 })();
+// CONTROLE DO FILTRO DE PERFIL
+// Define o filtro padrão como o USUÁRIO ATUAL (se existir), senão 'todos'
+window.activeProfileFilter = currentUserProfile || 'todos';
+
+window.filtrarHistoricoPorPerfil = function(perfil, btn) {
+    window.activeProfileFilter = perfil;
+    
+    // Atualiza visual dos botões
+    document.querySelectorAll('.filter-profile-btn').forEach(b => {
+        b.classList.remove('btn-light', 'active', 'fw-bold');
+        b.classList.add('btn-outline-light');
+    });
+    btn.classList.remove('btn-outline-light');
+    btn.classList.add('btn-light', 'active', 'fw-bold');
+    
+    // Força a pesquisa atualizar
+    const searchInput = document.getElementById('bookipHistorySearch');
+    if(searchInput) searchInput.dispatchEvent(new Event('input'));
+}
 
 
         });
