@@ -2396,71 +2396,116 @@ function checkForDueInstallments(initialNotifications = []) {
     });
 }
 
+
+// SUBSTITUA A FUNÇÃO updateNotificationUI INTEIRA POR ESTA:
+
 function updateNotificationUI(notifications) {
-    const badge = document.querySelector('#notification-bell .notification-badge');
+    console.log("🔔 Sistema de Notificação Acionado:", notifications.length, "mensagens.");
+
+    // 1. Elementos Antigos (Mantidos para compatibilidade)
+    const oldBadge = document.querySelector('#notification-bell .notification-badge');
     const notificationList = document.getElementById('notificationList');
     
+    // 2. Elementos do NOVO MENU (Avatar) - Conexão Direta
+    const avatarBadge = document.getElementById('avatar-badge');
+    const menuArea = document.getElementById('menu-notification-area');
+    const menuText = document.getElementById('menu-notification-text');
+
     if (notifications.length > 0) {
-        badge.textContent = notifications.length;
-        badge.classList.remove('hidden');
+        // --- ATUALIZA O VISUAL (Força Bruta) ---
         
-        notificationList.innerHTML = notifications.map(notif => {
-            if (notif.isGeneral) {
-                return `<div class="list-group-item bg-transparent text-light border-secondary">${notif.message}</div>`;
-            } else {
-                // DESIGN NOVO: Botão redondo, discreto e alinhado
-                return `
-                <div class="list-group-item list-group-item-action notification-item d-flex justify-content-between align-items-center bg-transparent border-secondary text-light p-3 mb-2" id="notif-item-${notif.notificationId}" style="border-radius: 12px; border: 1px solid rgba(255,255,255,0.1) !important;">
-                    <div class="flex-grow-1 pe-3" style="cursor: pointer;" onclick="verBoletoDeNotificacao('${notif.boletoId}')">
-                        ${notif.message}
-                    </div>
-                    <button class="dismiss-notif-btn text-secondary" data-id="${notif.notificationId}" title="Limpar notificação" style="background: rgba(255,255,255,0.05); border: none; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s;">
-                        <i class="bi bi-x-lg" style="font-size: 0.9rem;"></i>
-                    </button>
-                </div>`;
-            }
-        }).join('') + '<div class="text-secondary small text-center mt-3" style="opacity: 0.6;">As notificações limpas somem apenas para você.</div>';
+        // 1. Acende a bolinha no Avatar
+        if (avatarBadge) {
+            avatarBadge.classList.remove('hidden');
+            avatarBadge.style.display = 'block'; // Garante que apareça mesmo se o CSS falhar
+        }
+
+        // 2. Prepara o texto para o Menu
+        let textoNotificacao = "Nova notificação recebida";
+        if (notifications[0] && notifications[0].message) {
+            // Truque para remover HTML (negrito, cores) e pegar só o texto limpo
+            const tempDiv = document.createElement("div");
+            tempDiv.innerHTML = notifications[0].message;
+            textoNotificacao = tempDiv.textContent || tempDiv.innerText || "";
+        }
+
+        // 3. Mostra a área de notificação dentro do menu e coloca o texto
+        if (menuArea) {
+            menuArea.classList.remove('hidden');
+            menuArea.style.display = 'block';
+        }
+        if (menuText) {
+            menuText.innerText = textoNotificacao;
+        }
+
+        // 4. Atualiza o contador antigo (só por segurança)
+        if (oldBadge) {
+            oldBadge.textContent = notifications.length;
+            oldBadge.classList.remove('hidden');
+        }
         
-        // Lógica do botão limpar
-        document.querySelectorAll('.dismiss-notif-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const notifId = e.currentTarget.dataset.id;
-                
-                // Salva no LocalStorage
-                const dismissedKey = 'ctwDismissedNotifs';
-                let dismissedList = [];
-                try { dismissedList = JSON.parse(safeStorage.getItem(dismissedKey) || '[]'); } catch(err) { dismissedList = []; }
-
-                if (!dismissedList.includes(notifId)) {
-                    dismissedList.push(notifId);
-                    safeStorage.setItem(dismissedKey, JSON.stringify(dismissedList));
-                }
-
-                // Efeito visual de remover
-                const itemRow = document.getElementById(`notif-item-${notifId}`);
-                if (itemRow) {
-                    itemRow.style.opacity = '0';
-                    setTimeout(() => itemRow.remove(), 300);
-                }
-
-                // Atualiza o contador
-                const currentCount = parseInt(badge.textContent || '0');
-                const newCount = Math.max(0, currentCount - 1);
-                if (newCount > 0) {
-                    badge.textContent = newCount;
+        // 5. Renderiza a lista lateral (Painel de Notificações)
+        if (notificationList) {
+            notificationList.innerHTML = notifications.map(notif => {
+                if (notif.isGeneral) {
+                    return `<div class="list-group-item bg-transparent text-light border-secondary">${notif.message}</div>`;
                 } else {
-                    badge.classList.add('hidden');
-                    notificationList.innerHTML = '<div class="list-group-item bg-transparent text-secondary text-center border-0 p-4">Nenhuma notificação pendente.</div>';
+                    return `
+                    <div class="list-group-item list-group-item-action notification-item d-flex justify-content-between align-items-center bg-transparent border-secondary text-light p-3 mb-2" id="notif-item-${notif.notificationId}" style="border-radius: 12px; border: 1px solid rgba(255,255,255,0.1) !important;">
+                        <div class="flex-grow-1 pe-3" style="cursor: pointer;" onclick="verBoletoDeNotificacao('${notif.boletoId}')">
+                            ${notif.message}
+                        </div>
+                        <button class="dismiss-notif-btn text-secondary" data-id="${notif.notificationId}" title="Limpar notificação" style="background: rgba(255,255,255,0.05); border: none; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s;">
+                            <i class="bi bi-x-lg" style="font-size: 0.9rem;"></i>
+                        </button>
+                    </div>`;
                 }
+            }).join('') + '<div class="text-secondary small text-center mt-3" style="opacity: 0.6;">As notificações limpas somem apenas para você.</div>';
+            
+            // Reativa os botões de fechar (X)
+            document.querySelectorAll('.dismiss-notif-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const notifId = e.currentTarget.dataset.id;
+                    
+                    const dismissedKey = 'ctwDismissedNotifs';
+                    let dismissedList = [];
+                    try { dismissedList = JSON.parse(localStorage.getItem(dismissedKey) || '[]'); } catch(err) { dismissedList = []; }
+
+                    if (!dismissedList.includes(notifId)) {
+                        dismissedList.push(notifId);
+                        localStorage.setItem(dismissedKey, JSON.stringify(dismissedList));
+                    }
+
+                    const itemRow = document.getElementById(`notif-item-${notifId}`);
+                    if (itemRow) {
+                        itemRow.style.opacity = '0';
+                        setTimeout(() => itemRow.remove(), 300);
+                    }
+
+                    // Se limpou tudo, esconde os avisos
+                    const currentCount = document.querySelectorAll('.notification-item').length; // Conta real na tela
+                    if (currentCount <= 1) { // <= 1 porque acabamos de remover um mas o DOM pode não ter atualizado ainda
+                         if (avatarBadge) avatarBadge.classList.add('hidden');
+                         if (menuArea) menuArea.classList.add('hidden');
+                         if (oldBadge) oldBadge.classList.add('hidden');
+                         notificationList.innerHTML = '<div class="list-group-item bg-transparent text-secondary text-center border-0 p-4">Nenhuma notificação pendente.</div>';
+                    }
+                });
             });
-        });
+        }
 
     } else {
-        badge.classList.add('hidden');
-        notificationList.innerHTML = '<div class="list-group-item bg-transparent text-secondary text-center border-0 p-4">Nenhuma notificação pendente.</div>';
+        // --- SE NÃO TIVER NOTIFICAÇÃO, ESCONDE TUDO ---
+        if (avatarBadge) avatarBadge.classList.add('hidden');
+        if (menuArea) menuArea.classList.add('hidden');
+        if (oldBadge) oldBadge.classList.add('hidden');
+        if (notificationList) {
+            notificationList.innerHTML = '<div class="list-group-item bg-transparent text-secondary text-center border-0 p-4">Nenhuma notificação pendente.</div>';
+        }
     }
 }
+
 // --- FUNÇÕES RECUPERADAS (ESSENCIAIS PARA O ADMIN) ---
 function getTagList() {
     return (typeof tags !== 'undefined' && Array.isArray(tags)) ? tags : ['Nenhuma'];
@@ -4764,57 +4809,104 @@ function loadBookipHistory() {
         }
 
         let html = `<div class="accordion w-100 history-accordion" id="bookipAccordion">` + 
-        fatia.map(item => {
+                fatia.map(item => {
+            // --- 1. TRATAMENTO DE DATA ---
             let dataVisual = '---';
+            let dataVendaObj = new Date();
+
             if (item.dataVenda) {
                  const p = item.dataVenda.split('-'); 
+                 // Cria data segura (Ano, Mês-1, Dia)
+                 dataVendaObj = new Date(p[0], p[1]-1, p[2]);
                  dataVisual = `${p[2]}/${p[1]}/${p[0]}`;
             } else if (item.criadoEm) {
-                 dataVisual = new Date(item.criadoEm).toLocaleDateString('pt-BR');
+                 dataVendaObj = new Date(item.criadoEm);
+                 dataVisual = dataVendaObj.toLocaleDateString('pt-BR');
             }
+
             
             const docNum = item.docNumber || '---';
 
-            // =========================================================
-            // LÓGICA DE CORES 🎨
-            // =========================================================
-            let badgeClass = 'bg-primary'; // Azul (Padrão / Garantia)
+            // --- 2. SEMÁFORO INTELIGENTE (Separação Recibo vs Garantia) ---
+            const diasGarantia = parseInt(item.diasGarantia) || 0;
+            const dataVencimento = new Date(dataVendaObj);
+            dataVencimento.setDate(dataVendaObj.getDate() + diasGarantia);
             
-            // 1. SITUAÇÃO (Prioridade: Amarelo)
+            const hoje = new Date();
+            // Zera as horas para comparar apenas datas (evita bugs de fuso)
+            hoje.setHours(0,0,0,0);
+            dataVencimento.setHours(0,0,0,0);
+
+            const diferencaTempo = dataVencimento - hoje;
+            const diasRestantes = Math.ceil(diferencaTempo / (1000 * 60 * 60 * 24));
+
+            // CORES PADRÃO
+            let corStatus = '#0d6efd'; // Azul (Padrão para Recibos/Neutro)
+            let textoStatus = 'Recibo';
+            let textoCor = '#0d6efd'; // Cor do texto do status
+
+            // Lógica de Prioridade
             const isSituacao = (item.type === 'situacao') || (item.items && item.items[0] && item.items[0].isSituation);
-            
-            // 2. RECIBO (Verde)
             const isRecibo = (item.type === 'recibo');
 
             if (isSituacao) {
-                badgeClass = 'bg-warning text-dark'; // Amarelo
-            } else if (isRecibo) {
-                badgeClass = 'bg-success'; // Verde
+                // SITUAÇÃO: Amarelo
+                corStatus = '#ffc107'; 
+                textoStatus = 'Situação';
+                textoCor = '#b58900'; // Amarelo mais escuro para ler melhor
+            } 
+            else if (isRecibo) {
+                 // RECIBO: Azul (Neutro - Não confunde com garantia)
+                 corStatus = '#0d6efd'; 
+                 textoStatus = 'Recibo Simples';
+                 textoCor = '#0d6efd';
+            } 
+            else if (diasGarantia > 0) {
+                // GARANTIA: Aqui entra o Semáforo
+                if (diasRestantes < 0) {
+                    corStatus = '#dc3545'; // Vermelho
+                    textoStatus = `Vencida há ${Math.abs(diasRestantes)} dias`;
+                    textoCor = '#dc3545';
+                } else if (diasRestantes <= 7) {
+                    corStatus = '#fd7e14'; // Laranja
+                    textoStatus = `Vence em ${diasRestantes} dias!`;
+                    textoCor = '#fd7e14';
+                } else {
+                    corStatus = '#198754'; // Verde
+                    textoStatus = 'Garantia Ativa';
+                    textoCor = '#198754';
+                }
+            } else {
+                // Caso não tenha dias definidos mas não seja recibo explícito
+                textoStatus = 'Sem Garantia';
             }
-            // =========================================================
 
-            // --- CÓDIGO NOVO (Lógica Visual de Envio) ---
+            // --- 3. VISUAL DO CARTÃO ---
             const foiEnviado = (item.statusEnvio === true);
             
-            // Define se a borda fica verde e o fundo claro
-            const styleCard = foiEnviado ? 'border-left: 6px solid #28a745; background-color: #f0fff4;' : '';
+            // Fundo verde claro APENAS se enviado (Feedback de ação)
+            const fundoCard = foiEnviado ? '#f0fff4' : '#fff';
             
-            // Define se o botão fica cinza (check) ou amarelo (email)
+            // A Borda Esquerda é quem manda no Status (Semáforo)
+            const styleCard = `border-left: 6px solid ${corStatus}; background-color: ${fundoCard};`;
+            
+            // Botões
             const classBtnEnvio = foiEnviado ? 'btn-dark' : 'btn-warning';
             const iconBtnEnvio = foiEnviado ? 'bi-check-circle-fill text-success' : 'bi-envelope-at-fill';
             const titleBtnEnvio = foiEnviado ? 'Já enviado (Reenviar)' : 'PDF/Email';
-            // --------------------------------------------
 
-
-                        return `
+            return `
             <div class="accordion-item" style="${styleCard}">
-
-
-
                 <h2 class="accordion-header" id="head-bk-${item.id}">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-bk-${item.id}">
-                        <span class="badge ${badgeClass} me-2">Doc ${docNum}</span> 
-                        <span class="text-truncate" style="max-width: 150px;">${item.nome}</span> 
+                        
+                        <span class="badge me-2" style="background-color: ${corStatus}; color: ${isSituacao ? '#000' : '#fff'};">Doc ${docNum}</span> 
+                        
+                        <div class="d-flex flex-column text-truncate" style="max-width: 160px;">
+                            <span class="fw-bold">${item.nome}</span>
+                            <span style="font-size: 0.75rem; color: ${textoCor}; font-weight: 700; text-transform: uppercase;">${textoStatus}</span>
+                        </div>
+
                         <span class="ms-auto small text-secondary">${dataVisual}</span>
                     </button>
                 </h2>
@@ -4827,8 +4919,7 @@ function loadBookipHistory() {
                         <div class="d-flex justify-content-end gap-2 mt-2">
                             <button class="btn btn-sm btn-info edit-bookip-btn" data-id="${item.id}" title="Editar"><i class="bi bi-pencil-square"></i></button>
 
-<button class="btn btn-sm ${classBtnEnvio} email-history-btn" data-id="${item.id}" title="${titleBtnEnvio}"><i class="bi ${iconBtnEnvio}"></i></button>
-
+                            <button class="btn btn-sm ${classBtnEnvio} email-history-btn" data-id="${item.id}" title="${titleBtnEnvio}"><i class="bi ${iconBtnEnvio}"></i></button>
 
                             <button class="btn btn-sm btn-primary print-old-bookip" data-id="${item.id}" title="Imprimir"><i class="bi bi-printer"></i></button>
                             <button class="btn btn-sm btn-outline-danger delete-bookip-btn" data-id="${item.id}" title="Apagar"><i class="bi bi-trash"></i></button>
@@ -7230,6 +7321,107 @@ function iniciarRascunho() {
         });
     }
 }
+// =============================================================
+// 🎰 SISTEMA DE ANIMAÇÃO 2.0 (SÓ ANIMA QUANDO VISÍVEL)
+// =============================================================
+(function iniciarSistemaContadorInteligente() {
+    const areasDeResultado = [
+        'resultFecharVenda', 
+        'resultRepassarValores', 
+        'resultEmprestarValores', 
+        'resultCalcularEmprestimo', 
+        'resultCalcularPorAparelho'
+    ];
+
+
+    // 1. O Vigilante de Mudanças (Detecta quando o valor muda no HTML)
+    const mutationObserver = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                prepararAnimacao(mutation.target);
+            }
+        });
+    });
+
+    // 2. O Vigilante de Tela (Detecta quando o elemento entra no visual)
+    const visibilityObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            // Se o elemento apareceu na tela e está pendente de animação
+            if (entry.isIntersecting && entry.target.dataset.pendingValue) {
+                const el = entry.target;
+                const valorFinal = parseFloat(el.dataset.pendingValue);
+                const textoOriginal = el.dataset.originalText;
+                
+                // Dispara a animação agora que o usuário está olhando!
+                rodarAnimacao(el, valorFinal, textoOriginal);
+                
+                // Limpa os dados para não animar de novo à toa
+                delete el.dataset.pendingValue;
+                visibilityObserver.unobserve(el);
+            }
+        });
+    }, { threshold: 0.1 }); // Dispara quando 10% do número estiver visível
+
+    // Ativa vigilância nas áreas
+    areasDeResultado.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) mutationObserver.observe(el, { childList: true, subtree: true });
+    });
+
+    function prepararAnimacao(container) {
+        const elementos = container.querySelectorAll('*');
+        elementos.forEach(el => {
+            if (el.children.length === 0 && el.innerText.includes('R$')) {
+                const textoOriginal = el.innerText;
+                const match = textoOriginal.match(/R\$\s?([\d\.,]+)/);
+
+                if (match) {
+                    const valorFinal = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
+                    
+                    if (!isNaN(valorFinal) && valorFinal > 0) {
+                        // SALVA OS DADOS NO ELEMENTO E ESPERA
+                        el.dataset.pendingValue = valorFinal;
+                        el.dataset.originalText = textoOriginal;
+                        
+                        // Zera o número visualmente para dar impacto quando animar
+                        // (Opcional: se quiser que mostre o valor antigo, tire essa linha)
+                        // el.innerText = textoOriginal.split('R$')[0] + 'R$ ...'; 
+
+                        // Manda o observador de tela vigiar esse elemento
+                        visibilityObserver.observe(el);
+                    }
+                }
+            }
+        });
+    }
+
+    function rodarAnimacao(elemento, valorFinal, textoFinalFormatado) {
+        const prefixo = textoFinalFormatado.split('R$')[0] + 'R$ ';
+        let startTimestamp = null;
+        const duracao = 1000; // Um pouquinho mais lento para dar gosto de ver (1s)
+
+        const step = (timestamp) => {
+            if (!startTimestamp) startTimestamp = timestamp;
+            const progress = Math.min((timestamp - startTimestamp) / duracao, 1);
+            const easeOut = 1 - Math.pow(1 - progress, 3);
+            const valorAtual = valorFinal * easeOut;
+
+            elemento.innerText = prefixo + valorAtual.toLocaleString('pt-BR', { 
+                minimumFractionDigits: 2, 
+                maximumFractionDigits: 2 
+            });
+
+            if (progress < 1) {
+                window.requestAnimationFrame(step);
+            } else {
+                elemento.innerText = textoFinalFormatado;
+            }
+        };
+        window.requestAnimationFrame(step);
+    }
+    
+    console.log("🚀 Sistema de Animação Tímida Iniciado!");
+})();
 
 
         });

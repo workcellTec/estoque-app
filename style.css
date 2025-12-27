@@ -1982,6 +1982,7 @@ html, body {
     background-color: var(--tertiary-color) !important;
 }
 
+
 /* Agora, quem rola é SÓ o container, não a página */
 .container {
     /* Ocupa todo o espaço disponível */
@@ -2000,4 +2001,72 @@ html, body {
     
     /* Espaço extra no final para não cortar conteúdo */
     padding-bottom: 120px !important; 
+}
+/* --- FUNDO TURBO: "MOVIMENTO VIVO" (Leve, mas se mexe de verdade) --- */
+
+.turbo-bg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    background-color: var(--tertiary-color);
+    overflow: hidden;
+    contain: strict;
+}
+
+.light-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px); /* Aumentei o blur pra ficar mais suave */
+    opacity: 0.4;
+    
+    /* Aceleração de Hardware ativada */
+    will-change: transform; 
+}
+
+/* Luz 1: A Principal (Mais agitada) */
+.orb-1 {
+    top: -20%;
+    left: -20%;
+    width: 100vw; /* Bem grande pra cobrir a tela */
+    height: 100vw;
+    background: var(--primary-color);
+    
+    /* Mudei para 8s (mais rápido) e movimento complexo */
+    animation: orbMove1 12s infinite alternate ease-in-out;
+}
+
+/* Luz 2: A Secundária (Contraste) */
+.orb-2 {
+    bottom: -20%;
+    right: -20%;
+    width: 90vw;
+    height: 90vw;
+    background: radial-gradient(circle, #4f46e5 0%, transparent 70%);
+    
+    /* Tempo diferente pra não ficarem sincronizadas */
+    animation: orbMove2 15s infinite alternate ease-in-out;
+}
+
+/* AQUI ESTÁ A MUDANÇA:
+   Antes andava 30px. Agora anda 150px a 200px (bastante chão!)
+*/
+@keyframes orbMove1 {
+    0% {
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+    100% {
+        transform: translate3d(150px, 100px, 0) scale(1.1);
+    }
+}
+
+@keyframes orbMove2 {
+    0% {
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+    100% {
+        transform: translate3d(-150px, -80px, 0) scale(1.2);
+    }
 }
