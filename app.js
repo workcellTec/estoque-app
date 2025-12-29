@@ -7784,6 +7784,27 @@ window.imprimirUniversal = function() {
 };
 
 
+// --- CORREÇÃO FINAL (BLINDADA) ---
+// Funciona mesmo se o botão for criado depois
+document.addEventListener('click', function(e) {
+    // Verifica se clicou no botão de Gerar Relatório (ou no ícone dentro dele)
+    if (e.target && (e.target.id === 'generateReportBtn' || e.target.closest('#generateReportBtn'))) {
+        
+        // 1. Limpa o lixo dos outros documentos
+        const lixo = ['bookipPreview', 'contractPreview'];
+        lixo.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = ''; 
+        });
+
+        // 2. Garante que não tem travas no corpo do site
+        document.body.classList.remove('print-only-contract', 'print-only-bookip');
+        
+        // (Opcional) Console log para você saber que limpou
+        console.log("Lixeira de impressão esvaziada!");
+    }
+});
+
 
 
         });

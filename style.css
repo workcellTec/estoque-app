@@ -2187,3 +2187,39 @@ html, body {
     }
     /* ... */
 }
+/* ============================================================
+   🚀 TURBO GPU (MANTÉM O VISUAL, ACELERA O MOTOR)
+   Força o uso da placa de vídeo para os efeitos de vidro e luz
+   ============================================================ */
+
+/* 1. Otimiza os elementos de Vidro (Cards e Menu) */
+.content-card, 
+.btn-menu, 
+.admin-section, 
+.stock-item-card,
+.custom-modal-content {
+    /* Cria uma camada exclusiva na GPU para cada vidro */
+    transform: translate3d(0, 0, 0); 
+    -webkit-transform: translate3d(0, 0, 0);
+    
+    /* Avisa o navegador que esses itens são complexos */
+    will-change: backdrop-filter, transform; 
+    
+    /* Estabiliza a pintura do elemento */
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+
+/* 2. Otimiza a Luz de Fundo (Para ela girar sem travar a digitação) */
+body::before {
+    /* Otimiza a animação 'moveGlow' para não recalcular a tela toda */
+    will-change: background-position;
+    transform: translateZ(0); /* Aceleração de hardware */
+}
+
+/* 3. Destrava o Teclado (O mais importante) */
+/* Isola os campos de texto para que o cursor pisque rápido */
+.form-control, .form-select {
+    transform: translateZ(0);
+    will-change: transform;
+}
