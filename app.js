@@ -4896,10 +4896,12 @@ function loadBookipHistory() {
             const filterHTML = `
             <div id="filterBarProfiles" class="d-flex gap-2 mb-3 overflow-auto pb-2">
                 <button class="btn btn-sm ${clsTodos} filter-profile-btn" onclick="filtrarHistoricoPorPerfil('todos', this)" style="border-radius: 20px; padding: 5px 15px;">Todos</button>
-                <button class="btn btn-sm ${clsMeus} filter-profile-btn" onclick="filtrarHistoricoPorPerfil('${currentUserProfile}', this)" style="border-radius: 20px; padding: 5px 15px;">
+                <button class="btn btn-sm ${clsMeus} filter-profile-btn" onclick="filtrarHistoricoPorPerfil('MEUS_ARQUIVOS_DINAMICO', this)" style="border-radius: 20px; padding: 5px 15px;">
                     <i class="bi bi-person-fill me-1"></i> Meus Arquivos
                 </button>
             </div>`;
+
+
             const searchBox = document.getElementById('bookipSearchContainer');
             if(searchBox) searchBox.insertAdjacentHTML('beforebegin', filterHTML);
         }
@@ -7682,6 +7684,41 @@ document.addEventListener('click', function(e) {
         console.log("Lixeira de impressão esvaziada!");
     }
 });
+// ============================================================
+// 🔍 FUNÇÃO DE CLIQUE NO FILTRO (Adicione ao final do app.js)
+// ============================================================
+window.filtrarHistoricoPorPerfil = function(perfil, btn) {
+    // 1. Define qual perfil filtrar
+    if (perfil === 'MEUS_ARQUIVOS_DINAMICO') {
+        if (!currentUserProfile) {
+            // Se o usuário não tiver logado/escolhido perfil
+            if(typeof showCustomModal === 'function') showCustomModal({ message: "Selecione seu perfil no menu primeiro." });
+            else alert("Selecione seu perfil primeiro.");
+            return;
+        }
+        window.activeProfileFilter = currentUserProfile;
+    } else {
+        window.activeProfileFilter = 'todos';
+    }
+
+    // 2. Atualiza visual dos botões (Pinta o ativo de branco)
+    document.querySelectorAll('.filter-profile-btn').forEach(b => {
+        b.classList.remove('btn-light', 'active', 'fw-bold');
+        b.classList.add('btn-outline-light');
+    });
+    
+    if(btn) {
+        btn.classList.remove('btn-outline-light');
+        btn.classList.add('btn-light', 'active', 'fw-bold');
+    }
+
+    // 3. Força a atualização da lista (Chama a função que já existe no seu código)
+    // Disparar um evento no campo de busca obriga o filtro a rodar de novo
+    const searchInput = document.getElementById('bookipHistorySearch');
+    if(searchInput) {
+        searchInput.dispatchEvent(new Event('input'));
+    }
+};
 
 
 
