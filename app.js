@@ -922,7 +922,8 @@ function calculateFecharVenda() {
         return;
     }
     
-    const inputValue = parseFloat(document.getElementById("fecharVendaValue").value);
+    const inputValue = parseBrazilianCurrencyToFloat(document.getElementById("fecharVendaValue").value);
+
     if (isNaN(inputValue) || inputValue <= 0) { resultDiv.innerHTML = checkboxHtml || ""; return; }
     
     const manualMode = document.querySelector('input[name="manualMode"]:checked').value;
@@ -3480,88 +3481,142 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 2. O Novo Event Listener da Tabela
-    document.getElementById('resultCalcularPorAparelho').addEventListener('click', (e) => {
-        const toggle = document.getElementById('multiSelectToggle');
-        const isMultiMode = toggle && toggle.checked;
-        const row = e.target.closest('.copyable-row');
+document.getElementById('resultCalcularPorAparelho').addEventListener('click', (e) => {
+    const toggle = document.getElementById('multiSelectToggle');
+    const isMultiMode = toggle && toggle.checked;
+    const row = e.target.closest('.copyable-row');
+    
+    if (!row || carrinhoDeAparelhos.length === 0) return;
+
+    // =================================================================
+    // MODO 1: SELEÇÃO MÚLTIPLA
+    // =================================================================
+    if (isMultiMode) {
+        row.classList.toggle('is-selected');
         
-        if (!row || carrinhoDeAparelhos.length === 0) return;
+        const count = document.querySelectorAll('#resultCalcularPorAparelho .copyable-row.is-selected').length;
+        const fabBtn = document.getElementById('fabCopyMulti');
+        
+        if (count > 0) {
+            fabBtn.style.display = 'block';
+            fabBtn.innerHTML = `<i class="bi bi-clipboard-check"></i> Copiar (${count})`;
+            
+            // Adiciona a ação de clique (que estava faltando no seu código original)
+            fabBtn.onclick = () => {
+                const selectedRows = document.querySelectorAll('#resultCalcularPorAparelho .copyable-row.is-selected');
+                if (selectedRows.length === 0) return;
 
-        if (isMultiMode) {
-            // MODO SELEÇÃO MÚLTIPLA
-            row.classList.toggle('is-selected');
-            
-            const count = document.querySelectorAll('#resultCalcularPorAparelho .copyable-row.is-selected').length;
-            const fabBtn = document.getElementById('fabCopyMulti');
-            
-            // CORREÇÃO: Só mostra se count > 0
-            if (count > 0) {
-                fabBtn.style.display = 'block';
-                fabBtn.innerHTML = `<i class="bi bi-clipboard-check"></i> Copiar (${count})`;
-            } else {
-                fabBtn.style.display = 'none';
-            }
-            
-        } else {
-            // MODO CLÁSSICO (Cópia única)
-            // Esconde o botão múltiplo se alguém clicar no modo simples por engano
-            document.getElementById('fabCopyMulti').style.display = 'none';
-            document.querySelectorAll('#resultCalcularPorAparelho .copyable-row.is-selected').forEach(r => r.classList.remove('is-selected'));
-
-            // Lógica original de cópia única...
-            const installments = row.dataset.installments;
-            const parcelaValue = parseFloat(row.dataset.parcela);
-            const totalValue = parseFloat(row.dataset.total);
-            const entradaValue = parseFloat(document.getElementById('entradaAparelho').value) || 0;
-            
-            const parcelaFormatted = parcelaValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            const totalFormatted = totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            
-            const productCounts = carrinhoDeAparelhos.reduce((acc, product) => {
-                acc[product.nome] = (acc[product.nome] || 0) + 1;
-                return acc;
-            }, {});
-            const produtoNome = Object.entries(productCounts)
-                .map(([nome, qtd]) => qtd > 1 ? `${qtd}x ${nome}` : nome)
-                .join(' e ');
-
-            let entradaText = '';
-            if (entradaValue > 0) {
-                const entradaFormatted = entradaValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                entradaText = `\n*_+${entradaFormatted} no dinheiro ou pix_*`;
-            }
-            
-            let customText = '';
-            if (carrinhoDeAparelhos.length === 1) {
-                const produtoUnico = carrinhoDeAparelhos[0];
-                if (produtoUnico.tag && produtoUnico.tag !== 'Nenhuma' && tagTexts[produtoUnico.tag]) {
-                    customText = `\n\n${tagTexts[produtoUnico.tag]}`;
+                // 1. Gera Texto
+                let simulations = [];
+                selectedRows.forEach(r => {
+                    const i = r.dataset.installments;
+                    const p = parseFloat(r.dataset.parcela).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                    simulations.push(i === 'Débito' ? `Débito: ${p}` : `${i}x de ${p}`);
+                });
+                const simulationBlock = simulations.map((t, i) => i === 0 ? t : `Ou ${t}`).join('\n');
+                
+                // 2. Dados
+                const productCounts = carrinhoDeAparelhos.reduce((acc, product) => { acc[product.nome] = (acc[product.nome] || 0) + 1; return acc; }, {});
+                const produtoNome = Object.entries(productCounts).map(([nome, qtd]) => qtd > 1 ? `${qtd}x ${nome}` : nome).join(' e ');
+                const entradaVal = parseFloat(document.getElementById('entradaAparelho').value) || 0;
+                const entradaText = entradaVal > 0 ? `\n*_+${entradaVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} no dinheiro ou pix_*` : '';
+                
+                let customText = '';
+                if (carrinhoDeAparelhos.length === 1 && carrinhoDeAparelhos[0].tag && tagTexts[carrinhoDeAparelhos[0].tag]) {
+                    customText = `\n\n${tagTexts[carrinhoDeAparelhos[0].tag]}`;
                 }
-            }
-            
-            let textToCopy;
-            const invertOrder = safeStorage.getItem('ctwInvertCopyOrder') === 'true';
-            const simulationBlock = `${installments}x ${parcelaFormatted}\n_(Total: ${totalFormatted})_${entradaText}`;
-            
-            if (invertOrder) {
-                textToCopy = `${produtoNome}\n${simulationBlock}${customText}`;
-            } else {
-                textToCopy = `${simulationBlock}\n ${produtoNome}${customText}`;
-            }
-            
-            const textArea = document.createElement("textarea");
-            textArea.value = textToCopy;
-            document.body.appendChild(textArea);
-            textArea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textArea);
-            showCustomModal({ message: 'Simulação copiada!' });
-        }
-    });
 
-    // CORREÇÃO EXTRA: Esconder o botão ao sair da seção
-    // Procure no seu código onde tem "backFromCalcularPorAparelho"
+                // 3. Monta Texto Final
+                const invertOrder = typeof safeStorage !== 'undefined' ? safeStorage.getItem('ctwInvertCopyOrder') === 'true' : localStorage.getItem('ctwInvertCopyOrder') === 'true';
+                const textToCopy = invertOrder ? `${produtoNome}\n${simulationBlock}${entradaText}${customText}` : `${simulationBlock}${entradaText}\n\n${produtoNome}${customText}`;
+
+                // 4. Copia
+                const textArea = document.createElement("textarea");
+                textArea.value = textToCopy;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+
+                // --- SALVA NO HISTÓRICO COM TÍTULO COMPLETO ---
+                if(window.salvarHistoricoAparelho) {
+                    window.salvarHistoricoAparelho(textToCopy, `Vários (${count} opções) - ${produtoNome}`);
+                }
+                
+                showCustomModal({ message: 'Copiado e salvo! 💾' });
+                selectedRows.forEach(r => r.classList.remove('is-selected'));
+                fabBtn.style.display = 'none';
+            };
+
+        } else {
+            fabBtn.style.display = 'none';
+        }
+        
+    } else {
+        // =================================================================
+        // MODO 2: CLÁSSICO (Cópia única)
+        // =================================================================
+        document.getElementById('fabCopyMulti').style.display = 'none';
+        document.querySelectorAll('#resultCalcularPorAparelho .copyable-row.is-selected').forEach(r => r.classList.remove('is-selected'));
+
+        const installments = row.dataset.installments;
+        const parcelaValue = parseFloat(row.dataset.parcela);
+        const totalValue = parseFloat(row.dataset.total);
+        const entradaValue = parseFloat(document.getElementById('entradaAparelho').value) || 0;
+        
+        const parcelaFormatted = parcelaValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const totalFormatted = totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        
+        const productCounts = carrinhoDeAparelhos.reduce((acc, product) => {
+            acc[product.nome] = (acc[product.nome] || 0) + 1;
+            return acc;
+        }, {});
+        const produtoNome = Object.entries(productCounts)
+            .map(([nome, qtd]) => qtd > 1 ? `${qtd}x ${nome}` : nome)
+            .join(' e ');
+
+        let entradaText = '';
+        if (entradaValue > 0) {
+            const entradaFormatted = entradaValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            entradaText = `\n*_+${entradaFormatted} no dinheiro ou pix_*`;
+        }
+        
+        let customText = '';
+        if (carrinhoDeAparelhos.length === 1) {
+            const produtoUnico = carrinhoDeAparelhos[0];
+            if (produtoUnico.tag && produtoUnico.tag !== 'Nenhuma' && tagTexts[produtoUnico.tag]) {
+                customText = `\n\n${tagTexts[produtoUnico.tag]}`;
+            }
+        }
+        
+        let textToCopy;
+        const invertOrder = typeof safeStorage !== 'undefined' ? safeStorage.getItem('ctwInvertCopyOrder') === 'true' : localStorage.getItem('ctwInvertCopyOrder') === 'true';
+        const simulationBlock = `${installments}x ${parcelaFormatted}\n_(Total: ${totalFormatted})_${entradaText}`;
+        
+        if (invertOrder) {
+            textToCopy = `${produtoNome}\n${simulationBlock}${customText}`;
+        } else {
+            textToCopy = `${simulationBlock}\n ${produtoNome}${customText}`;
+        }
+        
+        const textArea = document.createElement("textarea");
+        textArea.value = textToCopy;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+
+        // --- SALVA NO HISTÓRICO COM O VALOR NO TÍTULO ---
+        // Aqui está o pulo do gato: Salvamos "12x R$ 200 - iPhone" como título
+        if(window.salvarHistoricoAparelho) {
+            const tituloComValor = `${installments}x ${parcelaFormatted} • ${produtoNome}`;
+            window.salvarHistoricoAparelho(textToCopy, tituloComValor);
+        }
+
+        showCustomModal({ message: 'Simulação copiada!' });
+    }
+});
+
     // e adicione essa linha dentro do evento de click:
     document.getElementById('backFromCalcularPorAparelho').addEventListener('click', () => {
          const fabBtn = document.getElementById('fabCopyMulti');
@@ -7720,6 +7775,131 @@ window.filtrarHistoricoPorPerfil = function(perfil, btn) {
     }
 };
 
+
+// --- MÁSCARA DE DINHEIRO RÁPIDA ---
+const inputVenda = document.getElementById('fecharVendaValue');
+if (inputVenda) {
+    inputVenda.addEventListener('input', (e) => {
+        let value = e.target.value.replace(/\D/g, ""); // Só deixa números
+        if (value === "") { e.target.value = ""; return; }
+        
+        // Formata: Divide por 100 e coloca virgula/ponto
+        e.target.value = (parseFloat(value) / 100).toLocaleString('pt-BR', {
+            minimumFractionDigits: 2, maximumFractionDigits: 2
+        });
+        
+        // Chama o cálculo automaticamente
+        calculateFecharVenda();
+    });
+}
+
+
+// ============================================================
+// 📜 HISTÓRICO DE SIMULAÇÕES (CALCULAR POR APARELHO)
+// ============================================================
+const HISTORICO_KEY = 'ctwSimulacoesHistory';
+
+// 1. Salva automaticamente
+window.salvarHistoricoAparelho = function(texto, titulo) {
+    if (!texto) return;
+    let lista = JSON.parse(localStorage.getItem(HISTORICO_KEY) || '[]');
+    
+    // Evita salvar duplicado se clicar 2x seguidas
+    if(lista.length > 0 && lista[0].texto === texto) return;
+
+    lista.unshift({
+        id: Date.now(),
+        data: new Date().toISOString(),
+        titulo: titulo || "Simulação",
+        texto: texto
+    });
+
+    // Mantém só os últimos 30
+    if (lista.length > 30) lista = lista.slice(0, 30);
+    localStorage.setItem(HISTORICO_KEY, JSON.stringify(lista));
+};
+
+// 2. Abre a janelinha (Versão Visual Melhorada)
+window.abrirHistoricoAparelho = function() {
+    let lista = JSON.parse(localStorage.getItem(HISTORICO_KEY) || '[]');
+    
+    let htmlItens = lista.length === 0 
+        ? '<div class="text-center p-5 text-secondary"><i class="bi bi-clock-history fs-1"></i><p class="mt-2">Nada aqui ainda.</p></div>'
+        : lista.map(item => {
+            const dataObj = new Date(item.data);
+            const dataStr = dataObj.toLocaleDateString('pt-BR');
+            const horaStr = dataObj.toLocaleTimeString('pt-BR').slice(0,5);
+            
+            // Lógica visual: Se tiver o separador "•", a gente quebra em duas linhas
+            let destaque = item.titulo;
+            let detalhe = "";
+            
+            if (item.titulo.includes('•')) {
+                const partes = item.titulo.split('•');
+                destaque = partes[0].trim(); // A parte do valor (Ex: 12x R$ 200)
+                detalhe = partes[1].trim();  // A parte do nome (Ex: iPhone 11)
+            }
+
+            return `
+            <div class="mb-2 p-3 rounded-3" onclick="copiarItemHistorico('${item.id}')" 
+                 style="cursor: pointer; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); transition: all 0.2s;">
+                
+                <div class="d-flex justify-content-between align-items-start">
+                    <div style="flex: 1;">
+                        <div class="fw-bold text-success mb-1" style="font-size: 1.1rem;">${destaque}</div>
+                        ${detalhe ? `<div class="text-light opacity-75 small"><i class="bi bi-phone"></i> ${detalhe}</div>` : ''}
+                    </div>
+                    
+                    <div class="text-end ms-2">
+                        <small class="d-block text-secondary" style="font-size: 0.7rem;">${dataStr}</small>
+                        <small class="d-block text-secondary" style="font-size: 0.7rem;">${horaStr}</small>
+                    </div>
+                </div>
+                
+                <div class="mt-2 pt-2 border-top border-secondary border-opacity-25 d-flex justify-content-end">
+                    <small class="text-info" style="font-size: 0.75rem;"><i class="bi bi-clipboard"></i> Toque para copiar</small>
+                </div>
+            </div>`;
+        }).join('');
+
+    const modalHtml = `
+    <div class="custom-modal-overlay active" id="modalHistApp" style="z-index: 10000; display: flex;">
+        <div class="custom-modal-content" style="width: 450px; max-height: 85vh; display: flex; flex-direction: column; background: #1a1d21;">
+            <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom border-secondary border-opacity-25">
+                <h5 class="mb-0 text-white"><i class="bi bi-clock-history text-warning me-2"></i>Histórico</h5>
+                <button class="btn-back" onclick="document.getElementById('modalHistApp').remove()"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="overflow-auto flex-grow-1 px-1">${htmlItens}</div>
+            <button class="btn btn-outline-danger btn-sm mt-3 w-100" onclick="localStorage.removeItem('${HISTORICO_KEY}'); document.getElementById('modalHistApp').remove();">
+                <i class="bi bi-trash"></i> Limpar Histórico
+            </button>
+        </div>
+    </div>`;
+
+    // Remove anterior se existir para não duplicar
+    const anterior = document.getElementById('modalHistApp');
+    if(anterior) anterior.remove();
+
+    const div = document.createElement('div');
+    div.innerHTML = modalHtml;
+    document.body.appendChild(div.firstElementChild);
+};
+
+// 3. Copia do histórico
+window.copiarItemHistorico = function(id) {
+    let lista = JSON.parse(localStorage.getItem(HISTORICO_KEY) || '[]');
+    const item = lista.find(i => i.id == id);
+    if(item) {
+        const txt = document.createElement("textarea");
+        txt.value = item.texto;
+        document.body.appendChild(txt);
+        txt.select();
+        document.execCommand('copy');
+        document.body.removeChild(txt);
+        document.getElementById('modalHistApp').remove();
+        showCustomModal({ message: "Copiado novamente! ✅" });
+    }
+};
 
 
         });

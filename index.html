@@ -725,7 +725,6 @@
                 <button class="btn-menu" id="openCalcularEmprestimo"><i class="bi bi-bank"></i> Calcular Empréstimo</button>
                 <button class="btn-menu" id="openCalcularPorAparelho"><i class="bi bi-phone"></i> Calcular por aparelho</button>
 
-
             </div>
         </div>
 
@@ -877,7 +876,8 @@
                     </div>
                 </div>
                 <div class="w-100 d-flex justify-content-center" id="fecharVendaInputs">
-                    <div class="mb-3" style="width: 100%; max-width: 400px;"><label class="form-label" for="fecharVendaValue" id="fecharVendaValueLabel"><i class="bi bi-currency-dollar"></i> Valor Total da Venda (R$)</label><input class="form-control form-control-lg" id="fecharVendaValue" min="0" placeholder="Digite o valor" step="0.01" type="number"/></div>
+                    <div class="mb-3" style="width: 100%; max-width: 400px;"><label class="form-label" for="fecharVendaValue" id="fecharVendaValueLabel"><i class="bi bi-currency-dollar"></i> Valor Total da Venda (R$)</label><input class="form-control form-control-lg" id="fecharVendaValue" placeholder="R$ 0,00" type="tel"/>
+</div>
                 </div>
                 <div class="w-100 d-flex flex-column justify-content-center mt-3" id="resultFecharVenda"></div>
             </div>
@@ -970,10 +970,18 @@
             </div>
         </div>
         <div class="container" id="calcularPorAparelho" style="display: none;">
-            <div class="section-header">
-                <h3>Calcular por Aparelho</h3>
-                <button aria-label="Voltar" class="btn-back" id="backFromCalcularPorAparelho"><i class="bi bi-arrow-left"></i></button>
-            </div>
+         <div class="section-header d-flex align-items-center justify-content-between">
+    <h3>Calcular por Aparelho</h3> <div class="d-flex gap-2">
+        <button class="btn-back" onclick="abrirHistoricoAparelho()" style="border-color: rgba(255,255,255,0.2) !important;" title="Ver Histórico">
+            <i class="bi bi-clock-history text-warning"></i>
+        </button>
+
+        <button aria-label="Voltar" class="btn-back" id="backFromCalcularPorAparelho">
+            <i class="bi bi-arrow-left"></i>
+        </button>
+    </div>
+</div>
+
             <div class="content-card w-100">
                 <div id="aparelhoContentWrapper">
                     <div class="favoritos" id="aparelhoFavoritosContainer"></div>
