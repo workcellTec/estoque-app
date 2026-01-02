@@ -4642,8 +4642,33 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                     document.getElementById('bookipProdNomeTemp').value = limparTextoEmoji(p.nome);
 
 
-                        document.getElementById('bookipProdValorTemp').value = p.valor;
-                        const cor = (p.cores && p.cores.length > 0) ? p.cores[0].nome : '';
+                        // --- VERSÃO BLINDADA: Formata Valor + Some com a Lista ---
+try {
+    // 1. Formata o valor
+    var valParaFormatar = parseFloat(p.valor || 0);
+    var campoValor = document.getElementById('bookipProdValorTemp');
+    
+    if(campoValor) {
+        campoValor.value = valParaFormatar.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        campoValor.dispatchEvent(new Event('input')); // Acorda a máscara
+    }
+
+    // 2. FORÇA BRUTA: Some com a lista de resultados
+    var listaResultados = document.getElementById('bookipSearchResults');
+    if(listaResultados) {
+        listaResultados.style.display = 'none'; // Esconde visualmente
+        listaResultados.innerHTML = '';         // Limpa o conteúdo pra garantir
+    }
+    
+    // 3. Limpa o campo de busca também (opcional, fica mais limpo)
+    document.getElementById('bookipProductSearch').value = '';
+
+} catch (erro) {
+    console.log("Erro ao selecionar produto:", erro);
+    // Mesmo com erro, tenta esconder a lista pra não travar a tela
+    document.getElementById('bookipSearchResults').style.display = 'none';
+}
+// ---------------------------------------------------------
                         document.getElementById('bookipProdCorTemp').value = cor;
                         
                         inputBuscaBookip.value = p.nome;
@@ -4897,7 +4922,24 @@ if (inputValorBookip) {
                 // Devolve os dados para os campos de cima
                 document.getElementById('bookipProdNomeTemp').value = item.nome;
                 document.getElementById('bookipProdQtdTemp').value = item.qtd;
-                document.getElementById('bookipProdValorTemp').value = item.valor;
+
+
+                // --- CORREÇÃO DE EDIÇÃO (Auto-Formatador) ---
+// Pega o valor do item (se der erro, assume 0)
+let valBruto = parseFloat(item.valor || 0); 
+
+let campoInput = document.getElementById('bookipProdValorTemp');
+
+// 1. Formata e joga no input (ex: 2.500,00)
+campoInput.value = valBruto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// 2. Acorda a máscara para permitir edição manual depois
+campoInput.dispatchEvent(new Event('input'));
+// ------------------------------------------------
+
+
+
+
                 document.getElementById('bookipProdCorTemp').value = item.cor;
                 document.getElementById('bookipProdObsTemp').value = item.obs;
 
