@@ -6596,28 +6596,24 @@ Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750
     `;
 }
 
+// ==============================================// ============================================================
+
 // ============================================================
-// FUNÇÃO FINAL: BLINDADA (SEM CORTES + FIX MOBILE + ENVIO CORRIGIDO)
+// FUNÇÃO FINAL: MOTOR DO DOWNLOAD (QUE FUNCIONOU) PARA TUDO
 // ============================================================
 async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
     
     // --- 0. LÓGICA DE E-MAIL (MANTIDA) ---
     if (!apenasBaixar && dados.email && dados.email.trim() !== '') {
         const textToCopy = dados.email.trim();
-        const copiarJeitoAntigo = (texto) => {
-            try {
-                const textArea = document.createElement("textarea");
-                textArea.value = texto;
-                textArea.style.position = "fixed"; textArea.style.left = "-9999px"; textArea.style.top = "0";
-                document.body.appendChild(textArea);
-                textArea.focus(); textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-            } catch (e) { console.error(e); }
-        };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            try { await navigator.clipboard.writeText(textToCopy); } catch (err) {}
-        } else { copiarJeitoAntigo(textToCopy); }
+        try {
+            if (navigator.clipboard) await navigator.clipboard.writeText(textToCopy);
+            else {
+                const ta = document.createElement("textarea"); ta.value = textToCopy;
+                ta.style.position="fixed"; ta.style.left="-9999px"; document.body.appendChild(ta);
+                ta.focus(); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+            }
+        } catch (e) {}
     }
 
     // --- 1. PREPARAÇÃO VISUAL ---
@@ -6629,59 +6625,49 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
     if (!document.getElementById('workcell-spinner-style')) {
         const s = document.createElement('style');
         s.id = 'workcell-spinner-style';
-        s.textContent = `.workcell-spinner { border: 4px solid #f3f3f3; border-top: 4px solid #6da037; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 25px; } @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } .loading-container { font-family: sans-serif; text-align: center; } .loading-title { color: #333; font-size: 20px; font-weight: bold; margin-bottom: 10px; } .loading-subtitle { color: #666; font-size: 14px; }`;
+        s.textContent = `.workcell-spinner { border: 4px solid #f3f3f3; border-top: 4px solid #6da037; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 25px; } @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } .loading-container { font-family: sans-serif; text-align: center; }`;
         document.head.appendChild(s);
     }
     const loadingOverlay = document.createElement('div');
-    loadingOverlay.style.cssText = `position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255, 255, 255, 0.98); z-index: 2147483647; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px; box-sizing: border-box;`;
-    loadingOverlay.innerHTML = `<div class="workcell-spinner"></div><div class="loading-container"><div class="loading-title" id="loadingTxt">Iniciando...</div><div class="loading-subtitle">Não feche o app.</div></div>`;
+    loadingOverlay.style.cssText = `position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255, 255, 255, 0.98); z-index: 2147483647; display: flex; flex-direction: column; align-items: center; justify-content: center;`;
+    loadingOverlay.innerHTML = `<div class="workcell-spinner"></div><div class="loading-container"><div>Gerando Documento...</div></div>`;
     document.body.appendChild(loadingOverlay);
 
-    const updateLoading = (txt) => { const el = document.getElementById('loadingTxt'); if(el) el.innerText = txt; };
     const removerLoading = () => {
         if(document.body.contains(containerTemp)) document.body.removeChild(containerTemp);
         if(document.body.contains(loadingOverlay)) document.body.removeChild(loadingOverlay);
     };
 
-    updateLoading("Preparando documento...");
-
     // --- 2. GERAÇÃO HTML ---
-    const nomeClienteLimpo = (dados.nome || 'Cliente').normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_');
-    const numeroDoc = dados.docNumber || '000';
-    const nomeFinalArquivo = `Doc_${nomeClienteLimpo}_${numeroDoc}.pdf`;
+    const nomeClienteLimpo = (dados.nome || 'Cliente').replace(/[^a-z0-9]/gi, '_');
+    const nomeFinalArquivo = `Doc_${nomeClienteLimpo}_${dados.docNumber || '000'}.pdf`;
     
-    // Z-INDEX -9999: O segredo para não dar tela branca no celular
+    // Z-INDEX -9999: Essencial para não dar branco no celular
     const containerTemp = document.createElement('div');
     containerTemp.style.cssText = "position: absolute; left: 0; top: 0; width: 794px; background: white; z-index: -9999; margin: 0; padding: 0;";
 
     if (typeof getReciboHTML === 'function') {
         containerTemp.innerHTML = getReciboHTML(dados);
-
-        // CSS ANTI-CORTE: Protege linhas e textos de serem serrados ao meio
         const styleFix = document.createElement('style');
         styleFix.innerHTML = `
-            #pdf-temp-fix, #pdf-temp-fix * { color: #000000 !important; text-shadow: none !important; -webkit-print-color-adjust: exact; }
-            #pdf-temp-fix th { color: #ffffff !important; } 
-            
-            /* REGRAS DE PROTEÇÃO */
+            #pdf-temp-fix, #pdf-temp-fix * { color: #000000 !important; -webkit-print-color-adjust: exact; }
             table { page-break-inside: auto !important; }
             tr, td, img, div, p, li { page-break-inside: avoid !important; } 
         `;
         containerTemp.id = 'pdf-temp-fix';
         containerTemp.appendChild(styleFix);
     } else {
-        alert("Erro: Modelo não encontrado."); removerLoading(); botao.disabled = false; return;
+        alert("Erro no modelo."); removerLoading(); botao.disabled = false; botao.innerHTML = textoOriginal; return;
     }
     document.body.appendChild(containerTemp);
 
     try {
         window.scrollTo(0,0);
-        await new Promise(r => setTimeout(r, 1000)); // Espera imagens carregarem
-        updateLoading("Gerando PDF...");
+        await new Promise(r => setTimeout(r, 1500)); // Espera imagens
 
-        // --- 3. CONFIGURAÇÃO (SEM CORTES + FIX MOBILE) ---
+        // --- 3. CONFIGURAÇÃO (A MESMA QUE DEIXOU O TEXTO PERFEITO) ---
         const opt = {
-            margin:       [10, 10, 15, 10], // Margem inferior maior ajuda a pular página
+            margin:       [10, 10, 15, 10], 
             filename:     nomeFinalArquivo,
             image:        { type: 'jpeg', quality: 0.98 },
             html2canvas:  { 
@@ -6690,17 +6676,20 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
                 scrollY: 0,
                 letterRendering: true,
                 backgroundColor: '#ffffff',
-                windowWidth: 800 // OBRIGA a renderizar largo (como PC), evitando bugs de layout mobile
+                windowWidth: 800 // OBRIGA a renderizar largo (evita bugs mobile)
             },
             jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
-            pagebreak:    { mode: ['css', 'legacy'] } // Respeita o CSS 'avoid'
+            pagebreak:    { mode: ['css', 'legacy'] } 
         };
 
+        // Cria o worker
         const worker = html2pdf().set(opt).from(containerTemp);
 
-        // === ROTA A: BAIXAR (Botão Azul - Já testado e aprovado) ===
+        // ============================================================
+        // ROTA A: BAIXAR (Botão Azul)
+        // ============================================================
         if (apenasBaixar) {
-            updateLoading("Baixando...");
+            // Usa o método .save() nativo, que é o mais estável de todos
             await worker.save();
             removerLoading();
             botao.innerHTML = textoOriginal;
@@ -6708,72 +6697,65 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
             return;
         }
 
-        // === ROTA B: ENVIAR WHATSAPP (Correção do arquivo branco) ===
-        updateLoading("Preparando arquivo...");
-
-        // 1. Gera a STRING do PDF (Isso usa o mesmo motor do download, garantindo que não fique branco)
+        // ============================================================
+        // ROTA B: ENVIAR (Botão Verde)
+        // ============================================================
+        
+        // AQUI ESTAVA O ERRO ANTES. Agora usamos 'datauristring'
+        // Isso força o PDF a ser gerado exatamente igual ao download (não fica branco)
         const pdfString = await worker.output('datauristring');
 
-        // 2. Converte a String para Arquivo Real (Blob) manualmente
-        const dataURItoBlob = (dataURI) => {
-            const byteString = atob(dataURI.split(',')[1]);
-            const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+        // Converte a string do PDF em um arquivo real
+        const pdfBase64ToBlob = (dataURI) => {
+            const splitData = dataURI.split(',');
+            const byteString = atob(splitData[1]);
+            const mimeString = splitData[0].split(':')[1].split(';')[0];
             const ab = new ArrayBuffer(byteString.length);
             const ia = new Uint8Array(ab);
-            for (let i = 0; i < byteString.length; i++) {
-                ia[i] = byteString.charCodeAt(i);
-            }
+            for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
             return new Blob([ab], { type: mimeString });
         };
 
-        const blob = dataURItoBlob(pdfString);
+        const blob = pdfBase64ToBlob(pdfString);
         const file = new File([blob], nomeFinalArquivo, { type: 'application/pdf' });
         
-        removerLoading(); // Libera a tela
+        removerLoading();
 
-        // 3. Configura o botão para compartilhar
+        // Configura botão
         botao.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
         botao.classList.remove('btn-primary', 'btn-outline-primary', 'btn-secondary'); 
         botao.classList.add('btn-success'); 
         botao.disabled = false; 
 
-        // Clone para limpar eventos antigos
         const novoBotao = botao.cloneNode(true);
         botao.parentNode.replaceChild(novoBotao, botao);
 
         novoBotao.addEventListener('click', async () => {
-            try {
-                if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                    const settings = (typeof receiptSettings !== 'undefined') ? receiptSettings : {};
-                    const msg = settings.shareMessage || `Olá ${dados.nome}, segue documento.`;
-
-                    await navigator.share({
-                        files: [file],
-                        title: "Documento Workcell",
-                        text: msg
-                    });
-                    
-                    // Sucesso visual
-                    novoBotao.innerHTML = '<i class="bi bi-check-circle-fill"></i> Enviado!';
-                    novoBotao.classList.replace('btn-success', 'btn-dark');
-                    
-                    // Marca verde na lista
-                    const cardPai = novoBotao.closest('.list-group-item') || novoBotao.closest('.card');
-                    if(cardPai) { cardPai.style.borderLeft = "6px solid #28a745"; cardPai.style.backgroundColor = "#f0fff4"; }
-                    
-                    // Salva no Banco
-                    if((dados.id || dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') {
-                        marcarComoEnviadoNoBanco(dados.id || dados.docId);
-                    }
-
-                } else {
-                    // Fallback PC
-                    const link = document.createElement('a');
-                    link.href = window.URL.createObjectURL(blob);
-                    link.download = nomeFinalArquivo;
-                    link.click();
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                const settings = (typeof receiptSettings !== 'undefined') ? receiptSettings : {};
+                await navigator.share({
+                    files: [file],
+                    title: "Documento Workcell",
+                    text: settings.shareMessage || `Olá ${dados.nome}, segue documento.`
+                });
+                novoBotao.innerHTML = '<i class="bi bi-check-circle-fill"></i> Enviado!';
+                novoBotao.classList.replace('btn-success', 'btn-dark');
+                
+                // Atualiza visual
+                const card = novoBotao.closest('.list-group-item') || novoBotao.closest('.card');
+                if(card) { card.style.borderLeft = "6px solid #28a745"; card.style.backgroundColor = "#f0fff4"; }
+                
+                // Salva no banco
+                if((dados.id || dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') {
+                    marcarComoEnviadoNoBanco(dados.id || dados.docId);
                 }
-            } catch (err) { console.warn(err); }
+            } else {
+                // Se não der pra enviar, baixa
+                const link = document.createElement('a');
+                link.href = window.URL.createObjectURL(blob);
+                link.download = nomeFinalArquivo;
+                link.click();
+            }
         });
 
     } catch (e) {
