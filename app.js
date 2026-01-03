@@ -6668,37 +6668,65 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
             pagebreak:    { mode: ['css', 'legacy'] } 
         };
 
+                // --- GERA O WORKER ---
         const worker = html2pdf().set(opt).from(containerTemp);
 
-        // --- ROTA A: BAIXAR ---
+        // ============================================================
+        // ROTA A: BAIXAR (Se clicou no botão azul - Mantém igual)
+        // ============================================================
         if (apenasBaixar) {
+            updateLoading("Baixando...");
             await worker.save();
-            document.body.removeChild(containerTemp);
-            document.body.removeChild(loadingOverlay);
+            
+            // Limpeza
+            removerLoading();
             botao.innerHTML = textoOriginal;
             botao.disabled = false;
-            return;
+            return; 
         }
 
-        // --- ROTA B: ENVIAR WHATSAPP ---
-        const blob = await worker.output('blob');
+        // ============================================================
+        // ROTA B: ENVIAR WHATSAPP (CORREÇÃO DO BRANCO) 🛠️
+        // ============================================================
+        updateLoading("Preparando envio...");
+
+        // ⚠️ AQUI ESTÁ A CORREÇÃO:
+        // Em vez de .output('blob') direto, pegamos a DataURI (igual o download faz)
+        // e convertemos manualmente para arquivo. Isso evita o PDF branco.
+        const pdfBase64 = await worker.outputPdf('datauristring');
+        
+        // Função auxiliar para converter Base64 em Arquivo (Blob)
+        const base64ToBlob = (base64) => {
+            const arr = base64.split(',');
+            const mime = arr[0].match(/:(.*?);/)[1];
+            const bstr = atob(arr[1]);
+            let n = bstr.length;
+            const u8arr = new Uint8Array(n);
+            while (n--) {
+                u8arr[n] = bstr.charCodeAt(n);
+            }
+            return new Blob([u8arr], { type: mime });
+        };
+
+        const blob = base64ToBlob(pdfBase64);
         const file = new File([blob], nomeArquivo, { type: 'application/pdf' });
         
-        document.body.removeChild(containerTemp);
-        document.body.removeChild(loadingOverlay);
+        // Limpeza (Só remove depois de garantir o arquivo)
+        removerLoading();
 
+        // --- Configura o Botão Verde ---
         botao.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
         botao.classList.remove('btn-primary', 'btn-outline-primary', 'btn-secondary'); 
         botao.classList.add('btn-success'); 
         botao.disabled = false; 
 
+        // Clone para limpar eventos antigos
         const novoBotao = botao.cloneNode(true);
         botao.parentNode.replaceChild(novoBotao, botao);
 
         novoBotao.addEventListener('click', async () => {
             try {
                 if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                    // Pega mensagem salva ou usa padrão
                     const settings = (typeof receiptSettings !== 'undefined') ? receiptSettings : {};
                     const msg = settings.shareMessage || `Olá ${dados.nome}, segue documento.`;
                     
@@ -6708,32 +6736,40 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
                         text: msg
                     });
                     
+                    // Sucesso Visual
                     novoBotao.innerHTML = '<i class="bi bi-check-circle-fill"></i> Enviado!';
                     novoBotao.classList.replace('btn-success', 'btn-dark');
-                    // Marca verde na lista
-                    const card = novoBotao.closest('.list-group-item') || novoBotao.closest('.card');
-                    if(card) { card.style.borderLeft = "6px solid #28a745"; card.style.backgroundColor = "#f0fff4"; }
-                    // Salva no banco
-                    if((dados.id||dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') marcarComoEnviadoNoBanco(dados.id||dados.docId);
+                    
+                    // Marcação Visual na Lista
+                    const cardPai = novoBotao.closest('.list-group-item') || novoBotao.closest('.card');
+                    if(cardPai) { 
+                        cardPai.style.borderLeft = "6px solid #28a745"; 
+                        cardPai.style.backgroundColor = "#f0fff4"; 
+                    }
+                    // Salva no Banco
+                    if((dados.id || dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') {
+                        marcarComoEnviadoNoBanco(dados.id || dados.docId);
+                    }
+
                 } else {
-                    // Fallback
+                    // Fallback para PC
                     const link = document.createElement('a');
                     link.href = window.URL.createObjectURL(blob);
                     link.download = nomeArquivo;
                     link.click();
                 }
-            } catch (err) { console.warn(err); }
+            } catch (err) { console.warn("Share cancelado:", err); }
         });
 
     } catch (e) {
-        if(document.body.contains(loadingOverlay)) document.body.removeChild(loadingOverlay);
-        if(document.body.contains(containerTemp)) document.body.removeChild(containerTemp);
+        removerLoading();
         console.error(e);
         alert("Erro: " + e.message);
         botao.innerHTML = textoOriginal;
         botao.disabled = false;
     }
 }
+
 
 // 🧹 FAXINA DO FIREBASE (GLOBAL)
 // ============================================================
