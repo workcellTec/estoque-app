@@ -6672,7 +6672,8 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
         const worker = html2pdf().set(opt).from(containerTemp);
 
         // ============================================================
-        // ROTA A: BAIXAR (Se clicou no botão azul - Mantém igual)
+        // ============================================================
+        // ROTA A: BAIXAR (Botão Azul - Esse já funciona)
         // ============================================================
         if (apenasBaixar) {
             updateLoading("Baixando...");
@@ -6686,35 +6687,33 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
         }
 
         // ============================================================
-        // ROTA B: ENVIAR WHATSAPP (CORREÇÃO DO BRANCO) 🛠️
+        // ROTA B: ENVIAR WHATSAPP (CORRIGIDO: SEM TRAVAR E SEM BRANCO)
         // ============================================================
-        updateLoading("Preparando envio...");
+        updateLoading("Preparando arquivo...");
 
-        // ⚠️ AQUI ESTÁ A CORREÇÃO:
-        // Em vez de .output('blob') direto, pegamos a DataURI (igual o download faz)
-        // e convertemos manualmente para arquivo. Isso evita o PDF branco.
-        const pdfBase64 = await worker.outputPdf('datauristring');
-        
-        // Função auxiliar para converter Base64 em Arquivo (Blob)
-        const base64ToBlob = (base64) => {
-            const arr = base64.split(',');
-            const mime = arr[0].match(/:(.*?);/)[1];
-            const bstr = atob(arr[1]);
-            let n = bstr.length;
-            const u8arr = new Uint8Array(n);
-            while (n--) {
-                u8arr[n] = bstr.charCodeAt(n);
+        // 1. Pega o PDF como Texto (DataURI) - Isso evita o bug do arquivo branco
+        // (Atenção: O comando é .output, não .outputPdf)
+        const pdfString = await worker.output('datauristring');
+
+        // 2. Converte Texto para Arquivo Real (Blob)
+        // Essa função interna garante que os bytes sejam gravados corretamente
+        const dataURItoBlob = (dataURI) => {
+            const byteString = atob(dataURI.split(',')[1]);
+            const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
             }
-            return new Blob([u8arr], { type: mime });
+            return new Blob([ab], { type: mimeString });
         };
 
-        const blob = base64ToBlob(pdfBase64);
+        const blob = dataURItoBlob(pdfString);
         const file = new File([blob], nomeArquivo, { type: 'application/pdf' });
         
-        // Limpeza (Só remove depois de garantir o arquivo)
-        removerLoading();
+        removerLoading(); // Tira o loading AGORA para liberar a tela
 
-        // --- Configura o Botão Verde ---
+        // 3. Configura o botão para enviar
         botao.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
         botao.classList.remove('btn-primary', 'btn-outline-primary', 'btn-secondary'); 
         botao.classList.add('btn-success'); 
@@ -6726,45 +6725,51 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
 
         novoBotao.addEventListener('click', async () => {
             try {
+                // Tenta compartilhar nativo (Celular)
                 if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    
                     const settings = (typeof receiptSettings !== 'undefined') ? receiptSettings : {};
                     const msg = settings.shareMessage || `Olá ${dados.nome}, segue documento.`;
-                    
+
                     await navigator.share({
                         files: [file],
-                        title: "Documento",
+                        title: "Documento Workcell",
                         text: msg
                     });
                     
-                    // Sucesso Visual
+                    // Sucesso visual
                     novoBotao.innerHTML = '<i class="bi bi-check-circle-fill"></i> Enviado!';
                     novoBotao.classList.replace('btn-success', 'btn-dark');
                     
-                    // Marcação Visual na Lista
+                    // Marca na lista
                     const cardPai = novoBotao.closest('.list-group-item') || novoBotao.closest('.card');
                     if(cardPai) { 
                         cardPai.style.borderLeft = "6px solid #28a745"; 
                         cardPai.style.backgroundColor = "#f0fff4"; 
                     }
-                    // Salva no Banco
+                    
+                    // Salva no banco
                     if((dados.id || dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') {
                         marcarComoEnviadoNoBanco(dados.id || dados.docId);
                     }
 
                 } else {
-                    // Fallback para PC
+                    // Se não der pra compartilhar (PC ou erro), baixa o arquivo
                     const link = document.createElement('a');
                     link.href = window.URL.createObjectURL(blob);
                     link.download = nomeArquivo;
                     link.click();
                 }
-            } catch (err) { console.warn("Share cancelado:", err); }
+            } catch (err) {
+                console.warn("Compartilhamento cancelado ou erro:", err);
+            }
         });
 
     } catch (e) {
+        // Se der erro, tira o loading e avisa
         removerLoading();
         console.error(e);
-        alert("Erro: " + e.message);
+        alert("Erro ao processar: " + e.message);
         botao.innerHTML = textoOriginal;
         botao.disabled = false;
     }
