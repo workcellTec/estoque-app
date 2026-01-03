@@ -316,8 +316,6 @@ window.alternarModoInput = function() {
 
 
 
-// ============================================================
-// ============================================================
 // SISTEMA DE CONTROLE DE TELA (RECIBO vs GARANTIA) - FINAL
 // ============================================================
 
@@ -333,7 +331,6 @@ window.abrirReciboSimples = function() {
     if(typeof window.resetFormulariosBookip === 'function') {
         window.resetFormulariosBookip();
     }
-
 
     // 3. Configura Títulos
     const titulo = document.querySelector('#areaBookipWrapper h3');
@@ -364,61 +361,9 @@ window.abrirReciboSimples = function() {
     }
 };
 
-// 2. CORREÇÃO AUTOMÁTICA DO BOTÃO "GARANTIA"
-/// CONFIGURAÇÃO DOS BOTÕES AO CARREGAR A PÁGINA
-document.addEventListener('DOMContentLoaded', () => {
-    
-    // --- BOTÃO GARANTIA (Lógica Blindada) ---
-    const btnGarantia = document.getElementById('openBookipView');
-    if (btnGarantia) {
-        btnGarantia.addEventListener('click', () => {
-            console.log("Abrindo Garantia...");
-            
-            // 1. Reset de Variáveis
-            window.isSimpleReceiptMode = false;
-            window.currentEditingBookipId = null; 
-            
-            // 2. Chama a Faxina
-            if(typeof window.resetFormulariosBookip === 'function') {
-                window.resetFormulariosBookip();
-            }
+// A PARTE QUE DAVA CONFLITO (DOMContentLoaded com btnGarantia) FOI REMOVIDA DAQUI.
+// O botão de garantia agora é controlado pelo código novo que adicionamos anteriormente.
 
-            // 3. Configura Títulos
-            const titulo = document.querySelector('#areaBookipWrapper h3');
-            if (titulo) titulo.innerText = "Garantia (Bookip)";
-
-            const txtNovo = document.getElementById('txtToggleNovo');
-            if (txtNovo) txtNovo.innerHTML = '<i class="bi bi-plus-lg"></i> Nova Garantia';
-
-            // 4. Configura Interface (Garantia precisa da busca e NÃO tem toggle)
-            const toggle = document.getElementById('toggleModoInputContainer');
-            if (toggle) toggle.style.display = 'none'; 
-            
-            if(typeof alternarModoInput === 'function') alternarModoInput('produto'); 
-
-            const buscaContainer = document.querySelector('#camposProduto .search-wrapper');
-            if (buscaContainer) buscaContainer.classList.remove('hidden'); 
-
-            // 5. Abre a Tela
-            // (Usando o método manual para garantir)
-            const menus = document.querySelectorAll('#mainMenu, #documentsHome, .section-content');
-            menus.forEach(m => m.style.display = 'none');
-            
-            const tela = document.getElementById('areaBookipWrapper');
-            if (tela) tela.style.display = 'block';
-            
-            const tabToggle = document.getElementById('bookipModeToggle');
-            if(tabToggle) {
-                tabToggle.checked = false;
-                tabToggle.dispatchEvent(new Event('change'));
-            }
-            
-            if(typeof loadBookipHistory === 'function') loadBookipHistory();
-        });
-    }
-
-    // (Se houver outros listeners aqui dentro, mantenha-os abaixo, mas cuidado para não apagar o '});' final)
-});
 
 
 
@@ -5000,12 +4945,20 @@ function loadBookipHistory() {
             const clsMeus = filtroAtual !== 'todos' ? 'btn-light active fw-bold' : 'btn-outline-light';
 
             const filterHTML = `
-            <div id="filterBarProfiles" class="d-flex gap-2 mb-3 overflow-auto pb-2">
-                <button class="btn btn-sm ${clsTodos} filter-profile-btn" onclick="filtrarHistoricoPorPerfil('todos', this)" style="border-radius: 20px; padding: 5px 15px;">Todos</button>
-                <button class="btn btn-sm ${clsMeus} filter-profile-btn" onclick="filtrarHistoricoPorPerfil('MEUS_ARQUIVOS_DINAMICO', this)" style="border-radius: 20px; padding: 5px 15px;">
-                    <i class="bi bi-person-fill me-1"></i> Meus Arquivos
-                </button>
-            </div>`;
+<div id="filterBarProfiles" class="d-flex gap-2 mb-3 overflow-auto pb-2 align-items-center justify-content-between">
+    
+    <div class="d-flex gap-2">
+        <button class="btn btn-sm ${clsTodos} filter-profile-btn" onclick="filtrarHistoricoPorPerfil('todos', this)" style="border-radius: 20px; padding: 5px 15px;">Todos</button>
+        <button class="btn btn-sm ${clsMeus} filter-profile-btn" onclick="filtrarHistoricoPorPerfil('MEUS_ARQUIVOS_DINAMICO', this)" style="border-radius: 20px; padding: 5px 15px;">
+            <i class="bi bi-person-fill me-1"></i> Meus Arquivos
+        </button>
+    </div>
+    
+    <button class="btn btn-sm btn-outline-danger" onclick="abrirLixeiraModal()" style="border-radius: 20px; padding: 5px 15px;" title="Ver Lixeira">
+        <i class="bi bi-trash"></i> Lixeira
+    </button>
+
+</div>`;
 
 
             const searchBox = document.getElementById('bookipSearchContainer');
@@ -5312,10 +5265,24 @@ function loadBookipHistory() {
         container.querySelectorAll('.edit-bookip-btn').forEach(b => b.addEventListener('click', e => carregarDadosParaEdicao(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id))));
         container.querySelectorAll('.email-history-btn').forEach(b => b.addEventListener('click', e => gerarPdfDoHistorico(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id), b)));
         container.querySelectorAll('.print-old-bookip').forEach(b => b.addEventListener('click', e => printBookip(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id))));
-        container.querySelectorAll('.delete-bookip-btn').forEach(b => b.addEventListener('click', e => {
-            const id = e.target.closest('button').dataset.id;
-            showCustomModal({message: "Apagar?", confirmText: "Sim", onConfirm: async () => { await remove(ref(db, `bookips/${id}`)); showCustomModal({message: "Apagado."}); }, onCancel: ()=>{}});
-        }));
+
+
+container.querySelectorAll('.delete-bookip-btn').forEach(b => b.addEventListener('click', e => {
+    const id = e.target.closest('button').dataset.id;
+    
+    showCustomModal({
+        message: "Deseja mover este documento para a Lixeira?", 
+        confirmText: "Mover p/ Lixeira", 
+        onConfirm: async () => { 
+            // Agora chama a função de lixeira em vez de apagar direto
+            await moverParaLixeira(id); 
+        }, 
+        onCancel: ()=>{}
+    });
+}));
+
+
+
 // --- NOVO: Listener para o Botão de Download Seguro ---
 container.querySelectorAll('.btn-download-seguro').forEach(b => {
     b.addEventListener('click', e => {
@@ -5325,9 +5292,9 @@ container.querySelectorAll('.btn-download-seguro').forEach(b => {
         const item = listaCompletaCache.find(i => i.id === id);
         
         if(item) {
-            // Chama a função nova que vamos criar no passo 3
-            window.baixarPdfExclusivo(item, btn);
-        }
+            // Chama a função mestre ativando o modo "Apenas Baixar" (true)
+            gerarPdfDoHistorico(item, btn, true);
+}
     });
 });
 
@@ -6353,30 +6320,68 @@ setupProductTags();
         btnOpenContrato.onclick = function() { window.openDocumentsSection('contrato'); };
     }
 
-    // Botão "Garantia (Bookip)"
+    // ============================================================
+    // CONTROLES DE NAVEGAÇÃO (GARANTIA E CONTRATO) - VERSÃO FINAL
+    // ============================================================
+
+    // 1. Botão "Garantia (Bookip)"
     const btnOpenBookip = document.getElementById('openBookipView');
     if (btnOpenBookip) {
-        btnOpenBookip.onclick = function() { window.openDocumentsSection('bookip'); };
+        btnOpenBookip.onclick = function() { 
+            console.log("Abrindo Garantia (Modo Inteligente)...");
+
+            // --- A. CONFIGURAÇÃO VISUAL (Que estava no código antigo) ---
+            window.isSimpleReceiptMode = false;
+            window.currentEditingBookipId = null;
+            
+            // Ajusta Títulos
+            const titulo = document.querySelector('#areaBookipWrapper h3');
+            if (titulo) titulo.innerText = "Garantia (Bookip)";
+            
+            const txtNovo = document.getElementById('txtToggleNovo');
+            if (txtNovo) txtNovo.innerHTML = '<i class="bi bi-plus-lg"></i> Nova Garantia';
+
+            // Mostra busca e esconde toggle de recibo simples
+            const toggleSimples = document.getElementById('toggleModoInputContainer');
+            if (toggleSimples) toggleSimples.style.display = 'none'; 
+            
+            const buscaContainer = document.querySelector('#camposProduto .search-wrapper');
+            if (buscaContainer) buscaContainer.classList.remove('hidden'); 
+
+            // Reseta a aba para "Novo" (sem apagar dados)
+            const tabToggle = document.getElementById('bookipModeToggle');
+            if(tabToggle && tabToggle.checked) {
+                tabToggle.checked = false; 
+                tabToggle.dispatchEvent(new Event('change'));
+            }
+
+            // --- B. ABRE A TELA ---
+            window.openDocumentsSection('bookip'); 
+            
+            // --- C. VERIFICA O RASCUNHO (Com atraso seguro) ---
+            setTimeout(() => {
+                if(typeof checarRascunhoAoAbrir === 'function') {
+                    checarRascunhoAoAbrir();
+                } else {
+                    // Fallback: Se não tiver rascunho pra checar, ativa o monitoramento agora
+                    if(typeof ativarSalvamentoAutomatico === 'function') window.ativarSalvamentoAutomatico();
+                }
+            }, 300);
+        };
     }
 
-    // Botão Voltar (dentro do Contrato) -> Volta pro Menu Doc
-    const btnBackFromContrato = document.getElementById('backFromContratoView');
-    if (btnBackFromContrato) {
-        btnBackFromContrato.onclick = function() { window.openDocumentsSection('home'); };
-    }
-
-    // Botão Voltar (dentro da Garantia) -> Volta pro Menu Doc
+    // 2. Botão Voltar (dentro da Garantia)
     const btnBackFromBookip = document.getElementById('backFromBookipView');
     if (btnBackFromBookip) {
         btnBackFromBookip.onclick = function() { window.openDocumentsSection('home'); };
     }
 
-// ============================================================
+    // 3. Botão Voltar (dentro do Contrato)
+    const btnBackFromContrato = document.getElementById('backFromContratoView');
+    if (btnBackFromContrato) {
+        btnBackFromContrato.onclick = function() { window.openDocumentsSection('home'); };
+    }
 
-
-// ============================================================
-// ============================================================
-// ============================================================
 // 2. FUNÇÃO IMPRIMIR
 // ============================================================
 function printBookip(dados) {
@@ -6494,29 +6499,49 @@ function getReciboHTML(dados) {
     const showGarantiaRow = !isSituation;
     const showVenceRow = !isSituation && !isSimple;
 
-    // CORREÇÃO INTELIGENTE: PERFEITO NO PDF (SEM CORTES) E FLUIDO NA IMPRESSORA (SEM BURACOS)
+    // CORREÇÃO: FONTE SEGURA E SEM JUSTIFICAR (RESOLVE O AMONTOADO E O CORTE)
     const sectionTermos = (isSimple || isSituation) ? "" : `
         <style>
-            /* Regra Padrão (Para o PDF gerado via imagem/tela) */
-            .termos-garantia {
-                page-break-inside: avoid; /* Segura o bloco junto no PDF */
+            .termos-wrapper {
+                page-break-inside: avoid;
+                margin-top: 15px;
+                border-top: 1px solid #000;
+                padding-top: 10px;
+                background-color: #fff; /* Garante fundo limpo */
             }
 
-            /* Regra Específica para Impressão Física (Ctrl+P) */
-            @media print {
-                .termos-garantia {
-                    page-break-inside: auto !important; /* Permite quebrar suavemente no papel */
-                    margin-top: 5px !important; /* Ajusta margem pra economizar papel */
-                }
+            .termos-texto {
+                /* 1. USE FONTE DE SISTEMA (Métricas perfeitas, sem cortes) */
+                font-family: Arial, Helvetica, sans-serif !important;
+                font-size: 9pt !important;
+                color: #000 !important;
+                
+                /* 2. O SEGREDO DO "AMONTOADO": NUNCA JUSTIFICAR EM HTML2CANVAS */
+                text-align: left !important; 
+                
+                /* 3. O SEGREDO DO CORTE: Altura generosa */
+                line-height: 1.5 !important; 
+                
+                /* 4. GARANTIA EXTRA: Um leve respiro entre as letras */
+                letter-spacing: 0.3px !important;
+                
+                /* Reseta qualquer renderização exótica */
+                font-variant-ligatures: none !important;
+                text-rendering: auto !important;
+                display: block !important;
+                width: 100% !important;
             }
         </style>
 
-        <div class="termos-garantia" style="border-top: 1px solid #000; padding-top: 10px; margin-top: 10px;">
-            <div style="margin-bottom: 10px;">
-                <strong style="font-size: 10pt; text-transform: uppercase;">Termos de Garantia</strong>
+        <div class="termos-wrapper">
+            <div style="margin-bottom: 8px;">
+                <strong style="font-size: 10pt; text-transform: uppercase; font-family: Arial, sans-serif;">Termos de Garantia</strong>
             </div>
-            <div style="font-size: 9pt; line-height: 1.3; color: #333; text-align: justify;">${termsHtml}</div>
+            <div class="termos-texto">
+                ${termsHtml}
+            </div>
         </div>`;
+
 
 
     return `
@@ -6596,37 +6621,37 @@ Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750
     `;
 }
 
-// ==============================================// ============================================================
 
 // ============================================================
-// ============================================================
-// FUNÇÃO BLINDADA: GERAR PDF PARA ENVIAR (OU BAIXAR
-// Usa a mesma técnica de imagem do Download Seguro para evitar tela branca
+// FUNÇÃO MESTRA: GERAR PDF (UNIFICADA: BAIXAR E ENVIAR)
 // ============================================================
 async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
     
-    // --- 0. LÓGICA DE COPIAR E-MAIL (MANTIDA) ---
+    // --- 0. PREPARAÇÃO (Copiar E-mail se existir, apenas se for modo Envio) ---
     if (!apenasBaixar && dados.email && dados.email.trim() !== '') {
-        const textToCopy = dados.email.trim();
         try {
-            if (navigator.clipboard) await navigator.clipboard.writeText(textToCopy);
+            if (navigator.clipboard) await navigator.clipboard.writeText(dados.email.trim());
         } catch (e) {}
     }
 
-    // --- 1. PREPARAÇÃO VISUAL (LOADING) ---
+    // --- 1. FEEDBACK VISUAL (LOADING) ---
     const textoOriginal = botao.innerHTML;
-    botao.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Processando...';
+    // Muda o texto dependendo da ação
+    botao.innerHTML = apenasBaixar 
+        ? '<span class="spinner-border spinner-border-sm"></span> Baixando...' 
+        : '<span class="spinner-border spinner-border-sm"></span> Processando...';
+    
     botao.disabled = true;
 
-    // Garante o Spinner bonito
+    // Loader Global ou Local
     if(typeof toggleLoader === 'function') {
-        toggleLoader(true, "Gerando Documento...");
+        toggleLoader(true, apenasBaixar ? "Baixando PDF..." : "Gerando PDF...");
     } else {
-        // Fallback se não tiver o loader global
+        // Fallback caso não tenha loader global
         const loadingOverlay = document.createElement('div');
         loadingOverlay.id = "tempLoadingPdf";
         loadingOverlay.style.cssText = `position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255, 255, 255, 0.98); z-index: 2147483647; display: flex; flex-direction: column; align-items: center; justify-content: center;`;
-        loadingOverlay.innerHTML = `<div class="spinner-border text-primary" style="width: 3rem; height: 3rem;"></div><div class="mt-3">Gerando PDF de Alta Qualidade...</div>`;
+        loadingOverlay.innerHTML = `<div class="spinner-border text-primary" style="width: 3rem; height: 3rem;"></div><div class="mt-3">${apenasBaixar ? "Baixando..." : "Preparando..."}</div>`;
         document.body.appendChild(loadingOverlay);
     }
 
@@ -6634,43 +6659,55 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
         if(typeof toggleLoader === 'function') toggleLoader(false);
         const tmp = document.getElementById("tempLoadingPdf");
         if(tmp) tmp.remove();
-        if(document.getElementById('pdf-dl-fix-send')) document.getElementById('pdf-dl-fix-send').remove();
+        const tmpContainer = document.getElementById("pdf-dl-fix-final");
+        if(tmpContainer) tmpContainer.remove();
     };
 
     try {
-        // --- A. PREPARA O DOCUMENTO (Cópia da lógica visual) ---
+        // --- A. MONTA O HTML ESCONDIDO ---
         const containerTemp = document.createElement('div');
-        // Joga pra fora da tela pra ninguém ver enquanto monta
+        // Mantém fixo em 794px (A4) e fora da tela
         containerTemp.style.cssText = "position: fixed; top: 0; left: -9999px; width: 794px; background: white; z-index: -100;";
         
         if (typeof getReciboHTML === 'function') {
             containerTemp.innerHTML = getReciboHTML(dados);
-            // Garante as cores pretas e fundo branco
+            
+            // CSS para garantir preto absoluto e remover sombras
             const styleFix = document.createElement('style');
-            styleFix.innerHTML = `#pdf-dl-fix-send, #pdf-dl-fix-send * { color: #000000 !important; text-shadow: none !important; } #pdf-dl-fix-send th { color: #ffffff !important; }`;
-            containerTemp.id = 'pdf-dl-fix-send';
+            styleFix.innerHTML = `
+                #pdf-dl-fix-final, #pdf-dl-fix-final * { 
+                    color: #000000 !important; 
+                    text-shadow: none !important;
+                    letter-spacing: normal !important; 
+                    word-spacing: normal !important;
+                    font-kerning: auto !important;
+                    font-variant-ligatures: none !important;
+                } 
+                #pdf-dl-fix-final th { color: #ffffff !important; }
+            `;
+            containerTemp.id = 'pdf-dl-fix-final';
             containerTemp.appendChild(styleFix);
         } else {
-            throw new Error("Erro: Layout do recibo não encontrado.");
+            throw new Error("Layout do documento não encontrado.");
         }
         document.body.appendChild(containerTemp);
 
-        // --- B. TIRA A FOTO (Renderização via Canvas) ---
-        // Isso é o que conserta a tela branca!
+        // --- B. RENDERIZA COMO IMAGEM (CAPTURA) ---
         window.scrollTo(0,0);
-        await new Promise(r => setTimeout(r, 600)); // Delay p/ carregar imagens e fontes
+        await new Promise(r => setTimeout(r, 800)); // Tempo para carregar imagens/fontes
 
+        // 🔥 ESCALA 2 + PNG = O equilíbrio perfeito para Android (Nitidez sem travar)
         const fullCanvas = await html2canvas(containerTemp, {
-            scale: 3, // Qualidade alta (3x)
+            scale: 4, 
             useCORS: true,
             windowWidth: 794,
             backgroundColor: '#ffffff'
         });
 
-        // --- C. PAGINAÇÃO INTELIGENTE (Corta as páginas igual ao original) ---
+        // --- C. PAGINAÇÃO MANUAL (CORREÇÃO DE CORTE + TARJA BRANCA) ---
         const pdfRatio = 297 / 210; 
         const pageHeightPixels = Math.floor(fullCanvas.width * pdfRatio);
-        const margemSeguranca = 50; 
+        const margemSeguranca = 100; 
         const contentHeightPerPage = pageHeightPixels - (margemSeguranca * 2) - 15;
         const totalHeight = fullCanvas.height;
         let currentHeight = 0;
@@ -6684,23 +6721,35 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
             pageCanvas.width = fullCanvas.width;
             pageCanvas.height = pageHeightPixels;
             const ctx = pageCanvas.getContext('2d');
+            
+            // Fundo branco
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
 
             const heightLeft = totalHeight - currentHeight;
             const sliceHeight = Math.min(contentHeightPerPage, heightLeft);
-            const ajusteVisual = (pageCount > 1) ? 20 : 0; 
+            const ajusteVisual = (pageCount > 1) ? 60 : 0; 
 
-            ctx.drawImage(fullCanvas, 0, currentHeight, fullCanvas.width, sliceHeight, 0, margemSeguranca + ajusteVisual, fullCanvas.width, sliceHeight);
+            // Desenha o pedaço da página
+            ctx.drawImage(
+                fullCanvas, 
+                0, currentHeight, fullCanvas.width, sliceHeight, // Origem
+                0, margemSeguranca + ajusteVisual, fullCanvas.width, sliceHeight // Destino
+            );
 
-            // CORREÇÃO DA TARJA BRANCA (Limpa sujeira do topo nas paginas seguintes)
+            // 👇 TARJA BRANCA DE LIMPEZA (Remove "sujeira" de letras cortadas do topo) 👇
             if (pageCount > 1) {
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(0, margemSeguranca + ajusteVisual - 2, pageCanvas.width, 5);
             }
 
+            // Converte para Imagem PNG (Texto Nítido)
             const imgSlice = document.createElement('img');
-            imgSlice.src = pageCanvas.toDataURL('image/jpeg', 0.92); // JPEG levemente comprimido
+
+            // Procure a linha do imgSlice.src e troque por esta:
+imgSlice.src = pageCanvas.toDataURL('image/jpeg', 0.95); // <--- JPEG 0.95 (Leve e nítido)
+
+
             imgSlice.style.width = '100%'; 
             imgSlice.style.display = 'block';
             
@@ -6713,80 +6762,94 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
             pageCount++;
         }
 
-        // --- D. GERA O ARQUIVO FINAL ---
+        // --- D. GERA O ARQUIVO PDF ---
         const nomeClienteLimpo = (dados.nome || 'Cliente').replace(/[^a-z0-9]/gi, '_');
         const nomeFinalArquivo = `Doc_${nomeClienteLimpo}_${dados.docNumber || '000'}.pdf`;
 
-        const opt = {
-            margin: 0, 
-            filename: nomeFinalArquivo,
-            image: { type: 'jpeg', quality: 1 },
-            html2canvas: { scale: 4, useCORS: true }, 
-            jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' } 
-        };
+        // Substitua o bloco const opt por este:
+const opt = {
+    margin: 0, 
+    filename: nomeFinalArquivo,
+    image: { type: 'jpeg', quality: 0.95 }, // <--- Mudar para jpeg
+    html2canvas: { scale: 4, useCORS: true }, // <--- Mudar para 4
+    jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' } 
+};
+
 
         const worker = html2pdf().set(opt).from(printContainer);
 
-        // ============================================================
-        // ROTA A: BAIXAR (Se apenasBaixar for true)
-        // ============================================================
+        // ==========================================
+        // 🛣️ ROTA 1: APENAS BAIXAR (DOWNLOAD)
+        // ==========================================
         if (apenasBaixar) {
-            await worker.save();
+            await worker.save(); // Baixa direto
+            
             removerLoading();
             botao.innerHTML = textoOriginal;
             botao.disabled = false;
-            return;
+            
+            if(typeof showCustomModal === 'function') {
+                showCustomModal({ message: "Download concluído! Verifique seus arquivos. 📂" });
+            }
+            return; // Encerra a função aqui
         }
 
-        // ============================================================
-        // ROTA B: ENVIAR / COMPARTILHAR (A Mágica acontece aqui)
-        // ============================================================
-        
-        // Gera o PDF como um "Blob" (Arquivo na memória)
+        // ==========================================
+        // 🛣️ ROTA 2: COMPARTILHAR / ENVIAR (WHATSAPP)
+        // ==========================================
         const pdfBlob = await worker.output('blob');
-        
-        // Cria um arquivo real para o navegador
         const file = new File([pdfBlob], nomeFinalArquivo, { type: 'application/pdf' });
         
         removerLoading();
 
-        // Configura botão visualmente
+        // Configura o botão para estado de "Pronto para Enviar"
         botao.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
         botao.classList.remove('btn-primary', 'btn-outline-primary', 'btn-secondary', 'btn-dark'); 
         botao.classList.add('btn-success'); 
         botao.disabled = false; 
 
-        // Substitui o botão antigo por um novo para limpar eventos antigos
+        // Clone para limpar listeners antigos
         const novoBotao = botao.cloneNode(true);
         botao.parentNode.replaceChild(novoBotao, botao);
 
-        // Adiciona a ação de clique no novo botão verde
+        // Evento de Clique para Compartilhar
         novoBotao.addEventListener('click', async () => {
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
                 const settings = (typeof receiptSettings !== 'undefined') ? receiptSettings : {};
+                const saudacao = `Olá ${dados.nome || 'Cliente'},`;
+                const corpoMensagem = settings.shareMessage || "segue seu documento em anexo.";
+                const textoCompleto = `${saudacao}\n\n${corpoMensagem}`;
+
                 try {
                     await navigator.share({
                         files: [file],
-                        title: "Documento Workcell",
-                        text: settings.shareMessage || `Olá ${dados.nome}, segue seu documento.`
+                        title: "Documento Workcell Tecnologia",
+                        text: textoCompleto
                     });
                     
-                    // Sucesso visual
+                    // Sucesso Visual
                     novoBotao.innerHTML = '<i class="bi bi-check-circle-fill"></i> Enviado!';
                     novoBotao.classList.replace('btn-success', 'btn-dark');
                     
                     const card = novoBotao.closest('.list-group-item') || novoBotao.closest('.card');
                     if(card) { card.style.borderLeft = "6px solid #28a745"; card.style.backgroundColor = "#f0fff4"; }
                     
-                    // Salva status no banco
                     if((dados.id || dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') {
                         marcarComoEnviadoNoBanco(dados.id || dados.docId);
                     }
                 } catch (err) {
-                    console.log("Compartilhamento cancelado ou falhou", err);
+                    console.log("Compartilhamento cancelado", err);
+                    if (err.name !== 'AbortError') {
+                        // Se der erro real no share, oferece download
+                        alert("Não foi possível abrir o WhatsApp direto. O arquivo será baixado.");
+                        const link = document.createElement('a');
+                        link.href = window.URL.createObjectURL(pdfBlob);
+                        link.download = nomeFinalArquivo;
+                        link.click();
+                    }
                 }
             } else {
-                // Fallback: Se não der pra enviar (PC antigo), baixa o arquivo
+                // Fallback para PC
                 const link = document.createElement('a');
                 link.href = window.URL.createObjectURL(pdfBlob);
                 link.download = nomeFinalArquivo;
@@ -6794,20 +6857,19 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
             }
         });
 
-        // Opcional: Clica automaticamente na primeira vez para abrir o menu de compartilhar
-        // novoBotao.click(); 
-
     } catch (e) {
         removerLoading();
         console.error(e);
-        if(typeof showCustomModal === 'function') showCustomModal({message: "Erro ao gerar PDF: " + e.message});
-        else alert("Erro: " + e.message);
-        
+        const msg = "Erro ao processar PDF: " + e.message;
+        if (typeof showCustomModal === 'function') {
+            showCustomModal({message: msg});
+        } else {
+            alert(msg);
+        }
         botao.innerHTML = textoOriginal;
         botao.disabled = false;
     }
 }
-
 
 // 🧹 FAXINA DO FIREBASE (GLOBAL)
 // ============================================================
@@ -7042,12 +7104,17 @@ setTimeout(() => {
 }, 1000); // Espera 1 segundo pra garantir que o HTML carregou
 
 // ============================================================
-// FUNÇÃO DE FAXINA (LIMPA TUDO PARA EVITAR BUGS DE EDIÇÃO)
-// ============================================================
-// FUNÇÃO DE FAXINA (LIMPA TUDO: DADOS E VISUAL)
+// FUNÇÃO DE FAXINA (LIMPA TUDO: DADOS, VISUAL E RASCUNHO)
 // ============================================================
 window.resetFormulariosBookip = function() {
     console.log("🧹 Executando faxina completa...");
+
+    // 👇👇👇 AQUI ESTÁ O SEGREDO QUE FALTAVA 👇👇👇
+    // Isso garante que o rascunho velho morra quando você pede um novo.
+    if(typeof limparRascunhoBookipDefinitivo === 'function') {
+        limparRascunhoBookipDefinitivo();
+    }
+    // 👆👆👆 FIM DA ADIÇÃO 👆👆👆
 
     // 1. Limpa Campos de Texto do Cliente
     const camposCliente = ['bookipNome', 'bookipCpf', 'bookipTelefone', 'bookipEndereco', 'bookipEmail', 'bookipDataManual'];
@@ -7112,10 +7179,6 @@ window.resetFormulariosBookip = function() {
     const saveContainer = document.getElementById('saveActionContainer');
     if(saveContainer) saveContainer.classList.remove('hidden');
 };
-
-
-
-
 
 
 
@@ -7460,165 +7523,168 @@ document.addEventListener('click', function(e) {
 });
 
 // ============================================================
-// SISTEMA DE RASCUNHO AUTOMÁTICO (BOOKIP / GARANTIA)
+// 🧠 NOVO SISTEMA DE RASCUNHO (OPÇÃO 1: DESCARTÁVEL)
 // ============================================================
-// Usamos var ou window para evitar erro de "variável já declarada" se o código rodar 2x
-window.BOOKIP_DRAFT_KEY = 'ctwBookipDraft_v1';
+const BOOKIP_DRAFT_KEY = 'ctwBookipDraft_Smart_v2';
+let timerRascunhoBookip = null;
 
-// 1. SALVA TUDO O QUE ESTÁ NA TELA
-window.salvarRascunhoBookip = function() {
-    const elNome = document.getElementById('bookipNome');
-    // Proteção: Se a tela não existir, não faz nada
-    if (!elNome) return;
+// 1. MONITORAMENTO (Salva sozinho quando para de digitar)
+window.ativarSalvamentoAutomatico = function() {
+    const container = document.getElementById('areaBookipWrapper');
+    if(!container) return;
 
-    const nome = elNome.value;
-    const temItens = window.bookipCartList && window.bookipCartList.length > 0;
+    // Badge Visual (O aviso "Salvando...")
+    let badge = document.getElementById('badgeRascunhoStatus');
+    if (!badge) {
+        const header = container.querySelector('h3');
+        if(header) {
+            badge = document.createElement('span');
+            badge.id = 'badgeRascunhoStatus';
+            badge.className = 'badge bg-transparent text-secondary ms-2 fw-normal animate__animated animate__fadeIn';
+            badge.style.fontSize = '0.75rem';
+            header.appendChild(badge);
+        }
+    }
 
-    if (!nome && !temItens) return; 
+    // Função de Gatilho (Debounce)
+    const gatilho = () => {
+        if(badge) {
+            badge.className = 'badge bg-warning text-dark ms-2';
+            badge.innerHTML = '<i class="bi bi-pencil-fill"></i> ...';
+        }
+        clearTimeout(timerRascunhoBookip);
+        timerRascunhoBookip = setTimeout(executarSalvamentoReal, 1000); // Salva após 1s
+    };
 
-    const pags = [];
-    document.querySelectorAll('.check-pagamento:checked').forEach(function(c) {
-        pags.push(c.value);
+    // Adiciona ouvintes em TUDO (Inputs, Selects, Checkboxes)
+    container.querySelectorAll('input, select, textarea').forEach(el => {
+        el.removeEventListener('input', gatilho);
+        el.addEventListener('input', gatilho);
+        // Para checkboxes e selects, usa 'change' também
+        el.removeEventListener('change', gatilho); 
+        el.addEventListener('change', gatilho);
     });
+};
 
-    const draftData = {
-        nome: nome,
-        cpf: document.getElementById('bookipCpf').value || '',
-        tel: document.getElementById('bookipTelefone').value || '',
-        end: document.getElementById('bookipEndereco').value || '',
-        email: document.getElementById('bookipEmail').value || '',
-        dataManual: document.getElementById('bookipDataManual').value || '',
-        garantia: document.getElementById('bookipGarantiaSelect').value,
-        garantiaCustom: document.getElementById('bookipGarantiaCustomInput').value,
+// 2. EXECUTAR SALVAMENTO (Grava no LocalStorage)
+function executarSalvamentoReal() {
+    // Pega os pagamentos
+    const pags = [];
+    document.querySelectorAll('.check-pagamento:checked').forEach(c => pags.push(c.value));
+
+    const dados = {
+        nome: document.getElementById('bookipNome')?.value || '',
+        cpf: document.getElementById('bookipCpf')?.value || '',
+        tel: document.getElementById('bookipTelefone')?.value || '',
+        end: document.getElementById('bookipEndereco')?.value || '',
+        email: document.getElementById('bookipEmail')?.value || '',
+        dataManual: document.getElementById('bookipDataManual')?.value || '',
+        garantia: document.getElementById('bookipGarantiaSelect')?.value,
+        garantiaCustom: document.getElementById('bookipGarantiaCustomInput')?.value,
         pagamentos: pags,
-        listaProdutos: window.bookipCartList || [],
+        listaProdutos: window.bookipCartList || [], 
         timestamp: Date.now()
     };
 
-    localStorage.setItem(window.BOOKIP_DRAFT_KEY, JSON.stringify(draftData));
-    checarVisualRascunho(); 
-};
+    // 👇 A MUDANÇA ESTÁ AQUI: Agora ele verifica TUDO 👇
+    // Se tiver Nome OU CPF OU Telefone OU Email OU Item na lista... Salva!
+    const temAlgumDado = dados.nome || dados.cpf || dados.tel || dados.email || dados.listaProdutos.length > 0;
 
-// 2. RECUPERA OS DADOS PARA A TELA
-window.recuperarRascunhoBookip = function() {
-    const raw = localStorage.getItem(window.BOOKIP_DRAFT_KEY);
-    if (!raw) return;
+    if (temAlgumDado) {
+        localStorage.setItem(BOOKIP_DRAFT_KEY, JSON.stringify(dados));
+        
+        const badge = document.getElementById('badgeRascunhoStatus');
+        if(badge) {
+            badge.className = 'badge bg-success text-white ms-2';
+            badge.innerHTML = '<i class="bi bi-cloud-check"></i> Rascunho Salvo';
+        }
+    }
+}
 
-    const dados = JSON.parse(raw);
+// 3. VERIFICAR AO ABRIR (A Lógica Inteligente - Mensagem Limpa)
+window.checarRascunhoAoAbrir = function() {
+    const salvo = localStorage.getItem(BOOKIP_DRAFT_KEY);
+    
+    // Se não tem nada salvo, só liga o monitoramento e sai
+    if (!salvo) {
+        window.ativarSalvamentoAutomatico();
+        return;
+    }
 
+    const dados = JSON.parse(salvo);
+    
+    // Pergunta se quer usar o rascunho
     showCustomModal({
-        message: "Deseja preencher a tela com o rascunho salvo?",
-        confirmText: "Sim, Recuperar",
-        onConfirm: function() {
-            if(document.getElementById('bookipNome')) document.getElementById('bookipNome').value = dados.nome || '';
-            if(document.getElementById('bookipCpf')) document.getElementById('bookipCpf').value = dados.cpf || '';
-            if(document.getElementById('bookipTelefone')) document.getElementById('bookipTelefone').value = dados.tel || '';
-            if(document.getElementById('bookipEndereco')) document.getElementById('bookipEndereco').value = dados.end || '';
-            if(document.getElementById('bookipEmail')) document.getElementById('bookipEmail').value = dados.email || '';
-            if(document.getElementById('bookipDataManual')) document.getElementById('bookipDataManual').value = dados.dataManual || '';
+        // 👇 AQUI ESTÁ A CORREÇÃO: MENSAGEM LIMPA SEM HTML 👇
+        message: `Havia um documento não finalizado para ${dados.nome || 'Cliente sem nome'}. Deseja continuar ele?`,
+        confirmText: "Sim, recuperar",
+        cancelText: "Não, apagar",
+        onConfirm: () => {
+            // --- RECUPERAÇÃO ---
+            if(document.getElementById('bookipNome')) document.getElementById('bookipNome').value = dados.nome;
+            if(document.getElementById('bookipCpf')) document.getElementById('bookipCpf').value = dados.cpf;
+            if(document.getElementById('bookipTelefone')) document.getElementById('bookipTelefone').value = dados.tel;
+            if(document.getElementById('bookipEndereco')) document.getElementById('bookipEndereco').value = dados.end;
+            if(document.getElementById('bookipEmail')) document.getElementById('bookipEmail').value = dados.email;
+            if(document.getElementById('bookipDataManual')) document.getElementById('bookipDataManual').value = dados.dataManual;
 
+            // Recupera Garantia
             const selGar = document.getElementById('bookipGarantiaSelect');
             if(selGar) {
                 selGar.value = dados.garantia || '365';
                 const inputGar = document.getElementById('bookipGarantiaCustomInput');
-                if(inputGar) inputGar.value = dados.garantiaCustom || '';
-                selGar.dispatchEvent(new Event('change')); 
+                if(inputGar) {
+                    inputGar.value = dados.garantiaCustom || '';
+                    if(dados.garantia === 'custom') inputGar.classList.remove('hidden');
+                }
             }
 
-            document.querySelectorAll('.check-pagamento').forEach(function(c) { c.checked = false; });
+            // Recupera Pagamentos
+            document.querySelectorAll('.check-pagamento').forEach(c => c.checked = false);
             if (dados.pagamentos) {
-                dados.pagamentos.forEach(function(val) {
-                    // Aspas simples no seletor para evitar erro de sintaxe com template string
-                    const check = document.querySelector('.check-pagamento[value="' + val + '"]');
+                dados.pagamentos.forEach(val => {
+                    const check = document.querySelector(`.check-pagamento[value="${val}"]`);
                     if (check) check.checked = true;
                 });
             }
 
+            // Recupera Itens
             window.bookipCartList = dados.listaProdutos || [];
-            if (typeof atualizarListaVisualBookip === 'function') {
-                atualizarListaVisualBookip();
-            }
+            if (typeof atualizarListaVisualBookip === 'function') atualizarListaVisualBookip();
 
-            showCustomModal({ message: "Rascunho recuperado com sucesso!" });
+            window.ativarSalvamentoAutomatico();
+            showCustomModal({ message: "Rascunho recuperado! 📂" });
         },
-        onCancel: function() {}
+        onCancel: () => {
+            // --- DESTRUIÇÃO ---
+            localStorage.removeItem(BOOKIP_DRAFT_KEY);
+            
+            if(typeof resetFormulariosBookip === 'function') resetFormulariosBookip();
+            
+            const badge = document.getElementById('badgeRascunhoStatus');
+            if(badge) badge.innerHTML = '';
+            
+            window.ativarSalvamentoAutomatico();
+        }
     });
 };
 
-// 3. APAGA O RASCUNHO
-window.apagarRascunhoBookip = function(silencioso) {
-    if (silencioso === true) {
-        localStorage.removeItem(window.BOOKIP_DRAFT_KEY);
-        checarVisualRascunho();
-        return;
+// 4. LIMPEZA FINAL (Chamar após salvar no Firebase)
+window.limparRascunhoBookipDefinitivo = function() {
+    localStorage.removeItem(BOOKIP_DRAFT_KEY);
+    const badge = document.getElementById('badgeRascunhoStatus');
+    if(badge) badge.innerHTML = ''; 
+};
+
+// Inicia ao carregar (para garantir que os listeners existam)
+document.addEventListener('DOMContentLoaded', () => {
+    // Se a tela já estiver aberta, ativa
+    if(document.getElementById('areaBookipWrapper')?.style.display !== 'none') {
+        window.ativarSalvamentoAutomatico();
     }
+});
 
-    showCustomModal({
-        message: "Tem certeza que deseja descartar este rascunho?",
-        confirmText: "Apagar",
-        onConfirm: function() {
-            localStorage.removeItem(window.BOOKIP_DRAFT_KEY);
-            checarVisualRascunho();
-            showCustomModal({ message: "Rascunho apagado." });
-        },
-        onCancel: function() {}
-    });
-};
 
-// 4. VISUAL DO AVISO
-window.checarVisualRascunho = function() {
-    const aviso = document.getElementById('bookipDraftNotice');
-    if (!aviso) return;
-
-    if (localStorage.getItem(window.BOOKIP_DRAFT_KEY)) {
-        aviso.classList.remove('hidden');
-    } else {
-        aviso.classList.add('hidden');
-    }
-};
-
-// 5. ATIVADOR
-window.ativarSalvamentoAutomatico = function() {
-    const ids = ['bookipNome', 'bookipCpf', 'bookipTelefone', 'bookipEndereco', 'bookipEmail', 'bookipDataManual', 'bookipGarantiaSelect', 'bookipGarantiaCustomInput'];
-    
-    ids.forEach(function(id) {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('input', window.salvarRascunhoBookip);
-    });
-
-    document.querySelectorAll('.check-pagamento').forEach(function(chk) {
-        chk.addEventListener('change', window.salvarRascunhoBookip);
-    });
-
-    window.checarVisualRascunho();
-};
-
-// INICIA O SISTEMA
-// Verificação extra para não quebrar se o DOM já carregou
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', iniciarRascunho);
-} else {
-    iniciarRascunho();
-}
-
-function iniciarRascunho() {
-    window.ativarSalvamentoAutomatico();
-    
-    const btnOpenBookip = document.getElementById('openBookipView');
-    if(btnOpenBookip) {
-        // Removemos listener anterior clonando, se necessário, ou apenas adicionamos
-        btnOpenBookip.addEventListener('click', function() {
-             if (localStorage.getItem(window.BOOKIP_DRAFT_KEY)) {
-                 setTimeout(function() {
-                     const elNome = document.getElementById('bookipNome');
-                     if(elNome && !elNome.value) {
-                        window.recuperarRascunhoBookip();
-                     }
-                 }, 500);
-             }
-        });
-    }
-}
 
 // 🖨️ IMPRESSÃO QUE RESPEITA O DESIGN MAS DESTRAVA AS PÁGINAS
 // ============================================================
@@ -7871,138 +7937,209 @@ window.copiarItemHistorico = function(id) {
 };
 
 // ============================================================
-// 📥 FUNÇÃO INDEPENDENTE: BAIXAR PDF (Não afeta o envio)
+
+
+
 // ============================================================
-window.baixarPdfExclusivo = async function(dados, botao) {
-    // 1. Trava o botão para não clicar 2x
-    const textoOriginal = botao.innerHTML;
-    botao.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-    botao.disabled = true;
+// 🗑️ SISTEMA DE LIXEIRA (SOFT DELETE)
+// ============================================================
 
-    // 2. Tela de Loading
-    if(typeof toggleLoader === 'function') toggleLoader(true, "Gerando PDF...");
-
+// 1. MOVER PARA LIXEIRA (Substitui o apagar imediato)
+async function moverParaLixeira(id) {
     try {
-        // --- A. PREPARA O DOCUMENTO (Cópia da lógica visual) ---
-        const containerTemp = document.createElement('div');
-        // Joga pra fora da tela pra ninguém ver enquanto monta
-        containerTemp.style.cssText = "position: fixed; top: 0; left: -9999px; width: 794px; background: white; z-index: -100;";
-        
-        if (typeof getReciboHTML === 'function') {
-            containerTemp.innerHTML = getReciboHTML(dados);
-            // Garante as cores pretas (igual ao original)
-            const styleFix = document.createElement('style');
-            styleFix.innerHTML = `#pdf-dl-fix, #pdf-dl-fix * { color: #000000 !important; text-shadow: none !important; } #pdf-dl-fix th { color: #ffffff !important; }`;
-            containerTemp.id = 'pdf-dl-fix';
-            containerTemp.appendChild(styleFix);
-        } else {
-            throw new Error("Erro: Layout do recibo não encontrado.");
-        }
-        document.body.appendChild(containerTemp);
-
-        // --- B. TIRA A FOTO (Renderização) ---
-        window.scrollTo(0,0);
-        await new Promise(r => setTimeout(r, 500)); // Delay p/ carregar imagens
-
-
-
-
-
-        const fullCanvas = await html2canvas(containerTemp, {
-            scale:4, 
-            useCORS: true,
-            windowWidth: 794,
-            backgroundColor: '#ffffff'
-        });
-
-        // --- C. PAGINAÇÃO INTELIGENTE (Corta as páginas igual ao original) ---
-        const pdfRatio = 297 / 210; 
-        const pageHeightPixels = Math.floor(fullCanvas.width * pdfRatio);
-        const margemSeguranca = 50; 
-        const contentHeightPerPage = pageHeightPixels - (margemSeguranca * 2) - 15;
-        const totalHeight = fullCanvas.height;
-        let currentHeight = 0;
-        let pageCount = 1;
-        
-        const printContainer = document.createElement('div');
-        printContainer.style.width = '794px'; 
-        
-        while (currentHeight < totalHeight) {
-            const pageCanvas = document.createElement('canvas');
-            pageCanvas.width = fullCanvas.width;
-            pageCanvas.height = pageHeightPixels;
-            const ctx = pageCanvas.getContext('2d');
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-
-            const heightLeft = totalHeight - currentHeight;
-            const sliceHeight = Math.min(contentHeightPerPage, heightLeft);
-            const ajusteVisual = (pageCount > 1) ? 20 : 0; 
-
-            ctx.drawImage(fullCanvas, 0, currentHeight, fullCanvas.width, sliceHeight, 0, margemSeguranca + ajusteVisual, fullCanvas.width, sliceHeight);
-
-// 👇👇👇 AQUI ENTRA A TARJA BRANCA (A CORREÇÃO) 👇👇👇
-            // Se for página 2, 3, 4... desenha uma faixa branca no topo
-            // Isso apaga os "pés" das letras que vazaram da página de cima.
-            if (pageCount > 1) {
-                const alturaDaTarja = 5; // 30px é forte o suficiente para apagar a sujeira em alta qualidade
-                ctx.fillStyle = '#ffffff';
-                // Pinta branco bem no começo da área de conteúdo (cobrindo o lixo)
-                ctx.fillRect(0, margemSeguranca + ajusteVisual - 2, pageCanvas.width, alturaDaTarja);
-            }
-            // 👆👆👆 FIM DA CORREÇÃO 👆👆👆
-
-
-
-
-
-            const imgSlice = document.createElement('img');
-            imgSlice.src = pageCanvas.toDataURL('image/jpeg', 0.95);
-            imgSlice.style.width = '100%'; 
-            imgSlice.style.display = 'block';
+        // Pega o item original
+        const snapshot = await get(ref(db, `bookips/${id}`));
+        if (snapshot.exists()) {
+            const dados = snapshot.val();
             
-            const pageDiv = document.createElement('div');
-            pageDiv.style.cssText = "position: relative; width: 100%; margin: 0; padding: 0; page-break-after: always;";
-            pageDiv.appendChild(imgSlice);
-            printContainer.appendChild(pageDiv);
+            // Adiciona data de exclusão
+            dados.deletedAt = Date.now(); 
+            dados.originalId = id; // Guarda o ID original por segurança
 
-            currentHeight += sliceHeight;
-            pageCount++;
+            // 1. Salva na pasta de lixo
+            await set(ref(db, `trash_bookips/${id}`), dados);
+            
+            // 2. Remove da pasta principal
+            await remove(ref(db, `bookips/${id}`));
+            
+            showCustomModal({ message: "Item movido para a lixeira! 🗑️" });
         }
+    } catch (error) {
+        console.error(error);
+        alert("Erro ao mover para lixeira: " + error.message);
+    }
+}
 
+// ============================================================
+// CORREÇÃO: PENDURAR AS FUNÇÕES NO 'WINDOW' PARA O BOTÃO FUNCIONAR
+// ============================================================
 
+// 2. RESTAURAR DA LIXEIRA (Agora visível para o botão)
+window.restaurarDaLixeira = async function(id) {
+    try {
+        const snapshot = await get(ref(db, `trash_bookips/${id}`));
+        if (snapshot.exists()) {
+            const dados = snapshot.val();
+            
+            // Remove dados de controle da lixeira
+            if(dados.deletedAt) delete dados.deletedAt;
+            if(dados.originalId) delete dados.originalId;
 
-        // --- D. SALVA O ARQUIVO ---
-        const nomeArquivo = `Garantia_${(dados.nome || 'Doc').replace(/[^a-z0-9]/gi, '_')}.pdf`;
-        
-        const opt = {
-            margin: 0, 
-            filename: nomeArquivo,
-            image: { type: 'jpeg', quality: 1 },
-            html2canvas: { scale: 4, useCORS: true }, 
-            jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' } 
-        };
+            // 1. Devolve para pasta principal (bookips)
+            await set(ref(db, `bookips/${id}`), dados);
+            
+            // 2. Remove da lixeira
+            await remove(ref(db, `trash_bookips/${id}`));
+            
+            // Recarrega a lista para sumir o item restaurado
+            abrirLixeiraModal(); 
+            
+            // Atualiza o histórico principal se estiver aberto atrás
+            if(typeof loadBookipHistory === 'function') loadBookipHistory();
 
-        // AQUI É O COMANDO FINAL: SAVE (BAIXAR)
-        await html2pdf().set(opt).from(printContainer).save();
-
-        // Limpeza
-        document.body.removeChild(containerTemp);
-        if(typeof toggleLoader === 'function') toggleLoader(false);
-        
-        if(typeof showCustomModal === 'function') showCustomModal({ message: "Download iniciado! 📂" });
-
-    } catch (e) {
-        console.error(e);
-        if(typeof toggleLoader === 'function') toggleLoader(false);
-        alert("Erro ao baixar: " + e.message);
-    } finally {
-        // Destrava o botão
-        botao.innerHTML = textoOriginal;
-        botao.disabled = false;
+            showCustomModal({ message: "Item restaurado com sucesso! ♻️" });
+        }
+    } catch (error) {
+        console.error(error);
+        alert("Erro ao restaurar: " + error.message);
     }
 };
 
+// 3. EXCLUIR DEFINITIVAMENTE (Também precisa estar no window)
+window.excluirPermanente = async function(id) {
+    showCustomModal({
+        message: "Tem certeza? Isso apagará o item PARA SEMPRE.",
+        confirmText: "Sim, Adeus",
+        onConfirm: async () => {
+            try {
+                await remove(ref(db, `trash_bookips/${id}`));
+                
+                // Atualiza a lista visualmente
+                abrirLixeiraModal();
+                
+                showCustomModal({ message: "Item apagado permanentemente." });
+            } catch (error) {
+                alert("Erro ao excluir: " + error.message);
+            }
+        },
+        onCancel: () => {}
+    });
+};
 
+// 4. LIMPEZA AUTOMÁTICA (15 DIAS)
+async function limparLixeiraAutomatico() {
+    const snapshot = await get(ref(db, 'trash_bookips'));
+    if (!snapshot.exists()) return;
+
+    const lixo = snapshot.val();
+    const agora = Date.now();
+    const DIAS_EM_MS = 15 * 24 * 60 * 60 * 1000; // 15 dias em milissegundos
+
+    const updates = {};
+    let count = 0;
+
+    Object.keys(lixo).forEach(key => {
+        const item = lixo[key];
+        if (item.deletedAt && (agora - item.deletedAt > DIAS_EM_MS)) {
+            updates[`trash_bookips/${key}`] = null; // Marca para deletar
+            count++;
+        }
+    });
+
+    if (count > 0) {
+        await update(ref(db), updates);
+        console.log(`🧹 Faxina: ${count} itens antigos removidos da lixeira.`);
+    }
+}
+
+// Roda a limpeza toda vez que abrir o app
+setTimeout(limparLixeiraAutomatico, 5000); 
+
+
+// ============================================================
+// 🗑️ INTERFACE DA LIXEIRA (ADICIONAR NO FINAL DO ARQUIVO)
+// ============================================================
+
+window.abrirLixeiraModal = function() {
+    // 1. Cria o Modal na hora (HTML Dinâmico)
+    const modalHtml = `
+    <div class="custom-modal-overlay active" id="modalLixeiraOverlay" style="z-index: 10000; display: flex;">
+        <div class="custom-modal-content" style="width: 500px; max-height: 85vh; display: flex; flex-direction: column; background: #1a1d21;">
+            <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom border-secondary border-opacity-25">
+                <h5 class="mb-0 text-white"><i class="bi bi-trash text-danger me-2"></i>Lixeira (Recuperar)</h5>
+                <button class="btn-back" onclick="document.getElementById('modalLixeiraOverlay').remove()"><i class="bi bi-x-lg"></i></button>
+            </div>
+            
+            <div id="listaLixeiraContent" class="overflow-auto flex-grow-1 px-1">
+                <div class="text-center p-4"><div class="spinner-border text-light"></div></div>
+            </div>
+            
+            <div class="mt-3 pt-2 border-top border-secondary border-opacity-25 text-center">
+                <small class="text-secondary">Itens com mais de 15 dias são apagados sozinhos.</small>
+            </div>
+        </div>
+    </div>`;
+
+    // Remove anterior se existir para não duplicar
+    const anterior = document.getElementById('modalLixeiraOverlay');
+    if(anterior) anterior.remove();
+
+    const div = document.createElement('div');
+    div.innerHTML = modalHtml;
+    document.body.appendChild(div.firstElementChild);
+
+    // 2. Carrega os dados do Firebase (Pasta trash_bookips)
+    // ATENÇÃO: Certifique-se que 'db', 'ref' e 'onValue' estão importados/disponíveis
+    const trashRef = ref(db, 'trash_bookips');
+    
+    onValue(trashRef, (snapshot) => {
+        const container = document.getElementById('listaLixeiraContent');
+        if(!container) return; // Se o modal já fechou, para tudo
+
+        if (!snapshot.exists()) {
+            container.innerHTML = '<div class="text-center p-5 text-secondary"><i class="bi bi-check-circle fs-1"></i><p class="mt-2">Lixeira vazia.</p></div>';
+            return;
+        }
+
+        const data = snapshot.val();
+        const lista = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        
+        // Ordena: Excluídos mais recentemente primeiro
+        lista.sort((a, b) => b.deletedAt - a.deletedAt);
+
+        container.innerHTML = lista.map(item => {
+            const dataDel = item.deletedAt ? new Date(item.deletedAt).toLocaleDateString() : '---';
+            
+            // Calcula dias restantes para exclusão automática
+            const diasPassados = Math.floor((Date.now() - item.deletedAt) / (1000 * 60 * 60 * 24));
+            const diasRestantes = 15 - diasPassados;
+            
+            // Calcula valor total do documento para exibir
+            const totalDoc = (item.items || []).reduce((acc, i) => acc + (parseFloat(i.valor||0) * (parseInt(i.qtd)||1)), 0);
+
+            return `
+            <div class="mb-2 p-3 rounded-3 d-flex justify-content-between align-items-center" 
+                 style="background: rgba(220, 53, 69, 0.1); border: 1px solid rgba(220, 53, 69, 0.3);">
+                
+                <div class="text-start">
+                    <div class="fw-bold text-light">${item.nome || 'Sem Nome'}</div>
+                    <div class="small text-secondary">Doc: ${item.docNumber || '---'} • R$ ${totalDoc.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
+                    <div class="small text-danger" style="font-size: 0.75rem;">
+                        Apagado em: ${dataDel} (Expira em ${diasRestantes} dias)
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-success" onclick="restaurarDaLixeira('${item.id}')" title="Restaurar">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="excluirPermanente('${item.id}')" title="Excluir Agora">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+            </div>`;
+        }).join('');
+    }, { onlyOnce: true }); // Lê apenas uma vez para economizar dados
+};
 
         });
