@@ -6599,97 +6599,138 @@ Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750
 // ==============================================// ============================================================
 
 // ============================================================
-// FUNÇÃO FINAL: MOTOR DO DOWNLOAD (QUE FUNCIONOU) PARA TUDO
+// ============================================================
+// FUNÇÃO BLINDADA: GERAR PDF PARA ENVIAR (OU BAIXAR
+// Usa a mesma técnica de imagem do Download Seguro para evitar tela branca
 // ============================================================
 async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
     
-    // --- 0. LÓGICA DE E-MAIL (MANTIDA) ---
+    // --- 0. LÓGICA DE COPIAR E-MAIL (MANTIDA) ---
     if (!apenasBaixar && dados.email && dados.email.trim() !== '') {
         const textToCopy = dados.email.trim();
         try {
             if (navigator.clipboard) await navigator.clipboard.writeText(textToCopy);
-            else {
-                const ta = document.createElement("textarea"); ta.value = textToCopy;
-                ta.style.position="fixed"; ta.style.left="-9999px"; document.body.appendChild(ta);
-                ta.focus(); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-            }
         } catch (e) {}
     }
 
-    // --- 1. PREPARAÇÃO VISUAL ---
+    // --- 1. PREPARAÇÃO VISUAL (LOADING) ---
     const textoOriginal = botao.innerHTML;
     botao.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Processando...';
     botao.disabled = true;
 
-    // Garante Spinner
-    if (!document.getElementById('workcell-spinner-style')) {
-        const s = document.createElement('style');
-        s.id = 'workcell-spinner-style';
-        s.textContent = `.workcell-spinner { border: 4px solid #f3f3f3; border-top: 4px solid #6da037; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 25px; } @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } .loading-container { font-family: sans-serif; text-align: center; }`;
-        document.head.appendChild(s);
+    // Garante o Spinner bonito
+    if(typeof toggleLoader === 'function') {
+        toggleLoader(true, "Gerando Documento...");
+    } else {
+        // Fallback se não tiver o loader global
+        const loadingOverlay = document.createElement('div');
+        loadingOverlay.id = "tempLoadingPdf";
+        loadingOverlay.style.cssText = `position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255, 255, 255, 0.98); z-index: 2147483647; display: flex; flex-direction: column; align-items: center; justify-content: center;`;
+        loadingOverlay.innerHTML = `<div class="spinner-border text-primary" style="width: 3rem; height: 3rem;"></div><div class="mt-3">Gerando PDF de Alta Qualidade...</div>`;
+        document.body.appendChild(loadingOverlay);
     }
-    const loadingOverlay = document.createElement('div');
-    loadingOverlay.style.cssText = `position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255, 255, 255, 0.98); z-index: 2147483647; display: flex; flex-direction: column; align-items: center; justify-content: center;`;
-    loadingOverlay.innerHTML = `<div class="workcell-spinner"></div><div class="loading-container"><div>Gerando Documento...</div></div>`;
-    document.body.appendChild(loadingOverlay);
 
     const removerLoading = () => {
-        if(document.body.contains(containerTemp)) document.body.removeChild(containerTemp);
-        if(document.body.contains(loadingOverlay)) document.body.removeChild(loadingOverlay);
+        if(typeof toggleLoader === 'function') toggleLoader(false);
+        const tmp = document.getElementById("tempLoadingPdf");
+        if(tmp) tmp.remove();
+        if(document.getElementById('pdf-dl-fix-send')) document.getElementById('pdf-dl-fix-send').remove();
     };
 
-    // --- 2. GERAÇÃO HTML ---
-    const nomeClienteLimpo = (dados.nome || 'Cliente').replace(/[^a-z0-9]/gi, '_');
-    const nomeFinalArquivo = `Doc_${nomeClienteLimpo}_${dados.docNumber || '000'}.pdf`;
-    
-    // Z-INDEX -9999: Essencial para não dar branco no celular
-    const containerTemp = document.createElement('div');
-    containerTemp.style.cssText = "position: absolute; left: 0; top: 0; width: 794px; background: white; z-index: -9999; margin: 0; padding: 0;";
-
-    if (typeof getReciboHTML === 'function') {
-        containerTemp.innerHTML = getReciboHTML(dados);
-        const styleFix = document.createElement('style');
-        styleFix.innerHTML = `
-            #pdf-temp-fix, #pdf-temp-fix * { color: #000000 !important; -webkit-print-color-adjust: exact; }
-            table { page-break-inside: auto !important; }
-            tr, td, img, div, p, li { page-break-inside: avoid !important; } 
-        `;
-        containerTemp.id = 'pdf-temp-fix';
-        containerTemp.appendChild(styleFix);
-    } else {
-        alert("Erro no modelo."); removerLoading(); botao.disabled = false; botao.innerHTML = textoOriginal; return;
-    }
-    document.body.appendChild(containerTemp);
-
     try {
-        window.scrollTo(0,0);
-        await new Promise(r => setTimeout(r, 1500)); // Espera imagens
+        // --- A. PREPARA O DOCUMENTO (Cópia da lógica visual) ---
+        const containerTemp = document.createElement('div');
+        // Joga pra fora da tela pra ninguém ver enquanto monta
+        containerTemp.style.cssText = "position: fixed; top: 0; left: -9999px; width: 794px; background: white; z-index: -100;";
+        
+        if (typeof getReciboHTML === 'function') {
+            containerTemp.innerHTML = getReciboHTML(dados);
+            // Garante as cores pretas e fundo branco
+            const styleFix = document.createElement('style');
+            styleFix.innerHTML = `#pdf-dl-fix-send, #pdf-dl-fix-send * { color: #000000 !important; text-shadow: none !important; } #pdf-dl-fix-send th { color: #ffffff !important; }`;
+            containerTemp.id = 'pdf-dl-fix-send';
+            containerTemp.appendChild(styleFix);
+        } else {
+            throw new Error("Erro: Layout do recibo não encontrado.");
+        }
+        document.body.appendChild(containerTemp);
 
-        // --- 3. CONFIGURAÇÃO (A MESMA QUE DEIXOU O TEXTO PERFEITO) ---
+        // --- B. TIRA A FOTO (Renderização via Canvas) ---
+        // Isso é o que conserta a tela branca!
+        window.scrollTo(0,0);
+        await new Promise(r => setTimeout(r, 600)); // Delay p/ carregar imagens e fontes
+
+        const fullCanvas = await html2canvas(containerTemp, {
+            scale: 3, // Qualidade alta (3x)
+            useCORS: true,
+            windowWidth: 794,
+            backgroundColor: '#ffffff'
+        });
+
+        // --- C. PAGINAÇÃO INTELIGENTE (Corta as páginas igual ao original) ---
+        const pdfRatio = 297 / 210; 
+        const pageHeightPixels = Math.floor(fullCanvas.width * pdfRatio);
+        const margemSeguranca = 50; 
+        const contentHeightPerPage = pageHeightPixels - (margemSeguranca * 2) - 15;
+        const totalHeight = fullCanvas.height;
+        let currentHeight = 0;
+        let pageCount = 1;
+        
+        const printContainer = document.createElement('div');
+        printContainer.style.width = '794px'; 
+        
+        while (currentHeight < totalHeight) {
+            const pageCanvas = document.createElement('canvas');
+            pageCanvas.width = fullCanvas.width;
+            pageCanvas.height = pageHeightPixels;
+            const ctx = pageCanvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+
+            const heightLeft = totalHeight - currentHeight;
+            const sliceHeight = Math.min(contentHeightPerPage, heightLeft);
+            const ajusteVisual = (pageCount > 1) ? 20 : 0; 
+
+            ctx.drawImage(fullCanvas, 0, currentHeight, fullCanvas.width, sliceHeight, 0, margemSeguranca + ajusteVisual, fullCanvas.width, sliceHeight);
+
+            // CORREÇÃO DA TARJA BRANCA (Limpa sujeira do topo nas paginas seguintes)
+            if (pageCount > 1) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, margemSeguranca + ajusteVisual - 2, pageCanvas.width, 5);
+            }
+
+            const imgSlice = document.createElement('img');
+            imgSlice.src = pageCanvas.toDataURL('image/jpeg', 0.92); // JPEG levemente comprimido
+            imgSlice.style.width = '100%'; 
+            imgSlice.style.display = 'block';
+            
+            const pageDiv = document.createElement('div');
+            pageDiv.style.cssText = "position: relative; width: 100%; margin: 0; padding: 0; page-break-after: always;";
+            pageDiv.appendChild(imgSlice);
+            printContainer.appendChild(pageDiv);
+
+            currentHeight += sliceHeight;
+            pageCount++;
+        }
+
+        // --- D. GERA O ARQUIVO FINAL ---
+        const nomeClienteLimpo = (dados.nome || 'Cliente').replace(/[^a-z0-9]/gi, '_');
+        const nomeFinalArquivo = `Doc_${nomeClienteLimpo}_${dados.docNumber || '000'}.pdf`;
+
         const opt = {
-            margin:       [10, 10, 15, 10], 
-            filename:     nomeFinalArquivo,
-            image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { 
-                scale: 2, 
-                useCORS: true, 
-                scrollY: 0,
-                letterRendering: true,
-                backgroundColor: '#ffffff',
-                windowWidth: 800 // OBRIGA a renderizar largo (evita bugs mobile)
-            },
-            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
-            pagebreak:    { mode: ['css', 'legacy'] } 
+            margin: 0, 
+            filename: nomeFinalArquivo,
+            image: { type: 'jpeg', quality: 1 },
+            html2canvas: { scale: 4, useCORS: true }, 
+            jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' } 
         };
 
-        // Cria o worker
-        const worker = html2pdf().set(opt).from(containerTemp);
+        const worker = html2pdf().set(opt).from(printContainer);
 
         // ============================================================
-        // ROTA A: BAIXAR (Botão Azul)
+        // ROTA A: BAIXAR (Se apenasBaixar for true)
         // ============================================================
         if (apenasBaixar) {
-            // Usa o método .save() nativo, que é o mais estável de todos
             await worker.save();
             removerLoading();
             botao.innerHTML = textoOriginal;
@@ -6698,70 +6739,70 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
         }
 
         // ============================================================
-        // ROTA B: ENVIAR (Botão Verde)
+        // ROTA B: ENVIAR / COMPARTILHAR (A Mágica acontece aqui)
         // ============================================================
         
-        // AQUI ESTAVA O ERRO ANTES. Agora usamos 'datauristring'
-        // Isso força o PDF a ser gerado exatamente igual ao download (não fica branco)
-        const pdfString = await worker.output('datauristring');
-
-        // Converte a string do PDF em um arquivo real
-        const pdfBase64ToBlob = (dataURI) => {
-            const splitData = dataURI.split(',');
-            const byteString = atob(splitData[1]);
-            const mimeString = splitData[0].split(':')[1].split(';')[0];
-            const ab = new ArrayBuffer(byteString.length);
-            const ia = new Uint8Array(ab);
-            for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-            return new Blob([ab], { type: mimeString });
-        };
-
-        const blob = pdfBase64ToBlob(pdfString);
-        const file = new File([blob], nomeFinalArquivo, { type: 'application/pdf' });
+        // Gera o PDF como um "Blob" (Arquivo na memória)
+        const pdfBlob = await worker.output('blob');
+        
+        // Cria um arquivo real para o navegador
+        const file = new File([pdfBlob], nomeFinalArquivo, { type: 'application/pdf' });
         
         removerLoading();
 
-        // Configura botão
+        // Configura botão visualmente
         botao.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
-        botao.classList.remove('btn-primary', 'btn-outline-primary', 'btn-secondary'); 
+        botao.classList.remove('btn-primary', 'btn-outline-primary', 'btn-secondary', 'btn-dark'); 
         botao.classList.add('btn-success'); 
         botao.disabled = false; 
 
+        // Substitui o botão antigo por um novo para limpar eventos antigos
         const novoBotao = botao.cloneNode(true);
         botao.parentNode.replaceChild(novoBotao, botao);
 
+        // Adiciona a ação de clique no novo botão verde
         novoBotao.addEventListener('click', async () => {
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
                 const settings = (typeof receiptSettings !== 'undefined') ? receiptSettings : {};
-                await navigator.share({
-                    files: [file],
-                    title: "Documento Workcell",
-                    text: settings.shareMessage || `Olá ${dados.nome}, segue documento.`
-                });
-                novoBotao.innerHTML = '<i class="bi bi-check-circle-fill"></i> Enviado!';
-                novoBotao.classList.replace('btn-success', 'btn-dark');
-                
-                // Atualiza visual
-                const card = novoBotao.closest('.list-group-item') || novoBotao.closest('.card');
-                if(card) { card.style.borderLeft = "6px solid #28a745"; card.style.backgroundColor = "#f0fff4"; }
-                
-                // Salva no banco
-                if((dados.id || dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') {
-                    marcarComoEnviadoNoBanco(dados.id || dados.docId);
+                try {
+                    await navigator.share({
+                        files: [file],
+                        title: "Documento Workcell",
+                        text: settings.shareMessage || `Olá ${dados.nome}, segue seu documento.`
+                    });
+                    
+                    // Sucesso visual
+                    novoBotao.innerHTML = '<i class="bi bi-check-circle-fill"></i> Enviado!';
+                    novoBotao.classList.replace('btn-success', 'btn-dark');
+                    
+                    const card = novoBotao.closest('.list-group-item') || novoBotao.closest('.card');
+                    if(card) { card.style.borderLeft = "6px solid #28a745"; card.style.backgroundColor = "#f0fff4"; }
+                    
+                    // Salva status no banco
+                    if((dados.id || dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') {
+                        marcarComoEnviadoNoBanco(dados.id || dados.docId);
+                    }
+                } catch (err) {
+                    console.log("Compartilhamento cancelado ou falhou", err);
                 }
             } else {
-                // Se não der pra enviar, baixa
+                // Fallback: Se não der pra enviar (PC antigo), baixa o arquivo
                 const link = document.createElement('a');
-                link.href = window.URL.createObjectURL(blob);
+                link.href = window.URL.createObjectURL(pdfBlob);
                 link.download = nomeFinalArquivo;
                 link.click();
             }
         });
 
+        // Opcional: Clica automaticamente na primeira vez para abrir o menu de compartilhar
+        // novoBotao.click(); 
+
     } catch (e) {
         removerLoading();
         console.error(e);
-        alert("Erro: " + e.message);
+        if(typeof showCustomModal === 'function') showCustomModal({message: "Erro ao gerar PDF: " + e.message});
+        else alert("Erro: " + e.message);
+        
         botao.innerHTML = textoOriginal;
         botao.disabled = false;
     }
