@@ -574,6 +574,15 @@ function renderRatesEditor() {
     renderDefaultSettingsPanel(accordionContainer);
 }
 
+
+
+
+
+
+
+
+
+
 // --- FUNÇÃO NOVA: PAINEL DE PADRÕES DE MÁQUINA E BANDEIRA ---
 function renderDefaultSettingsPanel(container) {
     const savedMachine = safeStorage.getItem('ctwDefaultMachine') || 'pagbank';
@@ -5273,7 +5282,13 @@ function loadBookipHistory() {
 
                             <button class="btn btn-sm ${classBtnEnvio} email-history-btn" data-id="${item.id}" title="${titleBtnEnvio}"><i class="bi ${iconBtnEnvio}"></i></button>
 
-                            <button class="btn btn-sm btn-primary print-old-bookip" data-id="${item.id}" title="Imprimir"><i class="bi bi-printer"></i></button>
+<button class="btn btn-sm btn-outline-primary btn-download-seguro" data-id="${item.id}" title="Baixar PDF">
+    <i class="bi bi-download"></i>
+</button>
+
+
+
+
                             <button class="btn btn-sm btn-outline-danger delete-bookip-btn" data-id="${item.id}" title="Apagar"><i class="bi bi-trash"></i></button>
                         </div>
                     </div>
@@ -5301,6 +5316,21 @@ function loadBookipHistory() {
             const id = e.target.closest('button').dataset.id;
             showCustomModal({message: "Apagar?", confirmText: "Sim", onConfirm: async () => { await remove(ref(db, `bookips/${id}`)); showCustomModal({message: "Apagado."}); }, onCancel: ()=>{}});
         }));
+// --- NOVO: Listener para o Botão de Download Seguro ---
+container.querySelectorAll('.btn-download-seguro').forEach(b => {
+    b.addEventListener('click', e => {
+        const btn = e.target.closest('button');
+        const id = btn.dataset.id;
+        // Pega os dados da memória (seguro e rápido)
+        const item = listaCompletaCache.find(i => i.id === id);
+        
+        if(item) {
+            // Chama a função nova que vamos criar no passo 3
+            window.baixarPdfExclusivo(item, btn);
+        }
+    });
+});
+
     }
 }
 
@@ -5705,8 +5735,6 @@ botoesReset.forEach(idBotao => {
 
 
 // ============================================================
-// FUNÇÃO EXTRA: GERAR PDF A PARTIR DO HISTÓRICO
-
 
  // --- FUNÇÃO AUXILIAR: REDIMENSIONAR IMAGEM PARA BASE64 ---
 function processarImagemParaBase64(file, maxWidth = 300) {
@@ -6387,9 +6415,11 @@ function getReciboHTML(dados) {
     
     // CORREÇÃO: Adicionado 'page-break-inside: avoid' em cada linha dos termos
     const termsHtml = rawTerms.split('\n').map(line => {
-        if(!line || line.trim() === '') return '<div style="height: 5px;"></div>'; 
-        return `<div style="margin-bottom: 3px; text-align: justify; page-break-inside: avoid;">${line}</div>`;
-    }).join('');
+    if(!line || line.trim() === '') return '<div style="height: 5px;"></div>'; 
+    // 👇 ADICIONADO class="no-break" AQUI
+    return `<div class="no-break" style="margin-bottom: 3px; text-align: justify; page-break-inside: avoid;">${line}</div>`;
+}).join('');
+
     
     const logoUrl = settings.logoBase64 || "https://i.imgur.com/H6BjyBS.png"; 
     const signatureUrl = settings.signatureBase64 || "https://i.imgur.com/Bh3fVLM.jpeg";
@@ -6440,9 +6470,15 @@ function getReciboHTML(dados) {
             <th style="padding: 8px; text-align: center; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Qtd</th>
             <th style="padding: 8px; text-align: right; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Unit</th>
             <th style="padding: 8px; text-align: right; color: #ffffff !important; font-size: 10pt; font-weight: bold;">Total</th>`;
+
+
         tableBodyHTML = lista.map(item => `
-            <tr style="page-break-inside: avoid;">
+<tr class="no-break" style="page-break-inside: avoid;">
+
                 <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 10pt;">
+
+
+
                     <strong>${item.nome}</strong><br><span style="color:#666; font-size:8.5pt;">${item.cor||''} ${item.obs||''}</span>
                 </td>
                 <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${item.qtd}</td>
@@ -6560,328 +6596,145 @@ Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750
     `;
 }
 
-// 3. FUNÇÃO PDF FINAL (COM CÓPIA DE E-MAIL AUTOMÁTICA)
+// ==============================================// ============================================================
+// FUNÇÃO BLINDADA: INTELIGENTE (SEM CORTES) + MOBILE FIX
 // ============================================================
-async function gerarPdfDoHistorico(dados, botao) {
-    // ============================================================
-    // 0. CÓPIA DE E-MAIL BLINDADA (COM FALLBACK) 🛡️
-    // ============================================================
-    if (dados.email && dados.email.trim() !== '') {
-        const textToCopy = dados.email.trim();
-
-        // 🔧 Função de emergência: Usa o método antigo (execCommand) 
-        // que funciona mesmo quando o navegador bloqueia o clipboard moderno.
-        const copiarJeitoAntigo = (texto) => {
-            try {
-                const textArea = document.createElement("textarea");
-                textArea.value = texto;
-                
-                // Esconde o elemento mas mantém ele "visível" pro sistema selecionar
-                textArea.style.position = "fixed";
-                textArea.style.left = "-9999px";
-                textArea.style.top = "0";
-                
-                document.body.appendChild(textArea);
-                textArea.focus();
-                textArea.select();
-                
-                const successful = document.execCommand('copy');
-                document.body.removeChild(textArea);
-                // console.log('Cópia via fallback:', successful);
-            } catch (e) {
-                console.error("Erro no método antigo:", e);
-            }
-        };
-
-        // Tenta o jeito moderno primeiro
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            try {
-                await navigator.clipboard.writeText(textToCopy);
-                         } catch (err) {
-                // Se der erro ou o usuário cancelar, NÃO BAIXA MAIS AUTOMATICAMENTE.
-                console.warn("Compartilhamento cancelado ou falhou:", err);
-
-                // Se não for apenas um cancelamento do usuário (AbortError), avisa.
-                if (err.name !== 'AbortError') {
-                    alert("Não foi possível abrir o compartilhamento direto.");
-                }
-                
-                // Opcional: Reseta o botão para "Enviar" caso queira tentar de novo
-                novoBotao.innerHTML = '<i class="bi bi-whatsapp"></i> Tentar Novamente';
-            }
-
-        } else {
-            // Se o navegador for velho e nem tiver clipboard, vai direto no plano B
-            copiarJeitoAntigo(textToCopy);
-        }
+async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
+    
+    // --- 0. E-MAIL E PREPARAÇÃO (MANTIDO IGUAL) ---
+    if (!apenasBaixar && dados.email && dados.email.trim() !== '') {
+        try { if(navigator.clipboard) await navigator.clipboard.writeText(dados.email.trim()); } catch(e){}
     }
-
-    // ============================================================
-    // INÍCIO DA GERAÇÃO DO PDF
-    // ============================================================
 
     const textoOriginal = botao.innerHTML;
-    botao.innerHTML = 'Aguarde...';
+    botao.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Gerando...';
     botao.disabled = true;
 
-    // --- CORTINA DE LOADING ---
-    const spinnerStyle = document.createElement('style');
-    spinnerStyle.id = 'workcell-spinner-style';
-    spinnerStyle.textContent = `
-        .workcell-spinner {
-            border: 4px solid #f3f3f3; border-top: 4px solid #6da037; border-radius: 50%;
-            width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 25px;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .loading-container { font-family: sans-serif; text-align: center; }
-        .loading-title { color: #333; font-size: 20px; font-weight: bold; margin-bottom: 10px; }
-        .loading-subtitle { color: #666; font-size: 14px; }
-    `;
+    // Spinner
     if (!document.getElementById('workcell-spinner-style')) {
-        document.head.appendChild(spinnerStyle);
+        const s = document.createElement('style');
+        s.id = 'workcell-spinner-style';
+        s.textContent = `.workcell-spinner { border: 4px solid #f3f3f3; border-top: 4px solid #6da037; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 25px; } @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } .loading-container { font-family: sans-serif; text-align: center; }`;
+        document.head.appendChild(s);
     }
-
     const loadingOverlay = document.createElement('div');
-    loadingOverlay.style.cssText = `
-        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-        background: rgba(255, 255, 255, 0.98); z-index: 2147483647;
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        padding: 30px; box-sizing: border-box;
-    `;
-    loadingOverlay.innerHTML = `
-        <div class="workcell-spinner"></div>
-        <div class="loading-container">
-            <div class="loading-title" id="loadingTxt">Iniciando...</div>
-            <div class="loading-subtitle">Por favor, não feche o app.</div>
-        </div>
-    `;
+    loadingOverlay.style.cssText = `position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255, 255, 255, 0.98); z-index: 2147483647; display: flex; flex-direction: column; align-items: center; justify-content: center;`;
+    loadingOverlay.innerHTML = `<div class="workcell-spinner"></div><div class="loading-container"><div>Processando...</div><div style="font-size:12px;color:#666">Não feche o app</div></div>`;
     document.body.appendChild(loadingOverlay);
 
-    const updateLoading = (txt) => { const el = document.getElementById('loadingTxt'); if(el) el.innerText = txt; };
-
-    updateLoading("Preparando documento...");
-
-    // --- 1. CONFIGURAÇÕES FINAIS ---
-    
-    // A. Nome do Arquivo
-    const nomeClienteLimpo = (dados.nome || 'Cliente')
-        .normalize("NFD").replace(/[\u0300-\u036f]/g, "") 
-        .replace(/[^a-zA-Z0-9\s]/g, '') 
-        .trim()
-        .replace(/\s+/g, '_');
-
-    const numeroDoc = dados.docNumber || '000';
-    const nomeFinalArquivo = `DocGarantia&comprovante_${nomeClienteLimpo}_${numeroDoc}.pdf`;
-
-    // B. Mensagem (Puxa do Admin)
-    const settings = (typeof receiptSettings !== 'undefined' && receiptSettings) ? receiptSettings : {};
-    const msgSalva = settings.emailMessage || settings.shareMessage || settings.msgEnvio || "";
-    
-    // Corpo do E-mail
-    const textoCompartilhamento = msgSalva ? `Olá ${dados.nome},\n\n${msgSalva}` : `Olá ${dados.nome},`;
-    
-    // C. Título do E-mail
-    const tituloCompartilhamento = "Documento Workcell Tecnologia";
-
-    // --- GERAÇÃO HTML ---
+    // --- 1. PREPARA O CONTEÚDO (TRUQUE DO Z-INDEX) ---
     const containerTemp = document.createElement('div');
-    // MUDANÇA: 'left: -9999px' joga para fora da tela e 'position: fixed' evita esticar o site
-        containerTemp.style.cssText = "position: fixed; top: 0; left: -9999px; width: 794px; background: white; z-index: -100; margin: 0; padding: 0; letter-spacing: 0.2px; font-variant-ligatures: none;";
+    // TRUQUE 1: Fica na tela (top:0) pra não dar branco, mas atrás de tudo (z-index)
+    containerTemp.style.cssText = "position: absolute; left: 0; top: 0; width: 794px; background: white; z-index: -9999; margin: 0; padding: 0;";
 
-    
     if (typeof getReciboHTML === 'function') {
         containerTemp.innerHTML = getReciboHTML(dados);
-
- // 👇 CORREÇÃO DE COR (Sem mexer no layout) 👇
+        
+        // TRUQUE 2: CSS para impedir corte de linhas (tr) e imagens
         const styleFix = document.createElement('style');
         styleFix.innerHTML = `
-            #pdf-temp-fix, #pdf-temp-fix * { color: #000000 !important; text-shadow: none !important; }
-            #pdf-temp-fix th { color: #ffffff !important; } 
+            #pdf-temp-fix, #pdf-temp-fix * { color: #000000 !important; -webkit-print-color-adjust: exact; }
+            table { page-break-inside: auto !important; }
+            tr, td, img, div, p, li { page-break-inside: avoid !important; } 
         `;
-        containerTemp.id = 'pdf-temp-fix'; // Batiza o container
-        containerTemp.appendChild(styleFix); // Injeta a vacina de cor
-        // 👆 FIM DA CORREÇÃO 👆
-
+        containerTemp.id = 'pdf-temp-fix';
+        containerTemp.appendChild(styleFix);
     } else {
-        alert("Erro: Fábrica não encontrada.");
-        removerLoading();
-        botao.innerHTML = textoOriginal;
-        botao.disabled = false;
-        return;
+        alert("Erro no modelo."); document.body.removeChild(loadingOverlay); botao.disabled=false; botao.innerHTML=textoOriginal; return;
     }
     document.body.appendChild(containerTemp);
 
-    function removerLoading() {
-        if(document.body.contains(containerTemp)) document.body.removeChild(containerTemp);
-        if(document.body.contains(loadingOverlay)) document.body.removeChild(loadingOverlay);
-    }
-
     try {
         window.scrollTo(0,0);
-        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-        await new Promise(resolve => setTimeout(resolve, 2500));
+        await new Promise(r => setTimeout(r, 1500)); // Espera carregar imagens
 
-        updateLoading("Processando imagens...");
+        const nomeArquivo = `Doc_${(dados.nome || 'C').replace(/[^a-z0-9]/gi, '_')}.pdf`;
 
-        const fullCanvas = await html2canvas(containerTemp, {
-            scale: 1.5, 
-            useCORS: true,
-            scrollY: 0,
-            windowWidth: 794,
-            backgroundColor: '#ffffff'
-        });
-
-        const pdfRatio = 297 / 210; 
-        const pageHeightPixels = Math.floor(fullCanvas.width * pdfRatio);
-        const margemSeguranca = 50; 
-        
-        // AQUI: Diminuímos 15px da altura útil para criar o respiro no final da folha
-        const contentHeightPerPage = pageHeightPixels - (margemSeguranca * 2) - 15;
-
-        const totalHeight = fullCanvas.height;
-        let currentHeight = 0;
-        let pageCount = 1;
-        
-        const printContainer = document.createElement('div');
-        printContainer.style.width = '794px'; 
-        
-        while (currentHeight < totalHeight) {
-            updateLoading(`Gerando página ${pageCount}...`);
-            
-            const pageCanvas = document.createElement('canvas');
-            pageCanvas.width = fullCanvas.width;
-            pageCanvas.height = pageHeightPixels;
-
-            const ctx = pageCanvas.getContext('2d');
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-
-            const heightLeft = totalHeight - currentHeight;
-            const sliceHeight = Math.min(contentHeightPerPage, heightLeft);
-
-            // --- AJUSTE CIRÚRGICO PÁGINA 2+ ---
-            // Se for página 2 ou mais, desce 15px (ajusteVisual) para não colar no topo
-            const ajusteVisual = (pageCount > 1) ? 20 : 0; 
-
-            ctx.drawImage(
-                fullCanvas, 
-                0, currentHeight, fullCanvas.width, sliceHeight,
-                0, margemSeguranca + ajusteVisual, fullCanvas.width, sliceHeight 
-            );
-
-            if (sliceHeight >= contentHeightPerPage) {
-                 ctx.fillStyle = '#ffffff';
-                 ctx.fillRect(0, pageHeightPixels - margemSeguranca, pageCanvas.width, margemSeguranca);
-            }
-
-            const imgSlice = document.createElement('img');
-            imgSlice.src = pageCanvas.toDataURL('image/jpeg', 0.95);
-            imgSlice.style.width = '100%'; 
-            imgSlice.style.display = 'block';
-            
-            const pageDiv = document.createElement('div');
-            pageDiv.style.cssText = "position: relative; width: 100%; margin: 0; padding: 0; page-break-after: always;";
-            pageDiv.appendChild(imgSlice);
-            
-            printContainer.appendChild(pageDiv);
-
-            currentHeight += sliceHeight;
-            pageCount++;
-        }
-
-        updateLoading("Finalizando PDF...");
-
+        // --- 2. CONFIGURAÇÃO INTELIGENTE (SEM CORTAR) ---
         const opt = {
-            margin:       0, 
-            filename:     nomeFinalArquivo,
+            margin:       [10, 10, 10, 10],
+            filename:     nomeArquivo,
             image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 1, useCORS: true }, 
-            jsPDF:        { unit: 'px', format: [794, 1123], orientation: 'portrait' } 
+            html2canvas:  { 
+                scale: 2, 
+                useCORS: true, 
+                scrollY: 0,
+                // TRUQUE 3: OBRIGA O CELULAR A RENDERIZAR COMO DESKTOP (EVITA BUG VISUAL)
+                windowWidth: 800, 
+                backgroundColor: '#ffffff'
+            },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            // MODO CSS: Respeita o 'avoid' que colocamos nas linhas da tabela
+            pagebreak:    { mode: ['css', 'legacy'] } 
         };
 
-                // ... (Mantenha o código acima igual, até chegar nesta linha abaixo) ...
-        const blob = await html2pdf().set(opt).from(printContainer).output('blob');
-        
-        // --- DAQUI PRA BAIXO É O CÓDIGO NOVO ---
-        
-        const file = new File([blob], nomeFinalArquivo, { type: 'application/pdf' });
-        removerLoading();
+        const worker = html2pdf().set(opt).from(containerTemp);
 
-        // 1. O BOTÃO VIRA "ENVIAR" (Verde)
+        // --- ROTA A: BAIXAR ---
+        if (apenasBaixar) {
+            await worker.save();
+            document.body.removeChild(containerTemp);
+            document.body.removeChild(loadingOverlay);
+            botao.innerHTML = textoOriginal;
+            botao.disabled = false;
+            return;
+        }
+
+        // --- ROTA B: ENVIAR WHATSAPP ---
+        const blob = await worker.output('blob');
+        const file = new File([blob], nomeArquivo, { type: 'application/pdf' });
+        
+        document.body.removeChild(containerTemp);
+        document.body.removeChild(loadingOverlay);
+
         botao.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
-        botao.classList.remove('btn-primary', 'btn-warning', 'btn-secondary', 'btn-dark'); 
+        botao.classList.remove('btn-primary', 'btn-outline-primary', 'btn-secondary'); 
         botao.classList.add('btn-success'); 
         botao.disabled = false; 
 
-        // 2. PREPARA O NOVO CLIQUE (Limpa eventos antigos)
         const novoBotao = botao.cloneNode(true);
         botao.parentNode.replaceChild(novoBotao, botao);
 
-        // 3. CLIQUE DE ENVIO
         novoBotao.addEventListener('click', async () => {
             try {
-                let compartilhou = false;
-
-                // Tenta compartilhar nativo
                 if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    // Pega mensagem salva ou usa padrão
+                    const settings = (typeof receiptSettings !== 'undefined') ? receiptSettings : {};
+                    const msg = settings.shareMessage || `Olá ${dados.nome}, segue documento.`;
+                    
                     await navigator.share({
                         files: [file],
-                        title: tituloCompartilhamento,
-                        text: textoCompartilhamento
+                        title: "Documento",
+                        text: msg
                     });
-                    compartilhou = true;
-                } else {
-                    throw new Error("Share não suportado, indo para download.");
-                }
-
-                // --- SE DEU CERTO: MARCA TUDO ---
-                if (compartilhou) {
-                    // A. Visual do Botão
-                    novoBotao.innerHTML = '<i class="bi bi-check-circle-fill"></i> Enviado!';
-                    novoBotao.classList.remove('btn-success');
-                    novoBotao.classList.add('btn-dark'); 
                     
-                    // B. Visual da Lista (Borda Verde)
-                    const cardPai = novoBotao.closest('.list-group-item') || novoBotao.closest('.card') || novoBotao.parentNode.parentNode;
-                    if (cardPai) {
-                        cardPai.style.borderLeft = "6px solid #28a745"; 
-                        cardPai.style.backgroundColor = "#f0fff4"; 
-                    }
-
-                    // C. Salva no Firebase (Memória Eterna)
-                    if (dados.id || dados.docId) {
-                        marcarComoEnviadoNoBanco(dados.id || dados.docId);
-                    }
+                    novoBotao.innerHTML = '<i class="bi bi-check-circle-fill"></i> Enviado!';
+                    novoBotao.classList.replace('btn-success', 'btn-dark');
+                    // Marca verde na lista
+                    const card = novoBotao.closest('.list-group-item') || novoBotao.closest('.card');
+                    if(card) { card.style.borderLeft = "6px solid #28a745"; card.style.backgroundColor = "#f0fff4"; }
+                    // Salva no banco
+                    if((dados.id||dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') marcarComoEnviadoNoBanco(dados.id||dados.docId);
+                } else {
+                    // Fallback
+                    const link = document.createElement('a');
+                    link.href = window.URL.createObjectURL(blob);
+                    link.download = nomeArquivo;
+                    link.click();
                 }
-
-            } catch (err) {
-                // Apenas avisa no console, NÃO baixa mais nada
-                console.warn("Compartilhamento cancelado ou erro:", err);
-                
-                // Opcional: Se quiser que o botão volte a ficar verde pra tentar de novo:
-                // novoBotao.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar PDF';
-            }
-
+            } catch (err) { console.warn(err); }
         });
 
-        // Vibra para avisar que está pronto
-        if (navigator.vibrate) navigator.vibrate(100);
-
     } catch (e) {
-        removerLoading();
-        alert("Erro ao gerar: " + e.message);
+        if(document.body.contains(loadingOverlay)) document.body.removeChild(loadingOverlay);
+        if(document.body.contains(containerTemp)) document.body.removeChild(containerTemp);
         console.error(e);
+        alert("Erro: " + e.message);
         botao.innerHTML = textoOriginal;
         botao.disabled = false;
     }
 }
 
-
-        
-// =====================================
-
-// ==============
-// ============================================================
 // 🧹 FAXINA DO FIREBASE (GLOBAL)
 // ============================================================
 window.limparImportacaoErrada = async function() {
@@ -7942,6 +7795,140 @@ window.copiarItemHistorico = function(id) {
         showCustomModal({ message: "Copiado novamente! ✅" });
     }
 };
+
+// ============================================================
+// 📥 FUNÇÃO INDEPENDENTE: BAIXAR PDF (Não afeta o envio)
+// ============================================================
+window.baixarPdfExclusivo = async function(dados, botao) {
+    // 1. Trava o botão para não clicar 2x
+    const textoOriginal = botao.innerHTML;
+    botao.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    botao.disabled = true;
+
+    // 2. Tela de Loading
+    if(typeof toggleLoader === 'function') toggleLoader(true, "Gerando PDF...");
+
+    try {
+        // --- A. PREPARA O DOCUMENTO (Cópia da lógica visual) ---
+        const containerTemp = document.createElement('div');
+        // Joga pra fora da tela pra ninguém ver enquanto monta
+        containerTemp.style.cssText = "position: fixed; top: 0; left: -9999px; width: 794px; background: white; z-index: -100;";
+        
+        if (typeof getReciboHTML === 'function') {
+            containerTemp.innerHTML = getReciboHTML(dados);
+            // Garante as cores pretas (igual ao original)
+            const styleFix = document.createElement('style');
+            styleFix.innerHTML = `#pdf-dl-fix, #pdf-dl-fix * { color: #000000 !important; text-shadow: none !important; } #pdf-dl-fix th { color: #ffffff !important; }`;
+            containerTemp.id = 'pdf-dl-fix';
+            containerTemp.appendChild(styleFix);
+        } else {
+            throw new Error("Erro: Layout do recibo não encontrado.");
+        }
+        document.body.appendChild(containerTemp);
+
+        // --- B. TIRA A FOTO (Renderização) ---
+        window.scrollTo(0,0);
+        await new Promise(r => setTimeout(r, 500)); // Delay p/ carregar imagens
+
+
+
+
+
+        const fullCanvas = await html2canvas(containerTemp, {
+            scale:4, 
+            useCORS: true,
+            windowWidth: 794,
+            backgroundColor: '#ffffff'
+        });
+
+        // --- C. PAGINAÇÃO INTELIGENTE (Corta as páginas igual ao original) ---
+        const pdfRatio = 297 / 210; 
+        const pageHeightPixels = Math.floor(fullCanvas.width * pdfRatio);
+        const margemSeguranca = 50; 
+        const contentHeightPerPage = pageHeightPixels - (margemSeguranca * 2) - 15;
+        const totalHeight = fullCanvas.height;
+        let currentHeight = 0;
+        let pageCount = 1;
+        
+        const printContainer = document.createElement('div');
+        printContainer.style.width = '794px'; 
+        
+        while (currentHeight < totalHeight) {
+            const pageCanvas = document.createElement('canvas');
+            pageCanvas.width = fullCanvas.width;
+            pageCanvas.height = pageHeightPixels;
+            const ctx = pageCanvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+
+            const heightLeft = totalHeight - currentHeight;
+            const sliceHeight = Math.min(contentHeightPerPage, heightLeft);
+            const ajusteVisual = (pageCount > 1) ? 20 : 0; 
+
+            ctx.drawImage(fullCanvas, 0, currentHeight, fullCanvas.width, sliceHeight, 0, margemSeguranca + ajusteVisual, fullCanvas.width, sliceHeight);
+
+// 👇👇👇 AQUI ENTRA A TARJA BRANCA (A CORREÇÃO) 👇👇👇
+            // Se for página 2, 3, 4... desenha uma faixa branca no topo
+            // Isso apaga os "pés" das letras que vazaram da página de cima.
+            if (pageCount > 1) {
+                const alturaDaTarja = 5; // 30px é forte o suficiente para apagar a sujeira em alta qualidade
+                ctx.fillStyle = '#ffffff';
+                // Pinta branco bem no começo da área de conteúdo (cobrindo o lixo)
+                ctx.fillRect(0, margemSeguranca + ajusteVisual - 2, pageCanvas.width, alturaDaTarja);
+            }
+            // 👆👆👆 FIM DA CORREÇÃO 👆👆👆
+
+
+
+
+
+            const imgSlice = document.createElement('img');
+            imgSlice.src = pageCanvas.toDataURL('image/jpeg', 0.95);
+            imgSlice.style.width = '100%'; 
+            imgSlice.style.display = 'block';
+            
+            const pageDiv = document.createElement('div');
+            pageDiv.style.cssText = "position: relative; width: 100%; margin: 0; padding: 0; page-break-after: always;";
+            pageDiv.appendChild(imgSlice);
+            printContainer.appendChild(pageDiv);
+
+            currentHeight += sliceHeight;
+            pageCount++;
+        }
+
+
+
+        // --- D. SALVA O ARQUIVO ---
+        const nomeArquivo = `Garantia_${(dados.nome || 'Doc').replace(/[^a-z0-9]/gi, '_')}.pdf`;
+        
+        const opt = {
+            margin: 0, 
+            filename: nomeArquivo,
+            image: { type: 'jpeg', quality: 1 },
+            html2canvas: { scale: 4, useCORS: true }, 
+            jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' } 
+        };
+
+        // AQUI É O COMANDO FINAL: SAVE (BAIXAR)
+        await html2pdf().set(opt).from(printContainer).save();
+
+        // Limpeza
+        document.body.removeChild(containerTemp);
+        if(typeof toggleLoader === 'function') toggleLoader(false);
+        
+        if(typeof showCustomModal === 'function') showCustomModal({ message: "Download iniciado! 📂" });
+
+    } catch (e) {
+        console.error(e);
+        if(typeof toggleLoader === 'function') toggleLoader(false);
+        alert("Erro ao baixar: " + e.message);
+    } finally {
+        // Destrava o botão
+        botao.innerHTML = textoOriginal;
+        botao.disabled = false;
+    }
+};
+
 
 
         });

@@ -2261,3 +2261,14 @@ body::before {
     transform: translateZ(0);
     will-change: transform;
 }
+/* --- PROTEÇÃO CONTRA CORTE DE PÁGINA --- */
+.no-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+}
+
+/* Proteção genérica para tabelas e cards */
+tr, td, .card, .list-group-item {
+    page-break-inside: avoid !important;
+}
+
