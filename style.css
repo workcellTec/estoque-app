@@ -2272,3 +2272,13 @@ tr, td, .card, .list-group-item {
     page-break-inside: avoid !important;
 }
 
+/* Isso garante que o seu banner de confirmação ganhe de qualquer modal do Bootstrap */
+#customModal {
+    z-index: 10000 !important;
+}
+
+/* Garante que o fundo escuro do banner também fique por cima do modal da lixeira */
+#customModal + .modal-backdrop, 
+.modal-backdrop:last-of-type {
+    z-index: 9999 !important;
+}

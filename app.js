@@ -8005,26 +8005,51 @@ window.restaurarDaLixeira = async function(id) {
     }
 };
 
-// 3. EXCLUIR DEFINITIVAMENTE (Também precisa estar no window)
 window.excluirPermanente = async function(id) {
+    // 1. O NOME CERTO É 'modalLixeiraOverlay', não 'trashModal'
+    const modalEl = document.getElementById('modalLixeiraOverlay');
+    
+    if (modalEl) {
+        console.log("Lixeira encontrada, removendo agora...");
+        // Remove o elemento inteiro da tela na hora!
+        modalEl.remove(); 
+        
+        // Limpa o fundo escuro se o Bootstrap tiver criado um
+        const backdrop = document.querySelector('.modal-backdrop');
+        if (backdrop) backdrop.remove();
+        
+        // Destrava o scroll do site
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+    }
+
+    // 2. AGORA CHAMA O "TEM CERTEZA"
     showCustomModal({
         message: "Tem certeza? Isso apagará o item PARA SEMPRE.",
         confirmText: "Sim, Adeus",
         onConfirm: async () => {
             try {
+                // Deleta do Firebase usando o caminho que está no seu app.js
                 await remove(ref(db, `trash_bookips/${id}`));
                 
-                // Atualiza a lista visualmente
+                // Recarrega a lixeira para mostrar que o item sumiu
                 abrirLixeiraModal();
                 
                 showCustomModal({ message: "Item apagado permanentemente." });
             } catch (error) {
                 alert("Erro ao excluir: " + error.message);
+                abrirLixeiraModal(); // Tenta voltar se der erro
             }
         },
-        onCancel: () => {}
+        onCancel: () => {
+            // Se desistir de apagar, mostra a lixeira de volta
+            abrirLixeiraModal();
+        }
     });
 };
+
+
+
 
 // 4. LIMPEZA AUTOMÁTICA (15 DIAS)
 async function limparLixeiraAutomatico() {
