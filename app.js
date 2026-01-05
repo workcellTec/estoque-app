@@ -384,14 +384,21 @@ const safeStorage = {
 
 const themeToggleCheckbox = document.getElementById('theme-toggle-checkbox');
 
-function applyTheme(theme) {
+window.applyTheme = function(theme) {
     document.body.dataset.theme = theme;
-    const isLight = theme === 'light';
-    if (themeToggleCheckbox.checked !== isLight) {
-        themeToggleCheckbox.checked = isLight;
+    if (typeof safeStorage !== 'undefined') {
+        safeStorage.setItem('ctwTheme', theme);
     }
-    safeStorage.setItem('theme', theme);
-}
+
+    // --- AJUSTE DA BARRA DE STATUS ---
+    const metaTheme = document.getElementById('status-bar-color');
+    if (metaTheme) {
+        // Se for tema light, barra branca. Se for dark, usa a cor do azul profundo do seu CSS
+        const corStatus = (theme === 'light') ? '#FFFFFF' : '#0B1120';
+        metaTheme.setAttribute('content', corStatus);
+    }
+};
+
 
 function toggleTheme() {
     const isLight = themeToggleCheckbox.checked;
@@ -2919,18 +2926,30 @@ function applyColorTheme(color) {
             btn.classList.add('active');
             btn.innerHTML = '<i class="bi bi-check-lg"></i>';
         }
-
-// Exemplo: Coloque onde você troca o tema
-function atualizarCorNavegador(corHex) {
-    // Muda a cor da barra de status/fundo do navegador
-    document.querySelector('meta[name="theme-color"]').setAttribute('content', corHex);
-    // Força o fundo do HTML a ser igual
-    document.documentElement.style.backgroundColor = corHex;
-    document.body.style.backgroundColor = corHex;
-}
-
     });
+
+    // --- NOVA LÓGICA: PINTAR BARRA DE STATUS ---
+    const mapeamentoCores = {
+        'red': '#EF5350',
+        'blue': '#2979FF',
+        'green': '#00E676',
+        'yellow': '#FFD600',
+        'purple': '#AB47BC',
+        'orange': '#FF9100'
+    };
+
+    const corHex = mapeamentoCores[color] || '#0B1120';
+    const metaTheme = document.getElementById('status-bar-color');
+    
+    if (metaTheme) {
+        metaTheme.setAttribute('content', corHex);
+        // Aplica também ao fundo do documento para evitar o "vão branco" no scroll
+        document.documentElement.style.backgroundColor = corHex;
+        document.body.style.backgroundColor = corHex;
+    }
 }
+
+
 async function main() {
     try {
         setupPWA();
@@ -5303,18 +5322,22 @@ container.querySelectorAll('.btn-download-seguro').forEach(b => {
 
     // --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO ---
         // --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO (CORRIGIDA) ---
-    function carregarDadosParaEdicao(item) {
-        if(!item) return;
 
-        // 1. Marca que estamos editando
-        currentEditingBookipId = item.id;
+function carregarDadosParaEdicao(item) {
+    if(!item) return;
 
-        // 2. Muda visualmente para a aba "Novo"
-        const toggle = document.getElementById('bookipModeToggle');
-        if(toggle) {
-            toggle.checked = false;
-            toggle.dispatchEvent(new Event('change'));
-        }
+    // 👇 ADICIONE ESTA LINHA: Mata o rascunho // A. PRIMEIRO: Mata o rascunho e trava a edição na memória
+    localStorage.removeItem('ctwBookipDraft_Smart_v2'); 
+    currentEditingBookipId = item.id;
+    window.currentEditingBookipId = item.id; // Garante a trava global
+
+    // B. DEPOIS: Muda para a aba "Novo"
+    const toggle = document.getElementById('bookipModeToggle');
+    if(toggle) {
+        toggle.checked = false;
+        toggle.dispatchEvent(new Event('change'));
+    }
+
 
         // 3. Preenche os campos do cliente
         const campos = {
@@ -7567,7 +7590,11 @@ window.ativarSalvamentoAutomatico = function() {
 };
 
 // 2. EXECUTAR SALVAMENTO (Grava no LocalStorage)
+
 function executarSalvamentoReal() {
+    // 👇 ADICIONE ESTA LINHA: Se estiver editando, NÃO salva rascunho
+    if (window.currentEditingBookipId) return; 
+
     // Pega os pagamentos
     const pags = [];
     document.querySelectorAll('.check-pagamento:checked').forEach(c => pags.push(c.value));

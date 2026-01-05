@@ -2282,3 +2282,7 @@ tr, td, .card, .list-group-item {
 .modal-backdrop:last-of-type {
     z-index: 9999 !important;
 }
+.btn-action:active {
+    transform: scale(0.92);
+    transition: transform 0.1s;
+}
