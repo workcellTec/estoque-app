@@ -2905,49 +2905,83 @@ function loadTagTexts() {
     }
 }
 
-// --- FUNÇÕES DE TEMA DE COR ---
-function applyColorTheme(color) {
-    // Remove qualquer cor anterior
+// ============================================================
+// ============================================================
+// 🤖 FUNÇÃO DE TEMA (ESPECIAL PARA ANDROID)
+// ============================================================
+window.applyColorTheme = function(color) {
+    if (!color) return;
+
+    // 1. Aplica o atributo para o CSS reagir
     document.body.removeAttribute('data-color');
-    
-    // Se não for 'red' (padrão), aplica a nova cor
-    if (color && color !== 'red') {
+    if (color !== 'red') { // 'red' é o padrão, se for outro, aplica
         document.body.setAttribute('data-color', color);
     }
     
-    // Salva na memória
-    safeStorage.setItem('ctwColorTheme', color);
-    
-    // Atualiza visual dos botões no modal (Checkmark)
-    document.querySelectorAll('.theme-option-btn').forEach(btn => {
-        btn.innerHTML = ''; // Limpa ícones antigos
-        btn.classList.remove('active');
-        if (btn.dataset.color === color) {
-            btn.classList.add('active');
-            btn.innerHTML = '<i class="bi bi-check-lg"></i>';
+    // 2. Salva na memória (com segurança)
+    try {
+        if (typeof safeStorage !== 'undefined') {
+            safeStorage.setItem('ctwColorTheme', color);
+        } else {
+            localStorage.setItem('ctwColorTheme', color);
         }
-    });
+    } catch (e) { console.warn('Erro ao salvar tema:', e); }
 
-    // --- NOVA LÓGICA: PINTAR BARRA DE STATUS ---
-    const mapeamentoCores = {
-        'red': '#EF5350',
-        'blue': '#2979FF',
-        'green': '#00E676',
-        'yellow': '#FFD600',
-        'purple': '#AB47BC',
-        'orange': '#FF9100'
-    };
-
-    const corHex = mapeamentoCores[color] || '#0B1120';
-    const metaTheme = document.getElementById('status-bar-color');
-    
-    if (metaTheme) {
-        metaTheme.setAttribute('content', corHex);
-        // Aplica também ao fundo do documento para evitar o "vão branco" no scroll
-        document.documentElement.style.backgroundColor = corHex;
-        document.body.style.backgroundColor = corHex;
+    // 3. Feedback Visual nos botões
+    const btns = document.querySelectorAll('.theme-option-btn');
+    if (btns) {
+        btns.forEach(btn => {
+            btn.innerHTML = ''; 
+            btn.classList.remove('active');
+            if (btn.dataset.color === color) {
+                btn.classList.add('active');
+                btn.innerHTML = '<i class="bi bi-check-lg"></i>';
+            }
+        });
     }
-}
+
+    // 4. LÓGICA "AMBIENT MODE" (Barra de Status Android)
+    // O Android precisa de um tempinho para entender que a cor do fundo mudou
+    setTimeout(() => {
+        const metaTheme = document.getElementById('status-bar-color');
+        
+        if (metaTheme) {
+            // Pega o estilo computado do corpo da página
+            const style = getComputedStyle(document.body);
+            
+            // Tenta pegar a variável --tertiary-color
+            let androidColor = style.getPropertyValue('--tertiary-color').trim();
+
+            // Se a variável estiver vazia, pega a cor de fundo bruta (background-color)
+            if (!androidColor || androidColor === 'rgba(0, 0, 0, 0)') {
+                androidColor = style.backgroundColor;
+            }
+
+            // Se ainda assim falhar, forçamos a cor padrão do seu tema (Dark Blue)
+            // Isso evita que fique branco ou preto padrão
+            if (!androidColor || androidColor === 'rgba(0, 0, 0, 0)') {
+                androidColor = '#0B1120'; 
+            }
+
+            // Aplica na Meta Tag do Android
+            metaTheme.setAttribute('content', androidColor);
+            
+            // Console log para você debugar se precisar
+            // console.log('Android Theme Applied:', androidColor);
+        }
+    }, 100); // 100ms é o tempo ideal para o motor do Chrome atualizar
+};
+
+// 5. Garante que rode ao abrir o App (Autocorreção)
+(function() {
+    // Espera 200ms para garantir que o HTML carregou
+    setTimeout(() => {
+        const salvo = localStorage.getItem('ctwColorTheme') || 'red';
+        if(window.applyColorTheme) window.applyColorTheme(salvo);
+    }, 200);
+})();
+
+
 
 
 async function main() {
@@ -3370,36 +3404,40 @@ document.addEventListener('DOMContentLoaded', () => {
         fab.id = 'fabCopyMulti';
         fab.className = 'btn btn-primary';
         fab.innerHTML = '<i class="bi bi-clipboard-check"></i> Copiar Seleção';
-        // CORREÇÃO: Força ele a começar invisível
-        fab.style.display = 'none'; 
+        fab.style.display = 'none'; // Começa invisível
         document.body.appendChild(fab);
         
-        // Ação do Botão Flutuante
-        fab.addEventListener('click', () => {
+        // Ação do Botão Flutuante (CORRIGIDA E COMPLETA)
+        fab.onclick = () => {
             const selectedRows = document.querySelectorAll('#resultCalcularPorAparelho .copyable-row.is-selected');
             if (selectedRows.length === 0) return;
 
-            // Coleta dados
+            // 1. Gera Texto (COM CÁLCULO DO TOTAL)
             let simulations = [];
-            selectedRows.forEach(row => {
-                const inst = row.dataset.installments;
-                const parc = parseFloat(row.dataset.parcela).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            selectedRows.forEach(r => {
+                const i = r.dataset.installments; // Ex: "10" ou "Débito"
+                const valParcela = parseFloat(r.dataset.parcela); // Ex: 100.00
                 
-                let lineText = '';
-                if (inst === 'Débito') {
-                    lineText = `Débito: ${parc}`;
+                // Formata Parcela
+                const p = valParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                
+                // Calcula Total (Parcela * Vezes)
+                const qtd = (i === 'Débito') ? 1 : parseInt(i);
+                const totalCalc = valParcela * qtd;
+                const t = totalCalc.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+                if (i === 'Débito') {
+                    simulations.push(`Débito: ${p}\n_(Total: ${t})_`);
                 } else {
-                    lineText = `${inst}x de ${parc}`; 
+                    // Formato: 10x R$ 100,00 (Total: R$ 1.000,00)
+                    simulations.push(`${i}x ${p}\n_(Total: ${t})_`);
                 }
-                simulations.push(lineText);
             });
 
-            // Monta o bloco com "Ou"
-            let simulationBlock = simulations.map((text, index) => {
-                return index === 0 ? text : `Ou ${text}`;
-            }).join('\n');
+            // Junta com "Ou" e quebra de linha
+            const simulationBlock = simulations.map((t, i) => i === 0 ? t : `\nOu ${t}`).join('\n');
 
-            // Dados do Produto
+            // 2. Dados do Produto (Nome e Quantidade)
             const productCounts = carrinhoDeAparelhos.reduce((acc, product) => {
                 acc[product.nome] = (acc[product.nome] || 0) + 1;
                 return acc;
@@ -3408,7 +3446,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 .map(([nome, qtd]) => qtd > 1 ? `${qtd}x ${nome}` : nome)
                 .join(' e ');
 
-            // Dados da Entrada
+            // 3. Dados da Entrada
             const entradaValue = parseFloat(document.getElementById('entradaAparelho').value) || 0;
             let entradaText = '';
             if (entradaValue > 0) {
@@ -3416,7 +3454,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 entradaText = `\n*_+${entradaFormatted} no dinheiro ou pix_*`;
             }
 
-            // Dados da Etiqueta
+            // 4. Etiqueta Personalizada
             let customText = '';
             if (carrinhoDeAparelhos.length === 1) {
                 const produtoUnico = carrinhoDeAparelhos[0];
@@ -3425,7 +3463,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // Montagem Final
+            // 5. Montagem Final (Verifica ordem invertida)
             let textToCopy;
             const invertOrder = safeStorage.getItem('ctwInvertCopyOrder') === 'true';
             
@@ -3435,24 +3473,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 textToCopy = `${simulationBlock}${entradaText}\n\n${produtoNome}${customText}`;
             }
 
-            // Copiar
+            // 6. Copiar para área de transferência
             const textArea = document.createElement("textarea");
             textArea.value = textToCopy;
             document.body.appendChild(textArea);
             textArea.select();
             try {
                 document.execCommand('copy');
+                
+                // Salva no histórico se a função existir
+                if(window.salvarHistoricoAparelho) {
+                    window.salvarHistoricoAparelho(textToCopy, `Vários (${selectedRows.length}) - ${produtoNome}`);
+                }
+                
                 showCustomModal({ message: 'Simulações copiadas!' });
             } catch (err) {
                 showCustomModal({ message: 'Erro ao copiar.' });
             }
             document.body.removeChild(textArea);
             
-            // Limpa a seleção e esconde o botão
+            // Limpa a seleção visual e esconde o botão
             selectedRows.forEach(r => r.classList.remove('is-selected'));
             fab.style.display = 'none';
-        });
+        };
     }
+
+
+
 
 document.getElementById('resultCalcularPorAparelho').addEventListener('click', (e) => {
     const toggle = document.getElementById('multiSelectToggle');
@@ -3479,14 +3526,32 @@ document.getElementById('resultCalcularPorAparelho').addEventListener('click', (
                 const selectedRows = document.querySelectorAll('#resultCalcularPorAparelho .copyable-row.is-selected');
                 if (selectedRows.length === 0) return;
 
-                // 1. Gera Texto
+                // 1. Gera Texto (CORRIGIDO COM TOTAL E FORMATAÇÃO)
                 let simulations = [];
                 selectedRows.forEach(r => {
                     const i = r.dataset.installments;
-                    const p = parseFloat(r.dataset.parcela).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                    simulations.push(i === 'Débito' ? `Débito: ${p}` : `${i}x de ${p}`);
+                    const valParcela = parseFloat(r.dataset.parcela);
+                    
+                    // Formata valor da parcela
+                    const p = valParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                    
+                    // Calcula o total matematicamente (Parcela x Vezes)
+                    const qtd = (i === 'Débito') ? 1 : parseInt(i);
+                    const totalCalc = valParcela * qtd;
+                    const t = totalCalc.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+                    if (i === 'Débito') {
+                        simulations.push(`Débito: ${p}\n_(Total: ${t})_`);
+                    } else {
+                        // Formato: 2x R$ 1.200,00
+                        //          (Total: R$ 2.400,00)
+                        simulations.push(`${i}x ${p}\n_(Total: ${t})_`);
+                    }
                 });
-                const simulationBlock = simulations.map((t, i) => i === 0 ? t : `Ou ${t}`).join('\n');
+                
+                // Adiciona uma quebra de linha extra (\n) antes do "Ou"
+                const simulationBlock = simulations.map((t, i) => i === 0 ? t : `\nOu ${t}`).join('\n');
+
                 
                 // 2. Dados
                 const productCounts = carrinhoDeAparelhos.reduce((acc, product) => { acc[product.nome] = (acc[product.nome] || 0) + 1; return acc; }, {});
