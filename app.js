@@ -21,6 +21,10 @@ let currentUserProfile = localStorage.getItem('ctwUserProfile') || '';
 // A lista de perfis agora é uma variável que vem do banco
 let teamProfilesList = {}; 
 
+// Adicione junto com suas variáveis globais
+let isSystemSwitching = false; // 🔒 Trava de segurança para o toggle
+
+
 // ============================================================
 
 // ============================================================
@@ -4590,46 +4594,57 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
     });
     
     
-    //logica book
-    
-        // --- LÓGICA DE ABAS (CONTRATO vs BOOKIP) ---
-    
+// --- TOGGLE NOVO / HISTÓRICO (CORRIGIDO E SEM BUG VISUAL) ---
+const bookipToggle = document.getElementById('bookipModeToggle');
 
+if (bookipToggle) {
+    bookipToggle.addEventListener('change', (e) => {
+        const isHistoryMode = e.target.checked; // true = Histórico, false = Novo
 
+        // 1. Elementos da Aba "NOVO" (Formulário)
+        const newContent = document.getElementById('newBookipContent');
+        if (newContent) {
+            // Se estiver no histórico, ESCONDE o conteúdo novo
+            newContent.classList.toggle('hidden', isHistoryMode);
+        }
 
-    // --- TOGGLE NOVO / HISTÓRICO DO BOOKIP (CORRIGIDO) ---
-    const bookipToggle = document.getElementById('bookipModeToggle');
-    const searchContainer = document.getElementById('bookipSearchContainer');
+        // 2. Elementos da Aba "HISTÓRICO" (Lista + Busca + Filtros)
+        const historyContent = document.getElementById('historyBookipContent');
+        const searchContainer = document.getElementById('bookipSearchContainer');
+        const filterBar = document.getElementById('filterBarProfiles');
 
-    if(bookipToggle) {
-        bookipToggle.addEventListener('change', (e) => {
-            const showHistory = e.target.checked;
+        // Esses elementos só aparecem se isHistoryMode for TRUE
+        if (historyContent) historyContent.classList.toggle('hidden', !isHistoryMode);
+        if (searchContainer) searchContainer.classList.toggle('hidden', !isHistoryMode);
+        if (filterBar) filterBar.classList.toggle('hidden', !isHistoryMode);
+
+        // 3. LÓGICA DE DADOS (Mantendo a correção do Bug de Edição)
+        if (isHistoryMode) {
+            // --- Entrou no Histórico ---
+            if (typeof loadBookipHistory === 'function') loadBookipHistory();
+        } else {
+            // --- Entrou no Novo (Formulário) ---
             
-            // 1. Alterna as telas principais (Conteúdo)
-            document.getElementById('newBookipContent').classList.toggle('hidden', showHistory);
-            document.getElementById('historyBookipContent').classList.toggle('hidden', !showHistory);
-            
-            // 2. Alterna a barra de busca
-            if (searchContainer) {
-                searchContainer.classList.toggle('hidden', !showHistory);
+            // Verifica a TRAVA DO SISTEMA
+            if (window.isSystemSwitching) {
+                // Foi o botão editar que mandou vir pra cá?
+                console.log("🔒 Modo Edição: Mantendo dados.");
+                window.isSystemSwitching = false; // Destrava para o futuro
+            } else {
+                // Foi o dedo do usuário?
+                console.log("🧹 Clique Manual: Limpando tudo.");
+                if (typeof window.resetFormulariosBookip === 'function') {
+                    window.resetFormulariosBookip();
+                }
             }
+        }
+    });
+}
 
-            // 3. CORREÇÃO: Alterna também os botões de filtro (Meus Arquivos)
-            const filterBar = document.getElementById('filterBarProfiles');
-            if (filterBar) {
-                // Se for histórico, mostra (remove hidden). Se for novo, esconde (add hidden).
-                filterBar.classList.toggle('hidden', !showHistory);
-                
-                // Força visual caso a classe hidden não funcione por CSS específico
-                filterBar.style.display = showHistory ? 'flex' : 'none';
-            }
 
-            // 4. Carrega o histórico se necessário
-            if (showHistory) {
-                loadBookipHistory();
-            }
-        });
-    }
+
+
+
 
     // ============================================================
     // CORREÇÃO: LÓGICA DE BUSCA E ADIÇÃO DE ITENS NO BOOKIP
@@ -5388,123 +5403,87 @@ container.querySelectorAll('.btn-download-seguro').forEach(b => {
     // --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO ---
         // --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO (CORRIGIDA) ---
 
+// --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO (BLINDADA) ---
 function carregarDadosParaEdicao(item) {
-    if(!item) return;
+    if (!item) return;
 
-    // 👇 ADICIONE ESTA LINHA: Mata o rascunho // A. PRIMEIRO: Mata o rascunho e trava a edição na memória
-    localStorage.removeItem('ctwBookipDraft_Smart_v2'); 
-    currentEditingBookipId = item.id;
-    window.currentEditingBookipId = item.id; // Garante a trava global
+    // 1. Mata o rascunho antigo
+    localStorage.removeItem('ctwBookipDraft_Smart_v2');
 
-    // B. DEPOIS: Muda para a aba "Novo"
+    // 2. Define o ID Global
+    window.currentEditingBookipId = item.id;
+
+    // 3. Muda para a aba "Novo" com a TRAVA ATIVADA
     const toggle = document.getElementById('bookipModeToggle');
-    if(toggle) {
+    if (toggle && toggle.checked) {
+        window.isSystemSwitching = true; // 🔒 ATIVA A TRAVA
         toggle.checked = false;
         toggle.dispatchEvent(new Event('change'));
+        // Nota: A trava será desligada automaticamente pelo Listener no Passo 2
     }
 
+    // 4. Preenche os campos do cliente
+    const campos = {
+        'bookipNome': item.nome,
+        'bookipCpf': item.cpf,
+        'bookipTelefone': item.tel,
+        'bookipEndereco': item.end,
+        'bookipEmail': item.email,
+        'bookipDataManual': item.dataVenda
+    };
 
-        // 3. Preenche os campos do cliente
-        const campos = {
-            'bookipNome': item.nome,
-            'bookipCpf': item.cpf,
-            'bookipTelefone': item.tel,
-            'bookipEndereco': item.end,
-            'bookipEmail': item.email,
-            'bookipDataManual': item.dataVenda
-        };
-        
-        for (let id in campos) {
-            const el = document.getElementById(id);
-            if(el) el.value = campos[id] || '';
-        }
-
-        // 4. Preenche a lista de itens
-        bookipCartList = item.items || [];
-        atualizarListaVisualBookip(); 
-
-        // 5. Pagamento (Checkboxes) - VERSÃO CORRIGIDA E MAIS INTELIGENTE
-        document.querySelectorAll('.check-pagamento').forEach(chk => chk.checked = false); // Limpa tudo antes
-        
-        if (item.pagamento) {
-            // Divide por vírgula, ignorando se tem espaço ou não depois da vírgula
-            // Ex: Aceita "Pix, Crédito" e também "Pix,Crédito"
-            const formasSalvas = item.pagamento.split(/,\s*/).map(s => s.trim().toLowerCase());
-
-            document.querySelectorAll('.check-pagamento').forEach(chk => {
-                const valorCheckbox = chk.value.toLowerCase(); // Ex: "dinheiro/pix"
-                
-                // Verifica se o valor salvo bate com o checkbox
-                const deveMarcar = formasSalvas.some(salva => {
-                    // Teste 1: É exatamente igual? (ex: "crédito" == "crédito")
-                    if (salva === valorCheckbox) return true;
-                    
-                    // Teste 2: É parecido? (ex: salvou "pix", mas o checkbox é "dinheiro/pix")
-                    // Isso ajuda se você mudou os nomes dos botões recentemente
-                    if (valorCheckbox.includes(salva) && salva.length > 2) return true;
-                    
-                    return false;
-                });
-
-                if (deveMarcar) {
-                    chk.checked = true;
-                }
-            });
-        }
-
-
-        // 6. Garantia
-        const selectGarantia = document.getElementById('bookipGarantiaSelect');
-        const inputGarantia = document.getElementById('bookipGarantiaCustomInput');
-        if(selectGarantia) {
-            const dias = parseInt(item.diasGarantia);
-            const isPadrao = [30, 120, 180, 365].includes(dias);
-            if(isPadrao) {
-                selectGarantia.value = dias;
-                if(inputGarantia) inputGarantia.classList.add('hidden');
-            } else {
-                selectGarantia.value = 'custom';
-                if(inputGarantia) {
-                    inputGarantia.value = dias;
-                    inputGarantia.classList.remove('hidden');
-                }
-            }
-        }
-
-        // 7. CORREÇÃO DO ERRO: Muda o botão certo (Adicionar à Lista)
-        // Usamos o ID que o sistema realmente usa para adicionar itens
-        const btnAdd = document.getElementById('btnAdicionarItemLista');
-        if (btnAdd) {
-            btnAdd.innerHTML = '<i class="bi bi-pencil-square"></i> Salvar Alteração';
-            btnAdd.classList.remove('btn-primary');
-            btnAdd.classList.add('btn-warning');
-        }
-
-        showCustomModal({ message: "Dados carregados! Edite os itens ou o cliente e salve." });
+    for (let id in campos) {
+        const el = document.getElementById(id);
+        if (el) el.value = campos[id] || '';
     }
 
+    // 5. Preenche a lista de itens e atualiza visual
+    bookipCartList = item.items || [];
+    if (typeof atualizarListaVisualBookip === 'function') atualizarListaVisualBookip();
 
-
-    // --- LÓGICA DE SALVAR E GARANTIA (NOVO) ---
-        // --- LÓGICA DE SALVAR E GARANTIA (NOVO) ---
-    const garantiaSelect = document.getElementById('bookipGarantiaSelect');
-    const garantiaInput = document.getElementById('bookipGarantiaCustomInput');
-    
-    if (garantiaSelect && garantiaInput) {
-        garantiaSelect.addEventListener('change', () => {
-            if (garantiaSelect.value === 'custom') {
-                // Remove a classe 'hidden' para mostrar o campo
-                garantiaInput.classList.remove('hidden');
-                garantiaInput.focus();
-            } else {
-                // Adiciona a classe 'hidden' para esconder
-                garantiaInput.classList.add('hidden');
-                garantiaInput.value = ''; // Limpa se esconder
+    // 6. Restaura Checkboxes de Pagamento (Lógica Inteligente)
+    document.querySelectorAll('.check-pagamento').forEach(chk => chk.checked = false);
+    if (item.pagamento) {
+        const formasSalvas = item.pagamento.split(/,\s*/).map(s => s.trim().toLowerCase());
+        document.querySelectorAll('.check-pagamento').forEach(chk => {
+            const valCheck = chk.value.toLowerCase();
+            if (formasSalvas.some(s => valCheck.includes(s) || s.includes(valCheck))) {
+                chk.checked = true;
             }
         });
     }
 
+    // 7. Configura Garantia
+    const selectGarantia = document.getElementById('bookipGarantiaSelect');
+    const inputGarantia = document.getElementById('bookipGarantiaCustomInput');
+    if (selectGarantia) {
+        const dias = parseInt(item.diasGarantia);
+        const isPadrao = [30, 120, 180, 365].includes(dias);
+        if (isPadrao) {
+            selectGarantia.value = dias;
+            if (inputGarantia) inputGarantia.classList.add('hidden');
+        } else {
+            selectGarantia.value = 'custom';
+            if (inputGarantia) {
+                inputGarantia.value = dias;
+                inputGarantia.classList.remove('hidden');
+            }
+        }
+    }
 
+    // 8. Muda o botão para "Salvar Alteração" (Amarelo)
+    const btnAdd = document.getElementById('btnAdicionarItemLista');
+    if (btnAdd) {
+        btnAdd.innerHTML = '<i class="bi bi-pencil-square"></i> Salvar Alteração';
+        btnAdd.classList.remove('btn-primary');
+        btnAdd.classList.add('btn-warning');
+    }
+
+    // 9. Rola para o topo
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    showCustomModal({ message: "Dados carregados! Edite e salve." });
+}
 
 
 
