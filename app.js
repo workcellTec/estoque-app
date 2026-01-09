@@ -7193,16 +7193,19 @@ setTimeout(() => {
 
 // ============================================================
 // FUNÇÃO DE FAXINA (LIMPA TUDO: DADOS, VISUAL E RASCUNHO)
-// ============================================================
 window.resetFormulariosBookip = function() {
     console.log("🧹 Executando faxina completa...");
 
-    // 👇👇👇 AQUI ESTÁ O SEGREDO QUE FALTAVA 👇👇👇
-    // Isso garante que o rascunho velho morra quando você pede um novo.
+    // 👇 CORREÇÃO CRÍTICA AQUI 👇
+    // Isso faz o sistema "esquecer" que estava editando um recibo antigo.
+    // Sem isso, ele salva o novo em cima do velho!
+    window.currentEditingBookipId = null;
+    // 👆 FIM DA CORREÇÃO 👆
+
+    // Garante que o rascunho velho morra quando você pede um novo.
     if(typeof limparRascunhoBookipDefinitivo === 'function') {
         limparRascunhoBookipDefinitivo();
     }
-    // 👆👆👆 FIM DA ADIÇÃO 👆👆👆
 
     // 1. Limpa Campos de Texto do Cliente
     const camposCliente = ['bookipNome', 'bookipCpf', 'bookipTelefone', 'bookipEndereco', 'bookipEmail', 'bookipDataManual'];
@@ -7246,7 +7249,7 @@ window.resetFormulariosBookip = function() {
         btnAdd.classList.add('btn-primary');
     }
 
-    // 7. ZERA A LISTA NA MEMÓRIA E NA TELA (O Pulo do Gato)
+    // 7. ZERA A LISTA NA MEMÓRIA E NA TELA
     if (typeof bookipCartList !== 'undefined') {
         bookipCartList = []; 
     } else {
