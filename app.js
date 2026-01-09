@@ -5400,95 +5400,102 @@ container.querySelectorAll('.btn-download-seguro').forEach(b => {
     }
 }
 
-    // --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO ---
-        // --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO (CORRIGIDA) ---
-
-// --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO (BLINDADA) ---
+// --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO (CORRIGIDA DE VERDADE) ---
 function carregarDadosParaEdicao(item) {
     if (!item) return;
 
     // 1. Mata o rascunho antigo
     localStorage.removeItem('ctwBookipDraft_Smart_v2');
 
-    // 2. Define o ID Global
-    window.currentEditingBookipId = item.id;
-
-    // 3. Muda para a aba "Novo" com a TRAVA ATIVADA
+    // 2. PRIMEIRO: Troca a aba e deixa o sistema limpar o que quiser
     const toggle = document.getElementById('bookipModeToggle');
     if (toggle && toggle.checked) {
-        window.isSystemSwitching = true; // 🔒 ATIVA A TRAVA
+        window.isSystemSwitching = true; // Trava o sistema
         toggle.checked = false;
-        toggle.dispatchEvent(new Event('change'));
-        // Nota: A trava será desligada automaticamente pelo Listener no Passo 2
+        toggle.dispatchEvent(new Event('change')); // Dispara o reset()
     }
 
-    // 4. Preenche os campos do cliente
-    const campos = {
-        'bookipNome': item.nome,
-        'bookipCpf': item.cpf,
-        'bookipTelefone': item.tel,
-        'bookipEndereco': item.end,
-        'bookipEmail': item.email,
-        'bookipDataManual': item.dataVenda
-    };
+    // 3. AGORA SIM: Injetamos os dados nas variáveis CERTAS (Sem 'window.')
+    // Usamos setTimeout para garantir que rodamos DEPOIS do reset da aba
+    setTimeout(() => {
+        
+        // A. ID CORRETO (Sem 'window.') - Isso corrige a Duplicação
+        // Agora o botão Salvar vai ler essa variável aqui.
+        currentEditingBookipId = item.id;
 
-    for (let id in campos) {
-        const el = document.getElementById(id);
-        if (el) el.value = campos[id] || '';
-    }
+        // B. LISTA CORRETA (Sem 'window.') - Isso corrige a Edição de Produto
+        // Agora a função de desenho vai ler essa lista aqui.
+        bookipCartList = item.items || [];
+        
+        // C. Atualiza o Visual da Lista (Agora vai funcionar pq a lista tá certa)
+        if (typeof atualizarListaVisualBookip === 'function') {
+            atualizarListaVisualBookip();
+        }
 
-    // 5. Preenche a lista de itens e atualiza visual
-    bookipCartList = item.items || [];
-    if (typeof atualizarListaVisualBookip === 'function') atualizarListaVisualBookip();
+        // D. Preenche os campos do Formulário
+        const campos = {
+            'bookipNome': item.nome,
+            'bookipCpf': item.cpf,
+            'bookipTelefone': item.tel,
+            'bookipEndereco': item.end,
+            'bookipEmail': item.email,
+            'bookipDataManual': item.dataVenda
+        };
 
-    // 6. Restaura Checkboxes de Pagamento (Lógica Inteligente)
-    document.querySelectorAll('.check-pagamento').forEach(chk => chk.checked = false);
-    if (item.pagamento) {
-        const formasSalvas = item.pagamento.split(/,\s*/).map(s => s.trim().toLowerCase());
-        document.querySelectorAll('.check-pagamento').forEach(chk => {
-            const valCheck = chk.value.toLowerCase();
-            if (formasSalvas.some(s => valCheck.includes(s) || s.includes(valCheck))) {
-                chk.checked = true;
-            }
-        });
-    }
+        for (let id in campos) {
+            const el = document.getElementById(id);
+            if (el) el.value = campos[id] || '';
+        }
 
-    // 7. Configura Garantia
-    const selectGarantia = document.getElementById('bookipGarantiaSelect');
-    const inputGarantia = document.getElementById('bookipGarantiaCustomInput');
-    if (selectGarantia) {
-        const dias = parseInt(item.diasGarantia);
-        const isPadrao = [30, 120, 180, 365].includes(dias);
-        if (isPadrao) {
-            selectGarantia.value = dias;
-            if (inputGarantia) inputGarantia.classList.add('hidden');
-        } else {
-            selectGarantia.value = 'custom';
-            if (inputGarantia) {
-                inputGarantia.value = dias;
-                inputGarantia.classList.remove('hidden');
+        // E. Restaura Pagamentos
+        document.querySelectorAll('.check-pagamento').forEach(chk => chk.checked = false);
+        if (item.pagamento) {
+            const formasSalvas = item.pagamento.split(/,\s*/).map(s => s.trim().toLowerCase());
+            document.querySelectorAll('.check-pagamento').forEach(chk => {
+                const valCheck = chk.value.toLowerCase();
+                if (formasSalvas.some(s => valCheck.includes(s) || s.includes(valCheck))) {
+                    chk.checked = true;
+                }
+            });
+        }
+
+        // F. Restaura Garantia
+        const selectGarantia = document.getElementById('bookipGarantiaSelect');
+        const inputGarantia = document.getElementById('bookipGarantiaCustomInput');
+        if (selectGarantia) {
+            const dias = parseInt(item.diasGarantia);
+            const isPadrao = [30, 120, 180, 365].includes(dias);
+            if (isPadrao) {
+                selectGarantia.value = dias;
+                if (inputGarantia) inputGarantia.classList.add('hidden');
+            } else {
+                selectGarantia.value = 'custom';
+                if (inputGarantia) {
+                    inputGarantia.value = dias;
+                    inputGarantia.classList.remove('hidden');
+                }
             }
         }
-    }
 
-    // 8. Muda o botão para "Salvar Alteração" (Amarelo)
-    const btnAdd = document.getElementById('btnAdicionarItemLista');
-    if (btnAdd) {
-        btnAdd.innerHTML = '<i class="bi bi-pencil-square"></i> Salvar Alteração';
-        btnAdd.classList.remove('btn-primary');
-        btnAdd.classList.add('btn-warning');
-    }
+        // G. Ajusta o Botão Salvar (Para Amarelo)
+        const btnAdd = document.getElementById('btnAdicionarItemLista');
+        if (btnAdd) {
+            btnAdd.innerHTML = '<i class="bi bi-pencil-square"></i> Salvar Alteração';
+            btnAdd.classList.remove('btn-primary');
+            btnAdd.classList.add('btn-warning');
+        }
 
-    // 9. Rola para o topo
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+        // H. Finalização
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        window.isSystemSwitching = false; // Destrava
+
+        console.log("✅ Edição carregada. ID Interno:", currentEditingBookipId);
+
+    }, 50); // 50ms é o tempo para o reset passar e a gente entrar com os dados
 
     showCustomModal({ message: "Dados carregados! Edite e salve." });
 }
 
-
-
-    // ============================================================
-// ============================================================
 // FLUXO DE GARANTIA LAPIDADO (SALVAR -> DEPOIS OPÇÕES)
 // ============================================================
 
@@ -7171,15 +7178,16 @@ setTimeout(() => {
 }, 1000); // Espera 1 segundo pra garantir que o HTML carregou
 
 // ============================================================
+// ============================================================
 // FUNÇÃO DE FAXINA (LIMPA TUDO: DADOS, VISUAL E RASCUNHO)
+// ============================================================
 window.resetFormulariosBookip = function() {
     console.log("🧹 Executando faxina completa...");
 
     // 👇 CORREÇÃO CRÍTICA AQUI 👇
-    // Isso faz o sistema "esquecer" que estava editando um recibo antigo.
-    // Sem isso, ele salva o novo em cima do velho!
-    window.currentEditingBookipId = null;
-    // 👆 FIM DA CORREÇÃO 👆
+    // Removi o 'window.' para ele limpar a variável REAL do módulo app.js
+    currentEditingBookipId = null; 
+    // 👆 AGORA ELE LIMPA DE VERDADE 👆
 
     // Garante que o rascunho velho morra quando você pede um novo.
     if(typeof limparRascunhoBookipDefinitivo === 'function') {
@@ -7229,6 +7237,7 @@ window.resetFormulariosBookip = function() {
     }
 
     // 7. ZERA A LISTA NA MEMÓRIA E NA TELA
+    // Mesma coisa aqui: limpamos a variável direta, sem 'window' se possível, ou ambas por segurança
     if (typeof bookipCartList !== 'undefined') {
         bookipCartList = []; 
     } else {
@@ -7248,13 +7257,9 @@ window.resetFormulariosBookip = function() {
     
     const saveContainer = document.getElementById('saveActionContainer');
     if(saveContainer) saveContainer.classList.remove('hidden');
+
+    console.log("✅ Sistema limpo e pronto para novo cadastro (ID: null).");
 };
-
-
-
-
-
-
 
 
 
@@ -7637,10 +7642,14 @@ window.ativarSalvamentoAutomatico = function() {
 };
 
 // 2. EXECUTAR SALVAMENTO (Grava no LocalStorage)
-
 function executarSalvamentoReal() {
-    // 👇 ADICIONE ESTA LINHA: Se estiver editando, NÃO salva rascunho
-    if (window.currentEditingBookipId) return; 
+    
+    // 👇 CORREÇÃO 1: REMOVI O "window."
+    // Verifica a variável local. Se ela existir e não for nula, é porque estamos editando.
+    // Nesse caso, o rascunho é ignorado para não salvar por cima.
+    if (typeof currentEditingBookipId !== 'undefined' && currentEditingBookipId !== null) {
+        return; 
+    }
 
     // Pega os pagamentos
     const pags = [];
@@ -7656,12 +7665,16 @@ function executarSalvamentoReal() {
         garantia: document.getElementById('bookipGarantiaSelect')?.value,
         garantiaCustom: document.getElementById('bookipGarantiaCustomInput')?.value,
         pagamentos: pags,
-        listaProdutos: window.bookipCartList || [], 
+        
+        // 👇 CORREÇÃO 2: LISTA DE PRODUTOS
+        // Usa a variável local 'bookipCartList' em vez de 'window.bookipCartList'
+        // Isso garante que o rascunho salve os produtos que estão na memória
+        listaProdutos: typeof bookipCartList !== 'undefined' ? bookipCartList : [], 
+        
         timestamp: Date.now()
     };
 
-    // 👇 A MUDANÇA ESTÁ AQUI: Agora ele verifica TUDO 👇
-    // Se tiver Nome OU CPF OU Telefone OU Email OU Item na lista... Salva!
+    // Verifica se tem algum dado preenchido
     const temAlgumDado = dados.nome || dados.cpf || dados.tel || dados.email || dados.listaProdutos.length > 0;
 
     if (temAlgumDado) {
