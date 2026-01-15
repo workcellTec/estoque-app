@@ -5227,6 +5227,17 @@ function loadBookipHistory() {
                  dataVisual = dataVendaObj.toLocaleDateString('pt-BR');
             }
 
+
+            // --- CIRÚRGICO: Pega a hora ---
+            let horaVisual = '';
+            if (item.criadoEm) {
+                try {
+                    const d = new Date(item.criadoEm);
+                    horaVisual = d.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
+                } catch(e) {}
+            }
+            // ------------------------------
+
             
             const docNum = item.docNumber || '---';
 
@@ -5312,6 +5323,10 @@ function loadBookipHistory() {
 
                         <div class="text-end ms-auto" style="min-width: 80px;">
                             <small class="d-block text-secondary" style="font-size: 0.7rem;">${dataVisual}</small>
+
+                            <small class="d-block text-secondary" style="font-size: 0.65rem; opacity: 0.8;">${horaVisual}</small>
+
+
                             <span class="badge bg-secondary bg-opacity-25 text-light border border-secondary border-opacity-25" style="font-size: 0.65rem; font-weight: normal; letter-spacing: 0.5px;">
                                 <i class="bi bi-person me-1"></i>${item.criadoPor || 'Geral'}
                             </span>
