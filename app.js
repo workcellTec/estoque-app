@@ -5309,8 +5309,8 @@ function loadBookipHistory() {
             const iconBtnEnvio = foiEnviado ? 'bi-check-circle-fill text-success' : 'bi-envelope-at-fill';
             const titleBtnEnvio = foiEnviado ? 'Já enviado (Reenviar)' : 'PDF/Email';
 
-            return `
-                       <div class="accordion-item" style="${styleCard}">
+                                    return `
+            <div class="accordion-item" style="${styleCard}">
                 <h2 class="accordion-header" id="head-bk-${item.id}">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-bk-${item.id}">
                         
@@ -5336,31 +5336,45 @@ function loadBookipHistory() {
                 
                 <div id="collapse-bk-${item.id}" class="accordion-collapse collapse" data-bs-parent="#bookipAccordion">
                     <div class="accordion-body">
-                        <p><strong>Cliente:</strong> ${item.nome}</p>
+                        
+                        <div class="mb-2">
+                            <strong>Cliente:</strong> ${item.nome}<br>
+                            ${item.tel ? `<small class="text-secondary"><i class="bi bi-whatsapp text-success me-1"></i> ${item.tel}</small>` : ''}
+                        </div>
+
                         <ul class="list-unstyled small mb-3">
                             ${(item.items || []).map(i => `<li>${i.qtd}x ${i.nome} - R$ ${parseFloat(i.valor).toFixed(2)}</li>`).join('')}
                         </ul>
-                        <div class="d-flex justify-content-end gap-2 mt-2">
+                        
+                        <div class="d-flex justify-content-end gap-2 mt-2 flex-wrap">
 
+                            ${(() => {
+                                const telLimpo = (item.tel || '').replace(/\D/g, '');
+                                if (telLimpo.length >= 8) {
+                                    const numFinal = telLimpo.length <= 11 ? '55' + telLimpo : telLimpo;
+                                    return `<a href="https://wa.me/${numFinal}" target="_blank" class="btn btn-sm btn-success" title="Abrir WhatsApp"><i class="bi bi-whatsapp"></i></a>`;
+                                }
+                                return ''; 
+                            })()}
 
-
+                            <button class="btn btn-sm btn-dark btn-copy-nf" data-id="${item.id}" title="Copiar dados para NF" style="font-weight: bold;">NF</button>
 
                             <button class="btn btn-sm btn-info edit-bookip-btn" data-id="${item.id}" title="Editar"><i class="bi bi-pencil-square"></i></button>
 
                             <button class="btn btn-sm ${classBtnEnvio} email-history-btn" data-id="${item.id}" title="${titleBtnEnvio}"><i class="bi ${iconBtnEnvio}"></i></button>
 
-<button class="btn btn-sm btn-outline-primary btn-download-seguro" data-id="${item.id}" title="Baixar PDF">
-    <i class="bi bi-download"></i>
-</button>
-
-
-
+                            <button class="btn btn-sm btn-outline-primary btn-download-seguro" data-id="${item.id}" title="Baixar PDF">
+                                <i class="bi bi-download"></i>
+                            </button>
 
                             <button class="btn btn-sm btn-outline-danger delete-bookip-btn" data-id="${item.id}" title="Apagar"><i class="bi bi-trash"></i></button>
                         </div>
                     </div>
                 </div>
             </div>`;
+
+
+
         }).join('') + `</div>`;
 
         if (temMais) {
@@ -5394,6 +5408,70 @@ container.querySelectorAll('.delete-bookip-btn').forEach(b => b.addEventListener
         onCancel: ()=>{}
     });
 }));
+
+
+        // --- LÓGICA DO BOTÃO NF (COM NOTIFICAÇÃO NATIVA) ---
+        container.querySelectorAll('.btn-copy-nf').forEach(btn => {
+            btn.addEventListener('click', e => {
+                const id = e.target.closest('button').dataset.id;
+                const item = listaCompletaCache.find(i => i.id === id);
+
+                if (item) {
+                    let textoNF = `Gerar NF\n`;
+                    textoNF += `Nome: ${item.nome || ''}\n`;
+                    textoNF += `CPF: ${item.cpf || 'Não informado'}\n`;
+                    
+                    // Prioriza celular, se não tiver tenta telefone fixo
+                    textoNF += `Numero: ${item.tel || item.telefone || 'Não informado'}\n`; 
+                    
+                    // Usa endereço completo se tiver
+                    const enderecoCompleto = item.end ? item.end : (item.cep ? `CEP: ${item.cep}` : 'Não informado');
+                    textoNF += `Endereço/Cep: ${enderecoCompleto}\n\n`; 
+
+                    textoNF += `--- ITENS ---\n`;
+                    
+                    let totalGeralNota = 0;
+
+                    if (item.items && item.items.length > 0) {
+                        item.items.forEach((prod, index) => {
+                            const qtd = parseInt(prod.qtd) || 1;
+                            const valorUnit = parseFloat(prod.valor) || 0;
+                            const valorTotalItem = qtd * valorUnit;
+                            
+                            totalGeralNota += valorTotalItem;
+
+                            let linhaProduto = '';
+                            if (qtd > 1) {
+                                // Se for mais de 1: Mostra (Unitário) e Total
+                                linhaProduto = `${qtd}x ${prod.nome} (R$ ${valorUnit.toFixed(2)} un.) ➤ R$ ${valorTotalItem.toFixed(2)}`;
+                            } else {
+                                // Se for apenas 1: Mostra direto o valor
+                                linhaProduto = `${qtd}x ${prod.nome} - R$ ${valorTotalItem.toFixed(2)}`;
+                            }
+
+                            textoNF += `Produto: ${linhaProduto}\n`;
+                            textoNF += `Cor: ${prod.cor || 'Padrão'}\n`;
+                            textoNF += `Imei/Obs: ${prod.obs || '---'}\n`; 
+                            
+                            if (index < item.items.length - 1) textoNF += `\n`; 
+                        });
+                    }
+                    
+                    textoNF += `----------------\n`;
+                    textoNF += `Valor Total: R$ ${totalGeralNota.toFixed(2)}\n`;
+                    textoNF += `Forma de pagamento: ${item.pagamento || 'Não informado'}`;
+
+                    navigator.clipboard.writeText(textoNF).then(() => {
+                        // AQUI ESTÁ A CORREÇÃO: Usando sua função nativa
+                        if (typeof showCustomModal === 'function') {
+                            showCustomModal({ message: "Dados para NF Copiados com sucesso! 📋" });
+                        } else {
+                            alert(" Dados para NF Copiados!"); // Fallback só por segurança
+                        }
+                    });
+                }
+            });
+        });
 
 
 
