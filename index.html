@@ -30,494 +30,17 @@
     <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
-    <style>
-    /* Força o layout lado a lado */
-    .product-action-buttons {
-        display: flex !important;
-        gap: 12px !important;
-        margin-top: 15px !important;
-    }
-
-    /* Estilo base dos botões (Pílula Redondinha) */
-    .btn-action-sm {
-        flex: 1 !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        gap: 8px !important;
-        padding: 12px 15px !important;
-        border-radius: 50px !important; /* Bem redondo */
-        font-size: 0.9rem !important;
-        font-weight: 600 !important;
-        border: none !important; /* Remove a borda cinza feia */
-        cursor: pointer !important;
-        transition: transform 0.2s ease, box-shadow 0.2s ease !important;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important; /* Sombra suave */
-    }
-
-    /* Botão Editar Valor (Verde Dinheiro) */
-    .edit-price-btn {
-        background-color: rgba(16, 185, 129, 0.15) !important; /* Fundo verde transparente */
-        color: #10b981 !important; /* Texto verde */
-    }
-    
-    /* Botão Editar Cores (Roxo/Azul do Sistema) */
-    .edit-colors-btn {
-        background-color: rgba(139, 92, 246, 0.15) !important; /* Fundo roxo transparente */
-        color: #8b5cf6 !important; /* Texto roxo */
-    }
-
-    /* Efeito ao clicar/passar mouse */
-    .btn-action-sm:active, .btn-action-sm:hover {
-        transform: translateY(-2px) !important; /* Sobe um pouquinho */
-        filter: brightness(1.1) !important;
-    }
-</style>
-    
-    <style>
-    /* FORÇAR FAVORITOS LADO A LADO */
-    #aparelhoFavoritosContainer {
-        display: flex !important;
-        flex-direction: row !important; /* Obriga a ser uma linha */
-        flex-wrap: wrap !important; /* Se encher a tela, quebra pro lado, não pra baixo */
-        justify-content: center !important; /* Centraliza bonitinho */
-        gap: 8px !important;
-        width: 100% !important;
-    }
-
-    .favorito {
-        display: inline-flex !important;
-        align-items: center !important;
-        width: auto !important; /* Importante: impede de esticar a tela toda */
-        max-width: 100% !important;
-        margin: 0 !important;
-    }
-</style>
-
-<style>
-    /* FORÇAR VISUAL DAS CORES (Lado a Lado) */
-    .product-action-colors {
-        display: flex !important;
-        flex-wrap: wrap !important;
-        gap: 8px !important;
-        margin: 8px 0 !important;
-    }
-    
-    .color-pill {
-        display: inline-flex !important;
-        width: auto !important;
-        align-items: center !important;
-        background: rgba(255, 255, 255, 0.05) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        padding: 4px 10px !important;
-        border-radius: 20px !important;
-    }
-
-    /* FORÇAR VISUAL DO CABEÇALHO E DO BOTÃO X */
-    .product-action-header {
-        display: flex !important;
-        justify-content: space-between !important;
-        align-items: flex-start !important;
-        width: 100% !important;
-    }
-
-    .btn-remove-card {
-        background: transparent !important;
-        border: none !important;
-        color: #ff4d4d !important;
-        font-size: 1.3rem !important;
-        padding: 0 0 0 10px !important;
-        margin: 0 !important;
-        box-shadow: none !important;
-        width: auto !important;
-        height: auto !important;
-    }
-    
-    /* Esconde qualquer fundo ou borda antiga que esteja sobrando */
-    .btn-remove-card:hover {
-        background: transparent !important;
-        transform: scale(1.1);
-        color: #ff0000 !important;
-    }
-</style>
-
-    <style>
-    /* 1. Botões de Quantidade Redondos */
-    .stock-qty-btn {
-        width: 35px !important;
-        height: 35px !important;
-        border-radius: 50% !important; /* Bolinha perfeita */
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        padding: 0 !important;
-        background-color: rgba(255, 255, 255, 0.1) !important;
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
-        color: var(--text-color) !important;
-        margin: 0 5px !important;
-    }
-
-    /* Input transparente no meio */
-    .stock-qty-input {
-        background: transparent !important;
-        border: none !important;
-        color: var(--text-color) !important;
-        font-weight: 800 !important;
-        font-size: 1.1rem !important;
-        max-width: 50px !important;
-    }
-
-    /* Container dos botões arredondado */
-    .stock-item-controls .input-group {
-        background-color: rgba(0,0,0,0.2) !important;
-        border-radius: 50px !important; /* Pílula */
-        padding: 4px !important;
-        border: 1px solid rgba(255,255,255,0.1) !important;
-        flex-wrap: nowrap !important;
-    }
-
-    /* 2. Visual "GAMIFICADO" (Item Conferido) */
-    /* Quando marcado, brilha verde em vez de apagar */
-    .stock-item-card.is-checked {
-        opacity: 1 !important; /* Removemos a transparência! */
-        background: rgba(22, 163, 74, 0.1) !important; /* Fundo verde bem suave */
-        border: 1px solid #4ade80 !important; /* Borda verde neon */
-        box-shadow: 0 0 15px rgba(74, 222, 128, 0.2) !important; /* Brilho verde */
-        transform: scale(1.01) !important; /* Cresce um pouquinho */
-    }
-
-    /* O nome do produto fica verde quando conferido */
-    .stock-item-card.is-checked .product-name {
-        color: #4ade80 !important;
-        font-weight: 700 !important;
-    }
-</style>
-
-    <style>
-    /* 1. AZUL CYBER */
-    body[data-color="blue"] {
-        --primary-color: #2979FF !important;
-        --primary-color-rgb: 41, 121, 255 !important;
-        --glow-1: #00B0FF !important;
-        --glow-2: #2979FF !important;
-    }
-    body[data-color="blue"][data-theme="dark"] {
-        --tertiary-color: #0B1120 !important;
-        --glass-bg: rgba(30, 41, 59, 0.85) !important;
-        --input-bg: rgba(15, 23, 42, 0.7) !important;
-    }
-
-    /* 2. VERDE EMERALD */
-    body[data-color="green"] {
-        --primary-color: #00C853 !important;
-        --primary-color-rgb: 0, 200, 83 !important;
-        --glow-1: #00E676 !important;
-        --glow-2: #FFD600 !important;
-    }
-    body[data-color="green"][data-theme="dark"] {
-        --tertiary-color: #050505 !important;
-        --glass-bg: rgba(20, 20, 20, 0.85) !important;
-    }
-
-    /* 3. ROXO DEEP */
-    body[data-color="purple"] {
-        --primary-color: #8B5CF6 !important;
-        --primary-color-rgb: 139, 92, 246 !important;
-        --glow-1: #7C3AED !important;
-        --glow-2: #EC4899 !important;
-    }
-    body[data-color="purple"][data-theme="dark"] {
-        --tertiary-color: #0F0720 !important;
-        --glass-bg: rgba(46, 16, 101, 0.6) !important;
-        --input-bg: rgba(0, 0, 0, 0.4) !important;
-    }
-
-    /* 4. LARANJA SUNSET */
-    body[data-color="orange"] {
-        --primary-color: #FF6D00 !important;
-        --primary-color-rgb: 255, 109, 0 !important;
-        --glow-1: #FFAB00 !important;
-        --glow-2: #FF3D00 !important;
-    }
-
-    /* Ajuste visual do botão de pincel */
-    #theme-palette-btn {
-        width: 45px; height: 45px;
-        border-radius: 50%;
-        background-color: var(--glass-bg);
-        border: 1px solid var(--glass-border);
-        color: var(--text-color);
-        display: flex; align-items: center; justify-content: center;
-        cursor: pointer;
-        box-shadow: 0 4px 15px var(--shadow-color);
-        backdrop-filter: blur(5px);
-        margin-bottom: 10px; /* Espaço para não colar no tema */
-    }
-    
-    /* Botões do Modal */
-    .theme-option-btn {
-        width: 50px; height: 50px; border-radius: 50%; border: 2px solid transparent;
-        cursor: pointer; display: flex; align-items: center; justify-content: center;
-        color: white; font-size: 1.4rem; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-    }
-    .theme-option-btn.active { border-color: #FFF; box-shadow: 0 0 15px rgba(255,255,255,0.6); transform: scale(1.1); }
-</style>
 
     
-    <style>
-    /* 1. Entrada de Tela (Slide Up) */
-    .container:not(.hidden), .content-card, .admin-section {
-        animation: slideUpFade 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards !important;
-    }
 
-    @keyframes slideUpFade {
-        from { opacity: 0; transform: translateY(30px) scale(0.95); }
-        to { opacity: 1; transform: translateY(0) scale(1); }
-    }
 
-    /* 2. Botões Elásticos (Pulo) */
-    .btn:active, .btn-menu:active, .stock-qty-btn:active, .theme-option-btn:active {
-        transform: scale(0.90) !important;
-        transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    }
 
-    /* 3. Efeito Cascata no Estoque e Admin (Dominó) */
-    .stock-item-card, .notification-item, .admin-product-accordion {
-        animation: fadeInStagger 0.5s ease forwards !important;
-        opacity: 0; /* Começa invisível para o efeito funcionar */
-    }
-    
-    /* Atrasos para os primeiros itens */
-    .stock-item-card:nth-child(1) { animation-delay: 0.05s; }
-    .stock-item-card:nth-child(2) { animation-delay: 0.1s; }
-    .stock-item-card:nth-child(3) { animation-delay: 0.15s; }
-    .stock-item-card:nth-child(4) { animation-delay: 0.2s; }
-    .stock-item-card:nth-child(5) { animation-delay: 0.25s; }
 
-    @keyframes fadeInStagger {
-        from { opacity: 0; transform: translateX(-15px); }
-        to { opacity: 1; transform: translateX(0); }
-    }
 
-    /* 4. Foco nos Inputs (Brilho) */
-    .form-control:focus, .form-select:focus {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 25px rgba(0,0,0,0.3) !important;
-        transition: all 0.3s ease;
-    }
-         /* --- EFEITO SHINE INTELIGENTE (ADAPTA AO MODO CLARO/ESCURO) --- */
-    
-    .btn-menu {
-        position: relative !important;
-        overflow: hidden !important;
-    }
 
-    .btn-menu::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: -150%;
-        width: 100%;
-        height: 100%;
-        transform: skewX(-20deg);
-        pointer-events: none;
-        animation: shine-effect 6s infinite ease-in-out !important;
-        
-        /* 1. MODO ESCURO (Padrão): O brilho é BRANCO suave */
-        background: linear-gradient(
-            90deg,
-            transparent,
-            rgba(255, 255, 255, 0.15),
-            transparent
-        ) !important;
-    }
 
-    /* 2. MODO CLARO: O brilho usa a COR DO TEMA (Vermelho, Azul, etc) */
-    [data-theme="light"] .btn-menu::after {
-        background: linear-gradient(
-            90deg,
-            transparent,
-            rgba(var(--primary-color-rgb), 0.4), /* Usa a cor escolhida! */
-            transparent
-        ) !important;
-    }
 
-    @keyframes shine-effect {
-        0% { left: -150%; }
-        20% { left: 150%; }
-        100% { left: 150%; }
-    }
 
-    /* --- BOTÃO VOLTAR PREMIUM (GLASS BUBBLE) --- */
-    .btn-back {
-        /* Forma de Bolinha */
-        width: 42px !important;
-        height: 42px !important;
-        border-radius: 50% !important;
-        
-        /* Centralizar a seta */
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        padding: 0 !important;
-        
-        /* Efeito de Vidro Sutil */
-        background-color: rgba(255, 255, 255, 0.03) !important;
-        backdrop-filter: blur(8px) !important;
-        -webkit-backdrop-filter: blur(8px) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05) !important;
-        
-        /* Cor do ícone */
-        color: var(--text-secondary) !important;
-        font-size: 1.1rem !important;
-        
-        /* Animação Suave */
-        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
-        cursor: pointer !important;
-    }
-
-    /* Efeito ao Passar o Mouse ou Tocar */
-    .btn-back:hover, .btn-back:active {
-        /* Vira a cor do tema */
-        background-color: rgba(var(--primary-color-rgb), 0.15) !important;
-        border-color: var(--primary-color) !important;
-        color: var(--primary-color) !important;
-        
-        /* Efeito Neon Suave */
-        box-shadow: 0 0 15px rgba(var(--primary-color-rgb), 0.3) !important;
-        
-        /* Movimento de "Voltar" */
-        transform: translateX(-3px) !important; 
-    }
-    
-    /* Ajuste do ícone para ficar bem no meio */
-    .btn-back i {
-        margin-right: 2px !important; /* Corrige alinhamento visual da seta */
-    }
-
-</style>
-
-    
-        <style>
-        /* 1. BASE DO SISTEMA (PADRÃO VERMELHO) */
-        :root {
-            --primary-color: #EF5350 !important;
-            --primary-color-rgb: 239, 83, 80 !important;
-            --glow-1: #8A2BE2 !important;
-            --glow-2: #B71C1C !important;
-            
-            /* Garante as cores de fundo originais */
-            --tertiary-color: #030303 !important;
-            --glass-bg: rgba(28, 28, 28, 0.65) !important;
-            --input-bg: rgba(44, 44, 46, 0.7) !important;
-        }
-
-        /* 2. VARIAÇÕES (Só ativam se escolher no menu) */
-        
-        /* Azul */
-        body[data-color="blue"] {
-            --primary-color: #2979FF !important;
-            --primary-color-rgb: 41, 121, 255 !important;
-            --glow-1: #00B0FF !important; --glow-2: #2979FF !important;
-        }
-        body[data-color="blue"][data-theme="dark"] {
-            --tertiary-color: #0B1120 !important;
-            --glass-bg: rgba(30, 41, 59, 0.85) !important;
-            --input-bg: rgba(15, 23, 42, 0.7) !important;
-        }
-
-        /* Verde */
-        body[data-color="green"] {
-            --primary-color: #00C853 !important;
-            --primary-color-rgb: 0, 200, 83 !important;
-            --glow-1: #00E676 !important; --glow-2: #FFD600 !important;
-        }
-        body[data-color="green"][data-theme="dark"] {
-            --tertiary-color: #050505 !important;
-            --glass-bg: rgba(20, 20, 20, 0.85) !important;
-        }
-
-        /* Roxo */
-        body[data-color="purple"] {
-            --primary-color: #8B5CF6 !important;
-            --primary-color-rgb: 139, 92, 246 !important;
-            --glow-1: #7C3AED !important; --glow-2: #EC4899 !important;
-        }
-        body[data-color="purple"][data-theme="dark"] {
-            --tertiary-color: #0F0720 !important;
-            --glass-bg: rgba(46, 16, 101, 0.6) !important;
-            --input-bg: rgba(0, 0, 0, 0.4) !important;
-        }
-
-        /* Laranja */
-        body[data-color="orange"] {
-            --primary-color: #FF6D00 !important;
-            --primary-color-rgb: 255, 109, 0 !important;
-            --glow-1: #FFAB00 !important; --glow-2: #FF3D00 !important;
-        }
-
-        /* Visual do Botão Pincel */
-        #theme-palette-btn {
-            width: 45px; height: 45px;
-            border-radius: 50%;
-            background-color: var(--glass-bg);
-            border: 1px solid var(--glass-border);
-            color: var(--text-color);
-            display: flex; align-items: center; justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 4px 15px var(--shadow-color);
-            backdrop-filter: blur(5px);
-            margin-bottom: 10px;
-        }
-        
-        /* Visual das Opções no Modal */
-        .theme-option-btn {
-            width: 50px; height: 50px; border-radius: 50%; border: 2px solid transparent;
-            cursor: pointer; display: flex; align-items: center; justify-content: center;
-            color: white; font-size: 1.4rem; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-        }
-        .theme-option-btn.active { border-color: #FFF; box-shadow: 0 0 15px rgba(255,255,255,0.6); transform: scale(1.1); }
-    </style>
-
-    <style>
-    .chip-scroll-container {
-        display: flex;
-        gap: 8px;
-        overflow-x: auto;
-        padding: 5px 2px 15px 2px;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-    }
-    .chip-scroll-container::-webkit-scrollbar { display: none; }
-
-    .chip-btn {
-        flex: 0 0 auto; /* Não deixa esmagar */
-        padding: 8px 16px;
-        border-radius: 50px;
-        border: 1px solid rgba(255,255,255,0.2);
-        background: rgba(255, 255, 255, 0.05);
-        color: var(--text-secondary);
-        font-size: 0.85rem;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-
-    .chip-btn:hover {
-        background: rgba(255, 255, 255, 0.15);
-        transform: translateY(-2px);
-    }
-
-    /* Quando selecionado (Fica com a cor do tema) */
-    .chip-btn.active {
-        background: var(--primary-color);
-        color: #fff;
-        border-color: var(--primary-color);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        font-weight: 600;
-    }
-</style>
 
     
 </head>
@@ -529,11 +52,11 @@
 </div>
 
 
-    <div id="loadingOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: var(--tertiary-color); z-index: 10000; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.5s ease;">
-        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+    <div id="loadingOverlay" class="loading-overlay-full">
+        <div class="spinner-border text-primary spinner-large" role="status">
             <span class="visually-hidden">Loading...</span>
         </div>
-        <p class="mt-3" style="color: var(--text-secondary);">Carregando sistema...</p>
+        <p class="mt-3 text-secondary-custom">Carregando sistema...</p>
     </div>
     
 
@@ -542,55 +65,45 @@
 
 
 
-<div id="top-right-controls" style="position: absolute; top: 20px; right: 20px; z-index: 1050;">
+<div id="top-right-controls" class="top-right-controls-pos">
 
     <div class="dropdown">
-        <button class="btn btn-link p-0 border-0" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="color: var(--text-color); transition: all 0.3s ease;">
-            <div style="width: 45px; height: 45px; 
-                        background: var(--input-bg);
-                        border-radius: 50%; 
-                        display: flex; align-items: center; justify-content: center; 
-                        border: 1px solid var(--glass-border); 
-                        box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+        <button class="btn btn-link p-0 border-0" type="button" data-bs-toggle="dropdown" aria-expanded="false" class="btn-link-custom">
+            <div class="avatar-button-wrapper">
                 <i class="bi bi-person-fill fs-4"></i>
             </div>
-            <span id="avatar-badge" class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle hidden" style="width: 12px; height: 12px;"></span>
+            <span id="avatar-badge" class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle hidden" class="avatar-badge-size"></span>
         </button>
 
         <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0" 
-            style="background: var(--tertiary-color); 
-                   border: 1px solid var(--glass-border); 
-                   min-width: 280px; 
-                   padding: 0; 
-                   overflow: hidden;
-                   border-radius: 16px;">
+class="dropdown-menu-custom">
             
-            <li class="px-3 py-3 mb-1" style="border-bottom: 1px solid var(--glass-border); background: rgba(255,255,255,0.03);">
-                <small class="d-block text-secondary text-uppercase fw-bold" style="font-size: 0.65rem; letter-spacing: 1px;">Logado como:</small>
+            <li class="px-3 py-3 mb-1" class="dropdown-header-item">
+                <small class="d-block text-secondary text-uppercase fw-bold" class="text-uppercase-small">Logado como:</small>
                 <div class="d-flex align-items-center gap-2 mt-1">
-                    <span id="displayProfileIcon" style="width: 8px; height: 8px; background: #00E676; border-radius: 50%; box-shadow: 0 0 10px #00E676;"></span>
-                    <span id="displayProfileName" class="fw-bold fs-5" style="color: var(--text-color);">Visitante</span>
+                    <span id="displayProfileIcon" class="profile-icon-online"></span>
+                    <span id="displayProfileName" class="fw-bold fs-5" class="text-color-custom">Visitante</span>
                 </div>
             </li>
             
 
 
 
-                                 <li id="menu-notification-area" class="hidden" style="border-bottom: 1px solid var(--glass-border); background: rgba(255, 255, 255, 0.05);">
-                <button class="dropdown-item py-3" onclick="document.getElementById('notification-bell').click();" style="white-space: normal;">
+                                 <li id="menu-notification-area" class="hidden" class="menu-notification-area">
+                <button class="dropdown-item py-3" onclick="document.getElementById('notification-bell').click();" class="dropdown-item-normal-wrap">
                     <div class="d-flex align-items-start gap-2">
                         <div class="mt-1 position-relative">
                             <i class="bi bi-bell-fill text-danger fs-5"></i>
-                            <span class="position-absolute top-0 start-100 translate-middle bg-danger rounded-circle" style="width: 8px; height: 8px; box-shadow: 0 0 8px red;"></span>
+                            <span class="position-absolute top-0 start-100 translate-middle bg-danger rounded-circle" class="notification-badge-small"></span>
                         </div>
                         
-                        <div style="overflow: hidden; width: 100%;">
-                            <span class="d-block fw-bold mb-1" style="font-size: 0.70rem; color: var(--primary-color); text-transform: uppercase; letter-spacing: 1px;">
+                        <div class="notification-text-container">
+                            <span class="d-block fw-bold mb-1" class="notification-title-text">
                                 Nova Mensagem
                             </span>
                             
                             <small class="d-block" id="menu-notification-text" 
-                                   style="font-size: 0.85rem; line-height: 1.3; opacity: 0.9; color: var(--text-color); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;">
+                                   class="notification-text-clamped">
                                 Carregando...
                             </small>
                         </div>
@@ -606,28 +119,27 @@
 
 
             <li class="p-2">
-                <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2" 
-                        onclick="document.getElementById('theme-toggle-checkbox').click();" style="color: var(--text-color);">
+                <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 text-color-custom" 
+                        onclick="document.getElementById('theme-toggle-checkbox').click();">
                     <div class="icon-box bg-warning bg-opacity-10 text-warning"><i class="bi bi-moon-stars-fill"></i></div>
                     <span>Alternar Tema</span>
                 </button>
 
-                <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 mt-1" 
-                        onclick="document.getElementById('theme-palette-btn').click();" style="color: var(--text-color);">
+                <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 mt-1 text-color-custom" 
+                        onclick="document.getElementById('theme-palette-btn').click();">
                     <div class="icon-box bg-info bg-opacity-10 text-info"><i class="bi bi-palette-fill"></i></div>
                     <span>Mudar Cores</span>
                 </button>
                 
-                <div id="installAppOption" style="display: none;">
-                    <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 mt-1" 
-                            onclick="if(window.installApp) window.installApp()" style="color: var(--text-color);">
+                <div id="installAppOption" class="hidden-inline">
+                    <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 mt-1 text-color-custom" 
+                            onclick="if(window.installApp) window.installApp()">
                         <div class="icon-box bg-success bg-opacity-10 text-success"><i class="bi bi-download"></i></div>
                         <span>Instalar App</span>
                     </button>
                 <li class="p-2">
-                <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2" 
-                        onclick="document.getElementById('profileSelectorModal').classList.add('active');" 
-                        style="color: var(--text-color);">
+                <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 text-color-custom" 
+                        onclick="document.getElementById('profileSelectorModal').classList.add('active');">
                     <div class="icon-box bg-primary bg-opacity-10 text-primary">
                         <i class="bi bi-people-fill"></i>
                     </div>
@@ -638,36 +150,12 @@
         </ul>
     </div>
 
-    <div style="display:none !important;">
+    <div class="hidden-important">
         <input type="checkbox" id="theme-toggle-checkbox">
         <div id="theme-palette-btn"></div>
         <div id="notification-bell"><span class="notification-badge hidden"></span></div> 
     </div>
 
-    <style>
-        .icon-box { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; }
-        @keyframes pulseRed { 0% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(2.5); } }
-
-        /* --- NOVA ANIMAÇÃO DO MENU --- */
-        /* Quando o menu abre (ganha a classe .show), ele executa essa animação */
-        #top-right-controls .dropdown-menu.show {
-            animation: dropdownSlideIn 0.2s ease-out forwards;
-            transform-origin: top right; /* Faz ele "nascer" a partir do botão */
-        }
-
-        @keyframes dropdownSlideIn {
-            from {
-                opacity: 0;
-                /* Começa um pouco para cima e menor */
-                transform: translateY(-15px) scale(0.95); 
-            }
-            to {
-                opacity: 1;
-                /* Termina na posição certa e tamanho normal */
-                transform: translateY(0) scale(1);
-            }
-        }
-    </style>
 
     <script>
         (function(){
@@ -713,7 +201,7 @@
     <div id="calculatorContainer" class="hidden">
                 <div class="container text-center" id="calculatorHome">
             <div class="w-100 d-flex justify-content-start mb-2">
-                <button aria-label="Voltar ao Menu" class="btn-back" id="backFromCalculatorHome" style="font-size: 1.5rem; padding: 10px;">
+                <button aria-label="Voltar ao Menu" class="btn-back btn-back-large" id="backFromCalculatorHome">
                     <i class="bi bi-arrow-left"></i>
                 </button>
             </div>
@@ -737,32 +225,32 @@
 
 
 
-<div class="container" id="emprestarValores" style="display: none;">
+<div class="container container-hidden" id="emprestarValores">
     <div class="section-header">
         <h3>Emprestar Valores</h3>
         <button aria-label="Voltar" class="btn-back" id="backFromEmprestarValores"><i class="bi bi-arrow-left"></i></button>
     </div>
     <div class="content-card w-100">
-        <div class="mb-3" style="max-width: 400px; margin: 0 auto;">
+        <div class="mb-3 max-width-400-margin-auto">
             <label class="form-label" for="emprestarNomeProduto"><i class="bi bi-tag"></i> Nome do Produto / Cliente</label>
             <input class="form-control" id="emprestarNomeProduto" type="text" placeholder="Ex: Iphone 17 Pro Max" autocomplete="off"/>
         </div>
 
 
 
-        <div class="mb-3" style="max-width: 400px; margin: 0 auto;">
+        <div class="mb-3 max-width-400-margin-auto">
             <label class="form-label" for="emprestarValorBase"><i class="bi bi-wallet2"></i> Valor a Investir (R$)</label>
             <input class="form-control form-control-lg" id="emprestarValorBase" type="number" step="0.01" min="0" placeholder="0,00"/>
         </div>
 
-        <div class="mb-3" style="max-width: 400px; margin: 0 auto;">
+        <div class="mb-3 max-width-400-margin-auto">
     <label class="form-label text-warning" for="emprestarEntrada"><i class="bi bi-cash-coin"></i> Entrada (Opcional)</label>
     <input class="form-control form-control-lg border-warning" id="emprestarEntrada" type="number" step="0.01" min="0" placeholder="Valor pago na hora"/>
     <div class="form-text text-secondary small">Este valor apenas aparece na imagem, não altera o cálculo.</div>
 </div>
 
 
-        <div class="mb-3" style="max-width: 400px; margin: 0 auto;">
+        <div class="mb-3 max-width-400-margin-auto">
             <label class="form-label text-success fw-bold" for="emprestarLucroReais"><i class="bi bi-graph-up-arrow"></i> Lucro Desejado em 1x (R$)</label>
             <input class="form-control form-control-lg border-success" id="emprestarLucroReais" type="number" step="0.01" min="0" placeholder="0,00"/>
         </div>
@@ -781,14 +269,14 @@
 
 
             </div>
-            <div class="col-12 col-md-6 mb-3" id="flagDisplayContainer5" style="display: none;">
+            <div class="col-12 col-md-6 mb-3" id="flagDisplayContainer5" class="hidden">
                 <label class="form-label text-muted small">Bandeira</label>
                 <button class="btn-flag-display w-100" id="flagDisplayButton5"></button>
             </div>
         </div>
 
         
-        <div id="brand5Container" class="hidden" style="display:none;">
+        <div id="brand5Container" class="hidden" class="hidden">
             <select id="brand5">
                 <option value="visa">Visa</option>
                 <option value="mastercard">Mastercard</option>
@@ -799,12 +287,12 @@
         </div>
 
 
-        <hr class="my-3" style="border-color: rgba(255,255,255,0.1);">
+        <hr class="my-3 hr-border-custom">
 
         <div class="w-100 d-flex flex-column align-items-center" id="resultEmprestarValores"></div>
 
-        <div class="text-center mt-3 w-100" id="exportEmprestarContainer" style="display: none;">
-            <button class="btn btn-info w-100 py-3 fw-bold" id="exportEmprestarBtn" style="max-width: 400px;">
+        <div class="text-center mt-3 w-100" id="exportEmprestarContainer" class="hidden">
+            <button class="btn btn-info w-100 py-3 fw-bold export-btn-max-width" id="exportEmprestarBtn">
                 <i class="bi bi-camera-fill"></i> Salvar Imagem da Tabela
             </button>
         </div>
@@ -815,7 +303,8 @@
 
 
 
-        <div class="container" id="fecharVenda" style="display: none;">
+<div class="container" id="fecharVenda" style="display: none;">
+
             <div class="section-header">
                 <h3>Fechar Venda</h3>
                 <button aria-label="Voltar" class="btn-back" id="backFromFecharVenda"><i class="bi bi-arrow-left"></i></button>
@@ -835,7 +324,7 @@
 
 
 </div>
-                    <div class="col-12 col-md-4 mb-3" id="flagDisplayContainer1" style="display: none;"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton1"></button></div>
+                    <div class="col-12 col-md-4 mb-3" id="flagDisplayContainer1" class="hidden"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton1"></button></div>
                     <div class="col-12 col-md-4 mb-3">
                         <label for="installments1" class="form-label d-flex justify-content-between">
                             <span>Parcelas</span>
@@ -857,7 +346,7 @@
                     <label class="me-3"><input checked="" name="manualMode" type="radio" value="total"/> Valor Total</label>
                     <label><input name="manualMode" type="radio" value="parcela"/> Valor da Parcela</label>
                 </div>
-                <div class="w-100 hidden" id="vendaPorProdutoContainer" style="max-width: 400px; margin: 0 auto;">
+                <div class="w-100 hidden max-width-400-margin-auto" id="vendaPorProdutoContainer">
                     <div class="mb-3 search-wrapper">
                         <label class="form-label" for="vendaProdutoSearch"><i class="bi bi-search"></i> Pesquisar Produto</label>
                         <input autocomplete="off" class="form-control" id="vendaProdutoSearch" placeholder="Carregando..." type="text"/>
@@ -880,13 +369,13 @@
                     </div>
                 </div>
                 <div class="w-100 d-flex justify-content-center" id="fecharVendaInputs">
-                    <div class="mb-3" style="width: 100%; max-width: 400px;"><label class="form-label" for="fecharVendaValue" id="fecharVendaValueLabel"><i class="bi bi-currency-dollar"></i> Valor Total da Venda (R$)</label><input class="form-control form-control-lg" id="fecharVendaValue" placeholder="R$ 0,00" type="tel"/>
+                    <div class="mb-3 width-100-max-width-400"><label class="form-label" for="fecharVendaValue" id="fecharVendaValueLabel"><i class="bi bi-currency-dollar"></i> Valor Total da Venda (R$)</label><input class="form-control form-control-lg" id="fecharVendaValue" placeholder="R$ 0,00" type="tel"/>
 </div>
                 </div>
                 <div class="w-100 d-flex flex-column justify-content-center mt-3" id="resultFecharVenda"></div>
             </div>
         </div>
-        <div class="container" id="repassarValores" style="display: none;">
+        <div class="container" id="repassarValores" class="hidden">
             <div class="section-header">
                 <h3>Repassar Valores</h3>
                 <button aria-label="Voltar" class="btn-back" id="backFromRepassarValores"><i class="bi bi-arrow-left"></i></button>
@@ -906,12 +395,12 @@
 
 
 </div>
-                    <div class="col-12 col-md-6 mb-3" id="flagDisplayContainer2" style="display: none;"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton2"></button></div>
+                    <div class="col-12 col-md-6 mb-3" id="flagDisplayContainer2" class="hidden"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton2"></button></div>
                 </div>
                 <div id="brand2Container" class="hidden"><select id="brand2"><option value="visa">Visa</option><option value="mastercard">Mastercard</option><option value="hiper">Hiper</option><option value="hipercard">Hipercard</option><option value="elo">Elo</option><option value="amex">Amex</option></select></div>
 
 
-<div class="mb-3" style="max-width: 400px; margin: 0 auto 1rem;">
+<div class="mb-3 max-width-400-margin-1rem">
     <label class="form-label" for="repassarValue"><i class="bi bi-calculator"></i> Valor Desejado (líquido)</label>
     <input class="form-control form-control-lg" id="repassarValue" min="0" placeholder="Digite o valor desejado" step="0.01" type="number"/>
 </div>
@@ -922,7 +411,7 @@
     </button>
 </div>
 
-<div class="extra-value-container mx-auto" id="repassarExtraContainer" style="max-width: 400px;">
+<div class="extra-value-container mx-auto max-width-400" id="repassarExtraContainer">
     <div class="mb-3">
         <label class="form-label text-warning" for="repassarExtra"><i class="bi bi-piggy-bank-fill"></i> Adicional </label>
         <input class="form-control" id="repassarExtra" min="0" placeholder="Ex: 50,00" step="0.01" type="number"/>
@@ -932,12 +421,12 @@
 
 
 
-                <div class="text-center mt-3 w-100" id="exportRepassarContainer" style="display: none;">
+                <div class="text-center mt-3 w-100" id="exportRepassarContainer" class="hidden">
                     <button class="btn btn-info" id="exportRepassarBtn"><i class="bi bi-camera-fill"></i> Exportar Imagem</button>
                 </div>
             </div>
         </div>
-        <div class="container" id="calcularEmprestimo" style="display: none;">
+        <div class="container" id="calcularEmprestimo" class="hidden">
             <div class="section-header">
                 <h3>Calcular Empréstimo</h3>
                 <button aria-label="Voltar" class="btn-back" id="backFromCalcularEmprestimo"><i class="bi bi-arrow-left"></i></button>
@@ -945,10 +434,10 @@
             <div class="content-card w-100">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <div class="lucro-display" id="emprestimoLucroDisplay"></div>
-                    <button id="openLucroModalBtn" class="btn btn-sm btn-back" aria-label="Configurar Lucro" style="font-size: 1.4rem;"><i class="bi bi-gear-fill"></i></button>
+                    <button id="openLucroModalBtn" class="btn btn-sm btn-back btn-gear-large" aria-label="Configurar Lucro"><i class="bi bi-gear-fill"></i></button>
                 </div>
                 <div id="valorLiquidoDisplay" class="mb-3"></div>
-                <div class="mb-3" style="max-width: 400px; margin: 0 auto 1rem;">
+                <div class="mb-3 max-width-400-margin-1rem">
                     <label class="form-label" for="emprestimoValue"><i class="bi bi-cash-coin"></i> Valor Base do Empréstimo</label>
                     <input class="form-control form-control-lg" id="emprestimoValue" min="0" placeholder="Ex: 10000" step="0.01" type="number"/>
                 </div>
@@ -964,19 +453,19 @@
 </select>
 
 </div>
-                    <div class="col-12 col-md-6 mb-3" id="flagDisplayContainer4" style="display: none;"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton4"></button></div>
+                    <div class="col-12 col-md-6 mb-3" id="flagDisplayContainer4" class="hidden"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton4"></button></div>
                 </div>
                 <div id="brand4Container" class="hidden"><select id="brand4"><option value="visa">Visa</option><option value="mastercard">Mastercard</option><option value="hiper">Hiper</option><option value="hipercard">Hipercard</option><option value="elo">Elo</option><option value="amex">Amex</option></select></div>
                 <div class="w-100 d-flex flex-column align-items-center" id="resultCalcularEmprestimo"></div>
-                <div class="text-center mt-3 w-100" id="exportEmprestimoContainer" style="display: none;">
+                <div class="text-center mt-3 w-100" id="exportEmprestimoContainer" class="hidden">
                     <button class="btn btn-info" id="exportEmprestimoBtn"><i class="bi bi-camera-fill"></i> Exportar Imagem</button>
                 </div>
             </div>
         </div>
-        <div class="container" id="calcularPorAparelho" style="display: none;">
+        <div class="container" id="calcularPorAparelho" class="hidden">
          <div class="section-header d-flex align-items-center justify-content-between">
     <h3>Calcular por Aparelho</h3> <div class="d-flex gap-2">
-        <button class="btn-back" onclick="abrirHistoricoAparelho()" style="border-color: rgba(255,255,255,0.2) !important;" title="Ver Histórico">
+        <button class="btn-back" onclick="abrirHistoricoAparelho()" class="btn-back-custom-border" title="Ver Histórico">
             <i class="bi bi-clock-history text-warning"></i>
         </button>
 
@@ -989,15 +478,15 @@
             <div class="content-card w-100">
                 <div id="aparelhoContentWrapper">
                     <div class="favoritos" id="aparelhoFavoritosContainer"></div>
-                    <div id="searchChipsContainer" class="chip-scroll-container mx-auto" style="max-width: 400px; display: none;"></div>
+                    <div id="searchChipsContainer" class="chip-scroll-container mx-auto max-width-400 hidden"></div>
 
                     <div class="mb-3 search-wrapper mx-auto"><label class="form-label" for="aparelhoSearch"><i class="bi bi-search"></i> Pesquisar Aparelho</label><input autocomplete="off" class="form-control" id="aparelhoSearch" placeholder="Carregando..." type="text"/><div class="search-results-container list-group" id="aparelhoResultsContainer"></div></div>
-                   <div id="aparelhoInfoNote" class="text-center text-secondary small my-2 hidden" style="max-width: 400px; margin-left: auto; margin-right: auto; padding: 8px; background-color: var(--input-bg); border-radius: 8px;"></div>
+                   <div id="aparelhoInfoNote" class="text-center text-secondary small my-2 hidden aparelho-info-note"></div>
                     
-                    <div id="carrinhoAparelhosContainer" class="mb-3" style="max-width: 400px; margin: 0 auto;"></div>
+                    <div id="carrinhoAparelhosContainer" class="mb-3" class="max-width-400-margin-auto"></div>
 
                     <div class="row mb-3 justify-content-center g-3">
-                        <div class="col-12" style="max-width: 400px;">
+                        <div class="col-12" class="max-width-400">
                             <label class="form-label" for="entradaAparelho"><i class="bi bi-wallet2"></i> Entrada (R$)</label>
                             <input class="form-control" id="entradaAparelho" min="0" placeholder="Opcional" step="0.01" type="number"/>
                         </div>
@@ -1007,7 +496,7 @@
                             <i class="bi bi-chevron-down"></i>
                         </button>
                     </div>
-                    <div class="extra-value-container mx-auto" id="valorExtraContainer" style="max-width: 400px;">
+                    <div class="extra-value-container mx-auto" id="valorExtraContainer" class="max-width-400">
                         <h4 class="mt-2 text-center" id="aparelhoPrecoTotalDisplay"></h4>
                         <div class="mb-3">
                             <label class="form-label" for="valorExtraAparelho"><i class="bi bi-plus-circle"></i> Valor adicional</label>
@@ -1031,11 +520,11 @@
 
 
 </div>
-                        <div class="col-12 col-md-6 mb-3" id="flagDisplayContainer3" style="display: none;"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton3"></button></div>
+                        <div class="col-12 col-md-6 mb-3" id="flagDisplayContainer3" class="hidden"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton3"></button></div>
                     </div>
                     <div id="brand3Container" class="hidden"><select id="brand3"><option value="visa">Visa</option><option value="mastercard">Mastercard</option><option value="hiper">Hiper</option><option value="hipercard">Hipercard</option><option value="elo">Elo</option><option value="amex">Amex</option></select></div>
                     <div class="w-100 d-flex flex-column align-items-center" id="resultCalcularPorAparelho"></div>
-                    <div class="text-center mt-3 w-100" id="exportAparelhoContainer" style="display: none;">
+                    <div class="text-center mt-3 w-100" id="exportAparelhoContainer" class="hidden">
                         <button class="btn btn-info" id="exportAparelhoBtn"><i class="bi bi-camera-fill"></i> Exportar Imagem</button>
                     </div>
                 </div>
@@ -1043,7 +532,7 @@
                     <i class="bi bi-box2-heart" style="font-size: 4rem; color: var(--primary-color);"></i>
                     <h4 class="mt-4">A sua lista de produtos está vazia</h4>
                     <p class="text-secondary">
-                        Vá à secção de <strong style="color: var(--text-color);">Administração</strong> para adicionar os seus produtos.
+                        Vá à secção de <strong class="text-color-custom">Administração</strong> para adicionar os seus produtos.
                     </p>
                     <button class="btn btn-primary mt-3" id="goToAdminFromEmptyState">
                         <i class="bi bi-gear"></i> Ir para Administração
@@ -1058,7 +547,7 @@
 
 
 
-       <div class="container" id="administracao" style="display: none;">
+       <div class="container" id="administracao" class="hidden">
         <div class="section-header">
             <h3>Administração</h3>
             <button aria-label="Voltar" class="btn-back" id="backFromAdmin"><i class="bi bi-arrow-left"></i></button>
@@ -1321,7 +810,7 @@ do que você precisa??</h2>
 
 
 
-        <div id="areaContratoWrapper" class="container" style="display: none;">
+        <div id="areaContratoWrapper" class="container" class="hidden">
             <div class="section-header">
                 <h3>Contrato</h3>
                 <button aria-label="Voltar" class="btn-back" id="backFromContratoView"><i class="bi bi-arrow-left"></i></button>
@@ -1373,7 +862,7 @@ do que você precisa??</h2>
             <div id="historyBoletoContent" class="hidden w-100"></div>
         </div>
 
-        <div id="areaBookipWrapper" class="container" style="display: none;">
+        <div id="areaBookipWrapper" class="container" class="hidden">
             <div class="section-header">
                 <h3>Garantia (Bookip)</h3>
                 <button aria-label="Voltar" class="btn-back" id="backFromBookipView"><i class="bi bi-arrow-left"></i></button>
@@ -1478,7 +967,7 @@ do que você precisa??</h2>
         </div>
     </div>
 
-    <div id="camposSituacao" style="display: none;">
+    <div id="camposSituacao" class="hidden">
         <label class="form-label text-warning"><i class="bi bi-pencil-square"></i> Descrição do Ocorrido</label>
         <textarea id="sitDescricao" class="form-control" rows="5" placeholder="Descreva aqui a situação detalhada..."></textarea>
     </div>
@@ -1618,7 +1107,7 @@ do que você precisa??</h2>
 
 
     
-    <div id="bookipPreview" style="display: none;"></div>
+    <div id="bookipPreview" class="hidden"></div>
 
     <div id="stockContainer" class="container hidden">
         <div class="section-header">
@@ -1666,7 +1155,7 @@ do que você precisa??</h2>
     <i class="bi bi-file-earmark-spreadsheet-fill"></i> Importar
 </button>
 
-<input type="file" id="csvFileInput" accept=".csv" style="display: none;">
+<input type="file" id="csvFileInput" accept=".csv" class="hidden">
 
 <button class="btn btn-outline-danger btn-sm ms-1" onclick="limparImportacaoErrada()" title="Limpar Lixo">
     <i class="bi bi-trash3-fill"></i> Limpar Lixo
@@ -1750,7 +1239,7 @@ do que você precisa??</h2>
 
 
     <div id="reportPreview"></div>
-    <div class="user-id-display" id="userIdDisplay" style="display: none;"></div>
+    <div class="user-id-display" id="userIdDisplay" class="hidden"></div>
     
     <div class="custom-modal-overlay" id="customModalOverlay">
         <div class="custom-modal-content">
@@ -1860,6 +1349,14 @@ do que você precisa??</h2>
                 <button class="theme-option-btn" data-color="green" style="background: linear-gradient(135deg, #00E676, #1B5E20);" title="Emerald Green"></button>
                 <button class="theme-option-btn" data-color="purple" style="background: linear-gradient(135deg, #8B5CF6, #4A148C);" title="Deep Purple"></button>
                 <button class="theme-option-btn" data-color="orange" style="background: linear-gradient(135deg, #FF9800, #E65100);" title="Sunset Orange"></button>
+
+<button class="theme-option-btn" data-color="pink" style="background: linear-gradient(135deg, #FF4081, #C51162); box-shadow: 0 4px 15px rgba(255, 64, 129, 0.4);"></button>
+
+<button class="theme-option-btn" data-color="cyan" style="background: linear-gradient(135deg, #00E5FF, #00B8D4); box-shadow: 0 4px 15px rgba(0, 229, 255, 0.4);"></button>
+
+<button class="theme-option-btn" data-color="yellow" style="background: linear-gradient(135deg, #FFD740, #FFAB00); box-shadow: 0 4px 15px rgba(255, 215, 64, 0.4);"></button>
+
+
             </div>
             <p class="text-secondary small mt-3">Sua escolha ficará salva neste dispositivo.</p>
         </div>
@@ -1892,7 +1389,7 @@ do que você precisa??</h2>
 
 
 <div class="custom-modal-overlay" id="profileSelectorModal" style="z-index: 20000; background: rgba(0,0,0,0.9);">
-    <div class="custom-modal-content" style="max-width: 400px;">
+    <div class="custom-modal-content" class="max-width-400">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h3 class="m-0">Quem é você?</h3>
             <button class="btn btn-sm btn-outline-secondary rounded-circle" onclick="document.getElementById('profileSelectorModal').classList.remove('active')" style="width: 32px; height: 32px; padding: 0;"><i class="bi bi-x-lg"></i></button>
@@ -1910,7 +1407,6 @@ do que você precisa??</h2>
     </div>
 </div>
 
-<style> .border-dashed { border-style: dashed !important; } </style>
 
 
 

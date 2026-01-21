@@ -416,17 +416,27 @@ const stockContainer = document.getElementById('stockContainer');
 const adminContainer = document.getElementById('administracao');
 const topRightControls = document.getElementById('top-right-controls');
 
+
 function showMainSection(sectionId) {
     if (!isAuthReady) return;
     
-    // Desliga ouvintes antigos para economizar memória
+    // Desliga ouvintes antigos
     if (productsListener) { off(getProductsRef(), 'value', productsListener); productsListener = null; }
     if (boletosListener) { off(ref(db, 'boletos'), 'value', boletosListener); boletosListener = null; }
 
-    // 1. Pega o elemento novo (Clientes)
+    // 1. Identifica os elementos
     const clientsContainer = document.getElementById('clientsContainer');
+    
+    // SUB-MENUS DA CALCULADORA
+    const subMenusCalculadora = [
+        'fecharVenda', 
+        'repassarValores', 
+        'emprestarValores', 
+        'calcularEmprestimo', 
+        'calcularPorAparelho'
+    ];
 
-    // 2. Esconde TUDO (Adiciona classe hidden)
+    // 2. Esconde os Containers Principais
     mainMenu.classList.add('hidden');
     calculatorContainer.classList.add('hidden');
     contractContainer.classList.add('hidden');
@@ -434,10 +444,8 @@ function showMainSection(sectionId) {
     adminContainer.classList.add('hidden');
     topRightControls.classList.add('hidden');
     
-    // Esconde também o container de clientes se ele existir
     if (clientsContainer) clientsContainer.classList.add('hidden');
 
-    // 3. Garante que o display seja none visualmente
     mainMenu.style.display = 'none';
     calculatorContainer.style.display = 'none';
     contractContainer.style.display = 'none';
@@ -445,7 +453,13 @@ function showMainSection(sectionId) {
     adminContainer.style.display = 'none';
     if (clientsContainer) clientsContainer.style.display = 'none';
 
-    // 4. Mostra APENAS a seção escolhida
+    // 3. LIMPEZA DOS FANTASMAS
+    subMenusCalculadora.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+
+    // 4. Mostra a seção escolhida (COM OTIMIZAÇÃO DE PERFORMANCE)
     if (sectionId === 'main') {
         mainMenu.classList.remove('hidden');
         mainMenu.style.display = 'flex';
@@ -453,40 +467,50 @@ function showMainSection(sectionId) {
     } 
     else if (sectionId === 'calculator') {
         calculatorContainer.classList.remove('hidden');
-        calculatorContainer.style.display = 'block';
-        openCalculatorSection('calculatorHome');
+        calculatorContainer.style.display = 'block'; 
+        
+        // Joga o processamento para depois da renderização visual
+        requestAnimationFrame(() => {
+            openCalculatorSection('calculatorHome');
+        });
     } 
     else if (sectionId === 'contract') {
         contractContainer.classList.remove('hidden');
-        contractContainer.style.display = 'block'; // SÓ ISSO!
+        contractContainer.style.display = 'block';
         
         document.getElementById('documentsHome').style.display = 'flex'; 
         document.getElementById('areaContratoWrapper').style.display = 'none';
         document.getElementById('areaBookipWrapper').style.display = 'none';
     } 
-
-
-
-
     else if (sectionId === 'stock') {
         stockContainer.classList.remove('hidden');
         stockContainer.style.display = 'flex';
-        loadCheckedItems();
-        filterStockProducts();
+        
+        // OTIMIZAÇÃO: Carrega os dados pesados apenas após a tela aparecer
+        requestAnimationFrame(() => {
+            loadCheckedItems();
+            filterStockProducts();
+        });
     } 
     else if (sectionId === 'administracao') {
         adminContainer.classList.remove('hidden');
         adminContainer.style.display = 'flex';
-        filterAdminProducts();
+        
+        // OTIMIZAÇÃO: Renderiza a lista administrativa no próximo quadro
+        requestAnimationFrame(() => {
+            filterAdminProducts();
+        });
     }
-    // --- NOVO: LÓGICA DA TELA DE CLIENTES ---
     else if (sectionId === 'clients') {
         if (clientsContainer) {
             clientsContainer.classList.remove('hidden');
             clientsContainer.style.display = 'flex';
-            // Chama a função que preenche a tabela (que vamos criar no Bloco 2)
+            
+            // OTIMIZAÇÃO: Renderiza a tabela de clientes no próximo quadro
             if (typeof renderClientsTable === 'function') {
-                renderClientsTable();
+                requestAnimationFrame(() => {
+                    renderClientsTable();
+                });
             }
         }
     }
@@ -494,7 +518,6 @@ function showMainSection(sectionId) {
     currentMainSectionId = sectionId;
     safeStorage.setItem('ctwLastSection', sectionId);
 }
-
 
 function renderRatesEditor() {
     const accordionContainer = document.getElementById('ratesAccordion');

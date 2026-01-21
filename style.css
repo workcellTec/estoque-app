@@ -137,6 +137,50 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
 .section-header { width: 100%; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--glass-border); flex-shrink: 0;}
 .section-header h3 { margin-bottom: 0; font-size: 1.5rem; }
 
+
+/* ============================================================
+   ESTRUTURA DOS CONTAINERS PRINCIPAIS (GPU ACELERADO)
+   Define o comportamento de hardware antes do visual
+   ============================================================ */
+#mainMenu, 
+#calculatorContainer, 
+#contractContainer, 
+#stockContainer, 
+#administracao, 
+#clientsContainer,
+#top-right-controls {
+    /* Força o uso da GPU para evitar engasgos */
+    transform: translate3d(0, 0, 0); 
+    will-change: opacity, transform;
+    
+    /* Suavidade e Anti-serrilhado */
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    perspective: 1000px;
+
+    /* A transição deve estar na raiz do elemento */
+    transition: opacity 0.3s ease-out, transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Animação de Entrada */
+@keyframes fadeInSlide {
+    0% { opacity: 0; transform: translate3d(0, 15px, 0); }
+    100% { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+#mainMenu:not(.hidden), 
+#calculatorContainer:not(.hidden), 
+#contractContainer:not(.hidden), 
+#stockContainer:not(.hidden), 
+#administracao:not(.hidden), 
+#clientsContainer:not(.hidden) {
+    animation: fadeInSlide 0.3s forwards;
+}
+
+
+
+
+
 /* ATUALIZADO: Inclui #documentsHome na regra */
 #mainMenu, #calculatorHome, #documentsHome {
     padding-top: 80px; 
@@ -1235,6 +1279,9 @@ body[data-color="orange"] {
     --glow-1: #FFAB00; --glow-2: #FF3D00;
 }
 
+
+
+
 /* Botão do Pincel (Para abrir o menu) */
 #theme-palette-btn {
     width: 45px; height: 45px;
@@ -1278,6 +1325,7 @@ body[data-color="orange"] {
         transform: translateY(0) scale(1);
     }
 }
+
 
 /* 2. Botões "Elásticos" (Clicky Buttons) */
 /* Dá sensação de clique físico */
@@ -2285,4 +2333,797 @@ tr, td, .card, .list-group-item {
 .btn-action:active {
     transform: scale(0.92);
     transition: transform 0.1s;
+}
+
+/* ============================================================
+   ESTILOS MOVIDOS DO HTML - ORGANIZADOS POR SEÇÃO
+   ============================================================ */
+
+/* --- PRODUTOS E AÇÕES --- */
+.product-action-buttons {
+    display: flex !important;
+    gap: 12px !important;
+    margin-top: 15px !important;
+}
+
+.btn-action-sm {
+    flex: 1 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    padding: 12px 15px !important;
+    border-radius: 50px !important;
+    font-size: 0.9rem !important;
+    font-weight: 600 !important;
+    border: none !important;
+    cursor: pointer !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+}
+
+.edit-price-btn {
+    background-color: rgba(16, 185, 129, 0.15) !important;
+    color: #10b981 !important;
+}
+
+.edit-colors-btn {
+    background-color: rgba(139, 92, 246, 0.15) !important;
+    color: #8b5cf6 !important;
+}
+
+.btn-action-sm:active,
+.btn-action-sm:hover {
+    transform: translateY(-2px) !important;
+    filter: brightness(1.1) !important;
+}
+
+/* --- FAVORITOS --- */
+#aparelhoFavoritosContainer {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    width: 100% !important;
+}
+
+.favorito {
+    display: inline-flex !important;
+    align-items: center !important;
+    width: auto !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+}
+
+/* --- CORES DE PRODUTOS --- */
+.product-action-colors {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    margin: 8px 0 !important;
+}
+
+.color-pill {
+    display: inline-flex !important;
+    width: auto !important;
+    align-items: center !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    padding: 4px 10px !important;
+    border-radius: 20px !important;
+}
+
+.product-action-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: flex-start !important;
+    width: 100% !important;
+}
+
+.btn-remove-card {
+    background: transparent !important;
+    border: none !important;
+    color: #ff4d4d !important;
+    font-size: 1.3rem !important;
+    padding: 0 0 0 10px !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    width: auto !important;
+    height: auto !important;
+}
+
+.btn-remove-card:hover {
+    background: transparent !important;
+    transform: scale(1.1);
+    color: #ff0000 !important;
+}
+
+/* --- ESTOQUE: BOTÕES DE QUANTIDADE --- */
+.stock-qty-btn {
+    width: 35px !important;
+    height: 35px !important;
+    border-radius: 50% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    color: var(--text-color) !important;
+    margin: 0 5px !important;
+}
+
+.stock-qty-input {
+    background: transparent !important;
+    border: none !important;
+    color: var(--text-color) !important;
+    font-weight: 800 !important;
+    font-size: 1.1rem !important;
+    max-width: 50px !important;
+}
+
+.stock-item-controls .input-group {
+    background-color: rgba(0,0,0,0.2) !important;
+    border-radius: 50px !important;
+    padding: 4px !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    flex-wrap: nowrap !important;
+}
+
+.stock-item-card.is-checked {
+    opacity: 1 !important;
+    background: rgba(22, 163, 74, 0.1) !important;
+    border: 1px solid #4ade80 !important;
+    box-shadow: 0 0 15px rgba(74, 222, 128, 0.2) !important;
+    transform: scale(1.01) !important;
+}
+
+.stock-item-card.is-checked .product-name {
+    color: #4ade80 !important;
+    font-weight: 700 !important;
+}
+
+/* --- TEMAS DE CORES (Consolidado - Removendo duplicações) --- */
+:root {
+    --primary-color: #EF5350 !important;
+    --primary-color-rgb: 239, 83, 80 !important;
+    --glow-1: #8A2BE2 !important;
+    --glow-2: #B71C1C !important;
+    --tertiary-color: #030303 !important;
+    --glass-bg: rgba(28, 28, 28, 0.65) !important;
+    --input-bg: rgba(44, 44, 46, 0.7) !important;
+}
+
+body[data-color="blue"] {
+    --primary-color: #2979FF !important;
+    --primary-color-rgb: 41, 121, 255 !important;
+    --glow-1: #00B0FF !important;
+    --glow-2: #2979FF !important;
+}
+
+body[data-color="blue"][data-theme="dark"] {
+    --tertiary-color: #0B1120 !important;
+    --glass-bg: rgba(30, 41, 59, 0.85) !important;
+    --input-bg: rgba(15, 23, 42, 0.7) !important;
+}
+
+body[data-color="green"] {
+    --primary-color: #00C853 !important;
+    --primary-color-rgb: 0, 200, 83 !important;
+    --glow-1: #00E676 !important;
+    --glow-2: #FFD600 !important;
+}
+
+body[data-color="green"][data-theme="dark"] {
+    --tertiary-color: #050505 !important;
+    --glass-bg: rgba(20, 20, 20, 0.85) !important;
+}
+
+body[data-color="purple"] {
+    --primary-color: #8B5CF6 !important;
+    --primary-color-rgb: 139, 92, 246 !important;
+    --glow-1: #7C3AED !important;
+    --glow-2: #EC4899 !important;
+}
+
+body[data-color="purple"][data-theme="dark"] {
+    --tertiary-color: #0F0720 !important;
+    --glass-bg: rgba(46, 16, 101, 0.6) !important;
+    --input-bg: rgba(0, 0, 0, 0.4) !important;
+}
+
+body[data-color="orange"] {
+    --primary-color: #FF6D00 !important;
+    --primary-color-rgb: 255, 109, 0 !important;
+    --glow-1: #FFAB00 !important;
+    --glow-2: #FF3D00 !important;
+}
+
+body[data-color="pink"] {
+    --primary-color: #FF4081 !important;
+    --primary-color-rgb: 255, 64, 129 !important;
+    --glow-1: #FF80AB !important;
+    --glow-2: #F50057 !important;
+    --text-success: #FF4081 !important;
+}
+
+body[data-color="pink"][data-theme="dark"] {
+    --tertiary-color: #1F0510 !important;
+    --glass-bg: rgba(60, 10, 30, 0.6) !important;
+    --input-bg: rgba(40, 5, 20, 0.4) !important;
+}
+
+body[data-color="cyan"] {
+    --primary-color: #00E5FF !important;
+    --primary-color-rgb: 0, 229, 255 !important;
+    --glow-1: #84FFFF !important;
+    --glow-2: #00B8D4 !important;
+    --text-success: #00E5FF !important;
+}
+
+body[data-color="cyan"][data-theme="dark"] {
+    --tertiary-color: #001515 !important;
+    --glass-bg: rgba(5, 40, 45, 0.6) !important;
+    --input-bg: rgba(0, 25, 30, 0.4) !important;
+}
+
+body[data-color="yellow"] {
+    --primary-color: #FFD740 !important;
+    --primary-color-rgb: 255, 215, 64 !important;
+    --glow-1: #FFE57F !important;
+    --glow-2: #FFAB00 !important;
+    --text-success: #FFD740 !important;
+}
+
+body[data-color="yellow"][data-theme="dark"] {
+    --tertiary-color: #151200 !important;
+    --glass-bg: rgba(45, 35, 5, 0.6) !important;
+    --input-bg: rgba(30, 25, 0, 0.4) !important;
+    --text-color-strong: #FFFFFF !important;
+}
+
+/* --- BOTÃO DE TEMA --- */
+#theme-palette-btn {
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    background-color: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 15px var(--shadow-color);
+    backdrop-filter: blur(5px);
+    margin-bottom: 10px;
+}
+
+.theme-option-btn {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.4rem;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+
+.theme-option-btn.active {
+    border-color: #FFF;
+    box-shadow: 0 0 15px rgba(255,255,255,0.6);
+    transform: scale(1.1);
+}
+
+/* --- ANIMAÇÕES --- */
+.container:not(.hidden),
+.content-card,
+.admin-section {
+    animation: slideUpFade 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards !important;
+}
+
+@keyframes slideUpFade {
+    from {
+        opacity: 0;
+        transform: translateY(30px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.btn:active,
+.btn-menu:active,
+.stock-qty-btn:active,
+.theme-option-btn:active {
+    transform: scale(0.90) !important;
+    transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.stock-item-card,
+.notification-item,
+.admin-product-accordion {
+    animation: fadeInStagger 0.5s ease forwards !important;
+    opacity: 0;
+}
+
+.stock-item-card:nth-child(1) { animation-delay: 0.05s; }
+.stock-item-card:nth-child(2) { animation-delay: 0.1s; }
+.stock-item-card:nth-child(3) { animation-delay: 0.15s; }
+.stock-item-card:nth-child(4) { animation-delay: 0.2s; }
+.stock-item-card:nth-child(5) { animation-delay: 0.25s; }
+
+@keyframes fadeInStagger {
+    from {
+        opacity: 0;
+        transform: translateX(-15px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.form-control:focus,
+.form-select:focus {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3) !important;
+    transition: all 0.3s ease;
+}
+
+/* --- EFEITO SHINE NO BOTÕES --- */
+.btn-menu {
+    position: relative !important;
+    overflow: hidden !important;
+}
+
+.btn-menu::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -150%;
+    width: 100%;
+    height: 100%;
+    transform: skewX(-20deg);
+    pointer-events: none;
+    animation: shine-effect 6s infinite ease-in-out !important;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.15),
+        transparent
+    ) !important;
+}
+
+[data-theme="light"] .btn-menu::after {
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(var(--primary-color-rgb), 0.4),
+        transparent
+    ) !important;
+}
+
+@keyframes shine-effect {
+    0% { left: -150%; }
+    20% { left: 150%; }
+    100% { left: 150%; }
+}
+
+/* --- BOTÃO VOLTAR --- */
+.btn-back {
+    width: 42px !important;
+    height: 42px !important;
+    border-radius: 50% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    background-color: rgba(255, 255, 255, 0.03) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05) !important;
+    color: var(--text-secondary) !important;
+    font-size: 1.1rem !important;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+    cursor: pointer !important;
+}
+
+.btn-back:hover,
+.btn-back:active {
+    background-color: rgba(var(--primary-color-rgb), 0.15) !important;
+    border-color: var(--primary-color) !important;
+    color: var(--primary-color) !important;
+    box-shadow: 0 0 15px rgba(var(--primary-color-rgb), 0.3) !important;
+    transform: translateX(-3px) !important;
+}
+
+.btn-back i {
+    margin-right: 2px !important;
+}
+
+/* --- BRILHO DE FUNDO (AMBIENT LIGHT) --- */
+body::after {
+    content: "";
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 120px;
+    background: linear-gradient(
+        to top,
+        rgba(var(--primary-color-rgb), 0.6) 0%,
+        rgba(var(--primary-color-rgb), 0.2) 50%,
+        transparent 100%
+    );
+    filter: blur(25px);
+    z-index: -1;
+    pointer-events: none;
+    animation: ambilightPulse 6s infinite alternate ease-in-out;
+}
+
+@keyframes ambilightPulse {
+    0% {
+        opacity: 0.6;
+        height: 100px;
+    }
+    100% {
+        opacity: 0.9;
+        height: 140px;
+    }
+}
+
+[data-theme="light"] body::after {
+    opacity: 0.4;
+    filter: blur(30px);
+}
+
+/* --- CHIPS DE FILTRO --- */
+.chip-scroll-container {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 5px 2px 15px 2px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+
+.chip-scroll-container::-webkit-scrollbar {
+    display: none;
+}
+
+.chip-btn {
+    flex: 0 0 auto;
+    padding: 8px 16px;
+    border-radius: 50px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.chip-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-2px);
+}
+
+.chip-btn.active {
+    background: var(--primary-color);
+    color: #fff;
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    font-weight: 600;
+}
+
+/* --- ICON BOX E DROPDOWN --- */
+.icon-box {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+}
+
+@keyframes pulseRed {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(2.5);
+    }
+}
+
+#top-right-controls .dropdown-menu.show {
+    animation: dropdownSlideIn 0.2s ease-out forwards;
+    transform-origin: top right;
+}
+
+@keyframes dropdownSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-15px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* --- CLASSES UTILITÁRIAS PARA SUBSTITUIR ESTILOS INLINE --- */
+.loading-overlay-full {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--tertiary-color);
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.5s ease;
+}
+
+.spinner-large {
+    width: 3rem;
+    height: 3rem;
+}
+
+.text-secondary-custom {
+    color: var(--text-secondary);
+}
+
+.top-right-controls-pos {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 1050;
+}
+
+.avatar-button-wrapper {
+    width: 45px;
+    height: 45px;
+    background: var(--input-bg);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+.btn-link-custom {
+    color: var(--text-color);
+    transition: all 0.3s ease;
+}
+
+.avatar-badge-size {
+    width: 12px;
+    height: 12px;
+}
+
+.dropdown-menu-custom {
+    background: var(--tertiary-color);
+    border: 1px solid var(--glass-border);
+    min-width: 280px;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 16px;
+}
+
+.dropdown-header-item {
+    border-bottom: 1px solid var(--glass-border);
+    background: rgba(255,255,255,0.03);
+}
+
+.text-uppercase-small {
+    font-size: 0.65rem;
+    letter-spacing: 1px;
+}
+
+.profile-icon-online {
+    width: 8px;
+    height: 8px;
+    background: #00E676;
+    border-radius: 50%;
+    box-shadow: 0 0 10px #00E676;
+}
+
+.text-color-custom {
+    color: var(--text-color);
+}
+
+.menu-notification-area {
+    border-bottom: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.dropdown-item-normal-wrap {
+    white-space: normal;
+}
+
+.notification-badge-small {
+    width: 8px;
+    height: 8px;
+    box-shadow: 0 0 8px red;
+}
+
+.notification-text-container {
+    overflow: hidden;
+    width: 100%;
+}
+
+.notification-title-text {
+    font-size: 0.70rem;
+    color: var(--primary-color);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.notification-text-clamped {
+    font-size: 0.85rem;
+    line-height: 1.3;
+    opacity: 0.9;
+    color: var(--text-color);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.hidden-inline {
+    display: none;
+}
+
+.hidden-important {
+    display: none !important;
+}
+
+.btn-back-large {
+    font-size: 1.5rem;
+    padding: 10px;
+}
+
+.container-hidden {
+    display: none;
+}
+
+.max-width-form {
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.max-width-form-margin {
+    max-width: 400px;
+    margin: 0 auto 1rem;
+}
+
+.hr-custom {
+    border-color: rgba(255,255,255,0.1);
+}
+
+.export-container {
+    display: none;
+}
+
+.export-btn-max-width {
+    max-width: 400px;
+}
+
+.flag-display-container {
+    display: none;
+}
+
+.brand-container {
+    display: none;
+}
+
+.form-input-full-width {
+    width: 100%;
+    max-width: 400px;
+}
+
+.btn-gear-large {
+    font-size: 1.4rem;
+}
+
+.border-dashed {
+    border-style: dashed !important;
+}
+
+/* --- CLASSES UTILITÁRIAS ADICIONAIS PARA ESTILOS INLINE --- */
+.max-width-400 {
+    max-width: 400px;
+}
+
+.max-width-400-margin-auto {
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.max-width-400-margin-1rem {
+    max-width: 400px;
+    margin: 0 auto 1rem;
+}
+
+.width-100-max-width-400 {
+    width: 100%;
+    max-width: 400px;
+}
+
+.hr-border-custom {
+    border-color: rgba(255,255,255,0.1);
+}
+
+.export-btn-max-width {
+    max-width: 400px;
+}
+
+.aparelho-info-note {
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
+    padding: 8px;
+    background-color: var(--input-bg);
+    border-radius: 8px;
+}
+
+.btn-back-custom-border {
+    border-color: rgba(255,255,255,0.2) !important;
+}
+/* ============================================================
+   EFEITO AMBILIGHT (LUZ NA BARRA DE NAVEGAÇÃO)
+   ============================================================ */
+body::after {
+    content: "";
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100px; /* Altura do brilho subindo */
+    
+    /* O Segredo: Gradiente da cor do tema para transparente */
+    background: linear-gradient(
+        to top, 
+        rgba(var(--primary-color-rgb), 0.55) 0%, 
+        rgba(var(--primary-color-rgb), 0.1) 40%, 
+        transparent 100%
+    );
+    
+    /* Desfoque para parecer luz de LED */
+    filter: blur(15px);
+    
+    z-index: -1; /* Fica atrás do texto, mas na frente do fundo preto */
+    pointer-events: none; /* Não atrapalha o clique */
+    
+    /* Animação suave "respirando" */
+    animation: ambilightPulse 5s infinite alternate ease-in-out;
+    will-change: opacity, height;
+}
+
+/* Animação para a luz não ficar estática */
+@keyframes ambilightPulse {
+    0% { opacity: 0.5; height: 90px; }
+    100% { opacity: 0.8; height: 130px; }
+}
+
+/* Ajuste para o Modo Claro (para não ficar estranho) */
+[data-theme="light"] body::after {
+    opacity: 0.3; /* Brilho mais fraco no claro */
+    filter: blur(20px);
 }
