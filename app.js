@@ -1105,9 +1105,9 @@ function renderCarrinho() {
             colorsHtml = '<span class="text-secondary small ms-1">Sem cores definidas</span>';
         }
 
-        // HTML do Card Unificado (COM O BOTÃO DE FAVORITAR)
+        // --- COLAR ISTO NO LUGAR DO ANTIGO 'const cardHtml' ---
         const cardHtml = `
-        <div class="product-action-card">
+        <div class="product-action-card" data-index="${index}">
             
             <div class="product-action-header">
                 <div class="product-action-info" style="flex: 1;">
@@ -1115,6 +1115,10 @@ function renderCarrinho() {
                     <div class="product-action-date text-start"><i class="bi bi-clock-history"></i> ${dateInfo}</div>
                 </div>
                 
+                <button class="btn-settings-toggle" title="Opções do Sistema (Valor/Cores)">
+                    <i class="bi bi-gear-fill"></i>
+                </button>
+
                 <button class="btn-remove-card" onclick="removerDoCarrinho(${index})" title="Remover item">
                     <i class="bi bi-x-lg"></i>
                 </button>
@@ -1124,13 +1128,17 @@ function renderCarrinho() {
                 ${colorsHtml}
             </div>
 
-            <div class="product-action-buttons">
-                <button class="btn-action-sm edit-price-btn" data-index="${index}">
-                    <i class="bi bi-cash-coin"></i> Editar Valor
-                </button>
-                <button class="btn-action-sm edit-colors-btn" data-id="${product.id}">
-                    <i class="bi bi-palette"></i> Editar Cores
-                </button>
+            <div class="product-admin-panel">
+                <span class="admin-warning-label"><i class="bi bi-exclamation-triangle"></i> Editar Cadastro no Sistema</span>
+                
+                <div class="product-action-buttons">
+                    <button class="btn-action-sm edit-price-btn" data-index="${index}">
+                        <i class="bi bi-cash-coin"></i> Editar Valor Base
+                    </button>
+                    <button class="btn-action-sm edit-colors-btn" data-id="${product.id}">
+                        <i class="bi bi-palette"></i> Editar Cores
+                    </button>
+                </div>
             </div>
 
             <div class="mt-2 pt-2 border-top border-secondary border-opacity-10 text-center">
@@ -3171,6 +3179,20 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (carrinhoContainer) {
         carrinhoContainer.addEventListener('click', (e) => {
+
+            // --- CÓDIGO NOVO: CLIQUE DA ENGRENAGEM ---
+            const gearBtn = e.target.closest('.btn-settings-toggle');
+            if (gearBtn) {
+                e.preventDefault();
+                const card = gearBtn.closest('.product-action-card');
+                const panel = card.querySelector('.product-admin-panel');
+                
+                // Liga/Desliga
+                panel.classList.toggle('active');
+                gearBtn.classList.toggle('active');
+                return; // Para aqui e não executa o resto
+            }
+
             // 1. Botão Editar Cores
             const colorBtn = e.target.closest('.edit-colors-btn');
             if (colorBtn) { 
@@ -3289,9 +3311,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    const savedTheme = safeStorage.getItem('theme') || 'dark';
+
+    // Tema escuro e Claro
+
+    // 1. Usa a chave correta 'ctwTheme' (antes estava 'theme' e dava erro)
+    const savedTheme = safeStorage.getItem('ctwTheme') || 'dark';
+    
+    // 2. Aplica o tema visualmente no site
     applyTheme(savedTheme);
-    themeToggleCheckbox.addEventListener('change', toggleTheme);
+    
+    // 3. A CORREÇÃO MÁGICA: Sincroniza o botão
+    if (themeToggleCheckbox) {
+        // Se o tema salvo for 'light', força o botão a ficar MARCADO.
+        // Se for 'dark', força a ficar DESMARCADO.
+        themeToggleCheckbox.checked = (savedTheme === 'light');
+        
+        // Garante que o evento só seja adicionado uma vez
+        themeToggleCheckbox.removeEventListener('change', toggleTheme);
+        themeToggleCheckbox.addEventListener('change', toggleTheme);
+    }
+
 
     document.getElementById('goToCalculator').addEventListener('click', () => showMainSection('calculator'));
     document.getElementById('goToContract').addEventListener('click', () => showMainSection('contract'));

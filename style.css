@@ -73,54 +73,46 @@ body {
     transition: background-color 0.3s, color 0.3s;
 }
 
-/* LUZ DE FUNDO (FIXA PARA NÃO SUBIR) */
+/* ============================================================
+   OTIMIZAÇÃO GPU: FUNDO (MODO VIDEOGAME)
+   Substitui os códigos antigos e duplicados.
+   ============================================================ */
+
 body::before {
     content: "";
-    position: fixed; /* Essencial ser FIXED */
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%; /* Garante que ocupa a tela toda */
+    position: fixed;
+    top: -50%;
+    left: -50%;
+    width: 200%;     /* Dobro do tamanho para girar sem faltar pedaço */
+    height: 200%;
     
-    /* O gradiente original do seu sistema */
-    background: radial-gradient(circle at 50% 50%, var(--glow-2) 0%, transparent 60%),
+    /* Gradiente original */
+    background: radial-gradient(circle at 50% 50%, var(--glow-2) 0%, transparent 50%),
                 radial-gradient(circle at 80% 20%, var(--glow-1) 0%, transparent 40%);
-    opacity: 0.08;
+    
+    opacity: 0.15;
     z-index: -1;
     pointer-events: none;
-    
-    /* Animação suave */
-    animation: moveGlow 15s infinite alternate ease-in-out;
-    will-change: transform, opacity; /* Otimização de GPU */
+
+    /* A MÁGICA DE PERFORMANCE (GPU) */
+    transform: translate3d(0, 0, 0); 
+    will-change: transform; 
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+
+    /* Animação leve de rotação */
+    animation: gpuRotate 20s infinite linear;
 }
 
-
-
-
-
-body::before {
-    content: '';
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: -1;
-    background:
-        radial-gradient(circle at 20% 25%, var(--glow-1), transparent 40%),
-        radial-gradient(circle at 80% 75%, var(--glow-2), transparent 40%),
-        var(--tertiary-color);
-    background-size: 200% 200%;
-    opacity: 0.25;
-    animation: moveGlow 40s ease infinite;
-    will-change: background-position;
+@keyframes gpuRotate {
+    0% {
+        transform: translate3d(0, 0, 0) rotate(0deg);
+    }
+    100% {
+        transform: translate3d(0, 0, 0) rotate(360deg);
+    }
 }
 
-@keyframes moveGlow {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
 
 .container {
     width: 100%; max-width: 550px; margin: 0 auto; padding: 20px 15px;
@@ -217,13 +209,24 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
 .content-card {
     background-color: var(--glass-bg);
     border-radius: var(--border-radius);
-    padding: 25px; margin-bottom: 20px; width: 100%;
+    padding: 25px; 
+    margin-bottom: 20px; 
+    width: 100%;
     border: 1px solid var(--glass-border);
     box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
+    
+    /* Vidro otimizado (Blur um pouco maior fica mais bonito e o GPU aguenta agora) */
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    
+    /* --- COMANDOS DE PERFORMANCE (MODO JOGO) --- */
+    transform: translate3d(0,0,0); /* Força o uso da Placa de Vídeo */
+    contain: content;              /* O Segredo: O que acontece aqui dentro, não trava o app fora */
+    will-change: transform;        /* Prepara a memória gráfica */
+    
     transition: background-color var(--transition-duration) ease, border-color var(--transition-duration) ease;
 }
+
 
 ./* AQUI ESTAVA O ERRO: Adicionamos :not(#documentsHome) para ele NÃO esticar os botões */
 .container:not(#mainMenu):not(#calculatorHome):not(#documentsHome) {
@@ -529,16 +532,130 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
     filter: none;
 }
 
+/* ============================================================
+   CONTROLES SUPERIORES (CORRIGIDO: SINO E TEXTO VERMELHO VIVOS)
+   ============================================================ */
+
 #top-right-controls {
     position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 9999;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 15px;
+    top: 20px; right: 20px; z-index: 9999;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 15px;
 }
+
+/* 1. O SINO (GARANTIDO VERMELHO) */
+#notification-bell,
+#notification-bell i { 
+    /* Força bruta na cor do ícone e do botão */
+    color: #ff3333 !important; 
+    border-color: rgba(255, 51, 51, 0.4) !important;
+}
+
+#notification-bell {
+    position: relative; cursor: pointer;
+    background-color: var(--glass-bg);
+    backdrop-filter: blur(5px);
+    width: 45px; height: 45px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem;
+    box-shadow: 0 4px 15px var(--shadow-color);
+    transition: transform 0.2s;
+    border: 1px solid rgba(255, 51, 51, 0.3);
+}
+
+/* 2. O MENU (PRETO TINTADO) */
+#top-right-controls .dropdown-menu {
+    right: 0 !important; left: auto !important; transform: none !important;
+    top: 55px !important;
+    width: 85vw; max-width: 300px; min-width: auto;
+    
+    background-color: #050505 !important;
+    background-image: linear-gradient(
+        rgba(var(--primary-color-rgb), 0.20), 
+        rgba(var(--primary-color-rgb), 0.20)
+    ) !important;
+    
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+    padding: 0; overflow: hidden; contain: content;
+}
+
+/* 3. ITENS (ESTRUTURA) */
+#top-right-controls .dropdown-item, 
+#top-right-controls .dropdown-header {
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    padding: 12px 15px !important;
+    border-bottom: 1px solid rgba(255,255,255,0.08); 
+    background: transparent;
+}
+
+/* 4. TEXTOS COMUNS (BRANCOS) */
+/* Aqui listamos especificamente o que deve ser branco para não bloquear o vermelho */
+#top-right-controls .dropdown-menu div,
+#top-right-controls .dropdown-menu span,
+#top-right-controls .dropdown-menu small,
+#top-right-controls .dropdown-menu h6,
+#top-right-controls .dropdown-menu p,
+#top-right-controls .dropdown-item {
+    color: #eeeeee !important; 
+    font-weight: 400;
+}
+
+/* 5. A EXCEÇÃO: "NOVA MENSAGEM" (VERMELHO OBRIGATÓRIO) */
+/* Esta regra está por último para vencer todas as outras */
+#top-right-controls .dropdown-menu .text-danger,
+#top-right-controls .dropdown-menu .notification-title-text,
+#top-right-controls .dropdown-menu strong[style*="color: red"], /* Pega styles inline se houver */
+#top-right-controls .dropdown-menu .text-danger * {
+    color: #ff4d4d !important;
+    font-weight: 700 !important;
+    text-shadow: 0 0 8px rgba(255, 0, 0, 0.4);
+}
+
+/* Fundo suave para destacar o texto vermelho */
+#top-right-controls .dropdown-menu .notification-title-text {
+    background: rgba(255, 0, 0, 0.15);
+    padding: 2px 8px;
+    border-radius: 6px;
+    display: inline-block;
+}
+
+/* ============================================================
+   MODO CLARO (LIGHT)
+   ============================================================ */
+[data-theme="light"] #top-right-controls .dropdown-menu {
+    background-image: none !important;
+    background-color: rgba(255, 255, 255, 0.98) !important;
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] #top-right-controls .dropdown-item {
+    border-bottom: 1px solid rgba(0,0,0,0.05) !important;
+}
+
+/* Texto PRETO no modo claro */
+[data-theme="light"] #top-right-controls .dropdown-menu div,
+[data-theme="light"] #top-right-controls .dropdown-menu span,
+[data-theme="light"] #top-right-controls .dropdown-menu small,
+[data-theme="light"] #top-right-controls .dropdown-item {
+    color: #1a1a1a !important;
+}
+
+/* Vermelho no modo claro */
+[data-theme="light"] #top-right-controls .dropdown-menu .notification-title-text,
+[data-theme="light"] #top-right-controls .dropdown-menu .text-danger {
+    color: #d32f2f !important;
+    background: rgba(255, 0, 0, 0.08);
+}
+
+#top-right-controls .dropdown-item:last-child {
+    border-bottom: none !important;
+}
+
+
+
 
 .toggle-switch-theme {
     background-color: var(--input-bg);
@@ -3126,4 +3243,63 @@ body::after {
 [data-theme="light"] body::after {
     opacity: 0.3; /* Brilho mais fraco no claro */
     filter: blur(20px);
+}
+/* ============================================================
+   PAINEL DE EDIÇÃO RETRÁTIL (ZONA DE PERIGO)
+   ============================================================ */
+
+/* Botão da Engrenagem (Discreto) */
+.btn-settings-toggle {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary); /* Cinza discreto */
+    font-size: 1.1rem;
+    padding: 5px 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    opacity: 0.6;
+    margin-right: 5px;
+}
+
+.btn-settings-toggle:hover,
+.btn-settings-toggle.active {
+    color: var(--text-color);
+    opacity: 1;
+    transform: rotate(90deg); /* Efeito visual de giro */
+}
+
+/* O Container que guarda os botões (Escondido) */
+.product-admin-panel {
+    display: none; /* O segredo: nasce invisível */
+    
+    background-color: rgba(220, 53, 69, 0.08); /* Fundo avermelhado bem leve */
+    border: 1px dashed rgba(220, 53, 69, 0.3); /* Borda de alerta tracejada */
+    border-radius: 12px;
+    padding: 12px;
+    margin: 10px 0;
+    text-align: center;
+    
+    /* Animação suave ao abrir */
+    animation: slideDownFade 0.2s ease-out;
+}
+
+/* Classe que o JS vai adicionar para mostrar */
+.product-admin-panel.active {
+    display: block;
+}
+
+/* Texto de Aviso */
+.admin-warning-label {
+    font-size: 0.7rem;
+    color: #ff6b6b; /* Vermelho claro */
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    display: block;
+    font-weight: 700;
+}
+
+@keyframes slideDownFade {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
 }
