@@ -8409,4 +8409,24 @@ window.abrirLixeiraModal = function() {
     }, { onlyOnce: true }); // Lê apenas uma vez para economizar dados
 };
 
+// ============================================================
+// CORREÇÃO: LÓGICA DO SELECT DE GARANTIA (Manual vs Padrão)
+// ============================================================
+const selectGarantia = document.getElementById('bookipGarantiaSelect');
+const inputGarantiaManual = document.getElementById('bookipGarantiaCustomInput');
+
+if (selectGarantia && inputGarantiaManual) {
+    selectGarantia.addEventListener('change', function() {
+        if (this.value === 'custom') {
+            // Se escolheu Manual, mostra o campo e já coloca o cursor lá
+            inputGarantiaManual.classList.remove('hidden');
+            inputGarantiaManual.focus();
+        } else {
+            // Se escolheu outra coisa, esconde o campo
+            inputGarantiaManual.classList.add('hidden');
+            inputGarantiaManual.value = ''; // Opcional: limpa o valor
+        }
+    });
+}
+
         });
