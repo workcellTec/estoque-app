@@ -53,6 +53,14 @@ function carregarCacheEquipe() {
 
 // 3. O Desenhista (Cria o HTML bonito)
 function renderizarEquipeNaTela(listaPerfis) {
+    // Mostra o modal de perfil agora que os dados carregaram do Firebase
+    if (window._pendingProfileModal) {
+        window._pendingProfileModal = false;
+        setTimeout(() => {
+            const modal = document.getElementById('profileSelectorModal');
+            if (modal) modal.classList.add('active');
+        }, 300);
+    }
     const container = document.getElementById('profilesList');
     if(!container) return;
     
@@ -214,8 +222,9 @@ window.apagarPerfil = function(key, nome) {
 document.addEventListener('DOMContentLoaded', () => {
     
     if (!currentUserProfile) {
-        // Se NÃO tem usuário, abre a janela depois de 2 segundos
-        setTimeout(() => document.getElementById('profileSelectorModal').classList.add('active'), 2000);
+        // Aguarda o Firebase carregar os perfis antes de mostrar o modal
+        // Isso evita o modal aparecer vazio enquanto o loading ainda está ativo
+        window._pendingProfileModal = true;
     } else {
         // --- SE JÁ TEM USUÁRIO, MOSTRA O NOME NOS LUGARES CERTOS ---
         
@@ -2769,6 +2778,8 @@ function setupNotificationListeners() {
         checkForDueInstallments(generalNotifications);
     });
 
+    // Aniversários (aguarda 5s para dbClientsCache estar preenchido)
+    setTimeout(() => window.checarAniversariosHoje && window.checarAniversariosHoje(), 5000);
 }
 
 function checkForDueInstallments(initialNotifications = []) {
@@ -2863,6 +2874,9 @@ function updateNotificationUI(notifications) {
     const menuText = document.getElementById('menu-notification-text');
 
     if (notifications.length > 0) {
+        // 🔔 Push nativo
+        window.dispararNotificacaoNativa && window.dispararNotificacaoNativa(notifications);
+
         // 1. Acende a bolinha no Avatar
         if (avatarBadge) {
             avatarBadge.classList.remove('hidden');
@@ -3260,6 +3274,88 @@ async function main() {
         applyTheme(safeStorage.getItem('theme') || 'dark');
         applyColorTheme(safeStorage.getItem('ctwColorTheme') || 'red');
 
+        // BOOT ANIMATION — carrossel de recursos do app
+        (function runBootAnimation() {
+            const track = document.getElementById('carouselTrack');
+            const label = document.getElementById('carouselLabel');
+            const msg   = document.getElementById('bootMsg');
+            if (!track) return;
+
+            // Emojis e labels dos recursos do app
+            const items = [
+                { emoji: '🧮', text: 'Calculadora de taxas'     },
+                { emoji: '📋', text: 'Contratos e boletos'       },
+                { emoji: '👥', text: 'Cadastro de clientes'      },
+                { emoji: '📦', text: 'Estoque de produtos'       },
+                { emoji: '🔔', text: 'Notificações em tempo real'},
+                { emoji: '🎂', text: 'Aniversários dos clientes' },
+                { emoji: '📊', text: 'Histórico de vendas'       },
+                { emoji: '🏷️', text: 'Etiquetas personalizadas'  },
+                { emoji: '💳', text: 'Controle de parcelas'      },
+                { emoji: '📱', text: 'Funciona no celular'       },
+            ];
+
+            let current = 0;
+
+            function showItem(i) {
+                const item = items[i % items.length];
+
+                // Limpa e cria novo item com animação
+                track.innerHTML = '';
+                track.style.animation = 'none';
+                track.offsetHeight; // reflow para reiniciar animação
+                track.style.animation = '';
+
+                const el = document.createElement('div');
+                el.className = 'ctw-carousel-item';
+                el.textContent = item.emoji;
+                track.appendChild(el);
+
+                // Atualiza label com fade
+                if (label) {
+                    label.style.opacity = '0';
+                    setTimeout(() => {
+                        label.textContent = item.text;
+                        label.style.opacity = '1';
+                    }, 150);
+                }
+            }
+
+            // Status messages paralelo ao carrossel
+            const msgs = [
+                'Preparando tudo pra você...',
+                'Conectando ao servidor...',
+                'Quase pronto...',
+            ];
+            let msgIdx = 0;
+
+            showItem(0);
+
+            const iv = setInterval(() => {
+                current++;
+                showItem(current);
+
+                // Troca msg a cada 3 itens
+                if (current % 3 === 0 && msg) {
+                    msgIdx = (msgIdx + 1) % msgs.length;
+                    msg.textContent = msgs[msgIdx];
+                }
+            }, 900);
+
+            // Para quando o loading sumir
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) {
+                new MutationObserver((_, obs) => {
+                    if (overlay.style.opacity === '0') {
+                        clearInterval(iv);
+                        if (label) { label.style.opacity='0'; label.textContent = ''; }
+                        if (msg)   msg.textContent = '✓ Pronto!';
+                        obs.disconnect();
+                    }
+                }).observe(overlay, { attributes: true, attributeFilter: ['style'] });
+            }
+        })();
+
         app = initializeApp(firebaseConfig); 
         auth = getAuth(app); 
         db = getDatabase(app);
@@ -3268,31 +3364,50 @@ async function main() {
             if (user) {
                 userId = user.uid;
                 isAuthReady = true;
-                
-                // Carrega tudo
-                loadRatesFromDB();
-                loadProductsFromDB();
-                loadTagsFromDB();
-                loadTagTexts();
-                loadSettingsFromDB(); 
-                setupNotificationListeners();
-                                setupTeamProfilesListener(); // <--- ✅ COLE AQUI (Onde o banco já existe)
 
+                // PERFORMANCE: esconde loading IMEDIATAMENTE após auth
+                // dados carregam em background sem bloquear a UI
                 const loadingOverlay = document.getElementById('loadingOverlay');
-                if(loadingOverlay) loadingOverlay.style.opacity = '0';
                 
-                // Lógica Simples de Navegação
+                // Navega já
                 const lastSection = safeStorage.getItem('ctwLastSection');
-                
                 if (lastSection && lastSection !== 'main') {
                     showMainSection(lastSection);
                 } else {
                     showMainSection('main');
                 }
 
+                // Carrega perfis da equipe PRIMEIRO (crítico para o modal de usuário)
+                // Os outros dados podem esperar
+                setupTeamProfilesListener();
+
+                // Resto dos dados em background
                 setTimeout(() => {
-                    if(loadingOverlay) loadingOverlay.style.display = 'none';
-                }, 500);
+                    loadRatesFromDB();
+                    loadProductsFromDB();
+                    loadTagsFromDB();
+                    loadTagTexts();
+                    loadSettingsFromDB();
+                    setupNotificationListeners();
+                }, 100);
+
+                // Fade out rápido
+                if (loadingOverlay) {
+                    loadingOverlay.style.opacity = '0';
+                    setTimeout(() => { loadingOverlay.style.display = 'none'; }, 300);
+                }
+
+                // Fallback: se Firebase demorar mais de 4s pra retornar perfis,
+                // mostra o modal de qualquer forma
+                if (window._pendingProfileModal) {
+                    setTimeout(() => {
+                        if (window._pendingProfileModal) {
+                            window._pendingProfileModal = false;
+                            const modal = document.getElementById('profileSelectorModal');
+                            if (modal) modal.classList.add('active');
+                        }
+                    }, 4000);
+                }
             } else {
                 await signInAnonymously(auth);
             }
@@ -8926,81 +9041,6 @@ if (selectGarantia && inputGarantiaManual) {
 })();
 
 
-
-
-// ============================================================
-// ✨ AMBILIGHT ENGINE — segue o tema e cor do app
-// ============================================================
-(function initAmbilight() {
-    let sr = 239, sg = 83, sb = 80;
-
-    function easeInOut(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
-    function altProgress(elapsed, duration) {
-        const cycle = elapsed % (duration * 2);
-        const raw   = cycle < duration ? cycle/duration : 2-cycle/duration;
-        return easeInOut(raw);
-    }
-    function clamp(v, mn, mx) { return Math.min(mx, Math.max(mn, v)); }
-
-    function getPrimaryRGB() {
-        const style = getComputedStyle(document.body);
-        const rgb = style.getPropertyValue('--primary-color-rgb').trim();
-        if (rgb) {
-            const parts = rgb.split(',').map(v => parseInt(v.trim()));
-            if (parts.length === 3 && !parts.some(isNaN)) return { r: parts[0], g: parts[1], b: parts[2] };
-        }
-        const hex = style.getPropertyValue('--primary-color').trim().replace('#','');
-        if (hex.length === 6) return { r: parseInt(hex.slice(0,2),16), g: parseInt(hex.slice(2,4),16), b: parseInt(hex.slice(4,6),16) };
-        return { r: 239, g: 83, b: 80 };
-    }
-
-    function isLightMode() { return document.body.dataset.theme === 'light'; }
-
-    const t0 = performance.now();
-    let lastMetaUpdate = 0;
-
-    function ambilightTick(now) {
-        const sec = (now - t0) / 1000;
-        const p1 = altProgress(sec, 12);
-        const p2 = altProgress(sec, 15);
-        const inf1 = clamp(1 - p1 * 0.7, 0.1, 1);
-        const inf2 = clamp(p2 * 0.5, 0, 0.6);
-        const total = inf1 + inf2 || 0.001;
-        const C = getPrimaryRGB();
-        const C2 = { r: Math.round(C.r * 0.5), g: Math.round(C.g * 0.4), b: Math.min(255, Math.round(C.b * 0.9 + 80)) };
-        const tr = (C.r*inf1 + C2.r*inf2) / total;
-        const tg = (C.g*inf1 + C2.g*inf2) / total;
-        const tb = (C.b*inf1 + C2.b*inf2) / total;
-        sr += (tr-sr)*0.05; sg += (tg-sg)*0.05; sb += (tb-sb)*0.05;
-        const r = Math.round(sr), g = Math.round(sg), b = Math.round(sb);
-        const intensity = clamp(inf1 + inf2*0.5, 0.3, 1);
-        const lightMode = isLightMode();
-        const glowAlpha = lightMode ? 0.35 : 0.8;
-        const glowSpread = lightMode ? 8 : 16;
-        const btnGlow = `0 0 ${glowSpread}px rgba(${r},${g},${b},${glowAlpha})`;
-        const bellBtn = document.getElementById('notification-bell');
-        const avatarWrapper = document.querySelector('.avatar-button-wrapper');
-        if (bellBtn) { bellBtn.style.boxShadow = btnGlow; bellBtn.style.borderColor = `rgba(${r},${g},${b},${(glowAlpha*0.8).toFixed(2)})`; }
-        if (avatarWrapper) { avatarWrapper.style.filter = `drop-shadow(0 0 ${glowSpread*0.6}px rgba(${r},${g},${b},${glowAlpha}))`; }
-        if (now - lastMetaUpdate > 100) {
-            const metaTheme = document.getElementById('status-bar-color');
-            if (metaTheme) {
-                let statusHex;
-                if (lightMode) {
-                    statusHex = '#'+[Math.round(255-(255-r)*0.15), Math.round(255-(255-g)*0.15), Math.round(255-(255-b)*0.15)].map(v=>v.toString(16).padStart(2,'0')).join('');
-                } else {
-                    statusHex = '#'+[Math.round(r*0.25), Math.round(g*0.25), Math.round(b*0.25)].map(v=>v.toString(16).padStart(2,'0')).join('');
-                }
-                metaTheme.setAttribute('content', statusHex);
-            }
-            lastMetaUpdate = now;
-        }
-        requestAnimationFrame(ambilightTick);
-    }
-    requestAnimationFrame(ambilightTick);
-})();
-
-
 // ============================================================
 // 🔔 SISTEMA DE NOTIFICAÇÕES NATIVAS — v3 (robusto)
 // ============================================================
@@ -9210,7 +9250,6 @@ setTimeout(() => { window.checarAniversariosHoje(); }, 5000);
     }
     requestAnimationFrame(tick);
 })();
-
 
 // ============================================================
 // 🔔 NOTIFICAÇÕES NATIVAS — versão final limpa

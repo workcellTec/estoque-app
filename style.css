@@ -26,6 +26,7 @@
 
 
 
+
 [data-theme="light"] {
     --primary-color: #B71C1C;
     --primary-color-rgb: 183, 28, 28;
@@ -2983,17 +2984,173 @@ body::after {
 /* --- CLASSES UTILITÁRIAS PARA SUBSTITUIR ESTILOS INLINE --- */
 .loading-overlay-full {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: var(--tertiary-color);
+    inset: 0;
+    background: #070d1a;
     z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.3s ease;
+}
+
+/* ── BOOT SCREEN ── */
+.ctw-boot-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    animation: ctw-fadeIn 0.5s ease;
+}
+
+@keyframes ctw-fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Título */
+.ctw-boot-title {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.1;
+    letter-spacing: 3px;
+    font-family: 'Poppins', sans-serif;
+}
+.ctw-boot-central {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #00e5ff;
+    text-shadow: 0 0 18px rgba(0,229,255,0.7);
+}
+.ctw-boot-workcell {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #ff6d00;
+    text-shadow: 0 0 18px rgba(255,109,0,0.7);
+}
+
+/* ── CARROSSEL ── */
+.ctw-carousel-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ctw-carousel-circle {
+    position: relative;
+    width: 180px;
+    height: 180px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Borda giratória com gradiente */
+.ctw-carousel-border {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: conic-gradient(
+        from 0deg,
+        #2979ff,
+        #00e5ff,
+        #8b5cf6,
+        #ff6d00,
+        #2979ff
+    );
+    animation: ctw-border-spin 3s linear infinite;
+    mask: radial-gradient(farthest-side, transparent calc(100% - 3px), white calc(100% - 3px));
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), white calc(100% - 3px));
+}
+
+@keyframes ctw-border-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Janela circular recortada onde os emojis passam */
+.ctw-carousel-window {
+    width: 156px;
+    height: 156px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: #0a1628;
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+}
+
+/* Faixas de fade nas bordas esquerda e direita */
+.ctw-carousel-window::before,
+.ctw-carousel-window::after {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 30px;
+    z-index: 3;
+    pointer-events: none;
+}
+.ctw-carousel-window::before {
+    left: 0;
+    background: linear-gradient(90deg, #0a1628, transparent);
+}
+.ctw-carousel-window::after {
+    right: 0;
+    background: linear-gradient(-90deg, #0a1628, transparent);
+}
+
+/* Track horizontal que se move */
+.ctw-carousel-track {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    white-space: nowrap;
+    animation: ctw-slide 0.5s ease;
+}
+
+@keyframes ctw-slide {
+    from { transform: translateX(60px); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+}
+
+/* Cada item do carrossel */
+.ctw-carousel-item {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    transition: opacity 0.5s ease;
+    min-width: 156px;
+    font-size: 3.2rem;
+    line-height: 1;
+    filter: drop-shadow(0 0 12px rgba(41,121,255,0.5));
+    transition: filter 0.3s;
+}
+
+/* Mensagem e label */
+.ctw-carousel-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: rgba(255,255,255,0.7);
+    font-family: 'Poppins', sans-serif;
+    letter-spacing: 0.5px;
+    text-align: center;
+    min-height: 20px;
+    transition: opacity 0.3s;
+}
+
+.ctw-boot-msg {
+    font-size: 0.72rem;
+    color: rgba(255,255,255,0.3);
+    font-family: 'Poppins', sans-serif;
+    letter-spacing: 0.5px;
+    min-height: 16px;
+    animation: ctw-blink 1.8s ease-in-out infinite;
+}
+
+@keyframes ctw-blink {
+    0%, 100% { opacity: 0.3; }
+    50%       { opacity: 0.7; }
 }
 
 .spinner-large {
