@@ -292,6 +292,7 @@ let boletosListener = null;
 let installmentNotificationsListener = null;
 let generalNotificationsListener = null;
 let currentMainSectionId = 'main';
+let currentEditingBoletoId = null;
 let emprestimoLucroPercentual = 15;
 let onlyShowIgnored = false;
 let checkedItems = {};
@@ -365,7 +366,6 @@ window.abrirReciboSimples = function() {
     }
 };
 
-// A PARTE QUE DAVA CONFLITO (DOMContentLoaded com btnGarantia) FOI REMOVIDA DAQUI.
 // O botão de garantia agora é controlado pelo código novo que adicionamos anteriormente.
 
 
@@ -2174,10 +2174,25 @@ function setupPWA() {
     document.querySelector('link[rel="manifest"]').setAttribute('href', manifestURL);
     
     if ('serviceWorker' in navigator) {
-        const swScript = document.getElementById('sw-script').textContent;
-        const swBlob = new Blob([swScript], {type: 'text/javascript'});
-        const swURL = URL.createObjectURL(swBlob);
-        navigator.serviceWorker.register(swURL).then(reg => console.log('Service Worker registrado:', reg)).catch(err => console.log('Falha no registro do SW:', err));
+        // Tenta registrar o sw.js real (GitHub Pages)
+        // Se não existir, usa o blob inline como fallback
+        navigator.serviceWorker.register('/sw.js')
+            .then(reg => {
+                console.log('✅ SW real registrado:', reg.scope);
+                // Avisa o app que o SW está pronto
+                reg.active && reg.active.postMessage({ tipo: 'SW_PRONTO' });
+            })
+            .catch(() => {
+                // Fallback: blob SW (desenvolvimento local)
+                const swScript = document.getElementById('sw-script')?.textContent;
+                if (swScript) {
+                    const swBlob = new Blob([swScript], {type: 'text/javascript'});
+                    const swURL = URL.createObjectURL(swBlob);
+                    navigator.serviceWorker.register(swURL)
+                        .then(reg => console.log('SW blob registrado:', reg))
+                        .catch(err => console.log('Falha no SW:', err));
+                }
+            });
     }
 }
 
@@ -2308,91 +2323,177 @@ function clearContractDraft(clearStorage = true) {
     }
 }
 
+
 function populatePreview() {
-    document.getElementById('contractPreview').innerHTML = `
-    <h4>CONTRATO DE COMPRA E VENDA DE SMARTPHONE</h4>
-    <p>Pelo presente instrumento particular, as partes a seguir identificadas firmam o presente CONTRATO DE COMPRA E VENDA, mediante as cláusulas e condições abaixo:</p>
-    <div class="section-title" style="text-transform: none; text-align: left;">VENDEDOR</div>
-    <p>Workcell Tecnologia LTDA – CNPJ nº 50.299.715/0001-65, com sede em Av. Goiás, n° 4118 - loja 05 posto - St. Crimeia Oeste, Goiânia - GO, 74563-220.</p>
-    <div class="section-title" style="text-transform: none; text-align: left;">COMPRADOR</div>
-    <p style="margin-bottom: 24pt;">
-    Nome: <span id="previewNome"></span><br>
-    CPF: <span id="previewCpf"></span> RG: <span id="previewRg"></span><br>
-    Endereço: <span id="previewEndereco"></span>
-    </p>
-    <div class="section-title">CLÁUSULA 1 – DO OBJETO</div>
-    <p>O presente contrato tem por objeto a venda do(s) smartphone(s) descrito(s) abaixo:</p>
-    <p style="margin-bottom: 24pt;">
-    Modelo: <span id="previewModelo"></span><br>
-    IMEI(s): <span id="previewImei"></span><br>
-    Valor total: R$ <span id="previewValorTotal"></span>
-    </p>
-    <div class="section-title">CLÁUSULA 2 – DO PAGAMENTO</div>
-    <p>2.1 O valor total da compra é de R$ <span id="previewValorTotal2"></span> (<span id="previewValorExtenso"></span>), sendo pago da seguinte forma:</p>
-    <p id="clausulaPagamentoB"></p>
-    <p style="margin-bottom: 24pt;">
-    2.2 O não pagamento de qualquer parcela na data de vencimento acarretará:<br>
-    Multa de 2% (dois por cento) sobre o valor da parcela em atraso;<br>
-    Juros de mora de 1% (um por cento) ao mês;<br>
-    Correção monetária conforme índice legal aplicável.
-    </p>
-    <div class="section-title">CLÁUSULA 3 – DA PROPRIEDADE</div>
-    <p>3.1 A propriedade do smartphone somente será transferida ao COMPRADOR após a quitação integral de todas as parcelas.</p>
-    <p>3.2 Em caso de inadimplência, o COMPRADOR será notificado pelo VENDEDOR e terá o prazo de 5 (cinco) dias corridos para regularizar o pagamento.</p>
-    <p style="margin-bottom: 24pt;">3.3 Caso não haja a regularização no prazo informado, o VENDEDOR poderá proceder ao bloqueio remoto do aparelho, impedindo seu uso até a quitação ou negociação da dívida, sem prejuízo da cobrança das parcelas vencidas e demais encargos previstos neste contrato.</p>
-    <div class="section-title">CLÁUSULA 4 – DAS GARANTIAS</div>
-    <p>4.1 O aparelho possui garantia legal de 1 (um) ano para qualquer defeito de fabricação pelo fabricante, contados a partir da entrega do produto.</p>
-    <p style="margin-bottom: 24pt;">4.2 A garantia não cobre mau uso, quedas, molhar, oxidação ou violação do aparelho.</p>
-    <div class="section-title">CLÁUSULA 5 – DA RESCISÃO</div>
-    <p style="margin-bottom: 24pt;">5.1 O não cumprimento de qualquer obrigação contratual poderá resultar na rescisão imediata deste contrato, com a cobrança das parcelas vencidas e vincendas, além das penalidades cabíveis.</p>
-    <div class="section-title">CLÁUSULA 6 – DO FORO</div>
-    <p>As partes elegem o foro da comarca de Goiânia para dirimir quaisquer dúvidas oriundas deste contrato.</p>
-    <p style="margin-top: 24pt;">E por estarem de acordo, firmam o presente contrato em 2 (duas) vias de igual teor.</p>
-    <p style="margin-top: 40pt;">Local e data: <span id="previewLocalData"></span></p>
-    <div style="text-align: center; margin-top: 40pt;">
-    <div class="signature-line" style="margin-bottom: 5px;"></div>
-    <p style="margin-bottom: 5pt; margin-top:0;">Assinatura VENDEDOR</p>
-    </div>
-    <div style="text-align: center; margin-top: 20pt;">
-    <div class="signature-line" style="margin-bottom: 5px;"></div>
-    <p style="margin-bottom: 5pt; margin-top:0;">Assinatura COMPRADOR</p>
-    </div>
-    `;
-    document.getElementById('previewNome').textContent = document.getElementById('compradorNome').value;
-    document.getElementById('previewCpf').textContent = document.getElementById('compradorCpf').value;
-    document.getElementById('previewRg').textContent = document.getElementById('compradorRg').value;
-    document.getElementById('previewEndereco').textContent = document.getElementById('compradorEndereco').value;
-    document.getElementById('previewModelo').textContent = document.getElementById('produtoModelo').value;
-    document.getElementById('previewImei').textContent = document.getElementById('produtoImei').value;
-    
-    const total = parseFloat(document.getElementById('valorTotal').value) || 0;
-    document.getElementById('previewValorTotal').textContent = formatCurrency(total);
-    document.getElementById('previewValorTotal2').textContent = formatCurrency(total);
-    document.getElementById('previewValorExtenso').textContent = numeroPorExtenso(total, 'moeda');
-    
-    const entrada = parseFloat(document.getElementById('valorEntrada').value) || 0;
-    const numParcelas = parseInt(document.getElementById('numeroParcelas').value, 10) || 0;
-    const tipoParcela = document.getElementById('tipoParcela').value;
-    const primeiroVencimento = document.getElementById('primeiroVencimento').value;
-    const saldo = total - entrada;
-    const valorParcela = numParcelas > 0 ? saldo / numParcelas : 0;
-    
-    let textoClausulaB = `a) Entrada no valor de R$ ${formatCurrency(entrada)}, paga no ato da assinatura deste contrato;<br>
-    b) O saldo restante de R$ ${formatCurrency(saldo)}, dividido em ${numeroPorExtenso(numParcelas)} (${numParcelas}) parcelas ${tipoParcela} de R$ ${formatCurrency(valorParcela)}, a serem pagas através de boleto bancário emitido pelo VENDEDOR`;
-    
-    if (primeiroVencimento) {
-        const [ano, mes, dia] = primeiroVencimento.split('-');
-        const dataFormatada = `${dia}/${mes}/${ano}`;
-        textoClausulaB += `, com o primeiro vencimento em ${dataFormatada}.`;
-    } else {
-        textoClausulaB += '.';
+    try {
+        const previewContainer = document.getElementById('contractPreview');
+        if (!previewContainer) return; 
+
+        // 1. MONTA O TEXTO DO CONTRATO
+        previewContainer.innerHTML = `
+            <h4 style="text-align: center; font-weight: bold;">CONTRATO PARTICULAR DE LOCAÇÃO DE BEM MÓVEL (SMARTPHONE)<br>COM OPÇÃO DE AQUISIÇÃO, GARANTIAS E CONFISSÃO DE DÍVIDA</h4>
+
+            <p>Pelo presente instrumento particular, as partes abaixo identificadas:</p>
+
+            <p><strong>LOCADORA:</strong><br>
+            WHORKCELL TECNOLOGIA E SERVIÇOS LTDA, pessoa jurídica de direito privado, inscrita no CNPJ nº 50.299.715/0001-65, com sede em Av. Goiás, nº 4118, sala 05, St. Crimeia Oeste, Goiânia – GO, doravante denominada simplesmente LOCADORA.</p>
+
+            <p><strong>LOCATÁRIO:</strong><br>
+            Nome: <strong id="prevNome"></strong><br>
+            CPF: <strong id="prevCPF"></strong><br>
+            RG: <strong id="prevRG"></strong><br>
+            Endereço: <strong id="prevEndereco"></strong><br>
+            Telefone/WhatsApp: <strong id="prevTelefone"></strong><br>
+            Doravante denominado simplesmente LOCATÁRIO.</p>
+
+            <p>As partes têm entre si justo e contratado o que segue:</p>
+
+            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 1 – DO OBJETO</div>
+            <p>1.1. O presente contrato tem por objeto a locação de bem móvel consistente em aparelho celular com as seguintes características:<br>
+            Marca/Modelo: <strong id="prevModelo"></strong><br>
+            IMEI: <strong id="prevIMEI"></strong><br>
+            Estado: <strong id="prevEstado"></strong><br>
+            Acessórios inclusos: <strong id="prevAcessorios"></strong></p>
+            <p>1.2. O bem permanecerá, durante toda a vigência contratual, como propriedade exclusiva da LOCADORA, não se operando qualquer transferência dominial até eventual aquisição final.</p>
+
+            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 2 – DA NATUREZA JURÍDICA</div>
+            <p>2.1. As partes reconhecem expressamente que o presente instrumento configura contrato de locação de bem móvel, nos termos dos artigos 565 e seguintes do Código Civil Brasileiro.<br>
+            2.2. O presente contrato não constitui compra e venda parcelada, financiamento ou operação de crédito.<br>
+            2.3. A eventual transferência de propriedade somente ocorrerá após a quitação integral das obrigações assumidas pelo LOCATÁRIO.</p>
+
+            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 3 – DO PRAZO</div>
+            <p>3.1. O prazo da locação é de <strong id="prevPrazo"></strong> meses, iniciando-se na data de assinatura deste instrumento.<br>
+            3.2. O contrato poderá ser rescindido antecipadamente nas hipóteses previstas neste instrumento.</p>
+
+            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 4 – DO PREÇO E FORMA DE PAGAMENTO</div>
+            <p>4.1. Pela locação do bem, o LOCATÁRIO pagará à LOCADORA:<br>
+            Entrada: R$ <strong id="prevEntrada"></strong> e <strong id="prevQtdParcelas"></strong> parcelas mensais de R$ <strong id="prevValorParcela"></strong>.<br>
+            4.2. O pagamento será realizado mediante boleto bancário com vencimento todo dia <strong id="prevVencimento"></strong> de cada mês.<br>
+            4.3. O não recebimento do boleto não exime o LOCATÁRIO da obrigação de pagamento na data de vencimento.<br>
+            4.4. O atraso implicará incidência de multa, juros e correção monetária conforme legislação vigente.</p>
+
+            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 5 – DA POSSE E CONDIÇÃO DE FIEL DEPOSITÁRIO</div>
+            <p>5.1. O LOCATÁRIO recebe o bem na qualidade de possuidor direto e fiel depositário, obrigando-se a zelar pela sua guarda, conservação e integridade.<br>
+            5.2. O LOCATÁRIO compromete-se a restituir o bem sempre que solicitado pela LOCADORA nas hipóteses previstas neste contrato.<br>
+            5.3. A não devolução injustificada do bem poderá caracterizar ilícito civil e, quando cabível, ilícito penal.</p>
+
+            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 6 – DAS OBRIGAÇÕES DO LOCATÁRIO</div>
+            <p>O LOCATÁRIO obriga-se a:<br>
+            I – Utilizar o aparelho de forma adequada e exclusivamente para fins lícitos;<br>
+            II – Não alienar, ceder, emprestar, sublocar ou transferir o bem a terceiros;<br>
+            III – Não oferecer o bem em garantia ou penhor;<br>
+            IV – Não adulterar IMEI, hardware ou software para ocultar identificação;<br>
+            V – Comunicar imediatamente à LOCADORA qualquer perda, furto, roubo ou dano relevante;<br>
+            VI – Manter seus dados cadastrais atualizados.</p>
+
+            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 7 – RESPONSABILIDADE POR PERDA, ROUBO OU DANOS</div>
+            <p>7.1. O LOCATÁRIO responderá integralmente pela perda, furto, roubo ou danos ao aparelho.<br>
+            7.2. Tais eventos não extinguem a obrigação de pagamento das parcelas restantes.</p>
+
+            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 8 – DO BLOQUEIO REMOTO E MONITORAMENTO</div>
+            <p>8.1. O LOCATÁRIO autoriza expressamente a instalação e utilização de sistemas de segurança, rastreamento e bloqueio remoto do aparelho.<br>
+            8.2. Em caso de inadimplência, a LOCADORA poderá restringir funcionalidades do dispositivo, independentemente de autorização judicial.</p>
+
+            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 9 – DA INADIMPLÊNCIA</div>
+            <p>9.1. O atraso superior a 1 dia implicará mora automática do LOCATÁRIO.<br>
+            9.2. Em caso de inadimplemento, a LOCADORA poderá:<br>
+            I – Considerar rescindido o contrato;<br>
+            II – Exigir a devolução imediata do bem;<br>
+            III – Realizar bloqueio remoto do aparelho;<br>
+            IV – Promover a inscrição do nome do LOCATÁRIO nos órgãos de proteção ao crédito;<br>
+            V – Protestar o débito;<br>
+            VI – Promover cobrança judicial ou extrajudicial.<br>
+            9.3. As parcelas pagas não serão devolvidas, por corresponderem à contraprestação pelo uso do bem.</p>
+
+            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 10 – DA CONFISSÃO DE DÍVIDA</div>
+            <p>10.1. O LOCATÁRIO reconhece a certeza, liquidez e exigibilidade das obrigações financeiras decorrentes deste contrato.<br>
+            10.2. O presente instrumento constitui título executivo extrajudicial, nos termos do artigo 784 do Código de Processo Civil.</p>
+
+            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 11 – DA BUSCA E APREENSÃO</div>
+            <p>11.1. Em caso de inadimplemento e não devolução voluntária do bem, a LOCADORA poderá promover a retomada do aparelho pelas vias judiciais cabíveis.<br>
+            11.2. O LOCATÁRIO compromete-se a informar a localização do bem sempre que solicitado.</p>
+
+            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 12 – DA OPÇÃO DE AQUISIÇÃO</div>
+            <p>12.1. Após a quitação integral de todas as parcelas, o LOCATÁRIO poderá exercer a opção de aquisição <br> definitiva do bem.<br>
+            12.2. A transferência da propriedade será formalizada mediante termo de quitação emitido pela LOCADORA.</p>
+
+            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 13 – DA PROTEÇÃO DE DADOS (LGPD)</div>
+            <p>13.1. O LOCATÁRIO autoriza o tratamento de seus dados pessoais pela LOCADORA para execução deste contrato, análise de crédito e cobrança, nos termos da Lei nº 13.709/2018.</p>
+
+            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 14 – DA IRREVOGABILIDADE E IRRETRATABILIDADE</div>
+            <p>14.1. O presente contrato é celebrado em caráter irrevogável e irretratável, obrigando as partes e seus sucessores.</p>
+
+            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 15 – DA ASSINATURA DIGITAL</div>
+            <p>15.1. As partes reconhecem como válida a assinatura eletrônica ou digital realizada por plataformas certificadas, produzindo os mesmos efeitos jurídicos da assinatura manuscrita.</p>
+
+            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 16 – DO FORO</div>
+            <p>16.1. Fica eleito o foro da comarca de Goiânia - Goiás, renunciando a qualquer outro  por mais <br> privilegiado que seja.</p>
+
+            <p style="font-weight: bold;">DECLARAÇÃO FINAL</p>
+            <p>O LOCATÁRIO declara ter recebido o aparelho em perfeito estado de funcionamento, com todos os acessórios informados, e que leu, compreendeu e concorda integralmente com todas as cláusulas deste contrato.</p>
+
+            <br>
+            <p style="text-align: center;">Goiânia - GO, <strong id="prevDataAtual"></strong></p>
+
+            <br><br>
+            <p style="text-align: center;">_________________________________________________________________<br>
+            <strong>LOCADORA:</strong> WORKCELL TECNOLOGIA E SERVIÇOS LTDA – CNPJ: 50.299.715/0001-65</p>
+
+            <br><br>
+            <p style="text-align: center;">_________________________________________________________________<br>
+            <strong>LOCATÁRIO:</strong> <strong id="prevAssinaturaNome"></strong><br>
+            CPF: <strong id="prevAssinaturaCPF"></strong></p>
+        `;
+
+        // 2. CONECTA O QUE FOI DIGITADO COM OS "IDs ORIGINAIS"
+        const safeSet = (idSpan, idInput) => {
+            const span = document.getElementById(idSpan);
+            const input = document.getElementById(idInput);
+            if (span && input) {
+                span.textContent = input.value;
+            }
+        };
+
+        const dataDeHoje = new Date().toLocaleDateString('pt-BR');
+        const spanData = document.getElementById('prevDataAtual');
+        if (spanData) spanData.textContent = dataDeHoje;
+
+        // Puxando dos IDs originais que o seu JS gosta:
+        safeSet('prevNome', 'compradorNome');
+        safeSet('prevAssinaturaNome', 'compradorNome');
+        safeSet('prevCPF', 'compradorCpf');
+        safeSet('prevAssinaturaCPF', 'compradorCpf');
+        safeSet('prevRG', 'compradorRg');
+        safeSet('prevEndereco', 'compradorEndereco');
+        safeSet('prevTelefone', 'compradorTelefone');
+        safeSet('prevModelo', 'produtoModelo');
+        safeSet('prevIMEI', 'produtoImei');
+        
+        // Puxando dos campos novos que criei pra você
+        safeSet('prevEstado', 'aparelhoEstado');
+        safeSet('prevAcessorios', 'aparelhoAcessorios');
+        safeSet('prevPrazo', 'contratoPrazo');
+        
+        // Puxando das finanças usando seus IDs
+        safeSet('prevEntrada', 'valorEntrada');
+        safeSet('prevQtdParcelas', 'numeroParcelas');
+        safeSet('prevValorParcela', 'valorParcela');
+        
+        // Extrai apenas o dia (ex: 10) da data completa que o usuário selecionar
+        const dataVenc = document.getElementById('primeiroVencimento')?.value;
+        let diaVenc = "";
+        if (dataVenc) {
+            const parts = dataVenc.split('-');
+            if(parts.length === 3) diaVenc = parts[2];
+        }
+        const spanVenc = document.getElementById('prevVencimento');
+        if (spanVenc) spanVenc.textContent = diaVenc;
+
+    } catch (error) {
+        console.error("Erro no contrato:", error);
     }
-    document.getElementById('clausulaPagamentoB').innerHTML = textoClausulaB;
-    
-    const today = new Date();
-    const dateOptions = { day: '2-digit', month: 'long', year: 'numeric' };
-    document.getElementById('previewLocalData').textContent = `Goiânia, ${today.toLocaleDateString('pt-BR', dateOptions)}`;
 }
+
 
 // --- CARREGAR CONFIGURAÇÕES (ATUALIZADO) ---
 // --- CARREGAR CONFIGURAÇÕES (ATUALIZADO COM IMAGENS) ---
@@ -2462,50 +2563,197 @@ function renderBoletosHistory(data) {
         historyContainer.innerHTML = `<div class="text-center p-5">...</div>`;
         return;
     }
-    
+
     historyContainer.innerHTML = `<div class="accordion w-100 history-accordion" id="boletosAccordion">${boletosArray.map(boleto => {
         const telefoneLimpo = boleto.compradorTelefone ? boleto.compradorTelefone.replace(/\D/g, '') : '';
         const whatsappLink = telefoneLimpo ? `https://wa.me/55${telefoneLimpo}` : '';
-        const telefoneHtml = whatsappLink ? `<a href="${whatsappLink}" target="_blank" class="btn btn-sm btn-success"><i class="bi bi-whatsapp"></i> ${escapeHtml(boleto.compradorTelefone)}</a>` : '(Não informado)';
+        const telefoneHtml = whatsappLink ? `<a href="${whatsappLink}" target="_blank" class="btn btn-sm btn-success py-0"><i class="bi bi-whatsapp"></i> ${escapeHtml(boleto.compradorTelefone)}</a>` : '(Não informado)';
         return `
         <div class="accordion-item">
             <h2 class="accordion-header" id="heading-${boleto.id}">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${boleto.id}" aria-expanded="false" aria-controls="collapse-${boleto.id}">
-                    ${escapeHtml(boleto.compradorNome)} - ${new Date(boleto.criadoEm).toLocaleDateString('pt-BR')}
+                    ${escapeHtml(boleto.compradorNome)} — ${new Date(boleto.criadoEm).toLocaleDateString('pt-BR')}
                 </button>
             </h2>
             <div id="collapse-${boleto.id}" class="accordion-collapse collapse" aria-labelledby="heading-${boleto.id}" data-bs-parent="#boletosAccordion">
                 <div class="accordion-body">
-                    <p><strong>Comprador:</strong> ${escapeHtml(boleto.compradorNome)}<br>
-                    <strong>CPF:</strong> ${escapeHtml(boleto.compradorCpf)}<br>
-                    <strong>Telefone:</strong> ${telefoneHtml}</p>
-                    <p><strong>Produto:</strong> ${escapeHtml(boleto.produtoModelo)}<br>
-                    <strong>IMEI:</strong> ${escapeHtml(boleto.produtoImei)}</p>
-                    <p><strong>Valor Total:</strong> R$ ${escapeHtml(boleto.valorTotal.toLocaleString('pt-BR', {minimumFractionDigits: 2}))}<br>
-                    <strong>Entrada:</strong> R$ ${escapeHtml(boleto.valorEntrada.toLocaleString('pt-BR', {minimumFractionDigits: 2}))}<br>
-                    <strong>Parcelas:</strong> ${boleto.numeroParcelas}x de R$ ${boleto.valorParcela}</p>
-                    <hr style="border-color: var(--glass-border);">
-                    <div class="text-end">
+                    <p class="mb-1"><strong>Comprador:</strong> ${escapeHtml(boleto.compradorNome)}</p>
+                    <p class="mb-1"><strong>CPF:</strong> ${escapeHtml(boleto.compradorCpf || '—')}</p>
+                    <p class="mb-2"><strong>Telefone:</strong> ${telefoneHtml}</p>
+                    <p class="mb-1"><strong>Produto:</strong> ${escapeHtml(boleto.produtoModelo || '—')}</p>
+                    <p class="mb-2"><strong>IMEI:</strong> ${escapeHtml(boleto.produtoImei || '—')}</p>
+                    <p class="mb-1"><strong>Valor Total:</strong> R$ ${Number(boleto.valorTotal||0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                    <p class="mb-1"><strong>Entrada:</strong> R$ ${Number(boleto.valorEntrada||0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                    <p class="mb-2"><strong>Parcelas:</strong> ${boleto.numeroParcelas}x de R$ ${boleto.valorParcela}</p>
+                    <hr style="border-color: var(--glass-border); margin: 8px 0;">
+                    <div class="d-flex gap-2 flex-wrap justify-content-end">
+                        <button class="btn btn-sm btn-primary editar-boleto-btn" data-id="${boleto.id}"><i class="bi bi-pencil-fill"></i> Editar</button>
+                        <button class="btn btn-sm btn-success reenviar-boleto-btn" data-id="${boleto.id}"><i class="bi bi-share-fill"></i> Reenviar</button>
                         <button class="btn btn-sm btn-outline-danger delete-boleto-btn" data-id="${boleto.id}"><i class="bi bi-trash"></i> Excluir</button>
                     </div>
                 </div>
             </div>
         </div>`
     }).join('')}</div>`;
-    
+
+    // --- EDITAR ---
+    historyContainer.querySelectorAll('.editar-boleto-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const boletoId = e.currentTarget.dataset.id;
+            const boleto = boletosArray.find(b => b.id === boletoId);
+            if (!boleto) return;
+
+            // Guarda ID no campo hidden do formulário (mais seguro que variável JS)
+            const hiddenId = document.getElementById('editingBoletoId');
+            if (hiddenId) hiddenId.value = boletoId;
+            window.currentEditingBoletoId = boletoId; // mantém compatibilidade
+
+            // Preenche o formulário
+            document.getElementById('compradorNome').value = boleto.compradorNome || '';
+            document.getElementById('compradorCpf').value = boleto.compradorCpf || '';
+            document.getElementById('compradorRg').value = boleto.compradorRg || '';
+            document.getElementById('compradorTelefone').value = boleto.compradorTelefone || '';
+            document.getElementById('compradorEndereco').value = boleto.compradorEndereco || '';
+            document.getElementById('produtoModelo').value = boleto.produtoModelo || '';
+            document.getElementById('produtoImei').value = boleto.produtoImei || '';
+            document.getElementById('valorTotal').value = boleto.valorTotal || '';
+            document.getElementById('valorEntrada').value = boleto.valorEntrada || '';
+            document.getElementById('numeroParcelas').value = boleto.numeroParcelas || '';
+            document.getElementById('tipoParcela').value = boleto.tipoParcela || 'mensais';
+            document.getElementById('primeiroVencimento').value = boleto.primeiroVencimento || '';
+            document.getElementById('valorTotal').dispatchEvent(new Event('input'));
+
+            // Troca para aba "Novo" SEM disparar o change (evita re-render do histórico)
+            const toggle = document.getElementById('boletoModeToggle');
+            if (toggle && toggle.checked) {
+                toggle.checked = false;
+                // Troca as divs manualmente sem chamar loadBoletosHistory
+                const newContent = document.getElementById('newBoletoContent');
+                const histContent = document.getElementById('historyBoletoContent');
+                if (newContent) newContent.classList.remove('hidden');
+                if (histContent) histContent.classList.add('hidden');
+            }
+
+            // Atualiza o botão para indicar edição
+            const btnImprimir = document.getElementById('btnImprimir');
+            if (btnImprimir) {
+                btnImprimir.innerHTML = '<i class="bi bi-save-fill"></i> Salvar Alterações';
+                btnImprimir.classList.remove('btn-primary');
+                btnImprimir.classList.add('btn-warning');
+            }
+
+            // Banner de alerta de edição
+            let banner = document.getElementById('editingBannerBoleto');
+            if (!banner) {
+                banner = document.createElement('div');
+                banner.id = 'editingBannerBoleto';
+                banner.style.cssText = 'background:#f0ad4e;color:#000;padding:8px 12px;border-radius:8px;margin-bottom:10px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;';
+                const form = document.getElementById('contractForm');
+                if (form) form.parentNode.insertBefore(banner, form);
+            }
+            banner.innerHTML = '<span>✏️ Editando contrato de <strong>' + escapeHtml(boleto.compradorNome || '') + '</strong></span>' +
+                '<button type="button" onclick="cancelarEdicaoBoleto()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;">✕</button>';
+            banner.style.display = 'flex';
+        });
+    });
+
+    // --- REENVIAR ---
+    historyContainer.querySelectorAll('.reenviar-boleto-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const boletoId = e.currentTarget.dataset.id;
+            const boleto = boletosArray.find(b => b.id === boletoId);
+            if (!boleto) return;
+
+            // Preenche o preview com os dados do boleto
+            document.getElementById('compradorNome').value = boleto.compradorNome || '';
+            document.getElementById('compradorCpf').value = boleto.compradorCpf || '';
+            document.getElementById('compradorRg').value = boleto.compradorRg || '';
+            document.getElementById('compradorTelefone').value = boleto.compradorTelefone || '';
+            document.getElementById('compradorEndereco').value = boleto.compradorEndereco || '';
+            document.getElementById('produtoModelo').value = boleto.produtoModelo || '';
+            document.getElementById('produtoImei').value = boleto.produtoImei || '';
+            document.getElementById('valorTotal').value = boleto.valorTotal || '';
+            document.getElementById('valorEntrada').value = boleto.valorEntrada || '';
+            document.getElementById('numeroParcelas').value = boleto.numeroParcelas || '';
+            document.getElementById('tipoParcela').value = boleto.tipoParcela || 'mensais';
+            document.getElementById('primeiroVencimento').value = boleto.primeiroVencimento || '';
+
+            populatePreview();
+
+            const tempDiv = document.createElement('div');
+            tempDiv.style.cssText = 'font-family: Times New Roman, serif; font-size: 10pt; line-height: 1.5; color: #000; background: #fff; padding: 20px; width: 750px; box-sizing: border-box;';
+            tempDiv.innerHTML = document.getElementById('contractPreview').innerHTML;
+
+            const titulo = tempDiv.querySelector('h4');
+            if (titulo) titulo.style.cssText = 'font-size: 10.5pt; font-weight: bold; color: #000; text-align: center; margin-bottom: 16pt; line-height: 1.4;';
+
+            tempDiv.querySelectorAll('p, div, strong, span').forEach(el => {
+                el.style.wordBreak = 'keep-all';
+                el.style.overflowWrap = 'break-word';
+                el.style.pageBreakInside = 'avoid';
+            });
+
+            const nomeArq = 'Contrato-' + (boleto.compradorNome || 'cliente').split(' ')[0] + '.pdf';
+            const opt = {
+                margin: [10, 10, 10, 10],
+                filename: nomeArq,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            showCustomModal({ message: 'Gerando PDF, aguarde...' });
+
+            html2pdf().set(opt).from(tempDiv).output('blob').then(async function(pdfBlob) {
+                const file = new File([pdfBlob], nomeArq, { type: 'application/pdf' });
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    try {
+                        await navigator.share({
+                            files: [file],
+                            title: 'Contrato Workcell Tecnologia',
+                            text: 'Olá ' + (boleto.compradorNome || 'Cliente') + ', segue seu contrato em anexo.'
+                        });
+                    } catch(err) {
+                        if (err.name !== 'AbortError') {
+                            const url = URL.createObjectURL(pdfBlob);
+                            const a = document.createElement('a');
+                            a.href = url; a.download = nomeArq; a.click();
+                            URL.revokeObjectURL(url);
+                        }
+                    }
+                } else {
+                    const url = URL.createObjectURL(pdfBlob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = nomeArq; a.click();
+                    URL.revokeObjectURL(url);
+                }
+            }).catch(err => showCustomModal({ message: 'Erro ao gerar PDF: ' + err.message }));
+        });
+    });
+
+    // --- EXCLUIR ---
     historyContainer.querySelectorAll('.delete-boleto-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const boletoId = e.currentTarget.dataset.id;
+            const boleto = boletosArray.find(b => b.id === boletoId);
+            const nomeCliente = boleto ? boleto.compradorNome : 'este registro';
             showCustomModal({
-                message: "Tem certeza que deseja excluir este registro do histórico? Esta ação não pode ser desfeita.",
+                message: 'Tem certeza que deseja excluir o contrato de <strong>' + escapeHtml(nomeCliente) + '</strong>? Esta ação NÃO pode ser desfeita.',
                 confirmText: "Sim, Excluir",
                 onConfirm: async () => {
-                    try {
-                        await remove(ref(db, `boletos/${boletoId}`));
-                        showCustomModal({ message: "Registro excluído com sucesso." });
-                    } catch (error) {
-                        showCustomModal({ message: `Erro ao excluir: ${error.message}` });
-                    }
+                    showCustomModal({
+                        message: 'CONFIRMAÇÃO FINAL: Apagar o contrato de <strong>' + escapeHtml(nomeCliente) + '</strong> permanentemente?',
+                        confirmText: "Apagar Definitivamente",
+                        onConfirm: async () => {
+                            try {
+                                await remove(ref(db, 'boletos/' + boletoId));
+                                showCustomModal({ message: "Registro excluído com sucesso." });
+                            } catch (error) {
+                                showCustomModal({ message: 'Erro ao excluir: ' + error.message });
+                            }
+                        },
+                        onCancel: () => {}
+                    });
                 },
                 onCancel: () => {}
             });
@@ -2534,6 +2782,9 @@ function setupNotificationListeners() {
         }
         checkForDueInstallments(generalNotifications);
     });
+
+    // 🎂 Aniversários — checa clientes com dataNascimento = hoje
+    window.checarAniversariosHoje();
 }
 
 function checkForDueInstallments(initialNotifications = []) {
@@ -2628,6 +2879,9 @@ function updateNotificationUI(notifications) {
     const menuText = document.getElementById('menu-notification-text');
 
     if (notifications.length > 0) {
+        // 🔔 NOTIFICAÇÃO NATIVA (push local)
+        window.dispararNotificacaoNativa(notifications);
+
         // 1. Acende a bolinha no Avatar
         if (avatarBadge) {
             avatarBadge.classList.remove('hidden');
@@ -3240,23 +3494,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const closePriceModal = () => document.getElementById('editPriceModalOverlay').classList.remove('active');
     document.getElementById('cancelEditPriceBtn').addEventListener('click', closePriceModal);
     
-    document.getElementById('confirmEditPriceBtn').addEventListener('click', () => {
-        const index = document.getElementById('editPriceProductIndex').value;
-        const newVal = parseFloat(document.getElementById('editPriceInput').value);
-        if (!isNaN(newVal) && newVal > 0) {
-            carrinhoDeAparelhos[index].valor = newVal; // Atualiza valor
-            renderCarrinho();
-            calculateAparelho();
-            // Atualiza visualmente o preço no card
-            const cardPriceEl = document.querySelector('.product-action-header .text-success');
-            if(cardPriceEl) cardPriceEl.textContent = newVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            closePriceModal();
-            showCustomModal({ message: "Valor atualizado!" });
-        } else {
-            showCustomModal({ message: "Valor inválido." });
-        }
-    });
-    
     document.getElementById('notificationList').addEventListener('click', (e) => {
         const item = e.target.closest('.notification-item');
         if (item) {
@@ -3393,7 +3630,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ... o resto do código continua (goToAdminFromEmptyState etc) ...
     document.getElementById('goToAdminFromEmptyState').addEventListener('click', () => showMainSection('administracao'));
 
-    document.getElementById('goToAdminFromEmptyState').addEventListener('click', () => showMainSection('administracao'));
     // Botão Voltar do Sub-menu da Calculadora
     document.getElementById('backFromCalculatorHome').addEventListener('click', () => showMainSection('main'));
 
@@ -4134,9 +4370,9 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
     });
     
     document.getElementById('administracao').addEventListener('click', e => {
-        const deleteBtn = e.target.closest('.delete-notification-btn');
-        if (deleteBtn) {
-            const notifId = deleteBtn.dataset.id;
+        const deleteNotifBtn = e.target.closest('.delete-notification-btn');
+        if (deleteNotifBtn) {
+            const notifId = deleteNotifBtn.dataset.id;
             showCustomModal({
                 message: "Tem certeza que deseja apagar esta notificação?",
                 confirmText: "Apagar",
@@ -4147,30 +4383,10 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                 onCancel: () => {}
             });
         }
-    });
-
-    document.getElementById('administracao').addEventListener('submit', e => {
-        if (e.target.id === 'addTagForm') {
-            e.preventDefault();
-            const input = document.getElementById('newTagName');
-            const newTag = input.value.trim();
-            if (newTag && newTag.toLowerCase() !== "nenhuma") {
-                const currentTags = getTagList();
-                if (!currentTags.find(t => t.toLowerCase() === newTag.toLowerCase())) {
-                    saveTagList([...currentTags, newTag]);
-                    input.value = '';
-                } else {
-                    showCustomModal({ message: 'Essa etiqueta já existe.' });
-                }
-            }
-        }
-    });
-    
-    document.getElementById('administracao').addEventListener('click', e => {
-        const deleteBtn = e.target.closest('.delete-tag-btn');
-        const saveBtn = e.target.closest('.save-tag-btn');
-        if (deleteBtn) {
-            const tagToDelete = deleteBtn.dataset.tag;
+        const deleteTagBtn = e.target.closest('.delete-tag-btn');
+        const saveTagBtn = e.target.closest('.save-tag-btn');
+        if (deleteTagBtn) {
+            const tagToDelete = deleteTagBtn.dataset.tag;
             showCustomModal({
                 message: "Digite a senha de administrador para excluir.",
                 showPassword: true,
@@ -4196,9 +4412,9 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                 onCancel: () => {}
             });
         }
-        if (saveBtn) {
-            const originalName = saveBtn.dataset.tag;
-            const container = saveBtn.closest('div.p-3');
+        if (saveTagBtn) {
+            const originalName = saveTagBtn.dataset.tag;
+            const container = saveTagBtn.closest('div.p-3');
             const newNameInput = container.querySelector('.tag-name-input');
             const newName = newNameInput.value.trim();
             if(originalName !== newName) {
@@ -4223,6 +4439,26 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             }
         }
     });
+
+
+    document.getElementById('administracao').addEventListener('submit', e => {
+        if (e.target.id === 'addTagForm') {
+            e.preventDefault();
+            const input = document.getElementById('newTagName');
+            const newTag = input.value.trim();
+            if (newTag && newTag.toLowerCase() !== "nenhuma") {
+                const currentTags = getTagList();
+                if (!currentTags.find(t => t.toLowerCase() === newTag.toLowerCase())) {
+                    saveTagList([...currentTags, newTag]);
+                    input.value = '';
+                } else {
+                    showCustomModal({ message: 'Essa etiqueta já existe.' });
+                }
+            }
+        }
+    });
+    
+    
     
     async function saveTagChanges(originalName, container) {
         const newName = container.querySelector('.tag-name-input').value.trim();
@@ -4453,7 +4689,7 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             contractForm.reportValidity();
             return;
         }
-        
+
         const boletosRef = ref(db, 'boletos');
         const boletoData = {
             compradorNome: document.getElementById('compradorNome').value,
@@ -4472,18 +4708,112 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             primeiroVencimento: document.getElementById('primeiroVencimento').value,
             criadoEm: new Date().toISOString()
         };
-        
-        push(boletosRef, boletoData)
-            .then(() => {
-                showCustomModal({ message: 'Contrato salvo no banco de dados!' });
-                populatePreview();
-                document.body.classList.add('print-only-contract');
-                window.print();
-            })
-            .catch((error) => {
-                console.error("Erro ao salvar contrato: ", error);
-                showCustomModal({ message: `Falha ao salvar o contrato: ${error.message}` });
-            });
+
+        // Popula o conteúdo do contrato
+        populatePreview();
+
+        // Cria um elemento temporário com o HTML do contrato estilizado
+        const tempDiv = document.createElement('div');
+        tempDiv.style.cssText = 'font-family: Times New Roman, serif; font-size: 10pt; line-height: 1.5; color: #000; background: #fff; padding: 20px; width: 750px; box-sizing: border-box;';
+        tempDiv.innerHTML = document.getElementById('contractPreview').innerHTML;
+
+        // Corrige o título
+        const titulo = tempDiv.querySelector('h4');
+        if (titulo) {
+            titulo.style.cssText = 'font-size: 10.5pt; font-weight: bold; color: #000; text-align: center; margin-bottom: 16pt; line-height: 1.4;';
+        }
+
+        // Evita corte de palavras em todos os elementos
+        tempDiv.querySelectorAll('p, div, strong, span') .forEach(el => {
+            el.style.wordBreak = 'keep-all';
+            el.style.overflowWrap = 'break-word';
+            el.style.pageBreakInside = 'avoid';
+        });
+
+        // Garante que os campos strong tenham o valor correto
+        tempDiv.querySelectorAll('strong[id]').forEach(el => {
+            const original = document.getElementById(el.id);
+            if (original) el.textContent = original.textContent;
+        });
+
+        const nomeCliente = document.getElementById('compradorNome').value || 'contrato';
+        const nomeArquivo = 'Contrato-' + nomeCliente.split(' ')[0] + '.pdf';
+
+        const opt = {
+            margin: [10, 10, 10, 10],
+            filename: nomeArquivo,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+
+        showCustomModal({ message: 'Gerando PDF, aguarde...' });
+
+        html2pdf().set(opt).from(tempDiv).output('blob').then(async function(pdfBlob) {
+            // Salva ou atualiza no Firebase
+            // Lê o ID do campo hidden (mais confiável que variável JS)
+            const hiddenIdEl = document.getElementById('editingBoletoId');
+            const editId = (hiddenIdEl && hiddenIdEl.value) ? hiddenIdEl.value : window.currentEditingBoletoId;
+
+            if (editId) {
+                // EDITANDO registro existente - atualiza sem criar novo
+                update(ref(db, 'boletos/' + editId), boletoData).catch(function(e) {
+                    console.error("Erro ao atualizar contrato: ", e);
+                });
+                // Reseta estado de edição
+                if (hiddenIdEl) hiddenIdEl.value = '';
+                window.currentEditingBoletoId = null;
+                const btnImprimir2 = document.getElementById('btnImprimir');
+                if (btnImprimir2) {
+                    btnImprimir2.innerHTML = '<i class="bi bi-printer"></i> Imprimir e Salvar';
+                    btnImprimir2.classList.remove('btn-warning');
+                    btnImprimir2.classList.add('btn-primary');
+                }
+                const banner2 = document.getElementById('editingBannerBoleto');
+                if (banner2) banner2.style.display = 'none';
+            } else {
+                // NOVO registro
+                push(boletosRef, boletoData).catch(function(error) {
+                    console.error("Erro ao salvar contrato: ", error);
+                });
+            }
+
+            const nomeCliente2 = document.getElementById('compradorNome').value || 'Cliente';
+            const file = new File([pdfBlob], nomeArquivo, { type: 'application/pdf' });
+
+            // Tenta compartilhar (celular)
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({
+                        files: [file],
+                        title: 'Contrato Workcell Tecnologia',
+                        text: 'Olá ' + nomeCliente2 + ', segue seu contrato em anexo.'
+                    });
+                    showCustomModal({ message: 'Contrato compartilhado e salvo! ✅' });
+                } catch(e) {
+                    if (e.name !== 'AbortError') {
+                        const url = URL.createObjectURL(pdfBlob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = nomeArquivo;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                        showCustomModal({ message: 'Contrato salvo! ✅' });
+                    }
+                }
+            } else {
+                const url = URL.createObjectURL(pdfBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = nomeArquivo;
+                a.click();
+                URL.revokeObjectURL(url);
+                showCustomModal({ message: 'Contrato salvo! ✅' });
+            }
+        }).catch(function(error) {
+            console.error("Erro ao gerar PDF:", error);
+            showCustomModal({ message: 'Erro ao gerar PDF: ' + error.message });
+        });
     });
 
     document.getElementById('exportRepassarBtn').addEventListener('click', () => {
@@ -6151,15 +6481,86 @@ window.preencherCliente = function(id, idListaParaFechar) {
     }
 };
 
-// Inicia a função
-ativarAutocomplete();
+// ============================================================
+// AUTOCOMPLETE PARA O FORMULÁRIO DE BOLETO/CONTRATO
+// ============================================================
+function ativarAutocompleteBoleto() {
+    var campos = [
+        { idInput: 'compradorNome', tipo: 'nome' },
+        { idInput: 'compradorCpf',  tipo: 'cpf' },
+        { idInput: 'compradorTelefone', tipo: 'tel' }
+    ];
+
+    campos.forEach(function(campo) {
+        var input = document.getElementById(campo.idInput);
+        if (!input) return;
+
+        var listaId = 'sug-boleto-' + campo.idInput;
+        var listaUl = document.getElementById(listaId);
+        if (!listaUl) {
+            listaUl = document.createElement('ul');
+            listaUl.id = listaId;
+            listaUl.className = 'list-group position-absolute w-100 shadow';
+            listaUl.style.cssText = 'z-index:9999;display:none;max-height:200px;overflow-y:auto;';
+            input.parentNode.style.position = 'relative';
+            input.parentNode.appendChild(listaUl);
+        }
+
+        input.addEventListener('input', function(e) {
+            var termo = e.target.value.toLowerCase().trim();
+            var termoLimpo = termo.replace(/[^a-z0-9]/g, '');
+            listaUl.style.display = 'none';
+            listaUl.innerHTML = '';
+            if (termoLimpo.length < 2) return;
+
+            var cache = window.dbClientsCache || [];
+            var encontrados = cache.filter(function(c) {
+                var nomeDb = (c.nome || '').toLowerCase();
+                var cpfDb = (c.cpf || '').replace(/[^0-9]/g, '');
+                var telDb = (c.tel || '').replace(/[^0-9]/g, '');
+                if (campo.tipo === 'nome') return nomeDb.includes(termo);
+                if (campo.tipo === 'cpf') return cpfDb.includes(termoLimpo);
+                if (campo.tipo === 'tel') return telDb.includes(termoLimpo);
+                return false;
+            });
+
+            if (encontrados.length > 0) {
+                listaUl.innerHTML = encontrados.slice(0, 5).map(function(c) {
+                    return '<li class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" style="cursor:pointer;" onclick="preencherClienteBoleto(\'' + c.id + '\',\'' + listaId + '\')">' +
+                        '<div><strong>' + escapeHtml(c.nome) + '</strong><br><small class="text-secondary">' + (c.cpf || 'S/ CPF') + ' — ' + (c.tel || 'S/ Tel') + '</small></div>' +
+                        '<i class="bi bi-box-arrow-in-down-left text-primary"></i></li>';
+                }).join('');
+                listaUl.style.display = 'block';
+            }
+        });
+
+        document.addEventListener('click', function(e) {
+            if (e.target !== input) listaUl.style.display = 'none';
+        });
+    });
+}
+
+window.preencherClienteBoleto = function(id, idLista) {
+    var cliente = (window.dbClientsCache || []).find(function(c) { return c.id === id; });
+    if (!cliente) return;
+    var set = function(elId, val) { var el = document.getElementById(elId); if (el) el.value = val || ''; };
+    set('compradorNome', cliente.nome);
+    set('compradorCpf', cliente.cpf);
+    set('compradorTelefone', cliente.tel);
+    set('compradorEndereco', cliente.end);
+    if (idLista) { var l = document.getElementById(idLista); if (l) l.style.display = 'none'; }
+    // Feedback visual
+    ['compradorNome','compradorCpf','compradorTelefone'].forEach(function(fid) {
+        var el = document.getElementById(fid);
+        if (el) { el.classList.add('is-valid'); setTimeout(function() { el.classList.remove('is-valid'); }, 1200); }
+    });
+};
+
+// Inicia quando a aba de contrato for aberta
+setTimeout(ativarAutocompleteBoleto, 800);
 
 
-
-// 1. Variável Global (Janela para os dados)
-window.dbClientsCache = []; 
-
-// 2. Conexão com o Banco (Atualiza lista automaticamente)
+// Conexão com o Banco (Atualiza lista automaticamente - dbClientsCache)
 if (typeof db !== 'undefined') {
     const clientsRef = ref(db, 'clientes');
     onValue(clientsRef, (snapshot) => {
@@ -6270,6 +6671,8 @@ window.editarCliente = function(id) {
     document.getElementById('editClientTel').value = cliente.tel || '';
     document.getElementById('editClientAddress').value = cliente.end || '';
     document.getElementById('editClientEmail').value = cliente.email || '';
+    const editBirthEl = document.getElementById('editClientBirthdate');
+    if (editBirthEl) editBirthEl.value = cliente.dataNascimento || '';
     document.getElementById('editClientModalOverlay').classList.add('active');
 };
 
@@ -6306,6 +6709,7 @@ window.editarCliente = function(id) {
                 tel: document.getElementById('editClientTel').value,
                 end: document.getElementById('editClientAddress').value,
                 email: document.getElementById('editClientEmail').value,
+                dataNascimento: (document.getElementById('editClientBirthdate')?.value) || '',
                 ultimoCompra: new Date().toISOString()
             };
 
@@ -6509,29 +6913,30 @@ setupProductTags();
 
     // 1. Função que troca as telas (Menu -> Contrato -> Garantia)
     window.openDocumentsSection = function(subSectionId) {
-        // Pega os elementos da tela
         const docHome = document.getElementById('documentsHome');
         const areaContrato = document.getElementById('areaContratoWrapper');
         const areaBookip = document.getElementById('areaBookipWrapper');
 
-        // Esconde tudo primeiro (para não ficar um em cima do outro)
-        if(docHome) docHome.style.display = 'none';
-        if(areaContrato) areaContrato.style.display = 'none';
-        if(areaBookip) areaBookip.style.display = 'none';
+        // Esconde tudo (adiciona hidden E zera style)
+        [docHome, areaContrato, areaBookip].forEach(el => {
+            if (el) { el.classList.add('hidden'); el.style.display = ''; }
+        });
 
-        // Mostra só o que você escolheu
         if (subSectionId === 'home') {
-            if(docHome) docHome.style.display = 'flex'; // Mostra o Menu
+            if (docHome) { docHome.classList.remove('hidden'); docHome.style.display = 'flex'; }
         } 
         else if (subSectionId === 'contrato') {
-            if(areaContrato) {
+            if (areaContrato) {
+                areaContrato.classList.remove('hidden');
                 areaContrato.style.display = 'block';
-                // Carrega o rascunho (se tiver)
-                if(typeof loadContractDraft === 'function') loadContractDraft(); 
+                if (typeof loadContractDraft === 'function') loadContractDraft();
             }
         } 
         else if (subSectionId === 'bookip') {
-            if(areaBookip) areaBookip.style.display = 'block';
+            if (areaBookip) {
+                areaBookip.classList.remove('hidden');
+                areaBookip.style.display = 'block';
+            }
         }
     };
 
@@ -6632,10 +7037,22 @@ function printBookip(dados) {
 }
 
 
-// GERADOR DE PDF (DESIGN VERDE + MODO SITUAÇÃO LIMPO)
-// ============================================================
-// ============================================================
-// GERADOR DE PDF (DESIGN VERDE ORIGINAL + CORREÇÃO DE QUEBRA)
+// Cancela edição de boleto sem perder dados
+window.cancelarEdicaoBoleto = function() {
+    const hiddenIdEl = document.getElementById('editingBoletoId');
+    if (hiddenIdEl) hiddenIdEl.value = '';
+    window.currentEditingBoletoId = null;
+    const btn = document.getElementById('btnImprimir');
+    if (btn) {
+        btn.innerHTML = '<i class="bi bi-printer"></i> Imprimir e Salvar';
+        btn.classList.remove('btn-warning');
+        btn.classList.add('btn-primary');
+    }
+    const banner = document.getElementById('editingBannerBoleto');
+    if (banner) banner.style.display = 'none';
+};
+
+// GERADOR DE PDF (DESIGN VERDE + CORREÇÃO DE QUEBRA)
 // ============================================================
 function getReciboHTML(dados) {
     // 1. VERIFICAÇÕES DE MODO (RECIBO vs GARANTIA vs SITUAÇÃO)
@@ -6923,7 +7340,7 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
 
         // --- B. RENDERIZA COMO IMAGEM (CAPTURA) ---
         window.scrollTo(0,0);
-        await new Promise(r => setTimeout(r, 800)); // Tempo para carregar imagens/fontes
+        await new Promise(r => setTimeout(r, 2000)); // Tempo para carregar imagens/fontes
 
         // 🔥 ESCALA 2 + PNG = O equilíbrio perfeito para Android (Nitidez sem travar)
         const fullCanvas = await html2canvas(containerTemp, {
@@ -6936,54 +7353,77 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
         // --- C. PAGINAÇÃO MANUAL (CORREÇÃO DE CORTE + TARJA BRANCA) ---
         const pdfRatio = 297 / 210; 
         const pageHeightPixels = Math.floor(fullCanvas.width * pdfRatio);
-        const margemSeguranca = 100; 
+        const margemSeguranca = 100;
         const contentHeightPerPage = pageHeightPixels - (margemSeguranca * 2) - 15;
         const totalHeight = fullCanvas.height;
         let currentHeight = 0;
         let pageCount = 1;
-        
+
         const printContainer = document.createElement('div');
-        printContainer.style.width = '794px'; 
-        
+        printContainer.style.width = '794px';
+
+        // Função que procura uma linha branca próxima ao corte ideal
+        // para não cortar no meio de uma linha de texto
+        function encontrarCorteSeguro(canvas, corteIdeal, margem) {
+            var ctx2 = canvas.getContext('2d');
+            var largura = canvas.width;
+            // Procura até 80px acima do corte ideal por uma linha quase branca
+            var melhor = corteIdeal;
+            for (var y = corteIdeal; y > corteIdeal - 80; y--) {
+                var pixels = ctx2.getImageData(0, y, largura, 1).data;
+                var ehBranco = true;
+                for (var p = 0; p < pixels.length; p += 4) {
+                    // Se algum pixel não for quase branco (>240), não é linha branca
+                    if (pixels[p] < 240 || pixels[p+1] < 240 || pixels[p+2] < 240) {
+                        ehBranco = false;
+                        break;
+                    }
+                }
+                if (ehBranco) { melhor = y; break; }
+            }
+            return melhor;
+        }
+
         while (currentHeight < totalHeight) {
-            const pageCanvas = document.createElement('canvas');
+            var pageCanvas = document.createElement('canvas');
             pageCanvas.width = fullCanvas.width;
             pageCanvas.height = pageHeightPixels;
-            const ctx = pageCanvas.getContext('2d');
-            
-            // Fundo branco
+            var ctx = pageCanvas.getContext('2d');
+
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
 
-            const heightLeft = totalHeight - currentHeight;
-            const sliceHeight = Math.min(contentHeightPerPage, heightLeft);
-            const ajusteVisual = (pageCount > 1) ? 60 : 0; 
+            var heightLeft = totalHeight - currentHeight;
+            var corteIdeal = Math.min(contentHeightPerPage, heightLeft);
 
-            // Desenha o pedaço da página
-            ctx.drawImage(
-                fullCanvas, 
-                0, currentHeight, fullCanvas.width, sliceHeight, // Origem
-                0, margemSeguranca + ajusteVisual, fullCanvas.width, sliceHeight // Destino
-            );
-
-            // 👇 TARJA BRANCA DE LIMPEZA (Remove "sujeira" de letras cortadas do topo) 👇
-            if (pageCount > 1) {
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, margemSeguranca + ajusteVisual - 2, pageCanvas.width, 5);
+            // Se não é a última página, tenta encontrar um corte em linha branca
+            var sliceHeight = corteIdeal;
+            if (heightLeft > corteIdeal) {
+                sliceHeight = encontrarCorteSeguro(fullCanvas, currentHeight + corteIdeal, margemSeguranca) - currentHeight;
+                if (sliceHeight <= 0) sliceHeight = corteIdeal;
             }
 
-            // Converte para Imagem PNG (Texto Nítido)
-            const imgSlice = document.createElement('img');
+            var margemTopo = (pageCount > 1) ? margemSeguranca + 40 : margemSeguranca;
 
-            // Procure a linha do imgSlice.src e troque por esta:
-imgSlice.src = pageCanvas.toDataURL('image/jpeg', 0.95); // <--- JPEG 0.95 (Leve e nítido)
+            ctx.drawImage(
+                fullCanvas,
+                0, currentHeight, fullCanvas.width, sliceHeight,
+                0, margemTopo, fullCanvas.width, sliceHeight
+            );
 
+            // Tarja branca no topo para limpar qualquer resíduo
+            if (pageCount > 1) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, pageCanvas.width, margemTopo - 2);
+            }
 
-            imgSlice.style.width = '100%'; 
+            var imgSlice = document.createElement('img');
+            imgSlice.src = pageCanvas.toDataURL('image/jpeg', 0.95);
+            imgSlice.style.width = '100%';
             imgSlice.style.display = 'block';
-            
-            const pageDiv = document.createElement('div');
-            pageDiv.style.cssText = "position: relative; width: 100%; margin: 0; padding: 0; page-break-after: always;";
+
+            var pageDiv = document.createElement('div');
+            pageDiv.style.cssText = 'position: relative; width: 100%; margin: 0; padding: 0; page-break-after: always;';
             pageDiv.appendChild(imgSlice);
             printContainer.appendChild(pageDiv);
 
@@ -8430,3 +8870,216 @@ if (selectGarantia && inputGarantiaManual) {
 }
 
         });
+
+// ============================================================
+// 🔔 SISTEMA DE NOTIFICAÇÕES NATIVAS (Push Local)
+// Funciona com app aberto e fechado (via Service Worker)
+// Não precisa de servidor — tudo local
+// ============================================================
+
+// ---- 1. PEDIR PERMISSÃO ----
+window.pedirPermissaoNotificacao = async function() {
+    if (!('Notification' in window)) return; // Navegador não suporta
+    if (Notification.permission === 'granted') return; // Já tem
+    if (Notification.permission === 'denied') return;  // Usuário negou
+
+    // Pede permissão de forma não-intrusiva (após interação do usuário)
+    const perm = await Notification.requestPermission();
+    if (perm === 'granted') {
+        console.log('✅ Permissão de notificação concedida');
+        // Manda uma notificação de boas-vindas
+        window.dispararNotificacaoNativa([{
+            isGeneral: true,
+            message: 'Notificações ativadas! Você vai receber avisos de parcelas, aniversários e avisos do sistema.'
+        }], true);
+    }
+};
+
+// ---- 2. DISPARAR NOTIFICAÇÃO NATIVA ----
+window.dispararNotificacaoNativa = function(notifications, forcar = false) {
+    if (!notifications || notifications.length === 0) return;
+    if (Notification.permission !== 'granted') return;
+
+    // Evita repetir a mesma notificação no mesmo dia
+    const hoje = new Date().toISOString().split('T')[0];
+    const storageKey = `ctw_notif_fired_${hoje}`;
+    let fired = [];
+    try { fired = JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch(e) {}
+
+    notifications.forEach((notif, idx) => {
+        // Extrai texto puro da mensagem HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = notif.message || '';
+        const textoPuro = (tempDiv.textContent || tempDiv.innerText || '').trim().slice(0, 200);
+
+        if (!textoPuro) return;
+
+        // Cria um ID único para essa notificação (evita duplicatas)
+        const notifId = notif.notificationId || notif.boletoId || `general_${idx}_${textoPuro.slice(0,30)}`;
+        const firedKey = `${hoje}_${notifId}`;
+
+        if (!forcar && fired.includes(firedKey)) return; // Já disparou hoje
+
+        // Ícone e título baseado no tipo
+        let titulo = '⚡ Central Workcell';
+        let icone  = '/icon-192.png'; // ícone do PWA
+
+        if (notif.isGeneral) {
+            titulo = '📢 Aviso do Sistema';
+        } else if (notif.isBirthday) {
+            titulo = '🎂 Aniversário Hoje!';
+        } else {
+            titulo = '💳 Parcela em Aberto';
+        }
+
+        // Tenta via Service Worker (funciona com app fechado)
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+                tipo: 'MOSTRAR_NOTIFICACAO',
+                titulo: titulo,
+                corpo: textoPuro,
+                tag: firedKey
+            });
+        } else {
+            // Fallback: Notification API direta (só funciona com app aberto)
+            try {
+                new Notification(titulo, {
+                    body: textoPuro,
+                    icon: icone,
+                    tag: firedKey,
+                    renotify: false,
+                    badge: icone
+                });
+            } catch(e) { console.warn('Notificação falhou:', e); }
+        }
+
+        // Marca como disparada
+        if (!fired.includes(firedKey)) {
+            fired.push(firedKey);
+            try { localStorage.setItem(storageKey, JSON.stringify(fired)); } catch(e) {}
+        }
+    });
+};
+
+// ---- 3. CHECAR ANIVERSÁRIOS DE HOJE ----
+window.checarAniversariosHoje = function() {
+    const clientes = window.dbClientsCache || [];
+    if (clientes.length === 0) return;
+
+    const hoje = new Date();
+    const mesHoje = hoje.getMonth() + 1; // 1-12
+    const diaHoje = hoje.getDate();
+
+    const aniversariantes = clientes.filter(c => {
+        if (!c.dataNascimento) return false;
+        const parts = c.dataNascimento.split('-'); // YYYY-MM-DD
+        if (parts.length < 3) return false;
+        return parseInt(parts[1]) === mesHoje && parseInt(parts[2]) === diaHoje;
+    });
+
+    if (aniversariantes.length === 0) return;
+
+    // Monta notificações de aniversário
+    const notifsBirthday = aniversariantes.map(c => ({
+        isBirthday: true,
+        notificationId: `birthday_${c.id}`,
+        message: `🎂 Hoje é aniversário de <strong>${c.nome}</strong>!`
+    }));
+
+    // Dispara push nativo
+    window.dispararNotificacaoNativa(notifsBirthday);
+
+    // Também injeta na UI de notificações do app
+    // (será mesclado na próxima chamada de updateNotificationUI via setupNotificationListeners)
+    console.log(`🎂 ${aniversariantes.length} aniversariante(s) hoje:`, aniversariantes.map(c => c.nome));
+};
+
+// ---- 4. LISTENER DO SERVICE WORKER ----
+// Recebe mensagens do SW e vice-versa
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data && event.data.tipo === 'SW_PRONTO') {
+            console.log('✅ Service Worker conectado para notificações');
+        }
+    });
+}
+
+// ---- 5. PEDE PERMISSÃO NA PRIMEIRA INTERAÇÃO ----
+// Espera o usuário clicar em algo (boa prática — browser exige gesto)
+document.addEventListener('click', function pedirUmaVez() {
+    window.pedirPermissaoNotificacao();
+    document.removeEventListener('click', pedirUmaVez); // Só tenta uma vez
+}, { once: true });
+
+
+// ============================================================
+// ✨ AMBILIGHT ENGINE — segue o tema e cor do app
+// ============================================================
+(function initAmbilight() {
+    let sr = 239, sg = 83, sb = 80;
+
+    function easeInOut(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
+    function altProgress(elapsed, duration) {
+        const cycle = elapsed % (duration * 2);
+        const raw   = cycle < duration ? cycle/duration : 2-cycle/duration;
+        return easeInOut(raw);
+    }
+    function clamp(v, mn, mx) { return Math.min(mx, Math.max(mn, v)); }
+
+    function getPrimaryRGB() {
+        const style = getComputedStyle(document.body);
+        const rgb = style.getPropertyValue('--primary-color-rgb').trim();
+        if (rgb) {
+            const parts = rgb.split(',').map(v => parseInt(v.trim()));
+            if (parts.length === 3 && !parts.some(isNaN)) return { r: parts[0], g: parts[1], b: parts[2] };
+        }
+        const hex = style.getPropertyValue('--primary-color').trim().replace('#','');
+        if (hex.length === 6) return { r: parseInt(hex.slice(0,2),16), g: parseInt(hex.slice(2,4),16), b: parseInt(hex.slice(4,6),16) };
+        return { r: 239, g: 83, b: 80 };
+    }
+
+    function isLightMode() { return document.body.dataset.theme === 'light'; }
+
+    const t0 = performance.now();
+    let lastMetaUpdate = 0;
+
+    function ambilightTick(now) {
+        const sec = (now - t0) / 1000;
+        const p1 = altProgress(sec, 12);
+        const p2 = altProgress(sec, 15);
+        const inf1 = clamp(1 - p1 * 0.7, 0.1, 1);
+        const inf2 = clamp(p2 * 0.5, 0, 0.6);
+        const total = inf1 + inf2 || 0.001;
+        const C = getPrimaryRGB();
+        const C2 = { r: Math.round(C.r * 0.5), g: Math.round(C.g * 0.4), b: Math.min(255, Math.round(C.b * 0.9 + 80)) };
+        const tr = (C.r*inf1 + C2.r*inf2) / total;
+        const tg = (C.g*inf1 + C2.g*inf2) / total;
+        const tb = (C.b*inf1 + C2.b*inf2) / total;
+        sr += (tr-sr)*0.05; sg += (tg-sg)*0.05; sb += (tb-sb)*0.05;
+        const r = Math.round(sr), g = Math.round(sg), b = Math.round(sb);
+        const intensity = clamp(inf1 + inf2*0.5, 0.3, 1);
+        const lightMode = isLightMode();
+        const glowAlpha = lightMode ? 0.35 : 0.8;
+        const glowSpread = lightMode ? 8 : 16;
+        const btnGlow = `0 0 ${glowSpread}px rgba(${r},${g},${b},${glowAlpha})`;
+        const bellBtn = document.getElementById('notification-bell');
+        const avatarWrapper = document.querySelector('.avatar-button-wrapper');
+        if (bellBtn) { bellBtn.style.boxShadow = btnGlow; bellBtn.style.borderColor = `rgba(${r},${g},${b},${(glowAlpha*0.8).toFixed(2)})`; }
+        if (avatarWrapper) { avatarWrapper.style.filter = `drop-shadow(0 0 ${glowSpread*0.6}px rgba(${r},${g},${b},${glowAlpha}))`; }
+        if (now - lastMetaUpdate > 100) {
+            const metaTheme = document.getElementById('status-bar-color');
+            if (metaTheme) {
+                let statusHex;
+                if (lightMode) {
+                    statusHex = '#'+[Math.round(255-(255-r)*0.15), Math.round(255-(255-g)*0.15), Math.round(255-(255-b)*0.15)].map(v=>v.toString(16).padStart(2,'0')).join('');
+                } else {
+                    statusHex = '#'+[Math.round(r*0.25), Math.round(g*0.25), Math.round(b*0.25)].map(v=>v.toString(16).padStart(2,'0')).join('');
+                }
+                metaTheme.setAttribute('content', statusHex);
+            }
+            lastMetaUpdate = now;
+        }
+        requestAnimationFrame(ambilightTick);
+    }
+    requestAnimationFrame(ambilightTick);
+})();
