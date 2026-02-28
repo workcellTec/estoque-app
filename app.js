@@ -2769,8 +2769,6 @@ function setupNotificationListeners() {
         checkForDueInstallments(generalNotifications);
     });
 
-    // 🎂 Aniversários — checa clientes com dataNascimento = hoje
-    window.checarAniversariosHoje();
 }
 
 function checkForDueInstallments(initialNotifications = []) {
@@ -2865,9 +2863,6 @@ function updateNotificationUI(notifications) {
     const menuText = document.getElementById('menu-notification-text');
 
     if (notifications.length > 0) {
-        // 🔔 NOTIFICAÇÃO NATIVA (push local)
-        window.dispararNotificacaoNativa(notifications);
-
         // 1. Acende a bolinha no Avatar
         if (avatarBadge) {
             avatarBadge.classList.remove('hidden');
@@ -8857,150 +8852,80 @@ if (selectGarantia && inputGarantiaManual) {
 
         });
 
-// ============================================================
-// 🔔 SISTEMA DE NOTIFICAÇÕES NATIVAS (Push Local)
-// Funciona com app aberto e fechado (via Service Worker)
-// Não precisa de servidor — tudo local
-// ============================================================
 
-// ---- 1. PEDIR PERMISSÃO ----
-window.pedirPermissaoNotificacao = async function() {
-    if (!('Notification' in window)) return; // Navegador não suporta
-    if (Notification.permission === 'granted') return; // Já tem
-    if (Notification.permission === 'denied') return;  // Usuário negou
+// ============================================================
+// ✨ AMBILIGHT ENGINE — segue o tema e cor do app
+// ============================================================
+(function initAmbilight() {
+    let sr = 239, sg = 83, sb = 80;
 
-    // Pede permissão de forma não-intrusiva (após interação do usuário)
-    const perm = await Notification.requestPermission();
-    if (perm === 'granted') {
-        console.log('✅ Permissão de notificação concedida');
-        // Limpa histórico de notificações disparadas para que disparem imediatamente
-        const hoje = new Date().toISOString().split('T')[0];
-        localStorage.removeItem(`ctw_notif_fired_${hoje}`);
-        // Manda uma notificação de boas-vindas
-        // Pequeno delay para o SW estar pronto antes da primeira notificação
-        setTimeout(() => {
-            window.dispararNotificacaoNativa([{
-                isGeneral: true,
-                message: '✅ Notificações ativadas! Você vai receber avisos de parcelas, aniversários e recados do sistema.'
-            }], true);
-        }, 1500);
+    function easeInOut(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
+    function altProgress(elapsed, duration) {
+        const cycle = elapsed % (duration * 2);
+        const raw   = cycle < duration ? cycle/duration : 2-cycle/duration;
+        return easeInOut(raw);
     }
-};
+    function clamp(v, mn, mx) { return Math.min(mx, Math.max(mn, v)); }
 
-// ---- 2. DISPARAR NOTIFICAÇÃO NATIVA ----
-window.dispararNotificacaoNativa = async function(notifications, forcar = false) {
-    if (!notifications || notifications.length === 0) return;
-    if (Notification.permission !== 'granted') return;
-    if (!('serviceWorker' in navigator)) return;
-
-    // Aguarda o SW estar pronto (resolve o problema do controller=null no primeiro load)
-    let swReg;
-    try {
-        swReg = await navigator.serviceWorker.ready;
-    } catch(e) {
-        console.warn('SW não disponível:', e);
-        return;
+    function getPrimaryRGB() {
+        const style = getComputedStyle(document.body);
+        const rgb = style.getPropertyValue('--primary-color-rgb').trim();
+        if (rgb) {
+            const parts = rgb.split(',').map(v => parseInt(v.trim()));
+            if (parts.length === 3 && !parts.some(isNaN)) return { r: parts[0], g: parts[1], b: parts[2] };
+        }
+        const hex = style.getPropertyValue('--primary-color').trim().replace('#','');
+        if (hex.length === 6) return { r: parseInt(hex.slice(0,2),16), g: parseInt(hex.slice(2,4),16), b: parseInt(hex.slice(4,6),16) };
+        return { r: 239, g: 83, b: 80 };
     }
 
-    // Anti-spam: cada notificação dispara só uma vez por dia
-    const hoje = new Date().toISOString().split('T')[0];
-    const storageKey = `ctw_notif_fired_${hoje}`;
-    let fired = [];
-    try { fired = JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch(e) {}
+    function isLightMode() { return document.body.dataset.theme === 'light'; }
 
-    for (let idx = 0; idx < notifications.length; idx++) {
-        const notif = notifications[idx];
+    const t0 = performance.now();
+    let lastMetaUpdate = 0;
 
-        // Extrai texto puro do HTML da mensagem
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = notif.message || '';
-        const textoPuro = (tempDiv.textContent || tempDiv.innerText || '').trim().slice(0, 200);
-        if (!textoPuro) continue;
-
-        // ID único para anti-spam
-        const notifId = notif.notificationId || notif.boletoId || `g${idx}_${textoPuro.slice(0,20)}`;
-        const firedKey = `${hoje}_${notifId}`;
-        if (!forcar && fired.includes(firedKey)) continue;
-
-        // Título por tipo
-        let titulo = '⚡ Central Workcell';
-        if (notif.isGeneral)   titulo = '📢 Aviso do Sistema';
-        else if (notif.isBirthday) titulo = '🎂 Aniversário Hoje!';
-        else                   titulo = '💳 Parcela em Aberto';
-
-        // showNotification via SW registration — único que funciona no Android Chrome
-        try {
-            await swReg.showNotification(titulo, {
-                body: textoPuro,
-                icon: 'https://i.imgur.com/6Ei51Rg.png',
-                badge: 'https://i.imgur.com/6Ei51Rg.png',
-                tag: firedKey,
-                renotify: false,
-                vibrate: [200, 100, 200],
-                data: { url: window.location.href }
-            });
-
-            // Marca como disparada
-            if (!fired.includes(firedKey)) {
-                fired.push(firedKey);
-                try { localStorage.setItem(storageKey, JSON.stringify(fired)); } catch(e) {}
+    function ambilightTick(now) {
+        const sec = (now - t0) / 1000;
+        const p1 = altProgress(sec, 12);
+        const p2 = altProgress(sec, 15);
+        const inf1 = clamp(1 - p1 * 0.7, 0.1, 1);
+        const inf2 = clamp(p2 * 0.5, 0, 0.6);
+        const total = inf1 + inf2 || 0.001;
+        const C = getPrimaryRGB();
+        const C2 = { r: Math.round(C.r * 0.5), g: Math.round(C.g * 0.4), b: Math.min(255, Math.round(C.b * 0.9 + 80)) };
+        const tr = (C.r*inf1 + C2.r*inf2) / total;
+        const tg = (C.g*inf1 + C2.g*inf2) / total;
+        const tb = (C.b*inf1 + C2.b*inf2) / total;
+        sr += (tr-sr)*0.05; sg += (tg-sg)*0.05; sb += (tb-sb)*0.05;
+        const r = Math.round(sr), g = Math.round(sg), b = Math.round(sb);
+        const intensity = clamp(inf1 + inf2*0.5, 0.3, 1);
+        const lightMode = isLightMode();
+        const glowAlpha = lightMode ? 0.35 : 0.8;
+        const glowSpread = lightMode ? 8 : 16;
+        const btnGlow = `0 0 ${glowSpread}px rgba(${r},${g},${b},${glowAlpha})`;
+        const bellBtn = document.getElementById('notification-bell');
+        const avatarWrapper = document.querySelector('.avatar-button-wrapper');
+        if (bellBtn) { bellBtn.style.boxShadow = btnGlow; bellBtn.style.borderColor = `rgba(${r},${g},${b},${(glowAlpha*0.8).toFixed(2)})`; }
+        if (avatarWrapper) { avatarWrapper.style.filter = `drop-shadow(0 0 ${glowSpread*0.6}px rgba(${r},${g},${b},${glowAlpha}))`; }
+        if (now - lastMetaUpdate > 100) {
+            const metaTheme = document.getElementById('status-bar-color');
+            if (metaTheme) {
+                let statusHex;
+                if (lightMode) {
+                    statusHex = '#'+[Math.round(255-(255-r)*0.15), Math.round(255-(255-g)*0.15), Math.round(255-(255-b)*0.15)].map(v=>v.toString(16).padStart(2,'0')).join('');
+                } else {
+                    statusHex = '#'+[Math.round(r*0.25), Math.round(g*0.25), Math.round(b*0.25)].map(v=>v.toString(16).padStart(2,'0')).join('');
+                }
+                metaTheme.setAttribute('content', statusHex);
             }
-        } catch(e) {
-            console.warn('Notificação falhou:', e);
+            lastMetaUpdate = now;
         }
+        requestAnimationFrame(ambilightTick);
     }
-};
+    requestAnimationFrame(ambilightTick);
+})();
 
 
-// ---- 3. CHECAR ANIVERSÁRIOS DE HOJE ----
-window.checarAniversariosHoje = function() {
-    const clientes = window.dbClientsCache || [];
-    if (clientes.length === 0) return;
-
-    const hoje = new Date();
-    const mesHoje = hoje.getMonth() + 1; // 1-12
-    const diaHoje = hoje.getDate();
-
-    const aniversariantes = clientes.filter(c => {
-        if (!c.dataNascimento) return false;
-        const parts = c.dataNascimento.split('-'); // YYYY-MM-DD
-        if (parts.length < 3) return false;
-        return parseInt(parts[1]) === mesHoje && parseInt(parts[2]) === diaHoje;
-    });
-
-    if (aniversariantes.length === 0) return;
-
-    // Monta notificações de aniversário
-    const notifsBirthday = aniversariantes.map(c => ({
-        isBirthday: true,
-        notificationId: `birthday_${c.id}`,
-        message: `🎂 Hoje é aniversário de <strong>${c.nome}</strong>!`
-    }));
-
-    // Dispara push nativo
-    window.dispararNotificacaoNativa(notifsBirthday);
-
-    // Também injeta na UI de notificações do app
-    // (será mesclado na próxima chamada de updateNotificationUI via setupNotificationListeners)
-    console.log(`🎂 ${aniversariantes.length} aniversariante(s) hoje:`, aniversariantes.map(c => c.nome));
-};
-
-// ---- 4. LISTENER DO SERVICE WORKER ----
-// Recebe mensagens do SW e vice-versa
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', (event) => {
-        if (event.data && event.data.tipo === 'SW_PRONTO') {
-            console.log('✅ Service Worker conectado para notificações');
-        }
-    });
-}
-
-// ---- 5. PEDE PERMISSÃO NA PRIMEIRA INTERAÇÃO ----
-// Espera o usuário clicar em algo (boa prática — browser exige gesto)
-document.addEventListener('click', function pedirUmaVez() {
-    window.pedirPermissaoNotificacao();
-    document.removeEventListener('click', pedirUmaVez); // Só tenta uma vez
-}, { once: true });
 
 
 // ============================================================
@@ -9073,4 +8998,422 @@ document.addEventListener('click', function pedirUmaVez() {
         requestAnimationFrame(ambilightTick);
     }
     requestAnimationFrame(ambilightTick);
+})();
+
+
+// ============================================================
+// 🔔 SISTEMA DE NOTIFICAÇÕES NATIVAS — v3 (robusto)
+// ============================================================
+
+// Obtém o SW registration com timeout de segurança
+async function getSwReg(timeoutMs = 4000) {
+    if (!('serviceWorker' in navigator)) return null;
+    return Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise(resolve => setTimeout(() => resolve(null), timeoutMs))
+    ]);
+}
+
+// Dispara uma notificação nativa com fallback em camadas
+window.dispararNotificacaoNativa = async function(notifications, forcar = false) {
+    if (!notifications || notifications.length === 0) return;
+    if (Notification.permission !== 'granted') return;
+
+    const hoje = new Date().toISOString().split('T')[0];
+    const storageKey = `ctw_notif_fired_${hoje}`;
+    let fired = [];
+    try { fired = JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch(e) {}
+
+    const swReg = await getSwReg();
+
+    for (let i = 0; i < notifications.length; i++) {
+        const notif = notifications[i];
+
+        // Extrai texto puro
+        const div = document.createElement('div');
+        div.innerHTML = notif.message || '';
+        const body = (div.textContent || '').trim().slice(0, 200);
+        if (!body) continue;
+
+        const notifId = notif.notificationId || notif.boletoId || `n${i}_${body.slice(0,15)}`;
+        const tag = `${hoje}_${notifId}`;
+        if (!forcar && fired.includes(tag)) continue;
+
+        let title = '⚡ Central Workcell';
+        if (notif.isGeneral)    title = '📢 Aviso';
+        else if (notif.isBirthday) title = '🎂 Aniversário!';
+        else                    title = '💳 Parcela em aberto';
+
+        // Tenta usar ícone local — se não existir, notificação aparece sem ícone
+        const baseUrl = location.href.replace(/\/[^\/]*$/, '/');
+        const iconUrl = baseUrl + 'icon-192.png';
+        let iconOk = false;
+        try {
+            const r = await fetch(iconUrl, { method: 'HEAD' });
+            iconOk = r.ok;
+        } catch(e) {}
+        const opts = { 
+            body, tag, renotify: true, vibrate: [200, 100, 200], data: { url: location.href },
+            ...(iconOk ? { icon: iconUrl, badge: iconUrl } : {})
+        };
+
+        let ok = false;
+
+        // Camada 1: SW registration.showNotification (funciona com app fechado)
+        if (swReg) {
+            try { await swReg.showNotification(title, opts); ok = true; } catch(e) {}
+        }
+
+        // Camada 2: Notification constructor direto (fallback)
+        if (!ok) {
+            try { new Notification(title, opts); ok = true; } catch(e) {}
+        }
+
+        if (ok) {
+            fired.push(tag);
+            try { localStorage.setItem(storageKey, JSON.stringify(fired)); } catch(e) {}
+        }
+
+        // Diagnóstico no console (ver no DevTools do Chrome)
+        console.log(`🔔 Notificação [${ok ? 'OK' : 'FALHOU'}]: "${title}" — ${body.slice(0,50)}`);
+    }
+};
+
+// Pede permissão e dispara notificação de teste imediata
+window.pedirPermissaoNotificacao = async function() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'denied') return;
+    if (Notification.permission === 'granted') return;
+
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+
+    // Limpa anti-spam do dia para garantir que notificações existentes disparem
+    const hoje = new Date().toISOString().split('T')[0];
+    localStorage.removeItem(`ctw_notif_fired_${hoje}`);
+
+    // Notificação de teste imediata (sem esperar SW — usa Notification direto aqui)
+    try {
+        new Notification('⚡ Central Workcell', {
+            body: '✅ Notificações ativadas! Parcelas e avisos vão aparecer aqui.',
+            tag: 'ctw_boas_vindas',
+            renotify: true
+        });
+    } catch(e) {
+        // Se falhar no direto, tenta via SW
+        const swReg = await getSwReg();
+        if (swReg) {
+            swReg.showNotification('⚡ Central Workcell', {
+                body: '✅ Notificações ativadas!',
+                tag: 'ctw_boas_vindas'
+            });
+        }
+    }
+
+    // Após 2s, dispara as notificações reais pendentes
+    setTimeout(() => {
+        if (typeof setupNotificationListeners === 'function') {
+            setupNotificationListeners();
+        }
+    }, 2000);
+};
+
+// Checa aniversários e injeta na fila de notificações
+window.checarAniversariosHoje = function() {
+    const clientes = window.dbClientsCache || [];
+    if (!clientes.length) return;
+
+    const hoje = new Date();
+    const mes = hoje.getMonth() + 1;
+    const dia = hoje.getDate();
+
+    const aniversariantes = clientes.filter(c => {
+        if (!c.dataNascimento) return false;
+        const p = c.dataNascimento.split('-');
+        return p.length >= 3 && +p[1] === mes && +p[2] === dia;
+    });
+
+    if (!aniversariantes.length) return;
+
+    const notifs = aniversariantes.map(c => ({
+        isBirthday: true,
+        notificationId: `birthday_${c.id}`,
+        message: `🎂 Hoje é aniversário de ${c.nome}!`
+    }));
+
+    window.dispararNotificacaoNativa(notifs);
+    console.log('🎂 Aniversariantes hoje:', aniversariantes.map(c => c.nome));
+};
+
+// Hook em updateNotificationUI — dispara push a cada nova notificação
+const _origUpdateNotifUI = window.updateNotificationUI || updateNotificationUI;
+if (typeof updateNotificationUI === 'function') {
+    const _orig = updateNotificationUI;
+    // Override: dispara notif nativa quando chegar algo novo
+    window._ambilightNotifHook = function(notifications) {
+        if (notifications && notifications.length > 0) {
+            window.dispararNotificacaoNativa(notifications);
+        }
+        _orig(notifications);
+    };
+    // Patch: substitui as chamadas existentes
+    // (setupNotificationListeners chama updateNotificationUI diretamente)
+}
+
+// Pede permissão no primeiro clique do usuário
+document.addEventListener('click', function _pedirUmaVez() {
+    window.pedirPermissaoNotificacao();
+    document.removeEventListener('click', _pedirUmaVez);
+}, { once: true });
+
+// Inicia checagem de aniversários quando o cache de clientes estiver pronto
+setTimeout(() => { window.checarAniversariosHoje(); }, 5000);
+
+
+// ============================================================
+// ✨ AMBILIGHT ENGINE — segue o tema e cor do app
+// ============================================================
+(function initAmbilight() {
+    let sr = 239, sg = 83, sb = 80;
+    function easeInOut(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
+    function altProgress(e, d) { const c = e%(d*2); const r = c<d?c/d:2-c/d; return easeInOut(r); }
+    function clamp(v,mn,mx){ return Math.min(mx,Math.max(mn,v)); }
+    function getPrimaryRGB() {
+        const s = getComputedStyle(document.body);
+        const rgb = s.getPropertyValue('--primary-color-rgb').trim();
+        if (rgb) { const p=rgb.split(',').map(v=>parseInt(v.trim())); if(p.length===3&&!p.some(isNaN))return{r:p[0],g:p[1],b:p[2]}; }
+        const hex=s.getPropertyValue('--primary-color').trim().replace('#','');
+        if(hex.length===6)return{r:parseInt(hex.slice(0,2),16),g:parseInt(hex.slice(2,4),16),b:parseInt(hex.slice(4,6),16)};
+        return{r:239,g:83,b:80};
+    }
+    function isLight(){ return document.body.dataset.theme==='light'; }
+    const t0=performance.now(); let lmu=0;
+    function tick(now){
+        const sec=(now-t0)/1000;
+        const p1=altProgress(sec,12),p2=altProgress(sec,15);
+        const i1=clamp(1-p1*.7,.1,1),i2=clamp(p2*.5,0,.6),tot=i1+i2||.001;
+        const C=getPrimaryRGB(),C2={r:Math.round(C.r*.5),g:Math.round(C.g*.4),b:Math.min(255,Math.round(C.b*.9+80))};
+        const tr=(C.r*i1+C2.r*i2)/tot,tg=(C.g*i1+C2.g*i2)/tot,tb=(C.b*i1+C2.b*i2)/tot;
+        sr+=(tr-sr)*.05; sg+=(tg-sg)*.05; sb+=(tb-sb)*.05;
+        const r=Math.round(sr),g=Math.round(sg),b=Math.round(sb);
+        const light=isLight(),ga=light?.35:.8,gs=light?8:16;
+        const bell=document.getElementById('notification-bell');
+        const aw=document.querySelector('.avatar-button-wrapper');
+        if(bell){bell.style.boxShadow=`0 0 ${gs}px rgba(${r},${g},${b},${ga})`;bell.style.borderColor=`rgba(${r},${g},${b},${(ga*.8).toFixed(2)})`;}
+        if(aw){aw.style.filter=`drop-shadow(0 0 ${gs*.6}px rgba(${r},${g},${b},${ga}))`;}
+        if(now-lmu>100){
+            const m=document.getElementById('status-bar-color');
+            if(m){const f=light?[Math.round(255-(255-r)*.15),Math.round(255-(255-g)*.15),Math.round(255-(255-b)*.15)]:[Math.round(r*.25),Math.round(g*.25),Math.round(b*.25)];m.setAttribute('content','#'+f.map(v=>v.toString(16).padStart(2,'0')).join(''));}
+            lmu=now;
+        }
+        requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+})();
+
+
+// ============================================================
+// 🔔 NOTIFICAÇÕES NATIVAS — versão final limpa
+// ============================================================
+
+// Ícone do app (arquivo na raiz do repositório)
+const CTW_ICON = (() => {
+    const base = location.href.replace(/\/[^\/]*(\?.*)?$/, '/');
+    return base + 'icon-192.png';
+})();
+const CTW_BADGE = (() => {
+    const base = location.href.replace(/\/[^\/]*(\?.*)?$/, '/');
+    return base + 'badge.png';
+})();
+
+// Dispara notificação via Service Worker (única forma que funciona no Android)
+window.dispararNotificacaoNativa = async function(notifications, forcar = false) {
+    if (!notifications || notifications.length === 0) return;
+    if (Notification.permission !== 'granted') return;
+
+    // Anti-spam: cada notif dispara só 1x por dia (por ID único)
+    // "forcar=true" ignora o cache — usado no teste de boas-vindas
+    const hoje = new Date().toISOString().split('T')[0];
+    const cacheKey = 'ctw_fired_' + hoje;
+    let fired = [];
+    try { fired = JSON.parse(localStorage.getItem(cacheKey) || '[]'); } catch(e) {}
+
+    // Aguarda o SW estar pronto (máx 5s)
+    let reg = null;
+    try {
+        reg = await Promise.race([
+            navigator.serviceWorker.ready,
+            new Promise(r => setTimeout(() => r(null), 5000))
+        ]);
+    } catch(e) {}
+
+    for (let i = 0; i < notifications.length; i++) {
+        const notif = notifications[i];
+
+        // Texto puro da mensagem HTML
+        const tmp = document.createElement('div');
+        tmp.innerHTML = notif.message || '';
+        const body = (tmp.textContent || '').trim().slice(0, 200);
+        if (!body) continue;
+
+        // Chave única para anti-spam
+        const id = notif.notificationId || notif.boletoId || ('g' + i + body.slice(0, 10));
+        const tag = hoje + '_' + id;
+        if (!forcar && fired.includes(tag)) continue;
+
+        // Título
+        let title = '⚡ Central Workcell';
+        if (notif.isGeneral)     title = '📢 Aviso do Sistema';
+        else if (notif.isBirthday) title = '🎂 Aniversário!';
+        else                     title = '💳 Parcela em aberto';
+
+        // Opções da notificação — ícone sem verificação prévia
+        const opts = {
+            body,
+            icon: CTW_ICON,
+            badge: CTW_BADGE,
+            tag,
+            renotify: true,
+            vibrate: [200, 100, 200]
+        };
+
+        let ok = false;
+
+        // MÉTODO 1: via SW registration (funciona no Android com app fechado)
+        if (reg) {
+            try { await reg.showNotification(title, opts); ok = true; }
+            catch(e) { console.warn('SW notif falhou:', e); }
+        }
+
+        // MÉTODO 2: Notification API direta (fallback desktop/iOS)
+        if (!ok) {
+            try { new Notification(title, opts); ok = true; }
+            catch(e) { console.warn('Notification() falhou:', e); }
+        }
+
+        console.log('🔔', ok ? 'OK' : 'FALHOU', '|', title, '|', body.slice(0, 60));
+
+        if (ok) {
+            fired.push(tag);
+            try { localStorage.setItem(cacheKey, JSON.stringify(fired)); } catch(e) {}
+        }
+    }
+};
+
+// Pede permissão e dispara teste imediato
+window.pedirPermissaoNotificacao = async function() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'denied') return;
+    if (Notification.permission === 'granted') return;
+
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+
+    // Limpa cache do dia para notificações pendentes dispararem logo
+    const hoje = new Date().toISOString().split('T')[0];
+    localStorage.removeItem('ctw_fired_' + hoje);
+
+    // Notificação de teste — espera SW estar registrado
+    setTimeout(async () => {
+        let reg = null;
+        try { reg = await Promise.race([navigator.serviceWorker.ready, new Promise(r => setTimeout(() => r(null), 3000))]); } catch(e) {}
+
+        const opts = { body: '✅ Parcelas, avisos e aniversários vão aparecer aqui.', icon: CTW_ICON, badge: CTW_BADGE, tag: 'ctw_boas_vindas', renotify: true };
+
+        let ok = false;
+        if (reg) { try { await reg.showNotification('⚡ Notificações ativadas!', opts); ok = true; } catch(e) {} }
+        if (!ok) { try { new Notification('⚡ Notificações ativadas!', opts); } catch(e) {} }
+    }, 1500);
+
+    // Dispara notificações reais pendentes
+    setTimeout(() => { if (typeof setupNotificationListeners === 'function') setupNotificationListeners(); }, 3000);
+};
+
+// Checa aniversários dos clientes
+window.checarAniversariosHoje = function() {
+    const clientes = window.dbClientsCache || [];
+    if (!clientes.length) return;
+    const hoje = new Date();
+    const mes = hoje.getMonth() + 1, dia = hoje.getDate();
+    const aniv = clientes.filter(c => {
+        if (!c.dataNascimento) return false;
+        const p = c.dataNascimento.split('-');
+        return p.length >= 3 && +p[1] === mes && +p[2] === dia;
+    });
+    if (!aniv.length) return;
+    window.dispararNotificacaoNativa(aniv.map(c => ({
+        isBirthday: true,
+        notificationId: 'birthday_' + c.id,
+        message: '🎂 Hoje é aniversário de ' + c.nome + '!'
+    })));
+};
+
+// Hook em updateNotificationUI → dispara push a cada nova notificação
+(function() {
+    const orig = window.updateNotificationUI || updateNotificationUI;
+    if (typeof orig !== 'function') return;
+    updateNotificationUI = function(notifications) {
+        if (notifications && notifications.length > 0) {
+            window.dispararNotificacaoNativa(notifications);
+        }
+        return orig(notifications);
+    };
+})();
+
+// Hook aniversários no setupNotificationListeners
+(function() {
+    const orig = window.setupNotificationListeners || setupNotificationListeners;
+    if (typeof orig !== 'function') return;
+    setupNotificationListeners = function() {
+        orig();
+        setTimeout(() => window.checarAniversariosHoje(), 5000);
+    };
+})();
+
+// Pede permissão no primeiro clique
+document.addEventListener('click', function _ask() {
+    window.pedirPermissaoNotificacao();
+    document.removeEventListener('click', _ask);
+}, { once: true });
+
+
+// ============================================================
+// ✨ AMBILIGHT ENGINE — segue o tema e cor do app
+// ============================================================
+(function initAmbilight() {
+    let sr = 239, sg = 83, sb = 80;
+    function easeInOut(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
+    function altProgress(e, d) { const c=e%(d*2); const r=c<d?c/d:2-c/d; return easeInOut(r); }
+    function clamp(v,mn,mx){ return Math.min(mx,Math.max(mn,v)); }
+    function getPrimaryRGB() {
+        const s=getComputedStyle(document.body);
+        const rgb=s.getPropertyValue('--primary-color-rgb').trim();
+        if(rgb){const p=rgb.split(',').map(v=>parseInt(v.trim()));if(p.length===3&&!p.some(isNaN))return{r:p[0],g:p[1],b:p[2]};}
+        const hex=s.getPropertyValue('--primary-color').trim().replace('#','');
+        if(hex.length===6)return{r:parseInt(hex.slice(0,2),16),g:parseInt(hex.slice(2,4),16),b:parseInt(hex.slice(4,6),16)};
+        return{r:239,g:83,b:80};
+    }
+    function isLight(){ return document.body.dataset.theme==='light'; }
+    const t0=performance.now(); let lmu=0;
+    function tick(now){
+        const sec=(now-t0)/1000;
+        const p1=altProgress(sec,12),p2=altProgress(sec,15);
+        const i1=clamp(1-p1*.7,.1,1),i2=clamp(p2*.5,0,.6),tot=i1+i2||.001;
+        const C=getPrimaryRGB(),C2={r:Math.round(C.r*.5),g:Math.round(C.g*.4),b:Math.min(255,Math.round(C.b*.9+80))};
+        const tr=(C.r*i1+C2.r*i2)/tot,tg=(C.g*i1+C2.g*i2)/tot,tb=(C.b*i1+C2.b*i2)/tot;
+        sr+=(tr-sr)*.05;sg+=(tg-sg)*.05;sb+=(tb-sb)*.05;
+        const r=Math.round(sr),g=Math.round(sg),b=Math.round(sb);
+        const light=isLight(),ga=light?.35:.8,gs=light?8:16;
+        const bell=document.getElementById('notification-bell');
+        const aw=document.querySelector('.avatar-button-wrapper');
+        if(bell){bell.style.boxShadow=`0 0 ${gs}px rgba(${r},${g},${b},${ga})`;bell.style.borderColor=`rgba(${r},${g},${b},${(ga*.8).toFixed(2)})`;}
+        if(aw){aw.style.filter=`drop-shadow(0 0 ${gs*.6}px rgba(${r},${g},${b},${ga}))`;}
+        if(now-lmu>100){
+            const m=document.getElementById('status-bar-color');
+            if(m){const f=light?[Math.round(255-(255-r)*.15),Math.round(255-(255-g)*.15),Math.round(255-(255-b)*.15)]:[Math.round(r*.25),Math.round(g*.25),Math.round(b*.25)];m.setAttribute('content','#'+f.map(v=>v.toString(16).padStart(2,'0')).join(''));}
+            lmu=now;
+        }
+        requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
 })();
