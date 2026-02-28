@@ -2174,25 +2174,11 @@ function setupPWA() {
     document.querySelector('link[rel="manifest"]').setAttribute('href', manifestURL);
     
     if ('serviceWorker' in navigator) {
-        // Tenta registrar o sw.js real (GitHub Pages)
-        // Se não existir, usa o blob inline como fallback
-        navigator.serviceWorker.register('/sw.js')
-            .then(reg => {
-                console.log('✅ SW real registrado:', reg.scope);
-                // Avisa o app que o SW está pronto
-                reg.active && reg.active.postMessage({ tipo: 'SW_PRONTO' });
-            })
-            .catch(() => {
-                // Fallback: blob SW (desenvolvimento local)
-                const swScript = document.getElementById('sw-script')?.textContent;
-                if (swScript) {
-                    const swBlob = new Blob([swScript], {type: 'text/javascript'});
-                    const swURL = URL.createObjectURL(swBlob);
-                    navigator.serviceWorker.register(swURL)
-                        .then(reg => console.log('SW blob registrado:', reg))
-                        .catch(err => console.log('Falha no SW:', err));
-                }
-            });
+        // Usa URL relativa — funciona tanto em github.io/repo/ quanto em domínio próprio
+        const swUrl = new URL('sw.js', window.location.href).href;
+        navigator.serviceWorker.register(swUrl)
+            .then(reg => console.log('✅ SW registrado:', reg.scope))
+            .catch(err => console.warn('SW falhou:', err));
     }
 }
 
@@ -8887,79 +8873,84 @@ window.pedirPermissaoNotificacao = async function() {
     const perm = await Notification.requestPermission();
     if (perm === 'granted') {
         console.log('✅ Permissão de notificação concedida');
+        // Limpa histórico de notificações disparadas para que disparem imediatamente
+        const hoje = new Date().toISOString().split('T')[0];
+        localStorage.removeItem(`ctw_notif_fired_${hoje}`);
         // Manda uma notificação de boas-vindas
-        window.dispararNotificacaoNativa([{
-            isGeneral: true,
-            message: 'Notificações ativadas! Você vai receber avisos de parcelas, aniversários e avisos do sistema.'
-        }], true);
+        // Pequeno delay para o SW estar pronto antes da primeira notificação
+        setTimeout(() => {
+            window.dispararNotificacaoNativa([{
+                isGeneral: true,
+                message: '✅ Notificações ativadas! Você vai receber avisos de parcelas, aniversários e recados do sistema.'
+            }], true);
+        }, 1500);
     }
 };
 
 // ---- 2. DISPARAR NOTIFICAÇÃO NATIVA ----
-window.dispararNotificacaoNativa = function(notifications, forcar = false) {
+window.dispararNotificacaoNativa = async function(notifications, forcar = false) {
     if (!notifications || notifications.length === 0) return;
     if (Notification.permission !== 'granted') return;
+    if (!('serviceWorker' in navigator)) return;
 
-    // Evita repetir a mesma notificação no mesmo dia
+    // Aguarda o SW estar pronto (resolve o problema do controller=null no primeiro load)
+    let swReg;
+    try {
+        swReg = await navigator.serviceWorker.ready;
+    } catch(e) {
+        console.warn('SW não disponível:', e);
+        return;
+    }
+
+    // Anti-spam: cada notificação dispara só uma vez por dia
     const hoje = new Date().toISOString().split('T')[0];
     const storageKey = `ctw_notif_fired_${hoje}`;
     let fired = [];
     try { fired = JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch(e) {}
 
-    notifications.forEach((notif, idx) => {
-        // Extrai texto puro da mensagem HTML
+    for (let idx = 0; idx < notifications.length; idx++) {
+        const notif = notifications[idx];
+
+        // Extrai texto puro do HTML da mensagem
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = notif.message || '';
         const textoPuro = (tempDiv.textContent || tempDiv.innerText || '').trim().slice(0, 200);
+        if (!textoPuro) continue;
 
-        if (!textoPuro) return;
-
-        // Cria um ID único para essa notificação (evita duplicatas)
-        const notifId = notif.notificationId || notif.boletoId || `general_${idx}_${textoPuro.slice(0,30)}`;
+        // ID único para anti-spam
+        const notifId = notif.notificationId || notif.boletoId || `g${idx}_${textoPuro.slice(0,20)}`;
         const firedKey = `${hoje}_${notifId}`;
+        if (!forcar && fired.includes(firedKey)) continue;
 
-        if (!forcar && fired.includes(firedKey)) return; // Já disparou hoje
-
-        // Ícone e título baseado no tipo
+        // Título por tipo
         let titulo = '⚡ Central Workcell';
-        let icone  = '/icon-192.png'; // ícone do PWA
+        if (notif.isGeneral)   titulo = '📢 Aviso do Sistema';
+        else if (notif.isBirthday) titulo = '🎂 Aniversário Hoje!';
+        else                   titulo = '💳 Parcela em Aberto';
 
-        if (notif.isGeneral) {
-            titulo = '📢 Aviso do Sistema';
-        } else if (notif.isBirthday) {
-            titulo = '🎂 Aniversário Hoje!';
-        } else {
-            titulo = '💳 Parcela em Aberto';
-        }
-
-        // Tenta via Service Worker (funciona com app fechado)
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({
-                tipo: 'MOSTRAR_NOTIFICACAO',
-                titulo: titulo,
-                corpo: textoPuro,
-                tag: firedKey
+        // showNotification via SW registration — único que funciona no Android Chrome
+        try {
+            await swReg.showNotification(titulo, {
+                body: textoPuro,
+                icon: 'https://i.imgur.com/6Ei51Rg.png',
+                badge: 'https://i.imgur.com/6Ei51Rg.png',
+                tag: firedKey,
+                renotify: false,
+                vibrate: [200, 100, 200],
+                data: { url: window.location.href }
             });
-        } else {
-            // Fallback: Notification API direta (só funciona com app aberto)
-            try {
-                new Notification(titulo, {
-                    body: textoPuro,
-                    icon: icone,
-                    tag: firedKey,
-                    renotify: false,
-                    badge: icone
-                });
-            } catch(e) { console.warn('Notificação falhou:', e); }
-        }
 
-        // Marca como disparada
-        if (!fired.includes(firedKey)) {
-            fired.push(firedKey);
-            try { localStorage.setItem(storageKey, JSON.stringify(fired)); } catch(e) {}
+            // Marca como disparada
+            if (!fired.includes(firedKey)) {
+                fired.push(firedKey);
+                try { localStorage.setItem(storageKey, JSON.stringify(fired)); } catch(e) {}
+            }
+        } catch(e) {
+            console.warn('Notificação falhou:', e);
         }
-    });
+    }
 };
+
 
 // ---- 3. CHECAR ANIVERSÁRIOS DE HOJE ----
 window.checarAniversariosHoje = function() {
