@@ -25,11 +25,10 @@
 
 
 
+<!-- html2pdf: lazy loaded via app.js quando necessário -->
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-
-    <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js" defer></script>
+    <!-- html2canvas: lazy loaded via app.js quando necessário -->
     
 
     
@@ -211,7 +210,31 @@ class="dropdown-menu-custom">
 
  
     <div class="container text-center" id="mainMenu">
-        <h2 class="mb-4">Bem-vindo(a) à Central Workcell,<br/>O que você quer fazer?</h2>
+        <h2 class="mb-4" id="mainMenuTitle">Bem-vindo(a) à Central Workcell,<br/>O que você quer fazer?</h2>
+
+        <!-- ⭐ FAVORITOS -->
+        <div class="fav-section" id="favSection">
+            <div class="fav-header">
+                <span class="fav-title">⭐ Favoritos</span>
+                <button class="fav-edit-btn" id="favEditBtn" title="Personalizar">
+                    <i class="bi bi-pencil-fill"></i>
+                </button>
+            </div>
+            <div class="fav-stories-wrap" id="favStoriesWrap"></div>
+        </div>
+
+        <!-- Modal edição de favoritos -->
+        <div class="fav-modal-overlay hidden" id="favModalOverlay">
+            <div class="fav-modal">
+                <div class="fav-modal-header">
+                    <span>Escolha até 5 favoritos</span>
+                    <button class="fav-modal-close" id="favModalClose"><i class="bi bi-x-lg"></i></button>
+                </div>
+                <div class="fav-modal-grid" id="favModalGrid"></div>
+                <button class="fav-modal-save" id="favModalSave">Salvar</button>
+            </div>
+        </div>
+
         <div class="d-grid gap-2">
             <button class="btn-menu" id="goToCalculator"><i class="bi bi-calculator-fill"></i> Calculadora de Taxa</button>
             <button class="btn-menu" id="goToContract"><i class="bi bi-file-earmark-text-fill"></i> Documentos</button>
@@ -1513,10 +1536,10 @@ do que você precisa??</h2>
 
 
 
-<script src="app.js?v=999" type="module"></script>
+<script src="app.js?v=1000" type="module"></script>
 
     
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
 
 <script>
 (function() {

@@ -11,6 +11,35 @@ const firebaseConfig = {
     messagingSenderId: "37459949616",
     appId: "1:37459949616:web:bf2e722a491f45880a55f5"
 };
+// ============================================================
+// ⚡ LAZY LOADER — carrega scripts pesados só quando precisar
+// html2pdf (~1.8MB) e html2canvas (~1.4MB) só são baixados
+// quando o usuário tentar gerar um PDF pela primeira vez
+// ============================================================
+const _loadedScripts = new Set();
+async function lazyLoadScript(url) {
+    if (_loadedScripts.has(url)) return;
+    if (document.querySelector(`script[src="${url}"]`)) {
+        _loadedScripts.add(url);
+        return;
+    }
+    return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = url;
+        s.onload = () => { _loadedScripts.add(url); resolve(); };
+        s.onerror = reject;
+        document.head.appendChild(s);
+    });
+}
+
+async function garantirPdfLibs() {
+    await Promise.all([
+        lazyLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
+        lazyLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'),
+    ]);
+}
+
+
 
 // ============================================================
 // 👥 SISTEMA DE PERFIS EM NUVEM (FIREBASE)
@@ -487,9 +516,13 @@ function showMainSection(sectionId) {
         contractContainer.classList.remove('hidden');
         contractContainer.style.display = 'block';
         
-        document.getElementById('documentsHome').style.display = 'flex'; 
-        document.getElementById('areaContratoWrapper').style.display = 'none';
-        document.getElementById('areaBookipWrapper').style.display = 'none';
+        // Remove hidden class E seta display (sem o remove, o !important do hidden ganha)
+        const docHome = document.getElementById('documentsHome');
+        const areaContrato = document.getElementById('areaContratoWrapper');
+        const areaBookip = document.getElementById('areaBookipWrapper');
+        if (docHome)     { docHome.classList.remove('hidden');     docHome.style.display = 'flex'; }
+        if (areaContrato){ areaContrato.classList.add('hidden');   areaContrato.style.display = 'none'; }
+        if (areaBookip)  { areaBookip.classList.add('hidden');     areaBookip.style.display = 'none'; }
     } 
     else if (sectionId === 'stock') {
         stockContainer.classList.remove('hidden');
@@ -1498,6 +1531,7 @@ async function exportResultsToImage(resultsContainerId, fileName = 'calculo-taxa
         document.body.appendChild(exportContainer);
 
         // 6. Gerar Imagem
+        await garantirPdfLibs();
         await new Promise(resolve => setTimeout(resolve, 300)); // Delay para garantir renderização
         const canvas = await html2canvas(exportContainer, { backgroundColor: null, scale: 1, logging: false });
         const link = document.createElement('a');
@@ -2689,7 +2723,8 @@ function renderBoletosHistory(data) {
             });
 
             const nomeArq = 'Contrato-' + (boleto.compradorNome || 'cliente').split(' ')[0] + '.pdf';
-            const opt = {
+            await garantirPdfLibs();
+          const opt = {
                 margin: [10, 10, 10, 10],
                 filename: nomeArq,
                 image: { type: 'jpeg', quality: 0.98 },
@@ -3377,11 +3412,13 @@ async function main() {
                     showMainSection('main');
                 }
 
-                // Carrega perfis da equipe PRIMEIRO (crítico para o modal de usuário)
-                // Os outros dados podem esperar
-                setupTeamProfilesListener();
+                // Fade out rápido
+                if (loadingOverlay) {
+                    loadingOverlay.style.opacity = '0';
+                    setTimeout(() => { loadingOverlay.style.display = 'none'; }, 300);
+                }
 
-                // Resto dos dados em background
+                // Carrega dados em background — paralelo, sem travar a UI
                 setTimeout(() => {
                     loadRatesFromDB();
                     loadProductsFromDB();
@@ -3389,25 +3426,8 @@ async function main() {
                     loadTagTexts();
                     loadSettingsFromDB();
                     setupNotificationListeners();
-                }, 100);
-
-                // Fade out rápido
-                if (loadingOverlay) {
-                    loadingOverlay.style.opacity = '0';
-                    setTimeout(() => { loadingOverlay.style.display = 'none'; }, 300);
-                }
-
-                // Fallback: se Firebase demorar mais de 4s pra retornar perfis,
-                // mostra o modal de qualquer forma
-                if (window._pendingProfileModal) {
-                    setTimeout(() => {
-                        if (window._pendingProfileModal) {
-                            window._pendingProfileModal = false;
-                            const modal = document.getElementById('profileSelectorModal');
-                            if (modal) modal.classList.add('active');
-                        }
-                    }, 4000);
-                }
+                    setupTeamProfilesListener();
+                }, 50);
             } else {
                 await signInAnonymously(auth);
             }
@@ -4835,6 +4855,7 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
         const nomeCliente = document.getElementById('compradorNome').value || 'contrato';
         const nomeArquivo = 'Contrato-' + nomeCliente.split(' ')[0] + '.pdf';
 
+        garantirPdfLibs(); // carrega libs em paralelo (já estarão prontas quando html2pdf rodar)
         const opt = {
             margin: [10, 10, 10, 10],
             filename: nomeArquivo,
@@ -7368,6 +7389,7 @@ Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750
 // FUNÇÃO MESTRA: GERAR PDF (UNIFICADA: BAIXAR E ENVIAR)
 // ============================================================
 async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
+    await garantirPdfLibs();
     
     // --- 0. PREPARAÇÃO (Copiar E-mail se existir, apenas se for modo Envio) ---
     if (!apenasBaixar && dados.email && dados.email.trim() !== '') {
@@ -9456,3 +9478,125 @@ document.addEventListener('click', function _ask() {
     }
     requestAnimationFrame(tick);
 })();
+
+
+// ============================================================
+// ⭐ SISTEMA DE FAVORITOS — Stories (atalhos customizáveis)
+// ============================================================
+
+const FAV_OPTIONS = [
+    { id: 'calculadora',  emoji: '🧮', label: 'Calculadora',          action: () => showMainSection('calculator') },
+    { id: 'fecharVenda',  emoji: '💰', label: 'Fechar Venda',         action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openFecharVenda')?.click(), 200); } },
+    { id: 'repassar',     emoji: '↔️', label: 'Repassar Valores',     action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openRepassarValores')?.click(), 200); } },
+    { id: 'emprestar',    emoji: '🤝', label: 'Emprestar Valores',    action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openEmprestarValores')?.click(), 200); } },
+    { id: 'emprestimo',   emoji: '🏦', label: 'Calc. Empréstimo',     action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openCalcularEmprestimo')?.click(), 200); } },
+    { id: 'porAparelho',  emoji: '📱', label: 'Calc. p/ Aparelho',    action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openCalcularPorAparelho')?.click(), 200); } },
+    { id: 'contrato',     emoji: '📋', label: 'Contratos p/ Boleto',  action: () => { showMainSection('contract'); setTimeout(() => window.openDocumentsSection?.('contrato'), 250); } },
+    { id: 'bookip',       emoji: '📒', label: 'Garantias (Bookip)',   action: () => { showMainSection('contract'); setTimeout(() => document.getElementById('openBookipView')?.click(), 250); } },
+    { id: 'clientes',     emoji: '👥', label: 'Clientes',             action: () => showMainSection('clients') },
+    { id: 'estoque',      emoji: '📦', label: 'Controle de Estoque',  action: () => showMainSection('stock') },
+    { id: 'admin',        emoji: '⚙️', label: 'Administração',        action: () => showMainSection('administracao') },
+];
+
+const MAX_FAVS = 5;
+
+function getFavKey() {
+    const p = localStorage.getItem('ctwUserProfile') || 'default';
+    return 'ctw_favs_' + p.toLowerCase().replace(/\s+/g, '_');
+}
+function getFavs() {
+    try { return JSON.parse(localStorage.getItem(getFavKey()) || '[]'); } catch(e) { return []; }
+}
+function saveFavs(ids) { localStorage.setItem(getFavKey(), JSON.stringify(ids)); }
+
+function renderFavStories() {
+    const wrap = document.getElementById('favStoriesWrap');
+    if (!wrap) return;
+    const favIds = getFavs();
+    const mainMenu = document.getElementById('mainMenu');
+    wrap.innerHTML = '';
+
+    if (favIds.length === 0) {
+        const s = document.createElement('div');
+        s.className = 'fav-story fav-story-add';
+        s.innerHTML = `<div class="fav-story-ring"><div class="fav-story-inner">＋</div></div><span class="fav-story-label">Adicionar</span>`;
+        s.addEventListener('click', openFavModal);
+        wrap.appendChild(s);
+        mainMenu?.classList.remove('has-favorites');
+        return;
+    }
+
+    mainMenu?.classList.add('has-favorites');
+
+    favIds.forEach(id => {
+        const opt = FAV_OPTIONS.find(o => o.id === id);
+        if (!opt) return;
+        const s = document.createElement('div');
+        s.className = 'fav-story';
+        s.innerHTML = `<div class="fav-story-ring"><div class="fav-story-inner">${opt.emoji}</div></div><span class="fav-story-label">${opt.label}</span>`;
+        s.addEventListener('click', () => {
+            const ring = s.querySelector('.fav-story-ring');
+            ring.style.transform = 'scale(0.88)';
+            setTimeout(() => { ring.style.transform = ''; }, 180);
+            setTimeout(() => opt.action(), 120);
+        });
+        wrap.appendChild(s);
+    });
+}
+
+function openFavModal() {
+    const overlay = document.getElementById('favModalOverlay');
+    const grid = document.getElementById('favModalGrid');
+    if (!overlay || !grid) return;
+    const current = getFavs();
+    grid.innerHTML = '';
+    FAV_OPTIONS.forEach(opt => {
+        const el = document.createElement('div');
+        el.className = 'fav-option' + (current.includes(opt.id) ? ' selected' : '');
+        el.dataset.id = opt.id;
+        el.innerHTML = `<div class="fav-option-icon">${opt.emoji}</div><div class="fav-option-label">${opt.label}</div>`;
+        el.addEventListener('click', () => {
+            const selected = grid.querySelectorAll('.fav-option.selected');
+            if (el.classList.contains('selected')) {
+                el.classList.remove('selected');
+            } else {
+                if (selected.length >= MAX_FAVS) selected[0].classList.remove('selected');
+                el.classList.add('selected');
+            }
+        });
+        grid.appendChild(el);
+    });
+    overlay.classList.remove('hidden');
+}
+
+function closeFavModal(save) {
+    const overlay = document.getElementById('favModalOverlay');
+    if (!overlay) return;
+    if (save) {
+        const ids = [...document.querySelectorAll('#favModalGrid .fav-option.selected')].map(el => el.dataset.id);
+        saveFavs(ids);
+        renderFavStories();
+    }
+    overlay.classList.add('hidden');
+}
+
+function initFavoritos() {
+    document.getElementById('favEditBtn')?.addEventListener('click', openFavModal);
+    document.getElementById('favModalClose')?.addEventListener('click', () => closeFavModal(false));
+    document.getElementById('favModalSave')?.addEventListener('click', () => closeFavModal(true));
+    document.getElementById('favModalOverlay')?.addEventListener('click', e => {
+        if (e.target.id === 'favModalOverlay') closeFavModal(false);
+    });
+    renderFavStories();
+}
+
+// Re-renderiza quando o perfil muda
+const _origSetProfileFav = window.setProfile;
+if (typeof window.setProfile === 'function') {
+    window.setProfile = function(nome) {
+        _origSetProfileFav(nome);
+        setTimeout(renderFavStories, 200);
+    };
+}
+
+document.addEventListener('DOMContentLoaded', () => setTimeout(initFavoritos, 400));
