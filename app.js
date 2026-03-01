@@ -515,14 +515,12 @@ function showMainSection(sectionId) {
     else if (sectionId === 'contract') {
         contractContainer.classList.remove('hidden');
         contractContainer.style.display = 'block';
-        
-        // Remove hidden class E seta display (sem o remove, o !important do hidden ganha)
-        const docHome = document.getElementById('documentsHome');
-        const areaContrato = document.getElementById('areaContratoWrapper');
-        const areaBookip = document.getElementById('areaBookipWrapper');
-        if (docHome)     { docHome.classList.remove('hidden');     docHome.style.display = 'flex'; }
-        if (areaContrato){ areaContrato.classList.add('hidden');   areaContrato.style.display = 'none'; }
-        if (areaBookip)  { areaBookip.classList.add('hidden');     areaBookip.style.display = 'none'; }
+        const _dh = document.getElementById('documentsHome');
+        const _ac = document.getElementById('areaContratoWrapper');
+        const _ab = document.getElementById('areaBookipWrapper');
+        if (_dh) { _dh.classList.remove('hidden'); _dh.style.display = 'flex'; }
+        if (_ac) { _ac.classList.add('hidden');    _ac.style.display = 'none'; }
+        if (_ab) { _ab.classList.add('hidden');    _ab.style.display = 'none'; }
     } 
     else if (sectionId === 'stock') {
         stockContainer.classList.remove('hidden');
@@ -9481,21 +9479,62 @@ document.addEventListener('click', function _ask() {
 
 
 // ============================================================
-// ⭐ SISTEMA DE FAVORITOS — Stories (atalhos customizáveis)
+// ⚡ TRANSIÇÃO + ⭐ FAVORITOS
 // ============================================================
 
+// Mostra overlay de transição, executa ação, depois esconde
+function favTransition(emoji, label, action) {
+    const overlay = document.getElementById('favTransitionOverlay');
+    const emojiEl = document.getElementById('favTransitionEmoji');
+    const labelEl = document.getElementById('favTransitionLabel');
+    if (!overlay) { action(); return; }
+
+    // Seta conteúdo
+    if (emojiEl) emojiEl.textContent = emoji;
+    if (labelEl) labelEl.textContent = label;
+
+    // MOSTRAR: força display:flex + opacity via style (sem depender de animation CSS)
+    overlay.style.display = 'flex';
+    overlay.style.opacity = '0';
+    overlay.style.transition = 'opacity 0.15s ease';
+    overlay.classList.remove('hidden', 'entering', 'leaving');
+
+    // Força reflow para o browser registrar o estado opacity:0 antes de animar
+    void overlay.offsetHeight;
+
+    // Agora anima para opaco
+    overlay.style.opacity = '1';
+
+    // Após 200ms overlay está visível → executa navegação por baixo
+    setTimeout(() => {
+        action();
+    }, 200);
+
+    // Após 700ms total → fade out e esconde
+    setTimeout(() => {
+        overlay.style.opacity = '0';
+        setTimeout(() => {
+            overlay.style.display = 'none';
+            overlay.classList.add('hidden');
+            overlay.style.transition = '';
+            overlay.style.opacity = '';
+        }, 180);
+    }, 700);
+}
+
+// Opções disponíveis para favoritar
 const FAV_OPTIONS = [
-    { id: 'calculadora',  emoji: '🧮', label: 'Calculadora',          action: () => showMainSection('calculator') },
-    { id: 'fecharVenda',  emoji: '💰', label: 'Fechar Venda',         action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openFecharVenda')?.click(), 200); } },
-    { id: 'repassar',     emoji: '↔️', label: 'Repassar Valores',     action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openRepassarValores')?.click(), 200); } },
-    { id: 'emprestar',    emoji: '🤝', label: 'Emprestar Valores',    action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openEmprestarValores')?.click(), 200); } },
-    { id: 'emprestimo',   emoji: '🏦', label: 'Calc. Empréstimo',     action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openCalcularEmprestimo')?.click(), 200); } },
-    { id: 'porAparelho',  emoji: '📱', label: 'Calc. p/ Aparelho',    action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openCalcularPorAparelho')?.click(), 200); } },
-    { id: 'contrato',     emoji: '📋', label: 'Contratos p/ Boleto',  action: () => { showMainSection('contract'); setTimeout(() => window.openDocumentsSection?.('contrato'), 250); } },
-    { id: 'bookip',       emoji: '📒', label: 'Garantias (Bookip)',   action: () => { showMainSection('contract'); setTimeout(() => document.getElementById('openBookipView')?.click(), 250); } },
-    { id: 'clientes',     emoji: '👥', label: 'Clientes',             action: () => showMainSection('clients') },
-    { id: 'estoque',      emoji: '📦', label: 'Controle de Estoque',  action: () => showMainSection('stock') },
-    { id: 'admin',        emoji: '⚙️', label: 'Administração',        action: () => showMainSection('administracao') },
+    { id: 'calculadora',  emoji: '🧮', label: 'Abrindo Calculadora...',       action: () => showMainSection('calculator') },
+    { id: 'fecharVenda',  emoji: '💰', label: 'Abrindo Fechar Venda...',      action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openFecharVenda')?.click(), 300); } },
+    { id: 'repassar',     emoji: '↔️', label: 'Abrindo Repassar Valores...', action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openRepassarValores')?.click(), 300); } },
+    { id: 'emprestar',    emoji: '🤝', label: 'Abrindo Emprestar Valores...', action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openEmprestarValores')?.click(), 300); } },
+    { id: 'emprestimo',   emoji: '🏦', label: 'Abrindo Calc. Empréstimo...', action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openCalcularEmprestimo')?.click(), 300); } },
+    { id: 'porAparelho',  emoji: '📱', label: 'Abrindo Calc. p/ Aparelho...', action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openCalcularPorAparelho')?.click(), 300); } },
+    { id: 'contrato',     emoji: '📋', label: 'Abrindo Contratos...',         action: () => { showMainSection('contract'); setTimeout(() => window.openDocumentsSection?.('contrato'), 300); } },
+    { id: 'bookip',       emoji: '📒', label: 'Abrindo Bookip...',            action: () => { showMainSection('contract'); setTimeout(() => document.getElementById('openBookipView')?.click(), 300); } },
+    { id: 'clientes',     emoji: '👥', label: 'Abrindo Clientes...',          action: () => showMainSection('clients') },
+    { id: 'estoque',      emoji: '📦', label: 'Abrindo Estoque...',           action: () => showMainSection('stock') },
+    { id: 'admin',        emoji: '⚙️', label: 'Abrindo Administração...',     action: () => showMainSection('administracao') },
 ];
 
 const MAX_FAVS = 5;
@@ -9533,12 +9572,14 @@ function renderFavStories() {
         if (!opt) return;
         const s = document.createElement('div');
         s.className = 'fav-story';
-        s.innerHTML = `<div class="fav-story-ring"><div class="fav-story-inner">${opt.emoji}</div></div><span class="fav-story-label">${opt.label}</span>`;
+        s.innerHTML = `<div class="fav-story-ring"><div class="fav-story-inner">${opt.emoji}</div></div><span class="fav-story-label">${opt.label.replace('Abrindo ','').replace('...','')}</span>`;
         s.addEventListener('click', () => {
+            // Animação no ring
             const ring = s.querySelector('.fav-story-ring');
             ring.style.transform = 'scale(0.88)';
-            setTimeout(() => { ring.style.transform = ''; }, 180);
-            setTimeout(() => opt.action(), 120);
+            setTimeout(() => { ring.style.transform = ''; }, 160);
+            // Transição com emoji e label
+            setTimeout(() => favTransition(opt.emoji, opt.label, opt.action), 80);
         });
         wrap.appendChild(s);
     });
@@ -9551,10 +9592,11 @@ function openFavModal() {
     const current = getFavs();
     grid.innerHTML = '';
     FAV_OPTIONS.forEach(opt => {
+        const displayLabel = opt.label.replace('Abrindo ','').replace('...','');
         const el = document.createElement('div');
         el.className = 'fav-option' + (current.includes(opt.id) ? ' selected' : '');
         el.dataset.id = opt.id;
-        el.innerHTML = `<div class="fav-option-icon">${opt.emoji}</div><div class="fav-option-label">${opt.label}</div>`;
+        el.innerHTML = `<div class="fav-option-icon">${opt.emoji}</div><div class="fav-option-label">${displayLabel}</div>`;
         el.addEventListener('click', () => {
             const selected = grid.querySelectorAll('.fav-option.selected');
             if (el.classList.contains('selected')) {
@@ -9590,7 +9632,7 @@ function initFavoritos() {
     renderFavStories();
 }
 
-// Re-renderiza quando o perfil muda
+// Re-renderiza quando perfil muda
 const _origSetProfileFav = window.setProfile;
 if (typeof window.setProfile === 'function') {
     window.setProfile = function(nome) {
@@ -9600,3 +9642,14 @@ if (typeof window.setProfile === 'function') {
 }
 
 document.addEventListener('DOMContentLoaded', () => setTimeout(initFavoritos, 400));
+
+// ============================================================
+// Favorites CSS (injetado via JS para garantir que está presente)
+// ============================================================
+(function injectFavCSS() {
+    if (document.getElementById('fav-css')) return;
+    const style = document.createElement('style');
+    style.id = 'fav-css';
+    style.textContent = `.fav-section{width:100%;margin-bottom:18px}.fav-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:0 2px}.fav-title{font-size:.75rem;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-secondary)}.fav-edit-btn{background:none;border:none;color:var(--text-secondary);font-size:.75rem;cursor:pointer;padding:4px 8px;border-radius:8px;transition:color .2s,background .2s}.fav-edit-btn:hover{color:var(--primary-color);background:rgba(var(--primary-color-rgb),.1)}.fav-stories-wrap{display:flex;gap:14px;overflow-x:auto;padding:4px 2px 8px;scrollbar-width:none;-webkit-overflow-scrolling:touch}.fav-stories-wrap::-webkit-scrollbar{display:none}.fav-story{display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;animation:fav-pop .3s ease backwards}.fav-story:nth-child(1){animation-delay:.05s}.fav-story:nth-child(2){animation-delay:.1s}.fav-story:nth-child(3){animation-delay:.15s}.fav-story:nth-child(4){animation-delay:.2s}.fav-story:nth-child(5){animation-delay:.25s}@keyframes fav-pop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}.fav-story-ring{width:62px;height:62px;border-radius:50%;padding:2.5px;background:linear-gradient(135deg,var(--primary-color),#8b5cf6,#00e5ff);transition:transform .18s ease,filter .18s ease}.fav-story:active .fav-story-ring{transform:scale(.9);filter:brightness(1.15)}.fav-story-inner{width:100%;height:100%;border-radius:50%;background:var(--tertiary-color);border:2.5px solid var(--tertiary-color);display:flex;align-items:center;justify-content:center;font-size:1.55rem;position:relative;overflow:hidden}.fav-story-inner::after{content:'';position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 35% 35%,rgba(255,255,255,.15),transparent 60%)}.fav-story-label{font-size:.6rem;font-weight:500;color:var(--text-secondary);text-align:center;max-width:62px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fav-story-add .fav-story-ring{background:var(--glass-bg);border:1.5px dashed var(--glass-border);padding:0}.fav-story-add .fav-story-inner{background:transparent;border:none;color:var(--text-secondary);font-size:1.3rem}.fav-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(8px);z-index:9000;display:flex;align-items:flex-end;justify-content:center;animation:fav-overlay-in .2s ease}.fav-modal-overlay.hidden{display:none}@keyframes fav-overlay-in{from{opacity:0}to{opacity:1}}.fav-modal{background:var(--glass-bg);backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:24px 24px 0 0;padding:24px 20px 36px;width:100%;max-width:520px;animation:fav-modal-up .28s cubic-bezier(.34,1.56,.64,1)}@keyframes fav-modal-up{from{transform:translateY(100%)}to{transform:translateY(0)}}.fav-modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;font-weight:600;font-size:1rem;color:var(--text-color-strong)}.fav-modal-close{background:rgba(255,255,255,.08);border:none;border-radius:50%;width:32px;height:32px;color:var(--text-color);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s}.fav-modal-close:hover{background:rgba(255,255,255,.15)}.fav-modal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}.fav-option{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;padding:10px 4px;border-radius:14px;border:1.5px solid transparent;transition:border-color .2s,background .2s,transform .15s;background:rgba(255,255,255,.03);-webkit-tap-highlight-color:transparent}.fav-option:active{transform:scale(.94)}.fav-option.selected{border-color:var(--primary-color);background:rgba(var(--primary-color-rgb),.12)}.fav-option-icon{font-size:1.5rem;line-height:1}.fav-option-label{font-size:.58rem;text-align:center;color:var(--text-secondary);line-height:1.3;font-weight:500}.fav-option.selected .fav-option-label{color:var(--primary-color)}.fav-modal-save{width:100%;padding:14px;border:none;border-radius:14px;background:var(--primary-color);color:#fff;font-weight:700;font-size:.95rem;cursor:pointer;letter-spacing:.5px;transition:opacity .2s,transform .15s}.fav-modal-save:active{opacity:.85;transform:scale(.98)}.has-favorites .btn-menu{padding:14px 20px;font-size:.9rem}`;
+    document.head.appendChild(style);
+})();
