@@ -2882,6 +2882,8 @@ function checkForDueInstallments(initialNotifications = []) {
                                 isGeneral: false,
                                 notificationId: notificationId,
                                 boletoId: key,
+                                clienteNome: boleto.compradorNome || '',
+                                clienteTel: boleto.compradorTelefone || '',
                                 message: `<strong>${escapeHtml(boleto.compradorNome)}:</strong> Parcela ${i + 1}/${boleto.numeroParcelas}. ${timeText}`
                             });
                         }
@@ -2897,99 +2899,43 @@ function checkForDueInstallments(initialNotifications = []) {
 // SUBSTITUA A FUNÇÃO updateNotificationUI POR ESTA:
 
 function updateNotificationUI(notifications) {
-    console.log("🔔 Sistema de Notificação Acionado:", notifications.length, "mensagens.");
+    console.log("🔔 Notificações:", notifications.length);
 
-    // Elementos
     const oldBadge = document.querySelector('#notification-bell .notification-badge');
-    const notificationList = document.getElementById('notificationList');
     const avatarBadge = document.getElementById('avatar-badge');
     const menuArea = document.getElementById('menu-notification-area');
     const menuText = document.getElementById('menu-notification-text');
 
+    // Guarda as notificações para os balões
+    window._currentNotifications = notifications || [];
+
     if (notifications.length > 0) {
-        // 🔔 Push nativo
+        // Push nativo
         window.dispararNotificacaoNativa && window.dispararNotificacaoNativa(notifications);
 
-        // 1. Acende a bolinha no Avatar
-        if (avatarBadge) {
-            avatarBadge.classList.remove('hidden');
-            avatarBadge.style.display = 'block';
-        }
+        if (avatarBadge) { avatarBadge.classList.remove('hidden'); avatarBadge.style.display = 'block'; }
+        if (oldBadge) { oldBadge.textContent = notifications.length; oldBadge.classList.remove('hidden'); }
 
-        // 2. Prepara o texto
-        let textoNotificacao = "Nova notificação recebida";
-        if (notifications[0] && notifications[0].message) {
-            const tempDiv = document.createElement("div");
-            tempDiv.innerHTML = notifications[0].message;
-            textoNotificacao = tempDiv.textContent || tempDiv.innerText || "";
+        let texto = 'Nova notificação';
+        if (notifications[0]?.message) {
+            const d = document.createElement('div');
+            d.innerHTML = notifications[0].message;
+            texto = d.textContent.trim();
         }
-
-        // 3. Mostra a notificação no menu
-        if (menuArea) {
-            menuArea.classList.remove('hidden');
-            menuArea.style.display = 'block';
-        }
-        
-        if (menuText) {
-            menuText.innerText = textoNotificacao;
-            // 👇 A CORREÇÃO MÁGICA É ESTA LINHA AQUI: 👇
-            localStorage.setItem('sys_ultimo_aviso', textoNotificacao); 
-        }
-
-        // 4. Atualiza badge antigo
-        if (oldBadge) {
-            oldBadge.textContent = notifications.length;
-            oldBadge.classList.remove('hidden');
-        }
-        
-        // 5. Renderiza lista lateral
-        if (notificationList) {
-            notificationList.innerHTML = notifications.map(notif => {
-                if (notif.isGeneral) {
-                    return `<div class="list-group-item bg-transparent text-light border-secondary">${notif.message}</div>`;
-                } else {
-                    return `
-                    <div class="list-group-item list-group-item-action notification-item d-flex justify-content-between align-items-center bg-transparent border-secondary text-light p-3 mb-2" id="notif-item-${notif.notificationId}" style="border-radius: 12px; border: 1px solid rgba(255,255,255,0.1) !important;">
-                        <div class="flex-grow-1 pe-3" style="cursor: pointer;" onclick="verBoletoDeNotificacao('${notif.boletoId}')">
-                            ${notif.message}
-                        </div>
-                        <button class="dismiss-notif-btn text-secondary" data-id="${notif.notificationId}" title="Limpar notificação" style="background: rgba(255,255,255,0.05); border: none; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s;">
-                            <i class="bi bi-x-lg" style="font-size: 0.9rem;"></i>
-                        </button>
-                    </div>`;
-                }
-            }).join('');
-            
-            // Reativa botões de fechar...
-            document.querySelectorAll('.dismiss-notif-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const notifId = e.currentTarget.dataset.id;
-                    const dismissedKey = 'ctwDismissedNotifs';
-                    let dismissedList = [];
-                    try { dismissedList = JSON.parse(localStorage.getItem(dismissedKey) || '[]'); } catch(err) { dismissedList = []; }
-
-                    if (!dismissedList.includes(notifId)) {
-                        dismissedList.push(notifId);
-                        localStorage.setItem(dismissedKey, JSON.stringify(dismissedList));
-                    }
-                    const itemRow = document.getElementById(`notif-item-${notifId}`);
-                    if (itemRow) {
-                        itemRow.style.opacity = '0';
-                        setTimeout(() => itemRow.remove(), 300);
-                    }
-                });
-            });
-        }
-
+        if (menuArea) { menuArea.classList.remove('hidden'); menuArea.style.display = 'block'; }
+        if (menuText) { menuText.innerText = texto; localStorage.setItem('sys_ultimo_aviso', texto); }
     } else {
-        // Esconde tudo se não tiver notificação
+        window._currentNotifications = [];
         if (avatarBadge) avatarBadge.classList.add('hidden');
         if (menuArea) menuArea.classList.add('hidden');
         if (oldBadge) oldBadge.classList.add('hidden');
-        localStorage.removeItem('sys_ultimo_aviso'); // Limpa a memória
+        localStorage.removeItem('sys_ultimo_aviso');
+        // Remove balões se não há notificações
+        const existing = document.getElementById('notif-balloons-container');
+        if (existing) existing.remove();
     }
 }
+
 
 // --- FUNÇÕES RECUPERADAS (ESSENCIAIS PARA O ADMIN) ---
 function getTagList() {
@@ -3537,7 +3483,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     
     
-    document.getElementById('notification-bell').addEventListener('click', () => notificationOffcanvas.toggle());
+    document.getElementById('notification-bell').addEventListener('click', (e) => {
+    e.stopPropagation();
+    window.toggleNotifBalloons();
+});
     
     // LISTENER PARA O NOVO CARD (Cores e Preço)
         // LISTENER ATUALIZADO PARA O CARRINHO UNIFICADO
@@ -4820,7 +4769,8 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             valorParcela: document.getElementById('valorParcela').value,
             tipoParcela: document.getElementById('tipoParcela').value,
             primeiroVencimento: document.getElementById('primeiroVencimento').value,
-            criadoEm: new Date().toISOString()
+            criadoEm: new Date().toISOString(),
+            criadoPor: currentUserProfile || 'Desconhecido'
         };
 
         // Popula o conteúdo do contrato
@@ -6437,6 +6387,7 @@ async function salvarClienteAutomatico(dados) {
         tel: dados.tel || '',
         end: dados.end || '',
         email: dados.email || '',
+        criadoPor: currentUserProfile || 'Desconhecido',
         ultimoCompra: new Date().toISOString()
     };
 
@@ -9186,11 +9137,18 @@ window.checarAniversariosHoje = function() {
     const hoje = new Date();
     const mes = hoje.getMonth() + 1;
     const dia = hoje.getDate();
+    const perfil = (currentUserProfile || '').toLowerCase();
 
     const aniversariantes = clientes.filter(c => {
         if (!c.dataNascimento) return false;
         const p = c.dataNascimento.split('-');
-        return p.length >= 3 && +p[1] === mes && +p[2] === dia;
+        if (p.length < 3 || +p[1] !== mes || +p[2] !== dia) return false;
+        // Filtra pelo perfil: só notifica quem criou o cliente
+        // Se o cliente não tem criadoPor (legado), notifica todos
+        if (c.criadoPor && perfil) {
+            return c.criadoPor.toLowerCase() === perfil;
+        }
+        return true; // cliente legado sem criadoPor: notifica todos
     });
 
     if (!aniversariantes.length) return;
@@ -9198,11 +9156,13 @@ window.checarAniversariosHoje = function() {
     const notifs = aniversariantes.map(c => ({
         isBirthday: true,
         notificationId: `birthday_${c.id}`,
+        clienteTel: c.tel || '',
+        clienteNome: c.nome,
         message: `🎂 Hoje é aniversário de ${c.nome}!`
     }));
 
     window.dispararNotificacaoNativa(notifs);
-    console.log('🎂 Aniversariantes hoje:', aniversariantes.map(c => c.nome));
+    console.log('🎂 Aniversariantes do perfil', currentUserProfile, ':', aniversariantes.map(c => c.nome));
 };
 
 // Hook em updateNotificationUI — dispara push a cada nova notificação
@@ -9589,45 +9549,187 @@ function openFavModal() {
     const overlay = document.getElementById('favModalOverlay');
     const grid = document.getElementById('favModalGrid');
     if (!overlay || !grid) return;
-    const current = getFavs();
-    grid.innerHTML = '';
-    FAV_OPTIONS.forEach(opt => {
-        const displayLabel = opt.label.replace('Abrindo ','').replace('...','');
-        const el = document.createElement('div');
-        el.className = 'fav-option' + (current.includes(opt.id) ? ' selected' : '');
-        el.dataset.id = opt.id;
-        el.innerHTML = `<div class="fav-option-icon">${opt.emoji}</div><div class="fav-option-label">${displayLabel}</div>`;
-        el.addEventListener('click', () => {
-            const selected = grid.querySelectorAll('.fav-option.selected');
-            if (el.classList.contains('selected')) {
-                el.classList.remove('selected');
-            } else {
-                if (selected.length >= MAX_FAVS) selected[0].classList.remove('selected');
-                el.classList.add('selected');
-            }
-        });
-        grid.appendChild(el);
-    });
+
+    // Estado local de ordenação (cópia mutável)
+    window._favDraftOrder = [...getFavs()];
+
+    renderFavModal(grid);
     overlay.classList.remove('hidden');
 }
 
-function closeFavModal(save) {
+function renderFavModal(grid) {
+    const order = window._favDraftOrder;
+    grid.innerHTML = '';
+
+    // --- SEÇÃO 1: ORDEM ATUAL ---
+    if (order.length > 0) {
+        const orderSection = document.createElement('div');
+        orderSection.style.cssText = 'margin-bottom:16px;';
+        orderSection.innerHTML = `<div style="font-size:0.7rem;color:var(--text-secondary);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;padding:0 2px;">⟺ Segure e arraste para reordenar</div>`;
+
+        const chipWrap = document.createElement('div');
+        chipWrap.id = 'fav-chip-wrap';
+        chipWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;padding:4px 2px 12px;';
+
+        order.forEach((id, i) => {
+            const opt = FAV_OPTIONS.find(o => o.id === id);
+            if (!opt) return;
+            const label = opt.label.replace('Abrindo ','').replace('...','');
+
+            const chip = document.createElement('div');
+            chip.className = 'fav-chip';
+            chip.draggable = true;
+            chip.dataset.id = id;
+            chip.dataset.index = i;
+            chip.style.cssText = `
+                display:inline-flex;align-items:center;gap:6px;
+                background:rgba(var(--primary-color-rgb),0.12);
+                border:1px solid rgba(var(--primary-color-rgb),0.3);
+                border-radius:20px;padding:6px 10px 6px 8px;
+                cursor:grab;font-size:0.72rem;color:var(--text-color);
+                font-weight:500;user-select:none;touch-action:none;
+                transition:opacity 0.15s,transform 0.15s;
+            `;
+            chip.innerHTML = `
+                <span style="font-size:0.95rem;line-height:1;">${opt.emoji}</span>
+                <span>${label}</span>
+                <span style="margin-left:2px;color:var(--text-secondary);font-size:0.7rem;cursor:pointer;" 
+                    data-remove="${id}">✕</span>
+            `;
+
+            // Remove ao clicar no ✕
+            chip.querySelector('[data-remove]').addEventListener('click', (e) => {
+                e.stopPropagation();
+                window._favDraftOrder = window._favDraftOrder.filter(x => x !== id);
+                saveFavs(window._favDraftOrder);
+                renderFavStories();
+                renderFavModal(grid);
+            });
+
+            // Drag & Drop desktop
+            chip.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', id);
+                chip.style.opacity = '0.4';
+                window._favDragId = id;
+            });
+            chip.addEventListener('dragend', () => {
+                chip.style.opacity = '1';
+                window._favDragId = null;
+                document.querySelectorAll('.fav-chip').forEach(c => c.classList.remove('drag-over'));
+            });
+            chip.addEventListener('dragover', (e) => { e.preventDefault(); chip.classList.add('drag-over'); });
+            chip.addEventListener('dragleave', () => chip.classList.remove('drag-over'));
+            chip.addEventListener('drop', (e) => {
+                e.preventDefault();
+                chip.classList.remove('drag-over');
+                const fromId = e.dataTransfer.getData('text/plain');
+                const toId = id;
+                if (fromId === toId) return;
+                const arr = window._favDraftOrder;
+                const fi = arr.indexOf(fromId), ti = arr.indexOf(toId);
+                if (fi < 0 || ti < 0) return;
+                arr.splice(fi, 1);
+                arr.splice(ti, 0, fromId);
+                saveFavs(window._favDraftOrder);
+                renderFavStories();
+                renderFavModal(grid);
+            });
+
+            // Touch drag para mobile
+            let touchStartY, touchStartX, touchClone, touchIdx;
+            chip.addEventListener('touchstart', (e) => {
+                touchStartY = e.touches[0].clientY;
+                touchStartX = e.touches[0].clientX;
+                touchIdx = window._favDraftOrder.indexOf(id);
+                chip.style.opacity = '0.5';
+            }, { passive: true });
+
+            chip.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                const t = e.touches[0];
+                const el = document.elementFromPoint(t.clientX, t.clientY);
+                const target = el?.closest('.fav-chip');
+                document.querySelectorAll('.fav-chip').forEach(c => c.style.outline = '');
+                if (target && target !== chip) target.style.outline = '2px solid var(--primary-color)';
+            }, { passive: false });
+
+            chip.addEventListener('touchend', (e) => {
+                chip.style.opacity = '1';
+                document.querySelectorAll('.fav-chip').forEach(c => c.style.outline = '');
+                const t = e.changedTouches[0];
+                const el = document.elementFromPoint(t.clientX, t.clientY);
+                const target = el?.closest('.fav-chip[data-id]');
+                if (target && target.dataset.id !== id) {
+                    const arr = window._favDraftOrder;
+                    const fi = arr.indexOf(id), ti = arr.indexOf(target.dataset.id);
+                    if (fi >= 0 && ti >= 0) {
+                        arr.splice(fi, 1);
+                        arr.splice(ti, 0, id);
+                        saveFavs(window._favDraftOrder);
+                        renderFavStories();
+                        renderFavModal(grid);
+                    }
+                }
+            }, { passive: true });
+
+            chipWrap.appendChild(chip);
+        });
+
+        orderSection.appendChild(chipWrap);
+        grid.appendChild(orderSection);
+    }
+
+    // Separador
+    const sep = document.createElement('div');
+    sep.style.cssText = 'font-size:0.7rem;color:var(--text-secondary);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;padding:0 2px;';
+    sep.textContent = order.length > 0 ? '+ Adicionar' : 'Escolha até 5 favoritos';
+    grid.appendChild(sep);
+
+    // --- SEÇÃO 2: OPÇÕES ---
+    const optGrid = document.createElement('div');
+    optGrid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding-bottom:4px;';
+
+    FAV_OPTIONS.forEach(opt => {
+        const label = opt.label.replace('Abrindo ','').replace('...','');
+        const isSelected = order.includes(opt.id);
+
+        const el = document.createElement('div');
+        el.className = 'fav-option' + (isSelected ? ' selected' : '');
+        el.dataset.id = opt.id;
+        el.innerHTML = `<div class="fav-option-icon">${opt.emoji}</div><div class="fav-option-label">${label}</div>`;
+
+        el.addEventListener('click', () => {
+            const arr = window._favDraftOrder;
+            if (arr.includes(opt.id)) {
+                window._favDraftOrder = arr.filter(x => x !== opt.id);
+            } else {
+                if (arr.length >= MAX_FAVS) return; // já cheio
+                window._favDraftOrder.push(opt.id);
+            }
+            saveFavs(window._favDraftOrder);
+            renderFavStories();
+            renderFavModal(grid);
+        });
+
+        optGrid.appendChild(el);
+    });
+
+    grid.appendChild(optGrid);
+}
+
+function closeFavModal() {
     const overlay = document.getElementById('favModalOverlay');
     if (!overlay) return;
-    if (save) {
-        const ids = [...document.querySelectorAll('#favModalGrid .fav-option.selected')].map(el => el.dataset.id);
-        saveFavs(ids);
-        renderFavStories();
-    }
+    window._favDraftOrder = null;
     overlay.classList.add('hidden');
 }
 
 function initFavoritos() {
     document.getElementById('favEditBtn')?.addEventListener('click', openFavModal);
-    document.getElementById('favModalClose')?.addEventListener('click', () => closeFavModal(false));
-    document.getElementById('favModalSave')?.addEventListener('click', () => closeFavModal(true));
+    document.getElementById('favModalClose')?.addEventListener('click', () => closeFavModal());
+    // save button removed — auto-save on selection
     document.getElementById('favModalOverlay')?.addEventListener('click', e => {
-        if (e.target.id === 'favModalOverlay') closeFavModal(false);
+        if (e.target.id === 'favModalOverlay') closeFavModal();
     });
     renderFavStories();
 }
@@ -9650,6 +9752,288 @@ document.addEventListener('DOMContentLoaded', () => setTimeout(initFavoritos, 40
     if (document.getElementById('fav-css')) return;
     const style = document.createElement('style');
     style.id = 'fav-css';
-    style.textContent = `.fav-section{width:100%;margin-bottom:18px}.fav-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:0 2px}.fav-title{font-size:.75rem;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-secondary)}.fav-edit-btn{background:none;border:none;color:var(--text-secondary);font-size:.75rem;cursor:pointer;padding:4px 8px;border-radius:8px;transition:color .2s,background .2s}.fav-edit-btn:hover{color:var(--primary-color);background:rgba(var(--primary-color-rgb),.1)}.fav-stories-wrap{display:flex;gap:14px;overflow-x:auto;padding:4px 2px 8px;scrollbar-width:none;-webkit-overflow-scrolling:touch}.fav-stories-wrap::-webkit-scrollbar{display:none}.fav-story{display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;animation:fav-pop .3s ease backwards}.fav-story:nth-child(1){animation-delay:.05s}.fav-story:nth-child(2){animation-delay:.1s}.fav-story:nth-child(3){animation-delay:.15s}.fav-story:nth-child(4){animation-delay:.2s}.fav-story:nth-child(5){animation-delay:.25s}@keyframes fav-pop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}.fav-story-ring{width:62px;height:62px;border-radius:50%;padding:2.5px;background:linear-gradient(135deg,var(--primary-color),#8b5cf6,#00e5ff);transition:transform .18s ease,filter .18s ease}.fav-story:active .fav-story-ring{transform:scale(.9);filter:brightness(1.15)}.fav-story-inner{width:100%;height:100%;border-radius:50%;background:var(--tertiary-color);border:2.5px solid var(--tertiary-color);display:flex;align-items:center;justify-content:center;font-size:1.55rem;position:relative;overflow:hidden}.fav-story-inner::after{content:'';position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 35% 35%,rgba(255,255,255,.15),transparent 60%)}.fav-story-label{font-size:.6rem;font-weight:500;color:var(--text-secondary);text-align:center;max-width:62px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fav-story-add .fav-story-ring{background:var(--glass-bg);border:1.5px dashed var(--glass-border);padding:0}.fav-story-add .fav-story-inner{background:transparent;border:none;color:var(--text-secondary);font-size:1.3rem}.fav-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(8px);z-index:9000;display:flex;align-items:flex-end;justify-content:center;animation:fav-overlay-in .2s ease}.fav-modal-overlay.hidden{display:none}@keyframes fav-overlay-in{from{opacity:0}to{opacity:1}}.fav-modal{background:var(--glass-bg);backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:24px 24px 0 0;padding:24px 20px 36px;width:100%;max-width:520px;animation:fav-modal-up .28s cubic-bezier(.34,1.56,.64,1)}@keyframes fav-modal-up{from{transform:translateY(100%)}to{transform:translateY(0)}}.fav-modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;font-weight:600;font-size:1rem;color:var(--text-color-strong)}.fav-modal-close{background:rgba(255,255,255,.08);border:none;border-radius:50%;width:32px;height:32px;color:var(--text-color);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s}.fav-modal-close:hover{background:rgba(255,255,255,.15)}.fav-modal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}.fav-option{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;padding:10px 4px;border-radius:14px;border:1.5px solid transparent;transition:border-color .2s,background .2s,transform .15s;background:rgba(255,255,255,.03);-webkit-tap-highlight-color:transparent}.fav-option:active{transform:scale(.94)}.fav-option.selected{border-color:var(--primary-color);background:rgba(var(--primary-color-rgb),.12)}.fav-option-icon{font-size:1.5rem;line-height:1}.fav-option-label{font-size:.58rem;text-align:center;color:var(--text-secondary);line-height:1.3;font-weight:500}.fav-option.selected .fav-option-label{color:var(--primary-color)}.fav-modal-save{width:100%;padding:14px;border:none;border-radius:14px;background:var(--primary-color);color:#fff;font-weight:700;font-size:.95rem;cursor:pointer;letter-spacing:.5px;transition:opacity .2s,transform .15s}.fav-modal-save:active{opacity:.85;transform:scale(.98)}.has-favorites .btn-menu{padding:14px 20px;font-size:.9rem}`;
+    style.textContent = `.fav-section{width:100%;margin-bottom:18px}.fav-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:0 2px}.fav-title{font-size:.75rem;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-secondary)}.fav-edit-btn{background:none;border:none;color:var(--text-secondary);font-size:.75rem;cursor:pointer;padding:4px 8px;border-radius:8px;transition:color .2s,background .2s}.fav-edit-btn:hover{color:var(--primary-color);background:rgba(var(--primary-color-rgb),.1)}.fav-stories-wrap{display:flex;gap:14px;overflow-x:auto;padding:4px 2px 8px;scrollbar-width:none;-webkit-overflow-scrolling:touch}.fav-stories-wrap::-webkit-scrollbar{display:none}.fav-story{display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;animation:fav-pop .3s ease backwards}.fav-story:nth-child(1){animation-delay:.05s}.fav-story:nth-child(2){animation-delay:.1s}.fav-story:nth-child(3){animation-delay:.15s}.fav-story:nth-child(4){animation-delay:.2s}.fav-story:nth-child(5){animation-delay:.25s}@keyframes fav-pop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}.fav-story-ring{width:62px;height:62px;border-radius:50%;padding:2.5px;background:linear-gradient(135deg,var(--primary-color),#8b5cf6,#00e5ff);transition:transform .18s ease,filter .18s ease}.fav-story:active .fav-story-ring{transform:scale(.9);filter:brightness(1.15)}.fav-story-inner{width:100%;height:100%;border-radius:50%;background:var(--tertiary-color);border:2.5px solid var(--tertiary-color);display:flex;align-items:center;justify-content:center;font-size:1.55rem;position:relative;overflow:hidden}.fav-story-inner::after{content:'';position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 35% 35%,rgba(255,255,255,.15),transparent 60%)}.fav-story-label{font-size:.6rem;font-weight:500;color:var(--text-secondary);text-align:center;max-width:62px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fav-story-add .fav-story-ring{background:var(--glass-bg);border:1.5px dashed var(--glass-border);padding:0}.fav-story-add .fav-story-inner{background:transparent;border:none;color:var(--text-secondary);font-size:1.3rem}.fav-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(8px);z-index:9000;display:flex;align-items:flex-end;justify-content:center;animation:fav-overlay-in .2s ease}.fav-modal-overlay.hidden{display:none}@keyframes fav-overlay-in{from{opacity:0}to{opacity:1}}.fav-modal{background:var(--glass-bg);backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:24px 24px 0 0;padding:0;width:100%;max-width:520px;height:82vh;max-height:82vh;display:flex;flex-direction:column;overflow:hidden;animation:fav-modal-up .28s cubic-bezier(.34,1.56,.64,1)}@keyframes fav-modal-up{from{transform:translateY(100%)}to{transform:translateY(0)}}.fav-modal-header{display:flex;align-items:center;justify-content:space-between;font-weight:600;font-size:1rem;color:var(--text-color-strong);flex-shrink:0;padding:20px 20px 16px}.fav-modal-close{background:rgba(255,255,255,.08);border:none;border-radius:50%;width:32px;height:32px;color:var(--text-color);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s}.fav-modal-close:hover{background:rgba(255,255,255,.15)}.fav-modal-grid{overflow-y:auto;flex:1;min-height:0;padding:0 20px 16px;-webkit-overflow-scrolling:touch}.fav-option{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;padding:10px 4px;border-radius:14px;border:1.5px solid transparent;transition:border-color .2s,background .2s,transform .15s;background:rgba(255,255,255,.03);-webkit-tap-highlight-color:transparent}.fav-option:active{transform:scale(.94)}.fav-option.selected{border-color:var(--primary-color);background:rgba(var(--primary-color-rgb),.12)}.fav-option-icon{font-size:1.5rem;line-height:1}.fav-option-label{font-size:.58rem;text-align:center;color:var(--text-secondary);line-height:1.3;font-weight:500}.fav-option.selected .fav-option-label{color:var(--primary-color)}.fav-modal-save{width:100%;padding:18px;border:none;border-radius:0;background:var(--primary-color);color:#fff;font-weight:700;font-size:.95rem;cursor:pointer;letter-spacing:.5px;transition:opacity .2s;flex-shrink:0}.fav-modal-save:active{opacity:.85}.has-favorites .btn-menu{padding:14px 20px;font-size:.9rem}.fav-chip.drag-over{outline:2px solid var(--primary-color);opacity:0.8;transform:scale(1.04)}`;
     document.head.appendChild(style);
 })();
+
+
+
+
+// ============================================================
+// 🎈 BALÕES DE NOTIFICAÇÃO — lado direito, empilhados
+// ============================================================
+
+window.toggleNotifBalloons = function() {
+    const existing = document.getElementById('notif-balloons-container');
+    if (existing) {
+        closeBalloons(existing);
+        return;
+    }
+
+    const notifs = window._currentNotifications || [];
+    if (!notifs.length) return;
+
+    // Container fixo no lado direito
+    const container = document.createElement('div');
+    container.id = 'notif-balloons-container';
+    container.style.cssText = `
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        z-index: 8999;
+        pointer-events: none;
+    `;
+    document.body.appendChild(container);
+
+    // Overlay escuro sutil para fechar ao clicar fora
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+        position: absolute;
+        inset: 0;
+        pointer-events: all;
+        background: rgba(0,0,0,0.25);
+        backdrop-filter: blur(2px);
+        animation: notif-overlay-in 0.2s ease;
+    `;
+    overlay.addEventListener('click', () => closeBalloons(container));
+    container.appendChild(overlay);
+
+    // Injeta keyframes se não existir
+    if (!document.getElementById('notif-balloon-styles')) {
+        const s = document.createElement('style');
+        s.id = 'notif-balloon-styles';
+        s.textContent = `
+            @keyframes notif-overlay-in { from{opacity:0} to{opacity:1} }
+            @keyframes notif-slide-in {
+                from { opacity:0; transform: translateX(120px) scale(0.85); }
+                to   { opacity:1; transform: translateX(0)     scale(1); }
+            }
+            @keyframes notif-slide-out {
+                from { opacity:1; transform: translateX(0) scale(1); }
+                to   { opacity:0; transform: translateX(80px) scale(0.9); }
+            }
+        `;
+        document.head.appendChild(s);
+    }
+
+    // Painel lateral direito
+    const panel = document.createElement('div');
+    panel.id = 'notif-balloons-panel';
+    panel.style.cssText = `
+        position: absolute;
+        top: 60px;
+        right: 12px;
+        width: 300px;
+        max-width: calc(100vw - 24px);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        pointer-events: none;
+        z-index: 9000;
+    `;
+    container.appendChild(panel);
+
+    // Cria um card por notificação com delay escalonado
+    notifs.forEach((notif, idx) => {
+        setTimeout(() => {
+            const card = createNotifCard(notif, idx);
+            panel.appendChild(card);
+        }, idx * 100);
+    });
+};
+
+function closeBalloons(container) {
+    const overlay = container.querySelector('div');
+    if (overlay) {
+        overlay.style.transition = 'opacity 0.2s';
+        overlay.style.opacity = '0';
+    }
+
+    const cards = container.querySelectorAll('.notif-card');
+    cards.forEach((c, i) => {
+        setTimeout(() => {
+            c.style.animation = 'notif-slide-out 0.22s ease forwards';
+        }, i * 50);
+    });
+
+    setTimeout(() => container.remove(), cards.length * 50 + 280);
+}
+
+function createNotifCard(notif, idx) {
+    // Texto puro
+    const tmp = document.createElement('div');
+    tmp.innerHTML = notif.message || '';
+    const texto = tmp.textContent.trim();
+
+    // Tipo → ícone, cor, ação
+    let icon, accentH, accentRGB, actionPrimary, actionSecondary;
+
+    if (notif.isBirthday) {
+        icon = '🎂';
+        accentH = '#ff6d00';
+        accentRGB = '255,109,0';
+        actionPrimary = notif.clienteTel
+            ? { label: '💬 Mandar parabéns no WhatsApp', fn: () => abrirWhatsApp(notif.clienteTel, `Olá ${notif.clienteNome || ''}! 🎂 Feliz aniversário! Desejamos tudo de bom pra você nesse dia especial! 🎉`) }
+            : null;
+    } else if (!notif.isGeneral) {
+        icon = '💳';
+        accentH = '#ef4444';
+        accentRGB = '239,68,68';
+        actionPrimary = notif.clienteTel
+            ? { label: '💬 WhatsApp do cliente', fn: () => abrirWhatsApp(notif.clienteTel) }
+            : null;
+        actionSecondary = notif.boletoId
+            ? { label: '📋 Ver contrato', fn: () => { if(typeof verBoletoDeNotificacao === 'function') verBoletoDeNotificacao(notif.boletoId); } }
+            : null;
+    } else {
+        icon = '📢';
+        accentH = '#00e5ff';
+        accentRGB = '0,229,255';
+        actionPrimary = null;
+    }
+
+    const card = document.createElement('div');
+    card.className = 'notif-card';
+    card.style.cssText = `
+        pointer-events: all;
+        background: rgba(8, 14, 28, 0.96);
+        border: 1px solid rgba(${accentRGB}, 0.35);
+        border-left: 3px solid ${accentH};
+        border-radius: 14px;
+        padding: 14px 14px 12px;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(${accentRGB},0.1);
+        animation: notif-slide-in 0.35s cubic-bezier(0.34,1.56,0.64,1) ${idx * 0.08}s both;
+        cursor: default;
+        position: relative;
+        overflow: hidden;
+    `;
+
+    // Glow sutil no fundo
+    card.innerHTML = `
+        <div style="position:absolute;inset:0;border-radius:14px;background:radial-gradient(ellipse at top right,rgba(${accentRGB},0.07),transparent 65%);pointer-events:none;"></div>
+
+        <div style="display:flex;align-items:flex-start;gap:10px;position:relative;">
+            <!-- Ícone -->
+            <div style="
+                width:38px;height:38px;border-radius:10px;
+                background:rgba(${accentRGB},0.12);
+                border:1px solid rgba(${accentRGB},0.25);
+                display:flex;align-items:center;justify-content:center;
+                font-size:1.25rem;flex-shrink:0;
+            ">${icon}</div>
+
+            <!-- Conteúdo -->
+            <div style="flex:1;min-width:0;">
+                <div style="
+                    font-size:0.78rem;
+                    color:rgba(255,255,255,0.92);
+                    line-height:1.45;
+                    font-weight:500;
+                    font-family:'Poppins',sans-serif;
+                    margin-bottom:${actionPrimary || actionSecondary ? '10px' : '0'};
+                ">${texto}</div>
+
+                ${actionPrimary || actionSecondary ? `
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    ${actionPrimary ? `
+                    <button class="notif-action-btn" data-action="primary" style="
+                        flex:1;min-width:0;
+                        background:rgba(${accentRGB},0.15);
+                        border:1px solid rgba(${accentRGB},0.35);
+                        border-radius:8px;
+                        color:${accentH};
+                        font-size:0.65rem;
+                        font-weight:600;
+                        padding:6px 8px;
+                        cursor:pointer;
+                        text-align:center;
+                        white-space:nowrap;
+                        overflow:hidden;
+                        text-overflow:ellipsis;
+                        font-family:'Poppins',sans-serif;
+                        transition:background 0.15s;
+                    ">${actionPrimary.label}</button>
+                    ` : ''}
+                    ${actionSecondary ? `
+                    <button class="notif-action-btn" data-action="secondary" style="
+                        flex:1;min-width:0;
+                        background:rgba(255,255,255,0.05);
+                        border:1px solid rgba(255,255,255,0.1);
+                        border-radius:8px;
+                        color:rgba(255,255,255,0.55);
+                        font-size:0.65rem;
+                        font-weight:600;
+                        padding:6px 8px;
+                        cursor:pointer;
+                        text-align:center;
+                        white-space:nowrap;
+                        overflow:hidden;
+                        text-overflow:ellipsis;
+                        font-family:'Poppins',sans-serif;
+                        transition:background 0.15s;
+                    ">${actionSecondary.label}</button>
+                    ` : ''}
+                </div>
+                ` : ''}
+            </div>
+
+            <!-- Fechar -->
+            <button onclick="event.stopPropagation();window.dismissNotifBalloon('${notif.notificationId}',this.closest('.notif-card'))" style="
+                background:none;border:none;
+                color:rgba(255,255,255,0.3);
+                cursor:pointer;padding:2px;
+                font-size:0.8rem;flex-shrink:0;
+                line-height:1;
+                transition:color 0.15s;
+            ">✕</button>
+        </div>
+    `;
+
+    // Wira os botões de ação
+    if (actionPrimary) {
+        card.querySelector('[data-action="primary"]')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            actionPrimary.fn();
+            const c = document.getElementById('notif-balloons-container');
+            if (c) closeBalloons(c);
+        });
+    }
+    if (actionSecondary) {
+        card.querySelector('[data-action="secondary"]')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            actionSecondary.fn();
+            const c = document.getElementById('notif-balloons-container');
+            if (c) closeBalloons(c);
+        });
+    }
+
+    return card;
+}
+
+function abrirWhatsApp(tel, mensagem) {
+    const t = (tel || '').replace(/\D/g, '');
+    if (!t) return;
+    const url = mensagem
+        ? `https://wa.me/55${t}?text=${encodeURIComponent(mensagem)}`
+        : `https://wa.me/55${t}`;
+    window.open(url, '_blank');
+}
+
+window.dismissNotifBalloon = function(notifId, cardEl) {
+    const key = 'ctwDismissedNotifs';
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) {}
+    if (!list.includes(notifId)) { list.push(notifId); localStorage.setItem(key, JSON.stringify(list)); }
+
+    if (cardEl) {
+        cardEl.style.animation = 'notif-slide-out 0.2s ease forwards';
+        setTimeout(() => cardEl.remove(), 220);
+    }
+};
+
+// ESC fecha tudo
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        const c = document.getElementById('notif-balloons-container');
+        if (c) closeBalloons(c);
+    }
+});
