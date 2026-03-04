@@ -169,31 +169,88 @@ function setupTeamProfilesListener() {
 
 // SUBSTITUA A FUNÇÃO window.setProfile POR ESTA:
 
-window.setProfile = function(name) {
+// setProfileConfirmed: chamado após senha validada (ou perfil sem senha)
+window.setProfileConfirmed = function(name) {
     currentUserProfile = name;
     localStorage.setItem('ctwUserProfile', name);
     
-    // 1. Atualiza o visual da lista (Check verde)
-    if(typeof setupTeamProfilesListener === 'function') setupTeamProfilesListener(); 
-    
-    // 2. ATUALIZA O NOME NO MENU DO AVATAR (A Mágica acontece aqui)
     const displayMenu = document.getElementById('displayProfileName');
     if(displayMenu) displayMenu.innerText = name;
     
-    // 3. Atualiza a mensagem de Bem-vindo na tela inicial
     const tituloPrincipal = document.querySelector('#mainMenu h2');
     if(tituloPrincipal) {
         tituloPrincipal.innerHTML = `Bem-vindo(a), <span class="text-primary">${name}</span><br/>O que você quer fazer?`;
     }
 
-    // 4. Fecha a janela e confirma
+    // Mostra o X do modal (bloqueado para primeiro acesso)
+    var closeBtn = document.getElementById('profileModalCloseBtn');
+    if(closeBtn) closeBtn.style.display = '';
+
+    // Fecha o modal e confirma
     setTimeout(() => {
         const modal = document.getElementById('profileSelectorModal');
         if(modal) modal.classList.remove('active');
-        
         if(typeof showCustomModal === 'function') showCustomModal({ message: `Perfil definido: ${name} 🚀` });
+        // Sincroniza sheet v2
+        if(typeof window.syncSheetProfile === 'function') window.syncSheetProfile();
+        if(typeof setupTeamProfilesListener === 'function') setupTeamProfilesListener();
     }, 200);
-}
+};
+
+// setProfile: verifica se perfil tem senha antes de confirmar
+window.setProfile = function(name) {
+    // Busca o perfil no cache
+    var perfil = null;
+    if(teamProfilesList) {
+        Object.values(teamProfilesList).forEach(function(p) {
+            if(p.name === name) perfil = p;
+        });
+    }
+
+    if(perfil && perfil.senha) {
+        // Pede a senha via modal inline
+        window._showPasswordModal(name, function(senhaDigitada) {
+            if(senhaDigitada === perfil.senha) {
+                window.setProfileConfirmed(name);
+            } else {
+                if(typeof showCustomModal === 'function')
+                    showCustomModal({ message: '❌ Senha incorreta. Tente novamente.' });
+            }
+        });
+    } else {
+        window.setProfileConfirmed(name);
+    }
+};
+
+// Modal inline de senha para seleção de perfil
+window._showPasswordModal = function(userName, onConfirm) {
+    var existing = document.getElementById('_profilePwdOverlay');
+    if(existing) existing.remove();
+
+    var ov = document.createElement('div');
+    ov.id = '_profilePwdOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:25000;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px;';
+    ov.innerHTML = '<div style="background:var(--bg-color,#0b1325);border:1px solid var(--glass-border);border-radius:20px;padding:24px;width:100%;max-width:340px;display:flex;flex-direction:column;gap:14px;">'
+        + '<div style="font-weight:700;font-size:1rem;color:var(--text-color);">&#x1F510; Senha de ' + userName + '</div>'
+        + '<input id="_profilePwdInput" type="password" class="form-control" placeholder="Digite sua senha" autocomplete="current-password" style="text-align:center;letter-spacing:4px;font-size:1.1rem;">'
+        + '<div style="display:flex;gap:10px;">'
+        + '<button id="_profilePwdCancel" class="btn btn-outline-secondary flex-fill">Cancelar</button>'
+        + '<button id="_profilePwdConfirm" class="btn btn-primary flex-fill">Entrar</button>'
+        + '</div></div>';
+    document.body.appendChild(ov);
+
+    var input = document.getElementById('_profilePwdInput');
+    setTimeout(function() { if(input) input.focus(); }, 80);
+
+    function doConfirm() {
+        var val = (input ? input.value : '');
+        ov.remove();
+        onConfirm(val);
+    }
+    document.getElementById('_profilePwdConfirm').addEventListener('click', doConfirm);
+    document.getElementById('_profilePwdCancel').addEventListener('click', function() { ov.remove(); });
+    if(input) input.addEventListener('keydown', function(e) { if(e.key === 'Enter') doConfirm(); });
+};
 
 
 // SUBSTITUA A FUNÇÃO window.criarNovoPerfil POR ESTA:
@@ -251,10 +308,19 @@ window.apagarPerfil = function(key, nome) {
 document.addEventListener('DOMContentLoaded', () => {
     
     if (!currentUserProfile) {
-        // Aguarda o Firebase carregar os perfis antes de mostrar o modal
-        // Isso evita o modal aparecer vazio enquanto o loading ainda está ativo
+        // Sem perfil: bloqueia acesso — aguarda Firebase carregar perfis
         window._pendingProfileModal = true;
+        // Esconde o botão X para forçar seleção de perfil
+        setTimeout(function() {
+            var closeBtn = document.getElementById('profileModalCloseBtn');
+            if(closeBtn) closeBtn.style.display = 'none';
+        }, 100);
     } else {
+        // Já tem perfil — garante que X do modal fica visível
+        setTimeout(function() {
+            var closeBtn = document.getElementById('profileModalCloseBtn');
+            if(closeBtn) closeBtn.style.display = '';
+        }, 100);
         // --- SE JÁ TEM USUÁRIO, MOSTRA O NOME NOS LUGARES CERTOS ---
         
         // 1. Texto pequeno "Usuário: Brendon" (Mantém o original)
@@ -9210,7 +9276,8 @@ window.showCustomModal       = showCustomModal;
     window.filterNotifsByPref = function(notifications) {
         if (getPref() !== 'urgent') return notifications;
         return notifications.filter(function(n) {
-            return n.boletoId || n.isBirthday || n.repairId || n.isGeneral;
+            // Boletos excluídos propositalmente — usuário não é da cobrança
+        return n.isBirthday || n.repairId || n.isGeneral;
         });
     };
 
@@ -9227,6 +9294,215 @@ window.escapeHtml            = typeof escapeHtml === 'function' ? escapeHtml : (
 window.updateNotificationUI  = updateNotificationUI;
 // db exposto via window._firebaseDB no onAuthStateChanged (ver abaixo)
 
+
+// ============================================================
+// 👥 GERENCIAMENTO DE PERFIS — painel no admin, senha 220390
+// ============================================================
+(function() {
+    var ADMIN_SENHA = '220390';
+
+    // Abre o painel com verificação de senha
+    window.abrirGerenciarPerfis = function() {
+        var ov = document.createElement('div');
+        ov.id = '_gPerfisSenhaOv';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:25000;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:20px;';
+        ov.innerHTML = `
+            <div style="background:var(--bg-color,#0b1325);border:1px solid var(--glass-border);border-radius:20px;padding:24px;width:100%;max-width:340px;display:flex;flex-direction:column;gap:14px;">
+                <div style="font-weight:700;font-size:1rem;color:var(--text-color);">🔐 Senha do Administrador</div>
+                <input id="_gPerfisSenhaInput" type="password" class="form-control" placeholder="Senha de acesso" style="text-align:center;letter-spacing:4px;font-size:1.1rem;" autocomplete="off">
+                <div style="display:flex;gap:10px;">
+                    <button id="_gPerfisSenhaCancel" class="btn btn-outline-secondary flex-fill">Cancelar</button>
+                    <button id="_gPerfisSenhaOk"     class="btn btn-primary flex-fill">Entrar</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(ov);
+        var inp = document.getElementById('_gPerfisSenhaInput');
+        setTimeout(function(){ if(inp) inp.focus(); }, 80);
+
+        function check() {
+            var val = inp ? inp.value.trim() : '';
+            ov.remove();
+            if(val === ADMIN_SENHA) {
+                _renderPerfilPanel();
+            } else {
+                if(typeof showCustomModal === 'function') showCustomModal({ message: '❌ Senha incorreta.' });
+            }
+        }
+        document.getElementById('_gPerfisSenhaOk').addEventListener('click', check);
+        document.getElementById('_gPerfisSenhaCancel').addEventListener('click', function(){ ov.remove(); });
+        if(inp) inp.addEventListener('keydown', function(e){ if(e.key==='Enter') check(); });
+    };
+
+    function _renderPerfilPanel() {
+        var existing = document.getElementById('_gPerfisPanel');
+        if(existing) existing.remove();
+
+        var panel = document.createElement('div');
+        panel.id = '_gPerfisPanel';
+        panel.style.cssText = 'position:fixed;inset:0;z-index:24000;background:var(--bg-color,#0b1325);display:flex;flex-direction:column;overflow:hidden;';
+
+        panel.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--glass-border);flex-shrink:0;">
+                <span style="font-weight:700;font-size:1.05rem;color:var(--text-color);">👥 Perfis e Usuários</span>
+                <button id="_gPerfisClose" style="background:rgba(255,255,255,.08);border:none;color:var(--text-secondary);border-radius:50%;width:32px;height:32px;font-size:.85rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+            </div>
+            <div id="_gPerfisList" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;-webkit-overflow-scrolling:touch;"></div>
+            <div style="padding:14px 16px 20px;border-top:1px solid var(--glass-border);flex-shrink:0;">
+                <button id="_gPerfisAddBtn" class="btn btn-outline-success w-100 py-2">
+                    <i class="bi bi-plus-lg"></i> Adicionar Novo Perfil
+                </button>
+            </div>
+        `;
+        document.body.appendChild(panel);
+
+        document.getElementById('_gPerfisClose').addEventListener('click', function(){ panel.remove(); });
+        document.getElementById('_gPerfisAddBtn').addEventListener('click', _addPerfil);
+        _loadPerfis();
+    }
+
+    function _loadPerfis() {
+        var container = document.getElementById('_gPerfisList');
+        if(!container) return;
+        if(!teamProfilesList || Object.keys(teamProfilesList).length === 0) {
+            container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:40px 0;">Nenhum perfil encontrado.</div>';
+            return;
+        }
+        var arr = Object.entries(teamProfilesList).map(function(e){ return Object.assign({id:e[0]}, e[1]); });
+        arr.sort(function(a,b){ return (a.createdAt||a.id).localeCompare(b.createdAt||b.id); });
+
+        container.innerHTML = '';
+        arr.forEach(function(p) {
+            var card = document.createElement('div');
+            card.style.cssText = 'background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:12px;';
+            var cores = ['#EF5350','#2979FF','#00E676','#FFD600','#AB47BC','#FF7043'];
+            var cor = cores[p.name.length % cores.length];
+            var temSenha = !!p.senha;
+            var isCurrent = p.name === currentUserProfile;
+
+            card.innerHTML = `
+                <div style="width:42px;height:42px;border-radius:50%;background:${cor};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.1rem;color:#fff;flex-shrink:0;">${p.name.charAt(0).toUpperCase()}</div>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-weight:700;font-size:.9rem;color:var(--text-color);">${p.name} ${isCurrent ? '<span style="font-size:.6rem;background:#10b981;color:#fff;padding:1px 6px;border-radius:999px;vertical-align:middle;">VOCÊ</span>' : ''}</div>
+                    <div style="font-size:.72rem;color:var(--text-secondary);margin-top:2px;">${temSenha ? '🔐 Senha definida' : '🔓 Sem senha'}</div>
+                </div>
+                <button data-pid="${p.id}" data-pname="${p.name}" data-psenha="${p.senha||''}" class="_gPerfisEditBtn" style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);color:#3b82f6;border-radius:8px;padding:6px 10px;font-size:.72rem;cursor:pointer;white-space:nowrap;">✏️ Editar</button>
+                <button data-pid="${p.id}" data-pname="${p.name}" class="_gPerfisDelBtn" style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:#ef4444;border-radius:8px;padding:6px 10px;font-size:.72rem;cursor:pointer;">🗑</button>
+            `;
+            container.appendChild(card);
+        });
+
+        container.querySelectorAll('._gPerfisEditBtn').forEach(function(btn){
+            btn.addEventListener('click', function(){ _editPerfil(btn.dataset.pid, btn.dataset.pname, btn.dataset.psenha); });
+        });
+        container.querySelectorAll('._gPerfisDelBtn').forEach(function(btn){
+            btn.addEventListener('click', function(){ _deletePerfil(btn.dataset.pid, btn.dataset.pname); });
+        });
+    }
+
+    function _editPerfil(pid, nome, senhaAtual) {
+        var ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;inset:0;z-index:26000;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px;';
+        ov.innerHTML = `
+            <div style="background:var(--bg-color,#0b1325);border:1px solid var(--glass-border);border-radius:20px;padding:24px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:14px;">
+                <div style="font-weight:700;font-size:1rem;color:var(--text-color);">✏️ Editar: ${nome}</div>
+                <div>
+                    <label style="font-size:.75rem;color:var(--text-secondary);margin-bottom:4px;display:block;">Nome</label>
+                    <input id="_editPerfilNome" class="form-control" type="text" value="${nome}" autocomplete="off">
+                </div>
+                <div>
+                    <label style="font-size:.75rem;color:var(--text-secondary);margin-bottom:4px;display:block;">Senha (deixe vazio para sem senha)</label>
+                    <input id="_editPerfilSenha" class="form-control" type="password" placeholder="Nova senha..." autocomplete="new-password">
+                    ${senhaAtual ? '<div style="font-size:.68rem;color:#f59e0b;margin-top:4px;">⚠️ Já tem senha — deixe vazio para manter a atual</div>' : ''}
+                </div>
+                <div style="display:flex;gap:10px;">
+                    <button id="_editPerfilCancel" class="btn btn-outline-secondary flex-fill">Cancelar</button>
+                    <button id="_editPerfilSave"   class="btn btn-primary flex-fill">Salvar</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(ov);
+        var nomeInp  = document.getElementById('_editPerfilNome');
+        var senhaInp = document.getElementById('_editPerfilSenha');
+        setTimeout(function(){ if(nomeInp) nomeInp.focus(); }, 80);
+
+        document.getElementById('_editPerfilCancel').addEventListener('click', function(){ ov.remove(); });
+        document.getElementById('_editPerfilSave').addEventListener('click', function(){
+            var novoNome  = nomeInp.value.trim();
+            var novaSenha = senhaInp.value;
+            if(!novoNome) { alert('Nome obrigatório.'); return; }
+
+            var updates = { name: novoNome };
+            if(novaSenha) {
+                updates.senha = novaSenha;
+            } else if(senhaAtual) {
+                updates.senha = senhaAtual; // mantém a existente
+            }
+
+            update(ref(db, 'team_profiles/' + pid), updates).then(function(){
+                // Atualiza currentUserProfile se o nome mudou
+                if(nome === currentUserProfile && novoNome !== nome) {
+                    currentUserProfile = novoNome;
+                    localStorage.setItem('ctwUserProfile', novoNome);
+                }
+                ov.remove();
+                _loadPerfis();
+                if(typeof showCustomModal === 'function') showCustomModal({ message: '✅ Perfil atualizado!' });
+            }).catch(function(e){ alert('Erro: ' + e.message); });
+        });
+    }
+
+    function _deletePerfil(pid, nome) {
+        if(!confirm('Remover "' + nome + '" da equipe? Isso remove para todos.')) return;
+        remove(ref(db, 'team_profiles/' + pid)).then(function(){
+            if(nome === currentUserProfile) {
+                currentUserProfile = '';
+                localStorage.removeItem('ctwUserProfile');
+            }
+            _loadPerfis();
+        }).catch(function(e){ alert('Erro: ' + e.message); });
+    }
+
+    function _addPerfil() {
+        var ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;inset:0;z-index:26000;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px;';
+        ov.innerHTML = `
+            <div style="background:var(--bg-color,#0b1325);border:1px solid var(--glass-border);border-radius:20px;padding:24px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:14px;">
+                <div style="font-weight:700;font-size:1rem;color:var(--text-color);">➕ Novo Perfil</div>
+                <div>
+                    <label style="font-size:.75rem;color:var(--text-secondary);margin-bottom:4px;display:block;">Nome</label>
+                    <input id="_addPerfilNome" class="form-control" type="text" placeholder="Ex: Carlos" autocomplete="off">
+                </div>
+                <div>
+                    <label style="font-size:.75rem;color:var(--text-secondary);margin-bottom:4px;display:block;">Senha (opcional)</label>
+                    <input id="_addPerfilSenha" class="form-control" type="password" placeholder="Deixe vazio para sem senha" autocomplete="new-password">
+                </div>
+                <div style="display:flex;gap:10px;">
+                    <button id="_addPerfilCancel" class="btn btn-outline-secondary flex-fill">Cancelar</button>
+                    <button id="_addPerfilSave"   class="btn btn-primary flex-fill">Criar</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(ov);
+        var nomeInp  = document.getElementById('_addPerfilNome');
+        var senhaInp = document.getElementById('_addPerfilSenha');
+        setTimeout(function(){ if(nomeInp) nomeInp.focus(); }, 80);
+
+        document.getElementById('_addPerfilCancel').addEventListener('click', function(){ ov.remove(); });
+        document.getElementById('_addPerfilSave').addEventListener('click', function(){
+            var nome  = nomeInp.value.trim();
+            var senha = senhaInp.value;
+            if(!nome) { alert('Nome obrigatório.'); return; }
+            var data = { name: nome, createdAt: new Date().toISOString() };
+            if(senha) data.senha = senha;
+            push(ref(db, 'team_profiles'), data).then(function(){
+                ov.remove();
+                _loadPerfis();
+                if(typeof showCustomModal === 'function') showCustomModal({ message: '✅ Perfil "' + nome + '" criado!' });
+            }).catch(function(e){ alert('Erro: ' + e.message); });
+        });
+    }
+})();
 
 // ============================================================
 // NOTIFICAÇÕES — "Ver contrato" usa a navegação da busca global

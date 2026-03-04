@@ -150,24 +150,39 @@ window.checarAniversariosHoje = function() {
 
 // Hook em updateNotificationUI → dispara push a cada nova notificação
 (function() {
-    const orig = window.updateNotificationUI || updateNotificationUI;
-    if (typeof orig !== 'function') return;
-    updateNotificationUI = function(notifications) {
-        if (notifications && notifications.length > 0) {
-            window.dispararNotificacaoNativa(notifications);
+    // Aguarda window.updateNotificationUI estar disponível (módulo ES)
+    function hookUpdateNotif() {
+        if (typeof window.updateNotificationUI !== 'function') {
+            setTimeout(hookUpdateNotif, 200);
+            return;
         }
-        return orig(notifications);
-    };
+        var orig = window.updateNotificationUI;
+        window.updateNotificationUI = function(notifications) {
+            if (notifications && notifications.length > 0) {
+                window.dispararNotificacaoNativa && window.dispararNotificacaoNativa(notifications);
+            }
+            return orig(notifications);
+        };
+    }
+    hookUpdateNotif();
 })();
 
 // Hook aniversários no setupNotificationListeners
 (function() {
-    const orig = window.setupNotificationListeners || setupNotificationListeners;
-    if (typeof orig !== 'function') return;
-    setupNotificationListeners = function() {
-        orig();
-        setTimeout(() => window.checarAniversariosHoje(), 5000);
-    };
+    function hookSetup() {
+        if (typeof window.setupNotificationListeners !== 'function') {
+            setTimeout(hookSetup, 200);
+            return;
+        }
+        var orig = window.setupNotificationListeners;
+        window.setupNotificationListeners = function() {
+            orig();
+            setTimeout(function() {
+                window.checarAniversariosHoje && window.checarAniversariosHoje();
+            }, 5000);
+        };
+    }
+    hookSetup();
 })();
 
 // Pede permissão no primeiro clique
