@@ -98,7 +98,27 @@
 
 
 
+<!-- TOP BAR v2 — pill com busca + nome (só no estilo 2.0) -->
+<div id="ctwTopBar">
+    <!-- Cabeçalho: título + saudação -->
+    <div class="ctw-top-header">
+        <div class="ctw-top-header-eyebrow">Central Workcell 2.0</div>
+        <div class="ctw-top-header-title">Bem‑vindo(a), <span id="ctwTopHeaderName">visitante</span></div>
+        <div class="ctw-top-header-sub">O que você quer fazer?</div>
+    </div>
+    <!-- Pill de busca -->
+    <div class="ctw-top-pill">
+        <button class="ctw-top-search" id="ctwTopSearchBtn" aria-label="Busca global">
+            <i class="bi bi-search"></i>
+            <span>Buscar em tudo...</span>
+        </button>
+    </div>
+</div>
+
 <div id="top-right-controls" class="top-right-controls-pos">
+    <button id="globalSearchBtn" class="gs-trigger-btn" title="Busca global">
+        <i class="bi bi-search"></i>
+    </button>
 
     <div class="dropdown">
         <button class="btn btn-link p-0 border-0" type="button" data-bs-toggle="dropdown" aria-expanded="false" class="btn-link-custom">
@@ -180,6 +200,18 @@ class="dropdown-menu-custom">
                 </button>
             </li>
 
+                <li class="p-2" id="style20MenuItem">
+                <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 mt-1 text-color-custom"
+                        onclick="window.ativarEstilo20()">
+                    <div class="icon-box text-warning" style="background:rgba(255,193,7,0.12);">
+                        <i class="bi bi-stars"></i>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:1px;">
+                        <span id="style20MenuLabel">Testar novo estilo 2.0</span>
+                        <small style="font-size:.6rem;color:var(--text-secondary);font-weight:400;" id="style20MenuSub">Novo layout visual</small>
+                    </div>
+                </button>
+            </li>
         </ul>
     </div>
 
@@ -190,6 +222,18 @@ class="dropdown-menu-custom">
     </div>
 
 
+    <script>
+        // Fix: viewport height para teclado mobile (evita fundo aparecer quando teclado abre)
+        (function() {
+            function setVH() {
+                var vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight) * 0.01;
+                document.documentElement.style.setProperty('--vh', vh + 'px');
+            }
+            setVH();
+            if (window.visualViewport) window.visualViewport.addEventListener('resize', setVH);
+            else window.addEventListener('resize', setVH);
+        })();
+    </script>
     <script>
         (function(){
             const oldBadge = document.querySelector('#notification-bell .notification-badge');
@@ -237,20 +281,44 @@ class="dropdown-menu-custom">
         <div class="fav-modal-overlay hidden" id="favModalOverlay">
             <div class="fav-modal">
                 <div class="fav-modal-header">
-                    <span>Personalizar favoritos</span>
+                    <span>Escolha até 5 favoritos</span>
                     <button class="fav-modal-close" id="favModalClose"><i class="bi bi-x-lg"></i></button>
                 </div>
                 <div class="fav-modal-grid" id="favModalGrid"></div>
+                <button class="fav-modal-save" id="favModalSave">Salvar</button>
             </div>
         </div>
 
-        <div class="d-grid gap-2">
+        <!-- ESTILO CLÁSSICO (lista) -->
+        <div class="d-grid gap-2" id="menuClassic">
             <button class="btn-menu" id="goToCalculator"><i class="bi bi-calculator-fill"></i> Calculadora de Taxa</button>
             <button class="btn-menu" id="goToContract"><i class="bi bi-file-earmark-text-fill"></i> Documentos</button>
             <button class="btn-menu" id="goToStock"><i class="bi bi-box-seam"></i> Controle de Estoque</button>
-                        
             <button class="btn-menu" id="goToAdmin"><i class="bi bi-gear"></i> Administração</button>
+        </div>
 
+        <!-- ESTILO 2.0 (grid de cards) — oculto por padrão -->
+        <div class="ctw-card-grid ctw-menu-hide" id="menuCards">
+            <button class="ctw-card c-blue" id="goToCalculator2">
+                <div class="ctw-card-icon"><i class="bi bi-calculator-fill"></i></div>
+                <span class="ctw-card-title">Calculadora</span>
+                <span class="ctw-card-sub">de Taxa</span>
+            </button>
+            <button class="ctw-card c-cyan" id="goToContract2">
+                <div class="ctw-card-icon"><i class="bi bi-file-earmark-text-fill"></i></div>
+                <span class="ctw-card-title">Documentos</span>
+                <span class="ctw-card-sub">& Garantias</span>
+            </button>
+            <button class="ctw-card c-orange" id="goToStock2">
+                <div class="ctw-card-icon"><i class="bi bi-box-seam"></i></div>
+                <span class="ctw-card-title">Estoque</span>
+                <span class="ctw-card-sub">de produtos</span>
+            </button>
+            <button class="ctw-card c-purple" id="goToAdmin2">
+                <div class="ctw-card-icon"><i class="bi bi-gear"></i></div>
+                <span class="ctw-card-title">Administração</span>
+                <span class="ctw-card-sub">& equipe</span>
+            </button>
         </div>
     </div>
     
@@ -263,16 +331,45 @@ class="dropdown-menu-custom">
             </div>
 
             <h2 class="mb-4">Calculadora de Taxas,<br/>O que você quer fazer?</h2>
-            <div class="d-grid gap-2">
+            <!-- ESTILO CLÁSSICO -->
+            <div class="d-grid gap-2" id="calcMenuClassic">
                 <button class="btn-menu" id="openFecharVenda"><i class="bi bi-cash-coin"></i> Fechar uma venda</button>
                 <button class="btn-menu" id="openRepassarValores"><i class="bi bi-arrow-left-right"></i> Repassar valores</button>
-
-<button class="btn-menu" id="openEmprestarValores"><i class="bi bi-people-fill"></i> Emprestar valores</button>
-
-
+                <button class="btn-menu" id="openEmprestarValores"><i class="bi bi-people-fill"></i> Emprestar valores</button>
                 <button class="btn-menu" id="openCalcularEmprestimo"><i class="bi bi-bank"></i> Calcular Empréstimo</button>
                 <button class="btn-menu" id="openCalcularPorAparelho"><i class="bi bi-phone"></i> Calcular por aparelho</button>
-
+            </div>
+            <!-- ESTILO 2.0 — grid 3+2 -->
+            <div class="ctw-card-grid ctw-grid-5 ctw-menu-hide" id="calcMenuCards">
+                <div class="ctw-grid-row3">
+                    <button class="ctw-card c-green" id="openFecharVenda2">
+                        <div class="ctw-card-icon"><i class="bi bi-cash-coin"></i></div>
+                        <span class="ctw-card-title">Fechar</span>
+                        <span class="ctw-card-sub">Venda</span>
+                    </button>
+                    <button class="ctw-card c-blue" id="openRepassarValores2">
+                        <div class="ctw-card-icon"><i class="bi bi-arrow-left-right"></i></div>
+                        <span class="ctw-card-title">Repassar</span>
+                        <span class="ctw-card-sub">Valores</span>
+                    </button>
+                    <button class="ctw-card c-cyan" id="openEmprestarValores2">
+                        <div class="ctw-card-icon"><i class="bi bi-people-fill"></i></div>
+                        <span class="ctw-card-title">Emprestar</span>
+                        <span class="ctw-card-sub">Valores</span>
+                    </button>
+                </div>
+                <div class="ctw-grid-row2">
+                    <button class="ctw-card c-orange" id="openCalcularEmprestimo2">
+                        <div class="ctw-card-icon"><i class="bi bi-bank"></i></div>
+                        <span class="ctw-card-title">Calcular</span>
+                        <span class="ctw-card-sub">Empréstimo</span>
+                    </button>
+                    <button class="ctw-card c-purple" id="openCalcularPorAparelho2">
+                        <div class="ctw-card-icon"><i class="bi bi-phone"></i></div>
+                        <span class="ctw-card-title">Por</span>
+                        <span class="ctw-card-sub">Aparelho</span>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -838,20 +935,38 @@ class="dropdown-menu-custom">
 do que você precisa??</h2>
             
             
-            <div class="d-grid gap-2">
+            <!-- ESTILO CLÁSSICO -->
+            <div class="d-grid gap-2" id="docsMenuClassic">
                 <button class="btn-menu" id="openContratoView"><i class="bi bi-file-text-fill"></i> Contratos P/Boleto </button>
                 <button class="btn-menu" id="openBookipView"><i class="bi bi-receipt"></i> Garantias (Bookip)</button>
-
-<button class="btn-menu" onclick="window.abrirReciboSimples()">
-    <i class="bi bi-receipt"></i> Novo Recibo
-</button>
-
-
-  <button class="btn-menu" disabled style="opacity: 0.5; cursor: not-allowed; filter: grayscale(100%); background-color: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1);">
-      
-
+                <button class="btn-menu" onclick="window.abrirReciboSimples()"><i class="bi bi-receipt"></i> Novo Recibo</button>
+                <button class="btn-menu" disabled style="opacity: 0.5; cursor: not-allowed; filter: grayscale(100%); background-color: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1);">
                     <i class="bi bi-clipboard-check-fill"></i> Ord. Serviços
                     <span style="font-size: 0.75rem; margin-left: auto; color: var(--text-secondary);">(Em breve)</span>
+                </button>
+            </div>
+            <!-- ESTILO 2.0 -->
+            <div class="ctw-card-grid ctw-menu-hide" id="docsMenuCards">
+                <button class="ctw-card c-blue" id="openContratoView2">
+                    <div class="ctw-card-icon"><i class="bi bi-file-text-fill"></i></div>
+                    <span class="ctw-card-title">Contrato</span>
+                    <span class="ctw-card-sub">/ Boleto</span>
+                </button>
+                <button class="ctw-card c-cyan" id="openBookipView2">
+                    <div class="ctw-card-icon"><i class="bi bi-receipt"></i></div>
+                    <span class="ctw-card-title">Garantia</span>
+                    <span class="ctw-card-sub">Bookip</span>
+                </button>
+                <button class="ctw-card c-green" id="openReciboView2">
+                    <div class="ctw-card-icon"><i class="bi bi-receipt-cutoff"></i></div>
+                    <span class="ctw-card-title">Recibo</span>
+                    <span class="ctw-card-sub">Simples</span>
+                </button>
+                <button class="ctw-card c-disabled" disabled>
+                    <span class="ctw-card-soon">Em breve</span>
+                    <div class="ctw-card-icon"><i class="bi bi-clipboard-check-fill"></i></div>
+                    <span class="ctw-card-title">Ord.</span>
+                    <span class="ctw-card-sub">Serviços</span>
                 </button>
             </div>
 
@@ -1119,6 +1234,46 @@ do que você precisa??</h2>
                     </div>
 
                     <div class="text-center mt-4">
+
+                        <!-- FOTO DO PRODUTO (Imgur) -->
+                        <div class="bookip-photo-section" id="bookipPhotoSection">
+                            <!-- Input câmera (abre câmera diretamente) -->
+                            <input type="file" id="bookipPhotoInputCamera" accept="image/*" capture="environment" style="display:none">
+                            <!-- Input galeria (abre armazenamento) -->
+                            <input type="file" id="bookipPhotoInputGallery" accept="image/*" style="display:none">
+
+                            <!-- Preview da foto -->
+                            <div id="bookipPhotoPreview" class="bookip-photo-preview hidden">
+                                <img id="bookipPhotoImg" src="" alt="Foto do produto">
+                                <button class="bookip-photo-remove" id="bookipPhotoRemove" type="button" title="Remover foto">
+                                    <i class="bi bi-x-circle-fill"></i>
+                                </button>
+                                <div class="bookip-photo-preview-label">Toque para trocar</div>
+                            </div>
+
+                            <!-- Dois botões lado a lado -->
+                            <div style="display:flex;gap:10px;justify-content:center;">
+                                <button type="button" class="bookip-photo-btn" id="bookipPhotoBtnCamera" style="flex:1;max-width:160px;">
+                                    <div class="bookip-photo-btn-icon">
+                                        <i class="bi bi-camera-fill"></i>
+                                    </div>
+                                    <div class="bookip-photo-btn-text">
+                                        <span>Tirar foto</span>
+                                        <small>Abre a câmera</small>
+                                    </div>
+                                </button>
+                                <button type="button" class="bookip-photo-btn" id="bookipPhotoBtnGallery" style="flex:1;max-width:160px;">
+                                    <div class="bookip-photo-btn-icon">
+                                        <i class="bi bi-image-fill"></i>
+                                    </div>
+                                    <div class="bookip-photo-btn-text">
+                                        <span id="bookipPhotoBtnLabel">Da galeria</span>
+                                        <small>Foto existente</small>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+
                         <div id="bookipActionsArea">
                             <div id="saveActionContainer">
                                 <button class="btn btn-success w-100 py-3 fw-bold" id="btnSaveBookip">
@@ -1545,7 +1700,25 @@ do que você precisa??</h2>
 
 
 
-<script src="app.js?v=1000" type="module"></script>
+<script src="app.js?v=1001" type="module" defer></script>
+    <!-- Módulos independentes — carregam em paralelo após app.js -->
+    <script type="module" defer>
+        // Carrega módulos após o app estar pronto
+        async function loadModules() {
+            await Promise.all([
+                import('./notifications.js'),
+                import('./ambilight.js'),
+                import('./Favorites.js'),
+            ]);
+        }
+        // Módulos carregam assim que o DOM está pronto
+        // Cada módulo espera internamente pelas dependências que precisa
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadModules);
+        } else {
+            loadModules();
+        }
+    </script>
 
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
@@ -1650,6 +1823,114 @@ do que você precisa??</h2>
 </div>
 
 
+
+
+<!-- Overlay de Navegação da Busca Global (Sherlock) -->
+<div id="gsNavOverlay" style="display:none;position:fixed;inset:0;z-index:99998;background:rgba(7,13,26,0.97);backdrop-filter:blur(8px);flex-direction:column;align-items:center;justify-content:center;gap:20px;">
+    <div style="font-size:3.5rem;animation:sherlockBob 1s ease-in-out infinite alternate;">🔍</div>
+    <div style="font-family:Poppins,sans-serif;font-size:1rem;font-weight:600;color:#00e5ff;letter-spacing:2px;text-transform:uppercase;" id="gsNavMsg">Encontrando...</div>
+    <div style="display:flex;gap:6px;margin-top:4px;">
+        <span style="width:8px;height:8px;border-radius:50%;background:#00e5ff;animation:dotPulse 1.2s ease-in-out infinite;animation-delay:0s;display:block;"></span>
+        <span style="width:8px;height:8px;border-radius:50%;background:#00e5ff;animation:dotPulse 1.2s ease-in-out infinite;animation-delay:0.2s;display:block;"></span>
+        <span style="width:8px;height:8px;border-radius:50%;background:#00e5ff;animation:dotPulse 1.2s ease-in-out infinite;animation-delay:0.4s;display:block;"></span>
+    </div>
+</div>
+<style>
+@keyframes sherlockBob { from { transform: translateY(0) rotate(-8deg); } to { transform: translateY(-10px) rotate(8deg); } }
+@keyframes dotPulse { 0%,80%,100% { opacity:0.2; transform:scale(0.8); } 40% { opacity:1; transform:scale(1.2); } }
+</style>
+
+<!-- BUSCA GLOBAL -->
+<div id="gsOverlay" class="gs-overlay gs-hidden">
+    <div class="gs-backdrop" id="gsBackdrop"></div>
+    <div class="gs-panel">
+        <div class="gs-header">
+            <div class="gs-input-wrap">
+                <i class="bi bi-search gs-icon-sm"></i>
+                <input type="text" id="gsInput" placeholder="Buscar clientes, contratos, garantias..." autocomplete="off" autocorrect="off" spellcheck="false">
+                <button class="gs-clear gs-hidden" id="gsClearBtn"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <button class="gs-cancel-btn" id="gsCancelBtn">Cancelar</button>
+        </div>
+        <div class="gs-filters" id="gsFilters">
+            <button class="gs-filter active" data-filter="all">Tudo</button>
+            <button class="gs-filter" data-filter="cliente">👥 Clientes</button>
+            <button class="gs-filter" data-filter="bookip">📒 Bookips</button>
+            <button class="gs-filter" data-filter="boleto">📋 Contratos</button>
+        </div>
+        <div class="gs-status-bar" id="gsStatus">Digite para buscar</div>
+        <div class="gs-results" id="gsResults"></div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     BOTTOM NAV — Estilo 2.0
+     Só aparece quando ctwMenuStyle === 'v2'
+═══════════════════════════════════════════════ -->
+<nav id="ctwBottomNav" class="ctw-bottom-nav ctw-menu-hide" aria-label="Navegação principal">
+    <!-- Casa -->
+    <button class="ctw-nav-btn" id="ctwNavHome" title="Início">
+        <span class="ctw-nav-icon"><i class="bi bi-house-fill"></i></span>
+        <span class="ctw-nav-label">Início</span>
+    </button>
+
+    <!-- Sino -->
+    <button class="ctw-nav-btn" id="ctwNavBell" title="Notificações">
+        <span class="ctw-nav-icon">
+            <i class="bi bi-bell-fill"></i>
+            <span class="ctw-nav-badge" id="ctwNavBellBadge" style="display:none;"></span>
+        </span>
+        <span class="ctw-nav-label">Alertas</span>
+    </button>
+
+    <!-- Perfil -->
+    <button class="ctw-nav-btn" id="ctwNavProfile" title="Perfil">
+        <span class="ctw-nav-icon"><i class="bi bi-person-fill"></i></span>
+        <span class="ctw-nav-label" id="ctwNavProfileLabel">Perfil</span>
+    </button>
+</nav>
+
+<!-- Profile Sheet (abre para cima, só v2) -->
+<div id="ctwProfileSheet" class="ctw-sheet-backdrop" style="display:none;" aria-hidden="true">
+    <div class="ctw-sheet" role="dialog" aria-modal="true">
+        <!-- Handle -->
+        <div class="ctw-sheet-handle"></div>
+
+        <!-- Header usuário -->
+        <div class="ctw-sheet-user">
+            <div class="ctw-sheet-avatar"><i class="bi bi-person-fill"></i></div>
+            <div>
+                <div class="ctw-sheet-user-role">Logado como</div>
+                <div class="ctw-sheet-user-name" id="ctwSheetProfileName">Visitante</div>
+            </div>
+        </div>
+
+        <div class="ctw-sheet-divider"></div>
+
+        <!-- Ações -->
+        <div class="ctw-sheet-actions">
+            <button class="ctw-sheet-item" onclick="document.getElementById('theme-toggle-checkbox').click(); window.closeCtwSheet();">
+                <div class="ctw-sheet-item-icon bg-warn"><i class="bi bi-moon-stars-fill"></i></div>
+                <span>Alternar Tema</span>
+            </button>
+            <button class="ctw-sheet-item" onclick="document.getElementById('theme-palette-btn').click(); window.closeCtwSheet();">
+                <div class="ctw-sheet-item-icon bg-info"><i class="bi bi-palette-fill"></i></div>
+                <span>Mudar Cores</span>
+            </button>
+            <button class="ctw-sheet-item" onclick="document.getElementById('profileSelectorModal').classList.add('active'); window.closeCtwSheet();">
+                <div class="ctw-sheet-item-icon bg-primary"><i class="bi bi-people-fill"></i></div>
+                <span>Trocar Usuário</span>
+            </button>
+            <button class="ctw-sheet-item" onclick="window.ativarEstilo20(); window.closeCtwSheet();">
+                <div class="ctw-sheet-item-icon bg-stars"><i class="bi bi-stars"></i></div>
+                <div style="display:flex;flex-direction:column;gap:1px;text-align:left;">
+                    <span id="ctwSheetStyleLabel">Voltar ao estilo clássico</span>
+                    <small style="font-size:.6rem;opacity:.6;" id="ctwSheetStyleSub">Layout em lista original</small>
+                </div>
+            </button>
+        </div>
+    </div>
+</div>
 
 </body>
 </html>

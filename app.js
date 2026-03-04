@@ -457,7 +457,17 @@ const topRightControls = document.getElementById('top-right-controls');
 
 function showMainSection(sectionId) {
     if (!isAuthReady) return;
-    
+
+    // Hook v2: controla visibilidade do top bar (busca global)
+    // Roda aqui dentro pois os listeners chamam esta função diretamente,
+    // não window.showMainSection — então o interceptor externo não basta
+    (function() {
+        if (localStorage.getItem('ctwMenuStyle') !== 'v2') return;
+        var topBar = document.getElementById('ctwTopBar');
+        if (!topBar) return;
+        topBar.style.display = (sectionId === 'main') ? 'block' : 'none';
+    })();
+
     // Desliga ouvintes antigos
     if (productsListener) { off(getProductsRef(), 'value', productsListener); productsListener = null; }
     if (boletosListener) { off(ref(db, 'boletos'), 'value', boletosListener); boletosListener = null; }
@@ -502,6 +512,8 @@ function showMainSection(sectionId) {
         mainMenu.classList.remove('hidden');
         mainMenu.style.display = 'flex';
         topRightControls.classList.remove('hidden');
+        // Garante que o estilo correto (clássico ou 2.0) esteja visível
+        if (typeof window._reapplyMenuStyle === 'function') window._reapplyMenuStyle();
     } 
     else if (sectionId === 'calculator') {
         calculatorContainer.classList.remove('hidden');
@@ -5489,6 +5501,25 @@ function loadBookipHistory() {
     let itensVisiveis = 50;      
     const incremento = 50;       
 
+    // Expõe função para a busca global navegar direto para um item,
+    // superando o "Ver Mais" ao expandir itensVisiveis até o item aparecer
+    window._bookipNavigateTo = function(id) {
+        var idx = listaFiltradaCache.findIndex(function(i) { return i.id === id; });
+        if (idx === -1) {
+            // Item não está no filtro ativo — tenta na lista completa
+            idx = listaCompletaCache ? listaCompletaCache.findIndex(function(i) { return i.id === id; }) : -1;
+            if (idx === -1) return false;
+            // Reseta filtros e refiltra
+            listaFiltradaCache = listaCompletaCache.slice();
+        }
+        // Garante que o item está dentro dos visíveis
+        if (idx >= itensVisiveis) {
+            itensVisiveis = idx + 1;
+            renderizarLote();
+        }
+        return true;
+    };
+
     // Loading...
     container.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary"></div><p class="mt-2 text-secondary">Carregando histórico...</p></div>';
 
@@ -5820,6 +5851,14 @@ function loadBookipHistory() {
 
                             <button class="btn btn-sm ${classBtnEnvio} email-history-btn" data-id="${item.id}" title="${titleBtnEnvio}"><i class="bi ${iconBtnEnvio}"></i></button>
 
+                            ${item.fotoUrl ? `
+                            <button class="btn btn-sm btn-outline-info btn-ver-foto" 
+                                data-foto="${item.fotoUrl}" 
+                                data-nome="${item.nome || 'Cliente'}"
+                                title="Ver foto do produto">
+                                <i class="bi bi-image"></i>
+                            </button>` : ''}
+
                             <button class="btn btn-sm btn-outline-primary btn-download-seguro" data-id="${item.id}" title="Baixar PDF">
                                 <i class="bi bi-download"></i>
                             </button>
@@ -5849,6 +5888,12 @@ function loadBookipHistory() {
     function reativarListeners() {
         container.querySelectorAll('.edit-bookip-btn').forEach(b => b.addEventListener('click', e => carregarDadosParaEdicao(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id))));
         container.querySelectorAll('.email-history-btn').forEach(b => b.addEventListener('click', e => gerarPdfDoHistorico(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id), b)));
+        container.querySelectorAll('.btn-ver-foto').forEach(b => b.addEventListener('click', e => {
+            const btn = e.target.closest('button');
+            const fotoUrl = btn.dataset.foto;
+            const nome = btn.dataset.nome || 'Produto';
+            window.abrirFotoBookip(fotoUrl, nome);
+        }));
         container.querySelectorAll('.print-old-bookip').forEach(b => b.addEventListener('click', e => printBookip(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id))));
 
 
@@ -6035,7 +6080,24 @@ function carregarDadosParaEdicao(item) {
             btnAdd.classList.add('btn-warning');
         }
 
-        // H. Finalização
+        // H. Restaura a Foto (se existir)
+        if (item.fotoUrl) {
+            window._bookipFotoUrl  = item.fotoUrl;
+            window._bookipFotoBlob = null;
+            var imgEl   = document.getElementById('bookipPhotoImg');
+            var preview = document.getElementById('bookipPhotoPreview');
+            var lbl     = document.getElementById('bookipPhotoBtnLabel');
+            if (imgEl)   imgEl.src = item.fotoUrl;
+            if (preview) preview.classList.remove('hidden');
+            if (lbl)     lbl.textContent = 'Substituir foto';
+        } else {
+            window._bookipFotoUrl  = '';
+            window._bookipFotoBlob = null;
+            var preview2 = document.getElementById('bookipPhotoPreview');
+            if (preview2) preview2.classList.add('hidden');
+        }
+
+        // I. Finalização
         window.scrollTo({ top: 0, behavior: 'smooth' });
         window.isSystemSwitching = false; // Destrava
 
@@ -6147,7 +6209,8 @@ if (btnSave) {
                 diasGarantia: dias,
                 dataVenda: dataFinalVenda,
                 criadoEm: new Date().toISOString(),
-criadoPor: currentUserProfile || "Desconhecido", 
+criadoPor: currentUserProfile || "Desconhecido",
+                fotoUrl: window._bookipFotoUrl || "",
             };
 
             // SALVA NO FIREBASE
@@ -6159,6 +6222,17 @@ criadoPor: currentUserProfile || "Desconhecido",
                 // Cria novo
                 const newRef = await push(ref(db, 'bookips'), dados);
                 dados.id = newRef.key;
+            }
+
+            // UPLOAD FOTO via Imgur (se houver blob pendente)
+            if (window._bookipFotoBlob) {
+                const fotoUrl = await window.uploadFotoCloudinary(window._bookipFotoBlob);
+                if (fotoUrl) {
+                    dados.fotoUrl = fotoUrl;
+                    window._bookipFotoUrl = fotoUrl;
+                    await update(ref(db, 'bookips/' + dados.id), { fotoUrl });
+                }
+                window._bookipFotoBlob = null;
             }
 
             // SALVA CLIENTE (ROBÔ)
@@ -7377,6 +7451,14 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
     };
 
     try {
+        // PRE-AQUECE POPPINS (evita letras emboladas com font-display:swap)
+        const _fw = document.createElement('div');
+        _fw.style.cssText = 'position:fixed;top:0;left:0;opacity:0.01;pointer-events:none;z-index:99999;font-family:Poppins,sans-serif;';
+        _fw.innerHTML = '<b style="font-weight:300">.</b><b style="font-weight:400">.</b><b style="font-weight:600">.</b><b style="font-weight:700">.</b>';
+        document.body.appendChild(_fw);
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        document.body.removeChild(_fw);
+
         // --- A. MONTA O HTML ESCONDIDO ---
         const containerTemp = document.createElement('div');
         // Mantém fixo em 794px (A4) e fora da tela
@@ -7407,7 +7489,8 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
 
         // --- B. RENDERIZA COMO IMAGEM (CAPTURA) ---
         window.scrollTo(0,0);
-        await new Promise(r => setTimeout(r, 2000)); // Tempo para carregar imagens/fontes
+        await new Promise(r => setTimeout(r, 2000)); // Tempo para fontes
+        await new Promise(r => requestAnimationFrame(r)); // Frame extra para reflow
 
         // 🔥 ESCALA 2 + PNG = O equilíbrio perfeito para Android (Nitidez sem travar)
         const fullCanvas = await html2canvas(containerTemp, {
@@ -7552,9 +7635,10 @@ const opt = {
         novoBotao.addEventListener('click', async () => {
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
                 const settings = (typeof receiptSettings !== 'undefined') ? receiptSettings : {};
-                const saudacao = `Olá ${dados.nome || 'Cliente'},`;
-                const corpoMensagem = settings.shareMessage || "segue seu documento em anexo.";
-                const textoCompleto = `${saudacao}\n\n${corpoMensagem}`;
+                const saudacao = 'Olá ' + (dados.nome || 'Cliente') + ',';
+                const corpoMensagem = settings.shareMessage || 'segue seu documento em anexo.';
+                const fotoMsg = dados.fotoUrl ? '\n\n📷 Foto do produto: ' + dados.fotoUrl : '';
+                const textoCompleto = saudacao + '\n\n' + corpoMensagem + fotoMsg;
 
                 try {
                     await navigator.share({
@@ -7810,12 +7894,39 @@ window.processarTextoZap = function() {
         else if (!endereco.includes(cepEncontrado)) endereco += ` (${cepEncontrado})`;
     }
 
+    // Data de Nascimento
+    // Tenta extrair via rótulo
+    let dataNasc = extrair('Data de Nascimento') || extrair('Nascimento') || extrair('Nasc') || extrair('Data Nasc') || extrair('Dt Nasc') || extrair('Aniversário');
+    
+    // Se não achou por rótulo, procura padrão de data no texto (DD/MM/AAAA ou DD-MM-AAAA)
+    if (!dataNasc) {
+        const mData = texto.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})\b/);
+        if (mData) dataNasc = mData[0];
+    }
+    
+    // Converte para formato YYYY-MM-DD que o input type="date" exige
+    let dataNascISO = '';
+    if (dataNasc) {
+        // Limpa e tenta parse
+        const partes = dataNasc.replace(/[\/-]/g, '/').split('/');
+        if (partes.length === 3) {
+            const [d, m, a] = partes.map(p => p.trim().replace(/\D/g,''));
+            if (d && m && a && a.length === 4) {
+                dataNascISO = a + '-' + m.padStart(2,'0') + '-' + d.padStart(2,'0');
+            }
+        }
+    }
+
     // Preenche
     if (nome) document.getElementById('bookipNome').value = nome;
     if (cpf) document.getElementById('bookipCpf').value = cpf;
     if (tel) document.getElementById('bookipTelefone').value = tel;
     if (email) document.getElementById('bookipEmail').value = email;
     if (endereco.length > 5) document.getElementById('bookipEndereco').value = endereco;
+    if (dataNascISO) {
+        const nascEl = document.getElementById('bookipNascimento');
+        if (nascEl) nascEl.value = dataNascISO;
+    }
 
     // Fecha janela
     document.getElementById('containerModalZap').remove();
@@ -7857,6 +7968,16 @@ window.resetFormulariosBookip = function() {
     }
 
     // 1. Limpa Campos de Texto do Cliente
+    // Limpa foto
+    window._bookipFotoUrl = '';
+    window._bookipFotoBlob = null;
+    const _photoPreview = document.getElementById('bookipPhotoPreview');
+    const _photoBtnLabel = document.getElementById('bookipPhotoBtnLabel');
+    const _photoInput = document.getElementById('bookipPhotoInput');
+    if (_photoPreview) _photoPreview.classList.add('hidden');
+    if (_photoBtnLabel) _photoBtnLabel.textContent = 'Da galeria';
+    if (_photoInput) _photoInput.value = '';
+
     const camposCliente = ['bookipNome', 'bookipCpf', 'bookipTelefone', 'bookipEndereco', 'bookipEmail', 'bookipDataManual'];
     camposCliente.forEach(id => {
         const el = document.getElementById(id);
@@ -8939,1101 +9060,883 @@ if (selectGarantia && inputGarantiaManual) {
         });
 
 
-// ============================================================
-// ✨ AMBILIGHT ENGINE — segue o tema e cor do app
-// ============================================================
-(function initAmbilight() {
-    let sr = 239, sg = 83, sb = 80;
-
-    function easeInOut(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
-    function altProgress(elapsed, duration) {
-        const cycle = elapsed % (duration * 2);
-        const raw   = cycle < duration ? cycle/duration : 2-cycle/duration;
-        return easeInOut(raw);
-    }
-    function clamp(v, mn, mx) { return Math.min(mx, Math.max(mn, v)); }
-
-    function getPrimaryRGB() {
-        const style = getComputedStyle(document.body);
-        const rgb = style.getPropertyValue('--primary-color-rgb').trim();
-        if (rgb) {
-            const parts = rgb.split(',').map(v => parseInt(v.trim()));
-            if (parts.length === 3 && !parts.some(isNaN)) return { r: parts[0], g: parts[1], b: parts[2] };
-        }
-        const hex = style.getPropertyValue('--primary-color').trim().replace('#','');
-        if (hex.length === 6) return { r: parseInt(hex.slice(0,2),16), g: parseInt(hex.slice(2,4),16), b: parseInt(hex.slice(4,6),16) };
-        return { r: 239, g: 83, b: 80 };
-    }
-
-    function isLightMode() { return document.body.dataset.theme === 'light'; }
-
-    const t0 = performance.now();
-    let lastMetaUpdate = 0;
-
-    function ambilightTick(now) {
-        const sec = (now - t0) / 1000;
-        const p1 = altProgress(sec, 12);
-        const p2 = altProgress(sec, 15);
-        const inf1 = clamp(1 - p1 * 0.7, 0.1, 1);
-        const inf2 = clamp(p2 * 0.5, 0, 0.6);
-        const total = inf1 + inf2 || 0.001;
-        const C = getPrimaryRGB();
-        const C2 = { r: Math.round(C.r * 0.5), g: Math.round(C.g * 0.4), b: Math.min(255, Math.round(C.b * 0.9 + 80)) };
-        const tr = (C.r*inf1 + C2.r*inf2) / total;
-        const tg = (C.g*inf1 + C2.g*inf2) / total;
-        const tb = (C.b*inf1 + C2.b*inf2) / total;
-        sr += (tr-sr)*0.05; sg += (tg-sg)*0.05; sb += (tb-sb)*0.05;
-        const r = Math.round(sr), g = Math.round(sg), b = Math.round(sb);
-        const intensity = clamp(inf1 + inf2*0.5, 0.3, 1);
-        const lightMode = isLightMode();
-        const glowAlpha = lightMode ? 0.35 : 0.8;
-        const glowSpread = lightMode ? 8 : 16;
-        const btnGlow = `0 0 ${glowSpread}px rgba(${r},${g},${b},${glowAlpha})`;
-        const bellBtn = document.getElementById('notification-bell');
-        const avatarWrapper = document.querySelector('.avatar-button-wrapper');
-        if (bellBtn) { bellBtn.style.boxShadow = btnGlow; bellBtn.style.borderColor = `rgba(${r},${g},${b},${(glowAlpha*0.8).toFixed(2)})`; }
-        if (avatarWrapper) { avatarWrapper.style.filter = `drop-shadow(0 0 ${glowSpread*0.6}px rgba(${r},${g},${b},${glowAlpha}))`; }
-        if (now - lastMetaUpdate > 100) {
-            const metaTheme = document.getElementById('status-bar-color');
-            if (metaTheme) {
-                let statusHex;
-                if (lightMode) {
-                    statusHex = '#'+[Math.round(255-(255-r)*0.15), Math.round(255-(255-g)*0.15), Math.round(255-(255-b)*0.15)].map(v=>v.toString(16).padStart(2,'0')).join('');
-                } else {
-                    statusHex = '#'+[Math.round(r*0.25), Math.round(g*0.25), Math.round(b*0.25)].map(v=>v.toString(16).padStart(2,'0')).join('');
-                }
-                metaTheme.setAttribute('content', statusHex);
-            }
-            lastMetaUpdate = now;
-        }
-        requestAnimationFrame(ambilightTick);
-    }
-    requestAnimationFrame(ambilightTick);
-})();
-
-
-// ============================================================
-// 🔔 SISTEMA DE NOTIFICAÇÕES NATIVAS — v3 (robusto)
-// ============================================================
-
-// Obtém o SW registration com timeout de segurança
-async function getSwReg(timeoutMs = 4000) {
-    if (!('serviceWorker' in navigator)) return null;
-    return Promise.race([
-        navigator.serviceWorker.ready,
-        new Promise(resolve => setTimeout(() => resolve(null), timeoutMs))
-    ]);
-}
-
-// Dispara uma notificação nativa com fallback em camadas
-window.dispararNotificacaoNativa = async function(notifications, forcar = false) {
-    if (!notifications || notifications.length === 0) return;
-    if (Notification.permission !== 'granted') return;
-
-    const hoje = new Date().toISOString().split('T')[0];
-    const storageKey = `ctw_notif_fired_${hoje}`;
-    let fired = [];
-    try { fired = JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch(e) {}
-
-    const swReg = await getSwReg();
-
-    for (let i = 0; i < notifications.length; i++) {
-        const notif = notifications[i];
-
-        // Extrai texto puro
-        const div = document.createElement('div');
-        div.innerHTML = notif.message || '';
-        const body = (div.textContent || '').trim().slice(0, 200);
-        if (!body) continue;
-
-        const notifId = notif.notificationId || notif.boletoId || `n${i}_${body.slice(0,15)}`;
-        const tag = `${hoje}_${notifId}`;
-        if (!forcar && fired.includes(tag)) continue;
-
-        let title = '⚡ Central Workcell';
-        if (notif.isGeneral)    title = '📢 Aviso';
-        else if (notif.isBirthday) title = '🎂 Aniversário!';
-        else                    title = '💳 Parcela em aberto';
-
-        // Tenta usar ícone local — se não existir, notificação aparece sem ícone
-        const baseUrl = location.href.replace(/\/[^\/]*$/, '/');
-        const iconUrl = baseUrl + 'icon-192.png';
-        let iconOk = false;
-        try {
-            const r = await fetch(iconUrl, { method: 'HEAD' });
-            iconOk = r.ok;
-        } catch(e) {}
-        const opts = { 
-            body, tag, renotify: true, vibrate: [200, 100, 200], data: { url: location.href },
-            ...(iconOk ? { icon: iconUrl, badge: iconUrl } : {})
-        };
-
-        let ok = false;
-
-        // Camada 1: SW registration.showNotification (funciona com app fechado)
-        if (swReg) {
-            try { await swReg.showNotification(title, opts); ok = true; } catch(e) {}
-        }
-
-        // Camada 2: Notification constructor direto (fallback)
-        if (!ok) {
-            try { new Notification(title, opts); ok = true; } catch(e) {}
-        }
-
-        if (ok) {
-            fired.push(tag);
-            try { localStorage.setItem(storageKey, JSON.stringify(fired)); } catch(e) {}
-        }
-
-        // Diagnóstico no console (ver no DevTools do Chrome)
-        console.log(`🔔 Notificação [${ok ? 'OK' : 'FALHOU'}]: "${title}" — ${body.slice(0,50)}`);
-    }
-};
-
-// Pede permissão e dispara notificação de teste imediata
-window.pedirPermissaoNotificacao = async function() {
-    if (!('Notification' in window)) return;
-    if (Notification.permission === 'denied') return;
-    if (Notification.permission === 'granted') return;
-
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') return;
-
-    // Limpa anti-spam do dia para garantir que notificações existentes disparem
-    const hoje = new Date().toISOString().split('T')[0];
-    localStorage.removeItem(`ctw_notif_fired_${hoje}`);
-
-    // Notificação de teste imediata (sem esperar SW — usa Notification direto aqui)
-    try {
-        new Notification('⚡ Central Workcell', {
-            body: '✅ Notificações ativadas! Parcelas e avisos vão aparecer aqui.',
-            tag: 'ctw_boas_vindas',
-            renotify: true
-        });
-    } catch(e) {
-        // Se falhar no direto, tenta via SW
-        const swReg = await getSwReg();
-        if (swReg) {
-            swReg.showNotification('⚡ Central Workcell', {
-                body: '✅ Notificações ativadas!',
-                tag: 'ctw_boas_vindas'
-            });
-        }
-    }
-
-    // Após 2s, dispara as notificações reais pendentes
-    setTimeout(() => {
-        if (typeof setupNotificationListeners === 'function') {
-            setupNotificationListeners();
-        }
-    }, 2000);
-};
-
-// Checa aniversários e injeta na fila de notificações
-window.checarAniversariosHoje = function() {
-    const clientes = window.dbClientsCache || [];
-    if (!clientes.length) return;
-
-    const hoje = new Date();
-    const mes = hoje.getMonth() + 1;
-    const dia = hoje.getDate();
-    const perfil = (currentUserProfile || '').toLowerCase();
-
-    const aniversariantes = clientes.filter(c => {
-        if (!c.dataNascimento) return false;
-        const p = c.dataNascimento.split('-');
-        if (p.length < 3 || +p[1] !== mes || +p[2] !== dia) return false;
-        // Filtra pelo perfil: só notifica quem criou o cliente
-        // Se o cliente não tem criadoPor (legado), notifica todos
-        if (c.criadoPor && perfil) {
-            return c.criadoPor.toLowerCase() === perfil;
-        }
-        return true; // cliente legado sem criadoPor: notifica todos
-    });
-
-    if (!aniversariantes.length) return;
-
-    const notifs = aniversariantes.map(c => ({
-        isBirthday: true,
-        notificationId: `birthday_${c.id}`,
-        clienteTel: c.tel || '',
-        clienteNome: c.nome,
-        message: `🎂 Hoje é aniversário de ${c.nome}!`
-    }));
-
-    window.dispararNotificacaoNativa(notifs);
-    console.log('🎂 Aniversariantes do perfil', currentUserProfile, ':', aniversariantes.map(c => c.nome));
-};
-
-// Hook em updateNotificationUI — dispara push a cada nova notificação
-const _origUpdateNotifUI = window.updateNotificationUI || updateNotificationUI;
-if (typeof updateNotificationUI === 'function') {
-    const _orig = updateNotificationUI;
-    // Override: dispara notif nativa quando chegar algo novo
-    window._ambilightNotifHook = function(notifications) {
-        if (notifications && notifications.length > 0) {
-            window.dispararNotificacaoNativa(notifications);
-        }
-        _orig(notifications);
-    };
-    // Patch: substitui as chamadas existentes
-    // (setupNotificationListeners chama updateNotificationUI diretamente)
-}
-
-// Pede permissão no primeiro clique do usuário
-document.addEventListener('click', function _pedirUmaVez() {
-    window.pedirPermissaoNotificacao();
-    document.removeEventListener('click', _pedirUmaVez);
-}, { once: true });
-
-// Inicia checagem de aniversários quando o cache de clientes estiver pronto
-setTimeout(() => { window.checarAniversariosHoje(); }, 5000);
-
-
-// ============================================================
-// ✨ AMBILIGHT ENGINE — segue o tema e cor do app
-// ============================================================
-(function initAmbilight() {
-    let sr = 239, sg = 83, sb = 80;
-    function easeInOut(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
-    function altProgress(e, d) { const c = e%(d*2); const r = c<d?c/d:2-c/d; return easeInOut(r); }
-    function clamp(v,mn,mx){ return Math.min(mx,Math.max(mn,v)); }
-    function getPrimaryRGB() {
-        const s = getComputedStyle(document.body);
-        const rgb = s.getPropertyValue('--primary-color-rgb').trim();
-        if (rgb) { const p=rgb.split(',').map(v=>parseInt(v.trim())); if(p.length===3&&!p.some(isNaN))return{r:p[0],g:p[1],b:p[2]}; }
-        const hex=s.getPropertyValue('--primary-color').trim().replace('#','');
-        if(hex.length===6)return{r:parseInt(hex.slice(0,2),16),g:parseInt(hex.slice(2,4),16),b:parseInt(hex.slice(4,6),16)};
-        return{r:239,g:83,b:80};
-    }
-    function isLight(){ return document.body.dataset.theme==='light'; }
-    const t0=performance.now(); let lmu=0;
-    function tick(now){
-        const sec=(now-t0)/1000;
-        const p1=altProgress(sec,12),p2=altProgress(sec,15);
-        const i1=clamp(1-p1*.7,.1,1),i2=clamp(p2*.5,0,.6),tot=i1+i2||.001;
-        const C=getPrimaryRGB(),C2={r:Math.round(C.r*.5),g:Math.round(C.g*.4),b:Math.min(255,Math.round(C.b*.9+80))};
-        const tr=(C.r*i1+C2.r*i2)/tot,tg=(C.g*i1+C2.g*i2)/tot,tb=(C.b*i1+C2.b*i2)/tot;
-        sr+=(tr-sr)*.05; sg+=(tg-sg)*.05; sb+=(tb-sb)*.05;
-        const r=Math.round(sr),g=Math.round(sg),b=Math.round(sb);
-        const light=isLight(),ga=light?.35:.8,gs=light?8:16;
-        const bell=document.getElementById('notification-bell');
-        const aw=document.querySelector('.avatar-button-wrapper');
-        if(bell){bell.style.boxShadow=`0 0 ${gs}px rgba(${r},${g},${b},${ga})`;bell.style.borderColor=`rgba(${r},${g},${b},${(ga*.8).toFixed(2)})`;}
-        if(aw){aw.style.filter=`drop-shadow(0 0 ${gs*.6}px rgba(${r},${g},${b},${ga}))`;}
-        if(now-lmu>100){
-            const m=document.getElementById('status-bar-color');
-            if(m){const f=light?[Math.round(255-(255-r)*.15),Math.round(255-(255-g)*.15),Math.round(255-(255-b)*.15)]:[Math.round(r*.25),Math.round(g*.25),Math.round(b*.25)];m.setAttribute('content','#'+f.map(v=>v.toString(16).padStart(2,'0')).join(''));}
-            lmu=now;
-        }
-        requestAnimationFrame(tick);
-    }
-    requestAnimationFrame(tick);
-})();
-
-// ============================================================
-// 🔔 NOTIFICAÇÕES NATIVAS — versão final limpa
-// ============================================================
-
-// Ícone do app (arquivo na raiz do repositório)
-const CTW_ICON = (() => {
-    const base = location.href.replace(/\/[^\/]*(\?.*)?$/, '/');
-    return base + 'icon-192.png';
-})();
-const CTW_BADGE = (() => {
-    const base = location.href.replace(/\/[^\/]*(\?.*)?$/, '/');
-    return base + 'badge.png';
-})();
-
-// Dispara notificação via Service Worker (única forma que funciona no Android)
-window.dispararNotificacaoNativa = async function(notifications, forcar = false) {
-    if (!notifications || notifications.length === 0) return;
-    if (Notification.permission !== 'granted') return;
-
-    // Anti-spam: cada notif dispara só 1x por dia (por ID único)
-    // "forcar=true" ignora o cache — usado no teste de boas-vindas
-    const hoje = new Date().toISOString().split('T')[0];
-    const cacheKey = 'ctw_fired_' + hoje;
-    let fired = [];
-    try { fired = JSON.parse(localStorage.getItem(cacheKey) || '[]'); } catch(e) {}
-
-    // Aguarda o SW estar pronto (máx 5s)
-    let reg = null;
-    try {
-        reg = await Promise.race([
-            navigator.serviceWorker.ready,
-            new Promise(r => setTimeout(() => r(null), 5000))
-        ]);
-    } catch(e) {}
-
-    for (let i = 0; i < notifications.length; i++) {
-        const notif = notifications[i];
-
-        // Texto puro da mensagem HTML
-        const tmp = document.createElement('div');
-        tmp.innerHTML = notif.message || '';
-        const body = (tmp.textContent || '').trim().slice(0, 200);
-        if (!body) continue;
-
-        // Chave única para anti-spam
-        const id = notif.notificationId || notif.boletoId || ('g' + i + body.slice(0, 10));
-        const tag = hoje + '_' + id;
-        if (!forcar && fired.includes(tag)) continue;
-
-        // Título
-        let title = '⚡ Central Workcell';
-        if (notif.isGeneral)     title = '📢 Aviso do Sistema';
-        else if (notif.isBirthday) title = '🎂 Aniversário!';
-        else                     title = '💳 Parcela em aberto';
-
-        // Opções da notificação — ícone sem verificação prévia
-        const opts = {
-            body,
-            icon: CTW_ICON,
-            badge: CTW_BADGE,
-            tag,
-            renotify: true,
-            vibrate: [200, 100, 200]
-        };
-
-        let ok = false;
-
-        // MÉTODO 1: via SW registration (funciona no Android com app fechado)
-        if (reg) {
-            try { await reg.showNotification(title, opts); ok = true; }
-            catch(e) { console.warn('SW notif falhou:', e); }
-        }
-
-        // MÉTODO 2: Notification API direta (fallback desktop/iOS)
-        if (!ok) {
-            try { new Notification(title, opts); ok = true; }
-            catch(e) { console.warn('Notification() falhou:', e); }
-        }
-
-        console.log('🔔', ok ? 'OK' : 'FALHOU', '|', title, '|', body.slice(0, 60));
-
-        if (ok) {
-            fired.push(tag);
-            try { localStorage.setItem(cacheKey, JSON.stringify(fired)); } catch(e) {}
-        }
-    }
-};
-
-// Pede permissão e dispara teste imediato
-window.pedirPermissaoNotificacao = async function() {
-    if (!('Notification' in window)) return;
-    if (Notification.permission === 'denied') return;
-    if (Notification.permission === 'granted') return;
-
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') return;
-
-    // Limpa cache do dia para notificações pendentes dispararem logo
-    const hoje = new Date().toISOString().split('T')[0];
-    localStorage.removeItem('ctw_fired_' + hoje);
-
-    // Notificação de teste — espera SW estar registrado
-    setTimeout(async () => {
-        let reg = null;
-        try { reg = await Promise.race([navigator.serviceWorker.ready, new Promise(r => setTimeout(() => r(null), 3000))]); } catch(e) {}
-
-        const opts = { body: '✅ Parcelas, avisos e aniversários vão aparecer aqui.', icon: CTW_ICON, badge: CTW_BADGE, tag: 'ctw_boas_vindas', renotify: true };
-
-        let ok = false;
-        if (reg) { try { await reg.showNotification('⚡ Notificações ativadas!', opts); ok = true; } catch(e) {} }
-        if (!ok) { try { new Notification('⚡ Notificações ativadas!', opts); } catch(e) {} }
-    }, 1500);
-
-    // Dispara notificações reais pendentes
-    setTimeout(() => { if (typeof setupNotificationListeners === 'function') setupNotificationListeners(); }, 3000);
-};
-
-// Checa aniversários dos clientes
-window.checarAniversariosHoje = function() {
-    const clientes = window.dbClientsCache || [];
-    if (!clientes.length) return;
-    const hoje = new Date();
-    const mes = hoje.getMonth() + 1, dia = hoje.getDate();
-    const aniv = clientes.filter(c => {
-        if (!c.dataNascimento) return false;
-        const p = c.dataNascimento.split('-');
-        return p.length >= 3 && +p[1] === mes && +p[2] === dia;
-    });
-    if (!aniv.length) return;
-    window.dispararNotificacaoNativa(aniv.map(c => ({
-        isBirthday: true,
-        notificationId: 'birthday_' + c.id,
-        message: '🎂 Hoje é aniversário de ' + c.nome + '!'
-    })));
-};
-
-// Hook em updateNotificationUI → dispara push a cada nova notificação
-(function() {
-    const orig = window.updateNotificationUI || updateNotificationUI;
-    if (typeof orig !== 'function') return;
-    updateNotificationUI = function(notifications) {
-        if (notifications && notifications.length > 0) {
-            window.dispararNotificacaoNativa(notifications);
-        }
-        return orig(notifications);
-    };
-})();
-
-// Hook aniversários no setupNotificationListeners
-(function() {
-    const orig = window.setupNotificationListeners || setupNotificationListeners;
-    if (typeof orig !== 'function') return;
-    setupNotificationListeners = function() {
-        orig();
-        setTimeout(() => window.checarAniversariosHoje(), 5000);
-    };
-})();
-
-// Pede permissão no primeiro clique
-document.addEventListener('click', function _ask() {
-    window.pedirPermissaoNotificacao();
-    document.removeEventListener('click', _ask);
-}, { once: true });
-
-
-// ============================================================
-// ✨ AMBILIGHT ENGINE — segue o tema e cor do app
-// ============================================================
-(function initAmbilight() {
-    let sr = 239, sg = 83, sb = 80;
-    function easeInOut(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
-    function altProgress(e, d) { const c=e%(d*2); const r=c<d?c/d:2-c/d; return easeInOut(r); }
-    function clamp(v,mn,mx){ return Math.min(mx,Math.max(mn,v)); }
-    function getPrimaryRGB() {
-        const s=getComputedStyle(document.body);
-        const rgb=s.getPropertyValue('--primary-color-rgb').trim();
-        if(rgb){const p=rgb.split(',').map(v=>parseInt(v.trim()));if(p.length===3&&!p.some(isNaN))return{r:p[0],g:p[1],b:p[2]};}
-        const hex=s.getPropertyValue('--primary-color').trim().replace('#','');
-        if(hex.length===6)return{r:parseInt(hex.slice(0,2),16),g:parseInt(hex.slice(2,4),16),b:parseInt(hex.slice(4,6),16)};
-        return{r:239,g:83,b:80};
-    }
-    function isLight(){ return document.body.dataset.theme==='light'; }
-    const t0=performance.now(); let lmu=0;
-    function tick(now){
-        const sec=(now-t0)/1000;
-        const p1=altProgress(sec,12),p2=altProgress(sec,15);
-        const i1=clamp(1-p1*.7,.1,1),i2=clamp(p2*.5,0,.6),tot=i1+i2||.001;
-        const C=getPrimaryRGB(),C2={r:Math.round(C.r*.5),g:Math.round(C.g*.4),b:Math.min(255,Math.round(C.b*.9+80))};
-        const tr=(C.r*i1+C2.r*i2)/tot,tg=(C.g*i1+C2.g*i2)/tot,tb=(C.b*i1+C2.b*i2)/tot;
-        sr+=(tr-sr)*.05;sg+=(tg-sg)*.05;sb+=(tb-sb)*.05;
-        const r=Math.round(sr),g=Math.round(sg),b=Math.round(sb);
-        const light=isLight(),ga=light?.35:.8,gs=light?8:16;
-        const bell=document.getElementById('notification-bell');
-        const aw=document.querySelector('.avatar-button-wrapper');
-        if(bell){bell.style.boxShadow=`0 0 ${gs}px rgba(${r},${g},${b},${ga})`;bell.style.borderColor=`rgba(${r},${g},${b},${(ga*.8).toFixed(2)})`;}
-        if(aw){aw.style.filter=`drop-shadow(0 0 ${gs*.6}px rgba(${r},${g},${b},${ga}))`;}
-        if(now-lmu>100){
-            const m=document.getElementById('status-bar-color');
-            if(m){const f=light?[Math.round(255-(255-r)*.15),Math.round(255-(255-g)*.15),Math.round(255-(255-b)*.15)]:[Math.round(r*.25),Math.round(g*.25),Math.round(b*.25)];m.setAttribute('content','#'+f.map(v=>v.toString(16).padStart(2,'0')).join(''));}
-            lmu=now;
-        }
-        requestAnimationFrame(tick);
-    }
-    requestAnimationFrame(tick);
-})();
-
-
-// ============================================================
-// ⚡ TRANSIÇÃO + ⭐ FAVORITOS
-// ============================================================
-
-// Mostra overlay de transição, executa ação, depois esconde
-function favTransition(emoji, label, action) {
-    const overlay = document.getElementById('favTransitionOverlay');
-    const emojiEl = document.getElementById('favTransitionEmoji');
-    const labelEl = document.getElementById('favTransitionLabel');
-    if (!overlay) { action(); return; }
-
-    // Seta conteúdo
-    if (emojiEl) emojiEl.textContent = emoji;
-    if (labelEl) labelEl.textContent = label;
-
-    // MOSTRAR: força display:flex + opacity via style (sem depender de animation CSS)
-    overlay.style.display = 'flex';
-    overlay.style.opacity = '0';
-    overlay.style.transition = 'opacity 0.15s ease';
-    overlay.classList.remove('hidden', 'entering', 'leaving');
-
-    // Força reflow para o browser registrar o estado opacity:0 antes de animar
-    void overlay.offsetHeight;
-
-    // Agora anima para opaco
-    overlay.style.opacity = '1';
-
-    // Após 200ms overlay está visível → executa navegação por baixo
-    setTimeout(() => {
-        action();
-    }, 200);
-
-    // Após 700ms total → fade out e esconde
-    setTimeout(() => {
-        overlay.style.opacity = '0';
-        setTimeout(() => {
-            overlay.style.display = 'none';
-            overlay.classList.add('hidden');
-            overlay.style.transition = '';
-            overlay.style.opacity = '';
-        }, 180);
-    }, 700);
-}
-
-// Opções disponíveis para favoritar
-const FAV_OPTIONS = [
-    { id: 'calculadora',  emoji: '🧮', label: 'Abrindo Calculadora...',       action: () => showMainSection('calculator') },
-    { id: 'fecharVenda',  emoji: '💰', label: 'Abrindo Fechar Venda...',      action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openFecharVenda')?.click(), 300); } },
-    { id: 'repassar',     emoji: '↔️', label: 'Abrindo Repassar Valores...', action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openRepassarValores')?.click(), 300); } },
-    { id: 'emprestar',    emoji: '🤝', label: 'Abrindo Emprestar Valores...', action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openEmprestarValores')?.click(), 300); } },
-    { id: 'emprestimo',   emoji: '🏦', label: 'Abrindo Calc. Empréstimo...', action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openCalcularEmprestimo')?.click(), 300); } },
-    { id: 'porAparelho',  emoji: '📱', label: 'Abrindo Calc. p/ Aparelho...', action: () => { showMainSection('calculator'); setTimeout(() => document.getElementById('openCalcularPorAparelho')?.click(), 300); } },
-    { id: 'contrato',     emoji: '📋', label: 'Abrindo Contratos...',         action: () => { showMainSection('contract'); setTimeout(() => window.openDocumentsSection?.('contrato'), 300); } },
-    { id: 'bookip',       emoji: '📒', label: 'Abrindo Bookip...',            action: () => { showMainSection('contract'); setTimeout(() => document.getElementById('openBookipView')?.click(), 300); } },
-    { id: 'clientes',     emoji: '👥', label: 'Abrindo Clientes...',          action: () => showMainSection('clients') },
-    { id: 'estoque',      emoji: '📦', label: 'Abrindo Estoque...',           action: () => showMainSection('stock') },
-    { id: 'admin',        emoji: '⚙️', label: 'Abrindo Administração...',     action: () => showMainSection('administracao') },
-];
-
-const MAX_FAVS = 5;
-
-function getFavKey() {
-    const p = localStorage.getItem('ctwUserProfile') || 'default';
-    return 'ctw_favs_' + p.toLowerCase().replace(/\s+/g, '_');
-}
-function getFavs() {
-    try { return JSON.parse(localStorage.getItem(getFavKey()) || '[]'); } catch(e) { return []; }
-}
-function saveFavs(ids) { localStorage.setItem(getFavKey(), JSON.stringify(ids)); }
-
-function renderFavStories() {
-    const wrap = document.getElementById('favStoriesWrap');
-    if (!wrap) return;
-    const favIds = getFavs();
-    const mainMenu = document.getElementById('mainMenu');
-    wrap.innerHTML = '';
-
-    if (favIds.length === 0) {
-        const s = document.createElement('div');
-        s.className = 'fav-story fav-story-add';
-        s.innerHTML = `<div class="fav-story-ring"><div class="fav-story-inner">＋</div></div><span class="fav-story-label">Adicionar</span>`;
-        s.addEventListener('click', openFavModal);
-        wrap.appendChild(s);
-        mainMenu?.classList.remove('has-favorites');
-        return;
-    }
-
-    mainMenu?.classList.add('has-favorites');
-
-    favIds.forEach(id => {
-        const opt = FAV_OPTIONS.find(o => o.id === id);
-        if (!opt) return;
-        const s = document.createElement('div');
-        s.className = 'fav-story';
-        s.innerHTML = `<div class="fav-story-ring"><div class="fav-story-inner">${opt.emoji}</div></div><span class="fav-story-label">${opt.label.replace('Abrindo ','').replace('...','')}</span>`;
-        s.addEventListener('click', () => {
-            // Animação no ring
-            const ring = s.querySelector('.fav-story-ring');
-            ring.style.transform = 'scale(0.88)';
-            setTimeout(() => { ring.style.transform = ''; }, 160);
-            // Transição com emoji e label
-            setTimeout(() => favTransition(opt.emoji, opt.label, opt.action), 80);
-        });
-        wrap.appendChild(s);
-    });
-}
-
-function openFavModal() {
-    const overlay = document.getElementById('favModalOverlay');
-    const grid = document.getElementById('favModalGrid');
-    if (!overlay || !grid) return;
-
-    // Estado local de ordenação (cópia mutável)
-    window._favDraftOrder = [...getFavs()];
-
-    renderFavModal(grid);
-    overlay.classList.remove('hidden');
-}
-
-function renderFavModal(grid) {
-    const order = window._favDraftOrder;
-    grid.innerHTML = '';
-
-    // --- SEÇÃO 1: ORDEM ATUAL ---
-    if (order.length > 0) {
-        const orderSection = document.createElement('div');
-        orderSection.style.cssText = 'margin-bottom:16px;';
-        orderSection.innerHTML = `<div style="font-size:0.7rem;color:var(--text-secondary);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;padding:0 2px;">⟺ Segure e arraste para reordenar</div>`;
-
-        const chipWrap = document.createElement('div');
-        chipWrap.id = 'fav-chip-wrap';
-        chipWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;padding:4px 2px 12px;';
-
-        order.forEach((id, i) => {
-            const opt = FAV_OPTIONS.find(o => o.id === id);
-            if (!opt) return;
-            const label = opt.label.replace('Abrindo ','').replace('...','');
-
-            const chip = document.createElement('div');
-            chip.className = 'fav-chip';
-            chip.draggable = true;
-            chip.dataset.id = id;
-            chip.dataset.index = i;
-            chip.style.cssText = `
-                display:inline-flex;align-items:center;gap:6px;
-                background:rgba(var(--primary-color-rgb),0.12);
-                border:1px solid rgba(var(--primary-color-rgb),0.3);
-                border-radius:20px;padding:6px 10px 6px 8px;
-                cursor:grab;font-size:0.72rem;color:var(--text-color);
-                font-weight:500;user-select:none;touch-action:none;
-                transition:opacity 0.15s,transform 0.15s;
-            `;
-            chip.innerHTML = `
-                <span style="font-size:0.95rem;line-height:1;">${opt.emoji}</span>
-                <span>${label}</span>
-                <span style="margin-left:2px;color:var(--text-secondary);font-size:0.7rem;cursor:pointer;" 
-                    data-remove="${id}">✕</span>
-            `;
-
-            // Remove ao clicar no ✕
-            chip.querySelector('[data-remove]').addEventListener('click', (e) => {
-                e.stopPropagation();
-                window._favDraftOrder = window._favDraftOrder.filter(x => x !== id);
-                saveFavs(window._favDraftOrder);
-                renderFavStories();
-                renderFavModal(grid);
-            });
-
-            // Drag & Drop desktop
-            chip.addEventListener('dragstart', (e) => {
-                e.dataTransfer.setData('text/plain', id);
-                chip.style.opacity = '0.4';
-                window._favDragId = id;
-            });
-            chip.addEventListener('dragend', () => {
-                chip.style.opacity = '1';
-                window._favDragId = null;
-                document.querySelectorAll('.fav-chip').forEach(c => c.classList.remove('drag-over'));
-            });
-            chip.addEventListener('dragover', (e) => { e.preventDefault(); chip.classList.add('drag-over'); });
-            chip.addEventListener('dragleave', () => chip.classList.remove('drag-over'));
-            chip.addEventListener('drop', (e) => {
-                e.preventDefault();
-                chip.classList.remove('drag-over');
-                const fromId = e.dataTransfer.getData('text/plain');
-                const toId = id;
-                if (fromId === toId) return;
-                const arr = window._favDraftOrder;
-                const fi = arr.indexOf(fromId), ti = arr.indexOf(toId);
-                if (fi < 0 || ti < 0) return;
-                arr.splice(fi, 1);
-                arr.splice(ti, 0, fromId);
-                saveFavs(window._favDraftOrder);
-                renderFavStories();
-                renderFavModal(grid);
-            });
-
-            // Touch drag para mobile
-            let touchStartY, touchStartX, touchClone, touchIdx;
-            chip.addEventListener('touchstart', (e) => {
-                touchStartY = e.touches[0].clientY;
-                touchStartX = e.touches[0].clientX;
-                touchIdx = window._favDraftOrder.indexOf(id);
-                chip.style.opacity = '0.5';
-            }, { passive: true });
-
-            chip.addEventListener('touchmove', (e) => {
-                e.preventDefault();
-                const t = e.touches[0];
-                const el = document.elementFromPoint(t.clientX, t.clientY);
-                const target = el?.closest('.fav-chip');
-                document.querySelectorAll('.fav-chip').forEach(c => c.style.outline = '');
-                if (target && target !== chip) target.style.outline = '2px solid var(--primary-color)';
-            }, { passive: false });
-
-            chip.addEventListener('touchend', (e) => {
-                chip.style.opacity = '1';
-                document.querySelectorAll('.fav-chip').forEach(c => c.style.outline = '');
-                const t = e.changedTouches[0];
-                const el = document.elementFromPoint(t.clientX, t.clientY);
-                const target = el?.closest('.fav-chip[data-id]');
-                if (target && target.dataset.id !== id) {
-                    const arr = window._favDraftOrder;
-                    const fi = arr.indexOf(id), ti = arr.indexOf(target.dataset.id);
-                    if (fi >= 0 && ti >= 0) {
-                        arr.splice(fi, 1);
-                        arr.splice(ti, 0, id);
-                        saveFavs(window._favDraftOrder);
-                        renderFavStories();
-                        renderFavModal(grid);
-                    }
-                }
-            }, { passive: true });
-
-            chipWrap.appendChild(chip);
-        });
-
-        orderSection.appendChild(chipWrap);
-        grid.appendChild(orderSection);
-    }
-
-    // Separador
-    const sep = document.createElement('div');
-    sep.style.cssText = 'font-size:0.7rem;color:var(--text-secondary);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;padding:0 2px;';
-    sep.textContent = order.length > 0 ? '+ Adicionar' : 'Escolha até 5 favoritos';
-    grid.appendChild(sep);
-
-    // --- SEÇÃO 2: OPÇÕES ---
-    const optGrid = document.createElement('div');
-    optGrid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding-bottom:4px;';
-
-    FAV_OPTIONS.forEach(opt => {
-        const label = opt.label.replace('Abrindo ','').replace('...','');
-        const isSelected = order.includes(opt.id);
-
-        const el = document.createElement('div');
-        el.className = 'fav-option' + (isSelected ? ' selected' : '');
-        el.dataset.id = opt.id;
-        el.innerHTML = `<div class="fav-option-icon">${opt.emoji}</div><div class="fav-option-label">${label}</div>`;
-
-        el.addEventListener('click', () => {
-            const arr = window._favDraftOrder;
-            if (arr.includes(opt.id)) {
-                window._favDraftOrder = arr.filter(x => x !== opt.id);
-            } else {
-                if (arr.length >= MAX_FAVS) return; // já cheio
-                window._favDraftOrder.push(opt.id);
-            }
-            saveFavs(window._favDraftOrder);
-            renderFavStories();
-            renderFavModal(grid);
-        });
-
-        optGrid.appendChild(el);
-    });
-
-    grid.appendChild(optGrid);
-}
-
-function closeFavModal() {
-    const overlay = document.getElementById('favModalOverlay');
-    if (!overlay) return;
-    window._favDraftOrder = null;
-    overlay.classList.add('hidden');
-}
-
-function initFavoritos() {
-    document.getElementById('favEditBtn')?.addEventListener('click', openFavModal);
-    document.getElementById('favModalClose')?.addEventListener('click', () => closeFavModal());
-    // save button removed — auto-save on selection
-    document.getElementById('favModalOverlay')?.addEventListener('click', e => {
-        if (e.target.id === 'favModalOverlay') closeFavModal();
-    });
-    renderFavStories();
-}
-
-// Re-renderiza quando perfil muda
-const _origSetProfileFav = window.setProfile;
-if (typeof window.setProfile === 'function') {
-    window.setProfile = function(nome) {
-        _origSetProfileFav(nome);
-        setTimeout(renderFavStories, 200);
-    };
-}
-
-document.addEventListener('DOMContentLoaded', () => setTimeout(initFavoritos, 400));
-
-// ============================================================
-// Favorites CSS (injetado via JS para garantir que está presente)
-// ============================================================
-(function injectFavCSS() {
-    if (document.getElementById('fav-css')) return;
-    const style = document.createElement('style');
-    style.id = 'fav-css';
-    style.textContent = `.fav-section{width:100%;margin-bottom:18px}.fav-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:0 2px}.fav-title{font-size:.75rem;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-secondary)}.fav-edit-btn{background:none;border:none;color:var(--text-secondary);font-size:.75rem;cursor:pointer;padding:4px 8px;border-radius:8px;transition:color .2s,background .2s}.fav-edit-btn:hover{color:var(--primary-color);background:rgba(var(--primary-color-rgb),.1)}.fav-stories-wrap{display:flex;gap:14px;overflow-x:auto;padding:4px 2px 8px;scrollbar-width:none;-webkit-overflow-scrolling:touch}.fav-stories-wrap::-webkit-scrollbar{display:none}.fav-story{display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;animation:fav-pop .3s ease backwards}.fav-story:nth-child(1){animation-delay:.05s}.fav-story:nth-child(2){animation-delay:.1s}.fav-story:nth-child(3){animation-delay:.15s}.fav-story:nth-child(4){animation-delay:.2s}.fav-story:nth-child(5){animation-delay:.25s}@keyframes fav-pop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}.fav-story-ring{width:62px;height:62px;border-radius:50%;padding:2.5px;background:linear-gradient(135deg,var(--primary-color),#8b5cf6,#00e5ff);transition:transform .18s ease,filter .18s ease}.fav-story:active .fav-story-ring{transform:scale(.9);filter:brightness(1.15)}.fav-story-inner{width:100%;height:100%;border-radius:50%;background:var(--tertiary-color);border:2.5px solid var(--tertiary-color);display:flex;align-items:center;justify-content:center;font-size:1.55rem;position:relative;overflow:hidden}.fav-story-inner::after{content:'';position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 35% 35%,rgba(255,255,255,.15),transparent 60%)}.fav-story-label{font-size:.6rem;font-weight:500;color:var(--text-secondary);text-align:center;max-width:62px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fav-story-add .fav-story-ring{background:var(--glass-bg);border:1.5px dashed var(--glass-border);padding:0}.fav-story-add .fav-story-inner{background:transparent;border:none;color:var(--text-secondary);font-size:1.3rem}.fav-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(8px);z-index:9000;display:flex;align-items:flex-end;justify-content:center;animation:fav-overlay-in .2s ease}.fav-modal-overlay.hidden{display:none}@keyframes fav-overlay-in{from{opacity:0}to{opacity:1}}.fav-modal{background:var(--glass-bg);backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:24px 24px 0 0;padding:0;width:100%;max-width:520px;height:82vh;max-height:82vh;display:flex;flex-direction:column;overflow:hidden;animation:fav-modal-up .28s cubic-bezier(.34,1.56,.64,1)}@keyframes fav-modal-up{from{transform:translateY(100%)}to{transform:translateY(0)}}.fav-modal-header{display:flex;align-items:center;justify-content:space-between;font-weight:600;font-size:1rem;color:var(--text-color-strong);flex-shrink:0;padding:20px 20px 16px}.fav-modal-close{background:rgba(255,255,255,.08);border:none;border-radius:50%;width:32px;height:32px;color:var(--text-color);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s}.fav-modal-close:hover{background:rgba(255,255,255,.15)}.fav-modal-grid{overflow-y:auto;flex:1;min-height:0;padding:0 20px 16px;-webkit-overflow-scrolling:touch}.fav-option{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;padding:10px 4px;border-radius:14px;border:1.5px solid transparent;transition:border-color .2s,background .2s,transform .15s;background:rgba(255,255,255,.03);-webkit-tap-highlight-color:transparent}.fav-option:active{transform:scale(.94)}.fav-option.selected{border-color:var(--primary-color);background:rgba(var(--primary-color-rgb),.12)}.fav-option-icon{font-size:1.5rem;line-height:1}.fav-option-label{font-size:.58rem;text-align:center;color:var(--text-secondary);line-height:1.3;font-weight:500}.fav-option.selected .fav-option-label{color:var(--primary-color)}.fav-modal-save{width:100%;padding:18px;border:none;border-radius:0;background:var(--primary-color);color:#fff;font-weight:700;font-size:.95rem;cursor:pointer;letter-spacing:.5px;transition:opacity .2s;flex-shrink:0}.fav-modal-save:active{opacity:.85}.has-favorites .btn-menu{padding:14px 20px;font-size:.9rem}.fav-chip.drag-over{outline:2px solid var(--primary-color);opacity:0.8;transform:scale(1.04)}`;
-    document.head.appendChild(style);
-})();
-
-
-
-
-// ============================================================
-// 🎈 BALÕES DE NOTIFICAÇÃO — lado direito, empilhados
-// ============================================================
-
-window.toggleNotifBalloons = function() {
-    const existing = document.getElementById('notif-balloons-container');
-    if (existing) {
-        closeBalloons(existing);
-        return;
-    }
-
-    const notifs = window._currentNotifications || [];
-    if (!notifs.length) return;
-
-    // Container fixo no lado direito
-    const container = document.createElement('div');
-    container.id = 'notif-balloons-container';
-    container.style.cssText = `
-        position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        z-index: 8999;
-        pointer-events: none;
-    `;
-    document.body.appendChild(container);
-
-    // Overlay escuro sutil para fechar ao clicar fora
+// Abre foto do produto do bookip com tela de carregamento
+window.abrirFotoBookip = function(fotoUrl, nome) {
+    if (!fotoUrl) return;
+
+    // Overlay com loading igual ao da transição de favoritos
     const overlay = document.createElement('div');
+    overlay.id = 'fotoBookipOverlay';
     overlay.style.cssText = `
-        position: absolute;
-        inset: 0;
-        pointer-events: all;
-        background: rgba(0,0,0,0.25);
-        backdrop-filter: blur(2px);
+        position: fixed; inset: 0; z-index: 19999;
+        background: rgba(0,0,0,0.95);
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 16px;
         animation: notif-overlay-in 0.2s ease;
     `;
-    overlay.addEventListener('click', () => closeBalloons(container));
-    container.appendChild(overlay);
 
-    // Injeta keyframes se não existir
-    if (!document.getElementById('notif-balloon-styles')) {
-        const s = document.createElement('style');
-        s.id = 'notif-balloon-styles';
-        s.textContent = `
-            @keyframes notif-overlay-in { from{opacity:0} to{opacity:1} }
-            @keyframes notif-slide-in {
-                from { opacity:0; transform: translateX(120px) scale(0.85); }
-                to   { opacity:1; transform: translateX(0)     scale(1); }
-            }
-            @keyframes notif-slide-out {
-                from { opacity:1; transform: translateX(0) scale(1); }
-                to   { opacity:0; transform: translateX(80px) scale(0.9); }
-            }
-        `;
-        document.head.appendChild(s);
-    }
-
-    // Painel lateral direito
-    const panel = document.createElement('div');
-    panel.id = 'notif-balloons-panel';
-    panel.style.cssText = `
-        position: absolute;
-        top: 60px;
-        right: 12px;
-        width: 300px;
-        max-width: calc(100vw - 24px);
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        pointer-events: none;
-        z-index: 9000;
-    `;
-    container.appendChild(panel);
-
-    // Cria um card por notificação com delay escalonado
-    notifs.forEach((notif, idx) => {
-        setTimeout(() => {
-            const card = createNotifCard(notif, idx);
-            panel.appendChild(card);
-        }, idx * 100);
-    });
-};
-
-function closeBalloons(container) {
-    const overlay = container.querySelector('div');
-    if (overlay) {
-        overlay.style.transition = 'opacity 0.2s';
-        overlay.style.opacity = '0';
-    }
-
-    const cards = container.querySelectorAll('.notif-card');
-    cards.forEach((c, i) => {
-        setTimeout(() => {
-            c.style.animation = 'notif-slide-out 0.22s ease forwards';
-        }, i * 50);
-    });
-
-    setTimeout(() => container.remove(), cards.length * 50 + 280);
-}
-
-function createNotifCard(notif, idx) {
-    // Texto puro
-    const tmp = document.createElement('div');
-    tmp.innerHTML = notif.message || '';
-    const texto = tmp.textContent.trim();
-
-    // Tipo → ícone, cor, ação
-    let icon, accentH, accentRGB, actionPrimary, actionSecondary;
-
-    if (notif.isBirthday) {
-        icon = '🎂';
-        accentH = '#ff6d00';
-        accentRGB = '255,109,0';
-        actionPrimary = notif.clienteTel
-            ? { label: '💬 Mandar parabéns no WhatsApp', fn: () => abrirWhatsApp(notif.clienteTel, `Olá ${notif.clienteNome || ''}! 🎂 Feliz aniversário! Desejamos tudo de bom pra você nesse dia especial! 🎉`) }
-            : null;
-    } else if (!notif.isGeneral) {
-        icon = '💳';
-        accentH = '#ef4444';
-        accentRGB = '239,68,68';
-        actionPrimary = notif.clienteTel
-            ? { label: '💬 WhatsApp do cliente', fn: () => abrirWhatsApp(notif.clienteTel) }
-            : null;
-        actionSecondary = notif.boletoId
-            ? { label: '📋 Ver contrato', fn: () => { if(typeof verBoletoDeNotificacao === 'function') verBoletoDeNotificacao(notif.boletoId); } }
-            : null;
-    } else {
-        icon = '📢';
-        accentH = '#00e5ff';
-        accentRGB = '0,229,255';
-        actionPrimary = null;
-    }
-
-    const card = document.createElement('div');
-    card.className = 'notif-card';
-    card.style.cssText = `
-        pointer-events: all;
-        background: rgba(8, 14, 28, 0.96);
-        border: 1px solid rgba(${accentRGB}, 0.35);
-        border-left: 3px solid ${accentH};
-        border-radius: 14px;
-        padding: 14px 14px 12px;
-        box-shadow: 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(${accentRGB},0.1);
-        animation: notif-slide-in 0.35s cubic-bezier(0.34,1.56,0.64,1) ${idx * 0.08}s both;
-        cursor: default;
-        position: relative;
-        overflow: hidden;
-    `;
-
-    // Glow sutil no fundo
-    card.innerHTML = `
-        <div style="position:absolute;inset:0;border-radius:14px;background:radial-gradient(ellipse at top right,rgba(${accentRGB},0.07),transparent 65%);pointer-events:none;"></div>
-
-        <div style="display:flex;align-items:flex-start;gap:10px;position:relative;">
-            <!-- Ícone -->
-            <div style="
-                width:38px;height:38px;border-radius:10px;
-                background:rgba(${accentRGB},0.12);
-                border:1px solid rgba(${accentRGB},0.25);
-                display:flex;align-items:center;justify-content:center;
-                font-size:1.25rem;flex-shrink:0;
-            ">${icon}</div>
-
-            <!-- Conteúdo -->
-            <div style="flex:1;min-width:0;">
-                <div style="
-                    font-size:0.78rem;
-                    color:rgba(255,255,255,0.92);
-                    line-height:1.45;
-                    font-weight:500;
-                    font-family:'Poppins',sans-serif;
-                    margin-bottom:${actionPrimary || actionSecondary ? '10px' : '0'};
-                ">${texto}</div>
-
-                ${actionPrimary || actionSecondary ? `
-                <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                    ${actionPrimary ? `
-                    <button class="notif-action-btn" data-action="primary" style="
-                        flex:1;min-width:0;
-                        background:rgba(${accentRGB},0.15);
-                        border:1px solid rgba(${accentRGB},0.35);
-                        border-radius:8px;
-                        color:${accentH};
-                        font-size:0.65rem;
-                        font-weight:600;
-                        padding:6px 8px;
-                        cursor:pointer;
-                        text-align:center;
-                        white-space:nowrap;
-                        overflow:hidden;
-                        text-overflow:ellipsis;
-                        font-family:'Poppins',sans-serif;
-                        transition:background 0.15s;
-                    ">${actionPrimary.label}</button>
-                    ` : ''}
-                    ${actionSecondary ? `
-                    <button class="notif-action-btn" data-action="secondary" style="
-                        flex:1;min-width:0;
-                        background:rgba(255,255,255,0.05);
-                        border:1px solid rgba(255,255,255,0.1);
-                        border-radius:8px;
-                        color:rgba(255,255,255,0.55);
-                        font-size:0.65rem;
-                        font-weight:600;
-                        padding:6px 8px;
-                        cursor:pointer;
-                        text-align:center;
-                        white-space:nowrap;
-                        overflow:hidden;
-                        text-overflow:ellipsis;
-                        font-family:'Poppins',sans-serif;
-                        transition:background 0.15s;
-                    ">${actionSecondary.label}</button>
-                    ` : ''}
-                </div>
-                ` : ''}
-            </div>
-
-            <!-- Fechar -->
-            <button onclick="event.stopPropagation();window.dismissNotifBalloon('${notif.notificationId}',this.closest('.notif-card'))" style="
-                background:none;border:none;
-                color:rgba(255,255,255,0.3);
-                cursor:pointer;padding:2px;
-                font-size:0.8rem;flex-shrink:0;
-                line-height:1;
-                transition:color 0.15s;
-            ">✕</button>
+    // Loading state inicial
+    overlay.innerHTML = `
+        <div style="position:relative;width:110px;height:110px;display:flex;align-items:center;justify-content:center;">
+            <div style="position:absolute;width:90px;height:90px;border-radius:50%;border:2px solid transparent;border-top-color:var(--primary-color);animation:fav-tr-spin 0.9s linear infinite;"></div>
+            <div style="position:absolute;width:110px;height:110px;border-radius:50%;border:2px solid transparent;border-bottom-color:#8b5cf6;animation:fav-tr-spin 1.4s linear infinite reverse;"></div>
+            <span style="font-size:2.2rem;">🖼️</span>
         </div>
+        <div style="color:rgba(255,255,255,0.5);font-size:0.8rem;font-family:'Poppins',sans-serif;">Carregando imagem...</div>
     `;
 
-    // Wira os botões de ação
-    if (actionPrimary) {
-        card.querySelector('[data-action="primary"]')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            actionPrimary.fn();
-            const c = document.getElementById('notif-balloons-container');
-            if (c) closeBalloons(c);
+    // Fecha ao clicar fora da foto
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay || e.target.id === 'fotoBookipOverlay') {
+            overlay.style.opacity = '0';
+            overlay.style.transition = 'opacity 0.2s';
+            setTimeout(() => overlay.remove(), 200);
+        }
+    });
+
+    document.body.appendChild(overlay);
+
+    // Carrega a imagem
+    const img = new Image();
+    img.onload = () => {
+        overlay.innerHTML = `
+            <div style="position:relative;max-width:min(95vw,600px);">
+                <img src="${fotoUrl}" 
+                    style="width:100%;max-height:80vh;object-fit:contain;border-radius:12px;display:block;box-shadow:0 8px 40px rgba(0,0,0,0.8);">
+                <button onclick="document.getElementById('fotoBookipOverlay').remove()" style="
+                    position:absolute;top:-12px;right:-12px;
+                    background:rgba(0,0,0,0.8);border:1px solid rgba(255,255,255,0.2);
+                    border-radius:50%;width:36px;height:36px;
+                    color:#fff;font-size:1rem;cursor:pointer;
+                    display:flex;align-items:center;justify-content:center;
+                    ">✕</button>
+            </div>
+            <div style="color:rgba(255,255,255,0.4);font-size:0.72rem;font-family:'Poppins',sans-serif;text-align:center;">
+                ${nome} · Toque fora para fechar
+            </div>
+        `;
+    };
+    img.onerror = () => {
+        overlay.innerHTML = `
+            <div style="color:rgba(255,255,255,0.5);font-size:0.9rem;text-align:center;padding:20px;">
+                ⚠️ Não foi possível carregar a foto
+                <br><br>
+                <button onclick="document.getElementById('fotoBookipOverlay').remove()" 
+                    style="background:var(--primary-color);border:none;border-radius:8px;color:#fff;padding:8px 20px;cursor:pointer;">
+                    Fechar
+                </button>
+            </div>
+        `;
+    };
+    img.src = fotoUrl;
+};
+
+
+// ============================================================
+// EXPORTS — expõe funções para os módulos externos
+// Necessário porque app.js é type="module" e funções são locais
+// ============================================================
+window.showMainSection       = showMainSection;
+window.showCustomModal       = showCustomModal;
+window.setupNotificationListeners = setupNotificationListeners;
+window.escapeHtml            = typeof escapeHtml === 'function' ? escapeHtml : (s) => s;
+window.updateNotificationUI  = updateNotificationUI;
+
+
+// ============================================================
+// NOTIFICAÇÕES — "Ver contrato" usa a navegação da busca global
+// (overlay Sherlock + vence barreira do "Ver Mais")
+// ============================================================
+(function() {
+    function hookVerBoleto() {
+        window.verBoletoDeNotificacao = function(boletoId) {
+            if (!boletoId) return;
+            // Fecha balões antes de navegar
+            var container = document.getElementById('notif-balloons-container');
+            if (container && typeof closeBalloons === 'function') closeBalloons(container);
+            // Usa o mesmo navigate da busca global (com Sherlock overlay)
+            if (typeof window._ctwNavigate === 'function') {
+                window._ctwNavigate('boleto', boletoId);
+            } else {
+                // Fallback básico
+                if (typeof window.showMainSection === 'function') window.showMainSection('contract');
+                setTimeout(function() {
+                    if (typeof window.openDocumentsSection === 'function') window.openDocumentsSection('contrato');
+                    var t = document.getElementById('boletoModeToggle');
+                    if (t && !t.checked) { t.checked = true; t.dispatchEvent(new Event('change')); }
+                }, 300);
+            }
+        };
+    }
+    // Aguarda Favorites.js carregar (que define verBoletoDeNotificacao primeiro)
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(hookVerBoleto, 800); });
+    } else {
+        setTimeout(hookVerBoleto, 800);
+    }
+})();
+(function() {
+    var STYLE_KEY = 'ctwMenuStyle'; // 'classic' | 'v2'
+
+    function isV2() {
+        return (localStorage.getItem(STYLE_KEY) || 'classic') === 'v2';
+    }
+
+    // Aplica o estilo sem animação (usado no boot)
+    function applyMenuStyle(style) {
+        var isCards = (style === 'v2');
+
+        // Pares: [classic element id, v2 element id]
+        var pairs = [
+            ['menuClassic',     'menuCards'],
+            ['calcMenuClassic', 'calcMenuCards'],
+            ['docsMenuClassic', 'docsMenuCards'],
+        ];
+        pairs.forEach(function(p) {
+            var classic = document.getElementById(p[0]);
+            var cards   = document.getElementById(p[1]);
+            if (classic) {
+                // Remove inline style que possa ter ficado
+                classic.style.removeProperty('display');
+                classic.classList.toggle('ctw-menu-hide', isCards);
+            }
+            if (cards) {
+                cards.style.removeProperty('display');
+                cards.classList.toggle('ctw-menu-hide', !isCards);
+            }
+        });
+
+        // Label do botão no dropdown
+        var lbl = document.getElementById('style20MenuLabel');
+        var sub = document.getElementById('style20MenuSub');
+        if (lbl) lbl.textContent = isCards ? 'Voltar ao estilo clássico' : 'Testar novo estilo 2.0';
+        if (sub) sub.textContent = isCards ? 'Layout em lista original'  : 'Novo layout visual';
+    }
+
+    // Vincula os botões duplicados do v2 aos IDs originais
+    function wireV2Buttons() {
+        var map = {
+            'goToCalculator2':        'goToCalculator',
+            'goToContract2':          'goToContract',
+            'goToStock2':             'goToStock',
+            'goToAdmin2':             'goToAdmin',
+            'openFecharVenda2':       'openFecharVenda',
+            'openRepassarValores2':   'openRepassarValores',
+            'openEmprestarValores2':  'openEmprestarValores',
+            'openCalcularEmprestimo2':'openCalcularEmprestimo',
+            'openCalcularPorAparelho2':'openCalcularPorAparelho',
+            'openContratoView2':      'openContratoView',
+            'openBookipView2':        'openBookipView',
+            'openReciboView2':        null, // usa onclick direto
+        };
+
+        Object.keys(map).forEach(function(v2Id) {
+            var btn = document.getElementById(v2Id);
+            if (!btn) return;
+            var targetId = map[v2Id];
+            if (targetId) {
+                btn.addEventListener('click', function() {
+                    var orig = document.getElementById(targetId);
+                    if (orig) orig.click();
+                });
+            } else if (v2Id === 'openReciboView2') {
+                btn.addEventListener('click', function() {
+                    if (typeof window.abrirReciboSimples === 'function') window.abrirReciboSimples();
+                });
+            }
         });
     }
-    if (actionSecondary) {
-        card.querySelector('[data-action="secondary"]')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            actionSecondary.fn();
-            const c = document.getElementById('notif-balloons-container');
-            if (c) closeBalloons(c);
-        });
+
+    // Ativa/desativa com tela de loading
+    window.ativarEstilo20 = function() {
+        var next = isV2() ? 'classic' : 'v2';
+
+        // Fecha o dropdown do perfil
+        var dropdowns = document.querySelectorAll('.dropdown-menu.show');
+        dropdowns.forEach(function(d) { d.classList.remove('show'); });
+
+        // Mostra boot overlay
+        var overlay = document.getElementById('loadingOverlay');
+        var bootMsg = document.getElementById('bootMsg');
+        if (overlay) {
+            if (bootMsg) bootMsg.textContent = next === 'v2' ? '✨ Ativando Estilo 2.0...' : '↩️ Voltando ao estilo clássico...';
+            overlay.style.opacity = '0';
+            overlay.style.display = 'flex';
+            overlay.style.transition = 'opacity 0.2s';
+            void overlay.offsetHeight;
+            overlay.style.opacity = '1';
+        }
+
+        setTimeout(function() {
+            // Salva preferência
+            localStorage.setItem(STYLE_KEY, next);
+            // Limpa cache de navegação para evitar conflitos
+            try { localStorage.removeItem('ctwLastSection'); } catch(e) {}
+
+            // Aplica
+            applyMenuStyle(next);
+
+            // Mostra/oculta bottom nav
+            if (typeof window.setCtwNavVisible === 'function') window.setCtwNavVisible(next === 'v2');
+
+            // Volta para o menu principal
+            if (typeof showMainSection === 'function') showMainSection('main');
+
+            // Esconde overlay
+            if (overlay) {
+                overlay.style.opacity = '0';
+                setTimeout(function() {
+                    overlay.style.display = 'none';
+                    overlay.style.transition = '';
+                    overlay.style.opacity = '';
+                }, 300);
+            }
+        }, 1100);
+    };
+
+    // Boot: aplica sem animação
+    function init() {
+        wireV2Buttons();
+        applyMenuStyle(isV2() ? 'v2' : 'classic');
     }
 
-    return card;
+    // Executa assim que DOM estiver pronto
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    // Re-aplica depois do auth (showMainSection pode re-renderizar o menu)
+    window._reapplyMenuStyle = function() {
+        applyMenuStyle(isV2() ? 'v2' : 'classic');
+    };
+})();
+
+
+
+// ============================================================
+// FOTO DO PRODUTO — BOOKIP com Cloudinary
+// Compressão WebP 88% max 1920px · Upload gratuito Cloudinary
+// Cloud: dmvynrze6 · Preset: g8rdi3om (Unsigned)
+// ============================================================
+
+const CLOUDINARY_CLOUD  = 'dmvynrze6';
+const CLOUDINARY_PRESET = 'g8rdi3om';
+const CLOUDINARY_URL    = 'https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/image/upload';
+
+window._bookipFotoUrl  = '';
+window._bookipFotoBlob = null;
+
+// Comprime: max 1920px, WebP 88% — IMEI legível, tamanho ~300-500KB
+function comprimirFotoBookip(file) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const objUrl = URL.createObjectURL(file);
+        img.onload = () => {
+            URL.revokeObjectURL(objUrl);
+            const MAX = 1920, Q = 0.88;
+            let w = img.width, h = img.height;
+            if (w > MAX || h > MAX) {
+                const r = Math.min(MAX / w, MAX / h);
+                w = Math.round(w * r);
+                h = Math.round(h * r);
+            }
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            c.getContext('2d').drawImage(img, 0, 0, w, h);
+            c.toBlob(
+                blob => blob ? resolve(blob) : reject(new Error('Compressão falhou')),
+                'image/webp', Q
+            );
+        };
+        img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('Imagem inválida')); };
+        img.src = objUrl;
+    });
 }
 
-function abrirWhatsApp(tel, mensagem) {
-    const t = (tel || '').replace(/\D/g, '');
-    if (!t) return;
-    const url = mensagem
-        ? `https://wa.me/55${t}?text=${encodeURIComponent(mensagem)}`
-        : `https://wa.me/55${t}`;
-    window.open(url, '_blank');
-}
+// Upload para Cloudinary — retorna URL segura (https)
+window.uploadFotoCloudinary = async function(blob) {
+    if (!blob) return '';
+    try {
+        const formData = new FormData();
+        formData.append('file', blob, 'foto.webp');
+        formData.append('upload_preset', CLOUDINARY_PRESET);
+        formData.append('folder', 'bookip_fotos');
 
-window.dismissNotifBalloon = function(notifId, cardEl) {
-    const key = 'ctwDismissedNotifs';
-    let list = [];
-    try { list = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) {}
-    if (!list.includes(notifId)) { list.push(notifId); localStorage.setItem(key, JSON.stringify(list)); }
+        const resp = await fetch(CLOUDINARY_URL, {
+            method: 'POST',
+            body: formData
+        });
 
-    if (cardEl) {
-        cardEl.style.animation = 'notif-slide-out 0.2s ease forwards';
-        setTimeout(() => cardEl.remove(), 220);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+
+        if (data.secure_url) {
+            const kb = Math.round(blob.size / 1024);
+            console.log('Foto enviada ao Cloudinary:', data.secure_url, '| ' + kb + 'KB');
+            return data.secure_url;
+        }
+        console.warn('Cloudinary resposta inesperada:', data);
+        return '';
+    } catch(e) {
+        console.warn('Upload Cloudinary falhou:', e);
+        return '';
     }
 };
 
-// ESC fecha tudo
-document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-        const c = document.getElementById('notif-balloons-container');
-        if (c) closeBalloons(c);
+// Inicializa botão de foto
+function initBookipPhoto() {
+    const inputCamera  = document.getElementById('bookipPhotoInputCamera');
+    const inputGallery = document.getElementById('bookipPhotoInputGallery');
+    const btnCamera    = document.getElementById('bookipPhotoBtnCamera');
+    const btnGallery   = document.getElementById('bookipPhotoBtnGallery');
+    const preview      = document.getElementById('bookipPhotoPreview');
+    const imgEl        = document.getElementById('bookipPhotoImg');
+    const btnLabel     = document.getElementById('bookipPhotoBtnLabel');
+    const removeBtn    = document.getElementById('bookipPhotoRemove');
+    if (!inputCamera || !inputGallery) return;
+
+    if (btnCamera) btnCamera.addEventListener('click', () => inputCamera.click());
+    if (btnGallery) btnGallery.addEventListener('click', () => inputGallery.click());
+
+    async function handleFile(file) {
+        if (!file) return;
+        if (btnLabel) btnLabel.textContent = 'Comprimindo...';
+        if (btnCamera) btnCamera.disabled = true;
+        if (btnGallery) btnGallery.disabled = true;
+        try {
+            const compressed = await comprimirFotoBookip(file);
+            const kb = Math.round(compressed.size / 1024);
+            const previewUrl = URL.createObjectURL(compressed);
+            if (imgEl) imgEl.src = previewUrl;
+            if (preview) preview.classList.remove('hidden');
+            if (btnLabel) btnLabel.textContent = 'Foto pronta (' + kb + 'KB)';
+            window._bookipFotoBlob = compressed;
+            window._bookipFotoUrl  = '';
+        } catch(e) {
+            if (btnLabel) btnLabel.textContent = 'Da galeria';
+            if (typeof window.showCustomModal === 'function') {
+                window.showCustomModal({ message: 'Não foi possível processar a foto. Tente novamente.' });
+            }
+        }
+        if (btnCamera) btnCamera.disabled = false;
+        if (btnGallery) btnGallery.disabled = false;
     }
-});
+
+    inputCamera.addEventListener('change', () => { handleFile(inputCamera.files[0]); inputCamera.value = ''; });
+    inputGallery.addEventListener('change', () => { handleFile(inputGallery.files[0]); inputGallery.value = ''; });
+
+    if (removeBtn) {
+        removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (imgEl) imgEl.src = '';
+            if (preview) preview.classList.add('hidden');
+            if (btnLabel) btnLabel.textContent = 'Da galeria';
+            window._bookipFotoBlob = null;
+            window._bookipFotoUrl  = '';
+        });
+    }
+}
+
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initBookipPhoto);
+} else {
+    initBookipPhoto();
+}
+
+
+// ============================================================
+// BUSCA GLOBAL
+// ============================================================
+(function() {
+    var _bookipsCache = [];
+    var _boletosCache = [];
+    var _activeFilter = 'all';
+
+    function setupCaches() {
+        if (typeof db === 'undefined' || typeof onValue === 'undefined') {
+            setTimeout(setupCaches, 800);
+            return;
+        }
+        onValue(ref(db, 'bookips'), function(snap) {
+            if (snap.exists()) {
+                _bookipsCache = Object.entries(snap.val()).map(function(e) {
+                    return Object.assign({ id: e[0] }, e[1]);
+                });
+            }
+        });
+        onValue(ref(db, 'boletos'), function(snap) {
+            if (snap.exists()) {
+                _boletosCache = Object.entries(snap.val()).map(function(e) {
+                    return Object.assign({ id: e[0] }, e[1]);
+                });
+            }
+        });
+    }
+
+    function norm(s) {
+        return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+
+    function hl(text, q) {
+        if (!q || !text) return text || '';
+        var esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return text.replace(new RegExp('(' + esc + ')', 'gi'), '<span class="gs-hl">$1</span>');
+    }
+
+    function search(q) {
+        var nq = norm(q);
+        if (nq.length < 2) return [];
+        var results = [];
+        var af = _activeFilter;
+
+        if (af === 'all' || af === 'cliente') {
+            (window.dbClientsCache || []).forEach(function(c) {
+                if (norm([c.nome, c.cpf, c.tel, c.email].join(' ')).indexOf(nq) >= 0) {
+                    results.push({ type: 'cliente', id: c.id, title: c.nome || 'Sem nome', sub: [c.tel, c.cpf].filter(Boolean).join(' - '), data: c });
+                }
+            });
+        }
+        if (af === 'all' || af === 'bookip') {
+            _bookipsCache.forEach(function(b) {
+                var prods = (b.items || []).map(function(i) { return i.nome; }).join(' ');
+                if (norm([b.nome, b.cpf, b.tel, prods].join(' ')).indexOf(nq) >= 0) {
+                    results.push({ type: 'bookip', id: b.id, title: b.nome || 'Sem nome', sub: prods || b.dataVenda || '', data: b });
+                }
+            });
+        }
+        if (af === 'all' || af === 'boleto') {
+            _boletosCache.forEach(function(b) {
+                if (norm([b.compradorNome, b.compradorCpf, b.compradorTelefone, b.produtoModelo, b.produtoImei].join(' ')).indexOf(nq) >= 0) {
+                    results.push({ type: 'boleto', id: b.id, title: b.compradorNome || 'Sem nome', sub: [b.produtoModelo, b.produtoImei].filter(Boolean).join(' - ') || (b.numeroParcelas ? b.numeroParcelas + ' parcelas' : ''), data: b });
+                }
+            });
+        }
+        return results.slice(0, 30);
+    }
+
+    function renderResults(results, q) {
+        var cont = document.getElementById('gsResults');
+        var stat = document.getElementById('gsStatus');
+        if (!cont) return;
+        if (!results.length) {
+            stat.textContent = 'Nenhum resultado';
+            cont.innerHTML = '<div class="gs-empty">Nada encontrado para "' + q + '"</div>';
+            return;
+        }
+        stat.textContent = results.length + (results.length > 1 ? ' resultados' : ' resultado');
+        var icons = { cliente: '&#128101;', bookip: '&#128210;', boleto: '&#128203;' };
+        var tags = { cliente: 'Cliente', bookip: 'Bookip', boleto: 'Contrato' };
+        cont.innerHTML = results.map(function(r) {
+            return '<div class="gs-card" data-type="' + r.type + '" data-id="' + r.id + '">' +
+                '<div class="gs-card-icon gs-ic-' + r.type + '">' + icons[r.type] + '</div>' +
+                '<div class="gs-card-body"><div class="gs-card-title">' + hl(r.title, q) + '</div>' +
+                (r.sub ? '<div class="gs-card-sub">' + r.sub + '</div>' : '') + '</div>' +
+                '<span class="gs-card-tag gs-tag-' + r.type + '">' + tags[r.type] + '</span></div>';
+        }).join('');
+        cont.querySelectorAll('.gs-card').forEach(function(card) {
+            card.addEventListener('click', function() {
+                fechar();
+                setTimeout(function() { navigate(card.dataset.type, card.dataset.id); }, 280);
+            });
+        });
+    }
+
+    // Helper: mostra/esconde overlay Sherlock
+    function gsNavShow(msg) {
+        var ov = document.getElementById('gsNavOverlay');
+        if (!ov) return;
+        var msgEl = document.getElementById('gsNavMsg');
+        if (msgEl) msgEl.textContent = msg || 'Encontrando...';
+        ov.style.display = 'flex';
+    }
+    function gsNavHide() {
+        var ov = document.getElementById('gsNavOverlay');
+        if (ov) { ov.style.opacity = '0'; ov.style.transition = 'opacity 0.3s'; setTimeout(function() { ov.style.display = 'none'; ov.style.opacity = '1'; ov.style.transition = ''; }, 320); }
+    }
+
+    function navigate(type, id) {
+
+        // Aplica glow no elemento encontrado
+        function applyGlow(el) {
+            if (!el) return;
+            el.classList.remove('gs-result-highlight');
+            void el.offsetWidth;
+            el.classList.add('gs-result-highlight');
+            setTimeout(function() { el.classList.remove('gs-result-highlight'); }, 5500);
+        }
+
+        if (type === 'cliente') {
+            gsNavShow('Abrindo cliente...');
+            if (typeof window.showMainSection === 'function') window.showMainSection('clients');
+            setTimeout(function() {
+                if (typeof window.editarCliente === 'function') window.editarCliente(id);
+                gsNavHide();
+            }, 500);
+
+        } else if (type === 'bookip') {
+            gsNavShow('Encontrando garantia...');
+            if (typeof window.showMainSection === 'function') window.showMainSection('contract');
+            setTimeout(function() {
+                if (typeof window.openDocumentsSection === 'function') window.openDocumentsSection('bookip');
+                var t = document.getElementById('bookipModeToggle');
+                if (t && !t.checked) { t.checked = true; t.dispatchEvent(new Event('change')); }
+
+                // Aguarda histórico carregar, depois supera "Ver Mais" se necessário
+                var attempts = 0;
+                function tryFind() {
+                    attempts++;
+                    // Tenta suplantar barreira do ver mais
+                    if (typeof window._bookipNavigateTo === 'function') {
+                        window._bookipNavigateTo(id);
+                    }
+                    var collapseEl = document.getElementById('collapse-bk-' + id);
+                    if (collapseEl) {
+                        if (window.bootstrap) {
+                            bootstrap.Collapse.getOrCreateInstance(collapseEl, { toggle: false }).show();
+                            collapseEl.addEventListener('shown.bs.collapse', function() {
+                                collapseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                setTimeout(function() { applyGlow(collapseEl.closest('.accordion-item') || collapseEl); }, 200);
+                            }, { once: true });
+                        } else {
+                            collapseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            applyGlow(collapseEl);
+                        }
+                        gsNavHide();
+                    } else if (attempts < 12) {
+                        setTimeout(tryFind, 300);
+                    } else {
+                        gsNavHide();
+                    }
+                }
+                setTimeout(tryFind, 500);
+            }, 300);
+
+        } else if (type === 'boleto') {
+            gsNavShow('Encontrando contrato...');
+            if (typeof window.showMainSection === 'function') window.showMainSection('contract');
+            setTimeout(function() {
+                if (typeof window.openDocumentsSection === 'function') window.openDocumentsSection('contrato');
+                var t = document.getElementById('boletoModeToggle');
+                if (t && !t.checked) { t.checked = true; t.dispatchEvent(new Event('change')); }
+
+                var attempts = 0;
+                function tryFindBoleto() {
+                    attempts++;
+                    var heading = document.getElementById('heading-' + id);
+                    var btn = heading ? heading.querySelector('button') : null;
+                    if (btn && window.bootstrap) {
+                        var target = btn.getAttribute('data-bs-target');
+                        if (target) {
+                            var el = document.querySelector(target);
+                            if (el) {
+                                bootstrap.Collapse.getOrCreateInstance(el, { toggle: false }).show();
+                                el.addEventListener('shown.bs.collapse', function() {
+                                    heading.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    setTimeout(function() { applyGlow(heading.closest('.accordion-item') || heading); }, 200);
+                                }, { once: true });
+                                gsNavHide();
+                                return;
+                            }
+                        }
+                    }
+                    if (attempts < 12) {
+                        setTimeout(tryFindBoleto, 300);
+                    } else {
+                        if (typeof window.verBoletoDeNotificacao === 'function') window.verBoletoDeNotificacao(id);
+                        gsNavHide();
+                    }
+                }
+                setTimeout(tryFindBoleto, 500);
+            }, 300);
+        }
+    }
+
+    // Expõe navigate para uso externo (notificações, etc.)
+    window._ctwNavigate = navigate;
+
+    function abrir() {
+        var o = document.getElementById('gsOverlay');
+        var i = document.getElementById('gsInput');
+        if (!o) return;
+        o.classList.remove('gs-hidden');
+        setTimeout(function() { if (i) i.focus(); }, 150);
+        setupCaches();
+    }
+
+    function fechar() {
+        var o = document.getElementById('gsOverlay');
+        if (!o) return;
+        o.classList.add('gs-hidden');
+        ['gsInput','gsResults','gsStatus','gsClearBtn'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            if (id === 'gsInput') el.value = '';
+            else if (id === 'gsResults') el.innerHTML = '';
+            else if (id === 'gsStatus') el.textContent = 'Digite para buscar';
+            else if (id === 'gsClearBtn') el.classList.add('gs-hidden');
+        });
+    }
+
+    function init() {
+        var btn = document.getElementById('globalSearchBtn');
+        var input = document.getElementById('gsInput');
+        if (btn) btn.addEventListener('click', abrir);
+        var cancel = document.getElementById('gsCancelBtn');
+        if (cancel) cancel.addEventListener('click', fechar);
+        var bd = document.getElementById('gsBackdrop');
+        if (bd) bd.addEventListener('click', fechar);
+        var clearBtn = document.getElementById('gsClearBtn');
+        if (clearBtn) clearBtn.addEventListener('click', function() {
+            if (input) { input.value = ''; input.focus(); }
+            clearBtn.classList.add('gs-hidden');
+            var r = document.getElementById('gsResults'); if (r) r.innerHTML = '';
+            var s = document.getElementById('gsStatus'); if (s) s.textContent = 'Digite para buscar';
+        });
+
+        document.querySelectorAll('.gs-filter').forEach(function(f) {
+            f.addEventListener('click', function() {
+                document.querySelectorAll('.gs-filter').forEach(function(x) { x.classList.remove('active'); });
+                f.classList.add('active');
+                _activeFilter = f.dataset.filter;
+                var q = input ? input.value.trim() : '';
+                if (q.length >= 2) renderResults(search(q), q);
+            });
+        });
+
+        if (input) {
+            var timer;
+            input.addEventListener('input', function() {
+                var q = input.value.trim();
+                var cb = document.getElementById('gsClearBtn');
+                if (cb) cb.classList.toggle('gs-hidden', !q);
+                clearTimeout(timer);
+                var s = document.getElementById('gsStatus');
+                var r = document.getElementById('gsResults');
+                if (q.length < 2) {
+                    if (r) r.innerHTML = '';
+                    if (s) s.textContent = q.length === 1 ? 'Continue digitando...' : 'Digite para buscar';
+                    return;
+                }
+                if (s) s.textContent = 'Buscando...';
+                timer = setTimeout(function() { renderResults(search(q), q); }, 280);
+            });
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') { var o = document.getElementById('gsOverlay'); if (o && !o.classList.contains('gs-hidden')) fechar(); }
+        });
+    }
+
+    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); } else { init(); }
+})();
+
+
+// ============================================================
+// BOTTOM NAV — Estilo 2.0
+// ============================================================
+(function() {
+    function isV2() { return localStorage.getItem('ctwMenuStyle') === 'v2'; }
+
+    // Sincroniza o badge do sino com as notificações existentes
+    function syncNavBadge() {
+        var badge   = document.getElementById('ctwNavBellBadge');
+        var notifs  = window._currentNotifications || [];
+        var oldBadgeHidden = document.querySelector('#notification-bell .notification-badge')?.classList.contains('hidden');
+        var count = notifs.length;
+        if (!badge) return;
+        if (count > 0 && !oldBadgeHidden) {
+            badge.textContent = count > 9 ? '9+' : count;
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    // Atualiza nome no sheet
+    function syncSheetProfile() {
+        var nameEl  = document.getElementById('ctwSheetProfileName');
+        var navLbl  = document.getElementById('ctwNavProfileLabel');
+        var headEl  = document.getElementById('ctwTopHeaderName');
+        var name    = localStorage.getItem('ctwUserProfile') || 'visitante';
+        if (nameEl)  nameEl.textContent  = name;
+        if (navLbl)  navLbl.textContent  = name.split(' ')[0];
+        if (headEl)  headEl.textContent  = name;
+    }
+
+    // Atualiza label do botão de estilo no sheet
+    function syncSheetStyleLabel() {
+        var lbl = document.getElementById('ctwSheetStyleLabel');
+        var sub = document.getElementById('ctwSheetStyleSub');
+        var v2  = isV2();
+        if (lbl) lbl.textContent = v2 ? 'Voltar ao estilo clássico' : 'Ativar estilo 2.0';
+        if (sub) sub.textContent = v2 ? 'Layout em lista original' : 'Novo layout visual';
+    }
+
+    // Marca botão ativo conforme seção atual
+    function setNavActive(btnId) {
+        document.querySelectorAll('.ctw-nav-btn').forEach(function(b) {
+            b.classList.remove('ctw-nav-active');
+        });
+        var btn = document.getElementById(btnId);
+        if (btn) btn.classList.add('ctw-nav-active');
+    }
+
+    // Mostra/oculta a barra
+    window.setCtwNavVisible = function(visible) {
+        var nav    = document.getElementById('ctwBottomNav');
+        var topBar = document.getElementById('ctwTopBar');
+        if (!nav) return;
+        if (visible) {
+            nav.classList.remove('ctw-menu-hide');
+            if (topBar) topBar.style.display = 'block';
+        } else {
+            nav.classList.add('ctw-menu-hide');
+            if (topBar) topBar.style.display = 'none';
+        }
+        // Aplica padding e esconde elementos duplicados do topo
+        document.body.classList.toggle('ctw-v2-active', visible);
+    };
+
+    // Abre profile sheet
+    window.openCtwSheet = function() {
+        var sheet = document.getElementById('ctwProfileSheet');
+        if (!sheet) return;
+        syncSheetProfile();
+        syncSheetStyleLabel();
+        sheet.style.display = 'flex';
+        sheet.style.alignItems = 'flex-end';
+        void sheet.offsetHeight;
+        sheet.classList.add('ctw-sheet-open');
+        sheet.addEventListener('click', function onBdClick(e) {
+            if (e.target === sheet) { window.closeCtwSheet(); }
+            sheet.removeEventListener('click', onBdClick);
+        });
+    };
+
+    // Fecha profile sheet
+    window.closeCtwSheet = function() {
+        var sheet = document.getElementById('ctwProfileSheet');
+        if (!sheet) return;
+        sheet.classList.remove('ctw-sheet-open');
+        setTimeout(function() { sheet.style.display = 'none'; }, 280);
+    };
+
+    var _navInitialized = false; // guarda: listeners registrados só uma vez
+
+    function initBottomNav() {
+        if (!isV2()) return; // só ativa em v2
+
+        // Mostra a barra (sempre, mesmo se já inicializado)
+        window.setCtwNavVisible(true);
+
+        // Listeners só registrados uma única vez — evita múltiplos disparos
+        if (_navInitialized) return;
+        _navInitialized = true;
+
+        // Top pill busca → dispara o mesmo globalSearchBtn
+        var topSearch = document.getElementById('ctwTopSearchBtn');
+        if (topSearch) {
+            topSearch.addEventListener('click', function() {
+                var gsBtn = document.getElementById('globalSearchBtn');
+                if (gsBtn) gsBtn.click();
+            });
+        }
+
+        // Botão HOME
+        var homeBtn = document.getElementById('ctwNavHome');
+        if (homeBtn) {
+            homeBtn.addEventListener('click', function() {
+                setNavActive('ctwNavHome');
+                if (typeof showMainSection === 'function') showMainSection('main');
+                else if (typeof window.showMainSection === 'function') window.showMainSection('main');
+            });
+        }
+
+        // Botão SINO — lógica simples sem guard que bloqueava o re-abrir
+        var bellBtn = document.getElementById('ctwNavBell');
+        if (bellBtn) {
+            bellBtn.addEventListener('click', function() {
+                syncNavBadge();
+                if (typeof window.toggleNotifBalloons === 'function') {
+                    window.toggleNotifBalloons();
+                }
+            });
+        }
+
+        // Botão PERFIL
+        var profileBtn = document.getElementById('ctwNavProfile');
+        if (profileBtn) {
+            profileBtn.addEventListener('click', function() {
+                setNavActive('ctwNavProfile');
+                window.openCtwSheet();
+            });
+        }
+
+        // Sincroniza badge quando notificações mudam
+        var origUpdate = window.updateNotificationUI;
+        if (typeof origUpdate === 'function') {
+            window.updateNotificationUI = function(notifications) {
+                origUpdate(notifications);
+                setTimeout(syncNavBadge, 50);
+            };
+        }
+
+        // Sincroniza badge na inicialização
+        syncNavBadge();
+        syncSheetProfile();
+
+        // Marca home como ativo por padrão
+        setNavActive('ctwNavHome');
+    }
+
+    // Helper: remove container órfão de balões do sino
+    function limparBaloes() {
+        var c = document.getElementById('notif-balloons-container');
+        if (c) {
+            // Remove imediatamente sem animação (usuário já saiu da tela)
+            try { c.remove(); } catch(e) {}
+        }
+    }
+
+    // Intercepta showMainSection para atualizar botão ativo, top bar e limpar balões
+    var _origShow = window.showMainSection;
+    window.showMainSection = function(sectionId) {
+        // Sempre limpa balões ao navegar (evita container órfão no DOM)
+        limparBaloes();
+
+        if (typeof _origShow === 'function') _origShow(sectionId);
+        if (!isV2()) return;
+
+        var topBar = document.getElementById('ctwTopBar');
+        if (sectionId === 'main') {
+            setNavActive('ctwNavHome');
+            if (topBar) topBar.style.display = 'block';
+        } else {
+            setNavActive('');
+            if (topBar) topBar.style.display = 'none';
+        }
+    };
+
+    // Expõe re-aplicação para quando o estilo muda
+    var _origReapply = window._reapplyMenuStyle;
+    window._reapplyMenuStyle = function() {
+        if (typeof _origReapply === 'function') _origReapply();
+        var v2 = isV2();
+        window.setCtwNavVisible(v2);
+        if (v2) {
+            initBottomNav();
+            setNavActive('ctwNavHome');
+        }
+    };
+
+    // Init
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initBottomNav);
+    } else {
+        initBottomNav();
+    }
+})();
