@@ -493,6 +493,8 @@ function showMainSection(sectionId) {
     topRightControls.classList.add('hidden');
     
     if (clientsContainer) clientsContainer.classList.add('hidden');
+    const repairsContainer = document.getElementById('repairsContainer');
+    if (repairsContainer) { repairsContainer.classList.add('hidden'); repairsContainer.style.display = 'none'; }
 
     mainMenu.style.display = 'none';
     calculatorContainer.style.display = 'none';
@@ -552,6 +554,21 @@ function showMainSection(sectionId) {
         requestAnimationFrame(() => {
             filterAdminProducts();
         });
+    }
+    else if (sectionId === 'repairs') {
+        const _rc = document.getElementById('repairsContainer');
+        if (_rc) { _rc.classList.remove('hidden'); _rc.style.display = 'flex'; }
+        // Init module — com retry caso módulo ainda não tiver carregado
+        function _tryInitRepairs(attempts) {
+            if (window._repairsInited) return;
+            if (window._repairsModule) {
+                window._repairsInited = true;
+                window._repairsModule.initRepairs();
+            } else if (attempts > 0) {
+                setTimeout(function() { _tryInitRepairs(attempts - 1); }, 300);
+            }
+        }
+        _tryInitRepairs(10); // tenta por até 3s
     }
     else if (sectionId === 'clients') {
         if (clientsContainer) {
@@ -2911,15 +2928,20 @@ function checkForDueInstallments(initialNotifications = []) {
 // SUBSTITUA A FUNÇÃO updateNotificationUI POR ESTA:
 
 function updateNotificationUI(notifications) {
-    console.log("🔔 Notificações:", notifications.length);
+    // Guarda TODAS as notificações (sem filtro) para referência
+    window._currentNotifications = notifications || [];
+
+    // Aplica filtro de preferência antes de mostrar
+    notifications = typeof window.filterNotifsByPref === 'function'
+        ? window.filterNotifsByPref(notifications || [])
+        : (notifications || []);
+
+    console.log("🔔 Notificações:", notifications.length, "| pref:", window.getNotifPref?.() || 'all');
 
     const oldBadge = document.querySelector('#notification-bell .notification-badge');
     const avatarBadge = document.getElementById('avatar-badge');
     const menuArea = document.getElementById('menu-notification-area');
     const menuText = document.getElementById('menu-notification-text');
-
-    // Guarda as notificações para os balões
-    window._currentNotifications = notifications || [];
 
     if (notifications.length > 0) {
         // Push nativo
@@ -3355,6 +3377,8 @@ async function main() {
             if (user) {
                 userId = user.uid;
                 isAuthReady = true;
+                // Expõe db AGORA — depois do auth, quando db está pronto
+                window._firebaseDB = db;
 
                 // PERFORMANCE: esconde loading IMEDIATAMENTE após auth
                 // dados carregam em background sem bloquear a UI
@@ -3662,9 +3686,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
     document.getElementById('goToAdmin').addEventListener('click', () => showMainSection('administracao'));
+    document.getElementById('goToRepairs')?.addEventListener('click', () => showMainSection('repairs'));
+    // v2 cards
+    document.getElementById('goToRepairs2')?.addEventListener('click', () => showMainSection('repairs'));
 
     document.getElementById('backFromStock').addEventListener('click', () => showMainSection('main'));
     document.getElementById('backFromAdmin').addEventListener('click', () => showMainSection('main'));
+    document.getElementById('backFromRepairs')?.addEventListener('click', () => showMainSection('main'));
 
    
 
@@ -9139,9 +9167,65 @@ window.abrirFotoBookip = function(fotoUrl, nome) {
 // ============================================================
 window.showMainSection       = showMainSection;
 window.showCustomModal       = showCustomModal;
+
+// ============================================================
+// 🔔 PREFERÊNCIA DE NOTIFICAÇÕES
+// Chave: 'ctwNotifPref' | valores: 'all' (padrão) | 'urgent'
+// Urgentes = boletos, aniversários, reparos, avisos do admin
+// ============================================================
+(function() {
+    var PREF_KEY = 'ctwNotifPref';
+
+    function getPref() {
+        return safeStorage.getItem(PREF_KEY) || 'all';
+    }
+
+    function updateLabels(pref) {
+        var label = pref === 'urgent' ? 'Só urgentes 🔴' : 'Todas ativadas 🔔';
+        var el1 = document.getElementById('notifPrefLabel');
+        var el2 = document.getElementById('notifPrefLabelSheet');
+        if (el1) el1.textContent = label;
+        if (el2) el2.textContent = label;
+    }
+
+    window.toggleNotifPref = function() {
+        var current = getPref();
+        var next = current === 'all' ? 'urgent' : 'all';
+        safeStorage.setItem(PREF_KEY, next);
+        updateLabels(next);
+        var msg = next === 'urgent'
+            ? '🔴 Notificações: só urgentes (boletos, aniversários, reparos e avisos)'
+            : '🔔 Notificações: todas ativadas';
+        if (typeof showCustomModal === 'function') showCustomModal({ message: msg });
+        // Re-aplica filtro nas notificações atuais
+        if (typeof window.updateNotificationUI === 'function') {
+            window.updateNotificationUI(window._currentNotifications || []);
+        }
+    };
+
+    window.getNotifPref = function() { return getPref(); };
+
+    // Filtra array de notificações conforme preferência
+    // Urgentes: boletos (boletoId), aniversários (isBirthday), reparos (repairId), admin geral (isGeneral)
+    window.filterNotifsByPref = function(notifications) {
+        if (getPref() !== 'urgent') return notifications;
+        return notifications.filter(function(n) {
+            return n.boletoId || n.isBirthday || n.repairId || n.isGeneral;
+        });
+    };
+
+    // Inicializa labels quando DOM estiver pronto
+    function init() { updateLabels(getPref()); }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        setTimeout(init, 500);
+    }
+})();
 window.setupNotificationListeners = setupNotificationListeners;
 window.escapeHtml            = typeof escapeHtml === 'function' ? escapeHtml : (s) => s;
 window.updateNotificationUI  = updateNotificationUI;
+// db exposto via window._firebaseDB no onAuthStateChanged (ver abaixo)
 
 
 // ============================================================
@@ -9218,6 +9302,7 @@ window.updateNotificationUI  = updateNotificationUI;
     function wireV2Buttons() {
         var map = {
             'goToCalculator2':        'goToCalculator',
+            'goToRepairs2':           'goToRepairs',
             'goToContract2':          'goToContract',
             'goToStock2':             'goToStock',
             'goToAdmin2':             'goToAdmin',
@@ -9825,7 +9910,7 @@ if (document.readyState === 'loading') {
         setTimeout(function() { sheet.style.display = 'none'; }, 280);
     };
 
-    var _navInitialized = false; // guarda: listeners registrados só uma vez
+    var _navInitialized = false; // guard: listeners só registrados UMA vez
 
     function initBottomNav() {
         if (!isV2()) return; // só ativa em v2
@@ -9833,7 +9918,7 @@ if (document.readyState === 'loading') {
         // Mostra a barra (sempre, mesmo se já inicializado)
         window.setCtwNavVisible(true);
 
-        // Listeners só registrados uma única vez — evita múltiplos disparos
+        // Listeners só registrados uma vez — evita N disparos no sino
         if (_navInitialized) return;
         _navInitialized = true;
 

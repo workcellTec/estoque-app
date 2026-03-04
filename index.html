@@ -183,6 +183,14 @@ class="dropdown-menu-custom">
                     <div class="icon-box bg-info bg-opacity-10 text-info"><i class="bi bi-palette-fill"></i></div>
                     <span>Mudar Cores</span>
                 </button>
+                <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 mt-1 text-color-custom"
+                        onclick="window.toggleNotifPref()">
+                    <div class="icon-box bg-danger bg-opacity-10 text-danger"><i class="bi bi-bell-fill"></i></div>
+                    <div style="display:flex;flex-direction:column;gap:1px;">
+                        <span>Notificações</span>
+                        <small id="notifPrefLabel" style="font-size:.62rem;opacity:.6;">Carregando...</small>
+                    </div>
+                </button>
                 
                 <div id="installAppOption" class="hidden-inline">
                     <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 mt-1 text-color-custom" 
@@ -295,6 +303,7 @@ class="dropdown-menu-custom">
             <button class="btn-menu" id="goToContract"><i class="bi bi-file-earmark-text-fill"></i> Documentos</button>
             <button class="btn-menu" id="goToStock"><i class="bi bi-box-seam"></i> Controle de Estoque</button>
             <button class="btn-menu" id="goToAdmin"><i class="bi bi-gear"></i> Administração</button>
+            <button class="btn-menu" id="goToRepairs"><i class="bi bi-wrench-adjustable-circle-fill"></i> Gerenc. de Consertos</button>
         </div>
 
         <!-- ESTILO 2.0 (grid de cards) — oculto por padrão -->
@@ -318,6 +327,11 @@ class="dropdown-menu-custom">
                 <div class="ctw-card-icon"><i class="bi bi-gear"></i></div>
                 <span class="ctw-card-title">Administração</span>
                 <span class="ctw-card-sub">& equipe</span>
+            </button>
+            <button class="ctw-card c-teal ctw-card-full" id="goToRepairs2">
+                <div class="ctw-card-icon"><i class="bi bi-wrench-adjustable-circle-fill"></i></div>
+                <span class="ctw-card-title">Consertos</span>
+                <span class="ctw-card-sub">Gerenciamento</span>
             </button>
         </div>
     </div>
@@ -1709,6 +1723,7 @@ do que você precisa??</h2>
                 import('./notifications.js'),
                 import('./ambilight.js'),
                 import('./Favorites.js'),
+                import('./repairs.js?v=2').then(m => { window._repairsModule = m; }),
             ]);
         }
         // Módulos carregam assim que o DOM está pronto
@@ -1917,6 +1932,13 @@ do que você precisa??</h2>
                 <div class="ctw-sheet-item-icon bg-info"><i class="bi bi-palette-fill"></i></div>
                 <span>Mudar Cores</span>
             </button>
+            <button class="ctw-sheet-item" onclick="window.toggleNotifPref(); window.closeCtwSheet();">
+                <div class="ctw-sheet-item-icon" style="background:rgba(239,68,68,.12);color:#ef4444;"><i class="bi bi-bell-fill"></i></div>
+                <div style="display:flex;flex-direction:column;gap:1px;text-align:left;">
+                    <span>Notificações</span>
+                    <small id="notifPrefLabelSheet" style="font-size:.6rem;opacity:.6;">Carregando...</small>
+                </div>
+            </button>
             <button class="ctw-sheet-item" onclick="document.getElementById('profileSelectorModal').classList.add('active'); window.closeCtwSheet();">
                 <div class="ctw-sheet-item-icon bg-primary"><i class="bi bi-people-fill"></i></div>
                 <span>Trocar Usuário</span>
@@ -1928,6 +1950,194 @@ do que você precisa??</h2>
                     <small style="font-size:.6rem;opacity:.6;" id="ctwSheetStyleSub">Layout em lista original</small>
                 </div>
             </button>
+        </div>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     GERENCIAMENTO DE CONSERTOS
+════════════════════════════════════════════════════════════ -->
+<div class="container hidden" id="repairsContainer" style="display:none;">
+
+    <!-- Header -->
+    <div class="section-header">
+        <h3><i class="bi bi-wrench-adjustable-circle-fill"></i> Consertos</h3>
+        <button aria-label="Voltar" class="btn-back" id="backFromRepairs">
+            <i class="bi bi-arrow-left"></i>
+        </button>
+    </div>
+
+    <!-- Stats bar -->
+    <div class="rep-stats-bar">
+        <div class="rep-stat rep-stat-gray">
+            <span class="rep-stat-num" id="repStat_preparacao">0</span>
+            <span class="rep-stat-lbl">Preparação</span>
+        </div>
+        <div class="rep-stat rep-stat-yellow">
+            <span class="rep-stat-num" id="repStat_reparo">0</span>
+            <span class="rep-stat-lbl">Em reparo</span>
+        </div>
+        <div class="rep-stat rep-stat-red">
+            <span class="rep-stat-num" id="repStat_atrasados">0</span>
+            <span class="rep-stat-lbl">Atrasados</span>
+        </div>
+        <div class="rep-stat rep-stat-orange">
+            <span class="rep-stat-num" id="repStat_proximos">0</span>
+            <span class="rep-stat-lbl">Prox. prazo</span>
+        </div>
+        <div class="rep-stat rep-stat-green">
+            <span class="rep-stat-num" id="repStat_finais">0</span>
+            <span class="rep-stat-lbl">Finalizados</span>
+        </div>
+    </div>
+
+    <!-- Search + New -->
+    <div class="rep-toolbar">
+        <div class="rep-search-wrap">
+            <i class="bi bi-search rep-search-icon"></i>
+            <input type="text" id="repSearchInput" class="rep-search-input" placeholder="Buscar cliente ou defeito...">
+        </div>
+        <button class="rep-btn rep-btn-primary" id="repNewBtn">
+            <i class="bi bi-plus-lg"></i> Novo
+        </button>
+    </div>
+
+    <!-- Filters -->
+    <div class="rep-filters">
+        <button class="rep-filter-btn rep-filter-active" data-rep-filter="all">Todos</button>
+        <button class="rep-filter-btn" data-rep-filter="preparacao">Preparação</button>
+        <button class="rep-filter-btn" data-rep-filter="em_reparo">Em Reparo</button>
+        <button class="rep-filter-btn" data-rep-filter="vencido">Vencidos</button>
+        <button class="rep-filter-btn" data-rep-filter="proximo">Prox. Prazo</button>
+        <button class="rep-filter-btn" data-rep-filter="finalizados">Finalizados</button>
+    </div>
+
+    <!-- List -->
+    <div id="repairsList" class="rep-list"></div>
+
+</div>
+
+<!-- ─── MODAL: NOVO / EDITAR CONSERTO ─── -->
+<div class="rep-modal-overlay" id="repFormOverlay">
+    <div class="rep-modal" id="repFormModal">
+        <div class="rep-modal-header">
+            <span id="repFormTitle">Novo Conserto</span>
+            <button class="rep-modal-close" id="repFormClose"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="rep-modal-body">
+            <input type="hidden" id="repFormId">
+
+            <div class="rep-field">
+                <label><i class="bi bi-person-fill"></i> Nome do Cliente *</label>
+                <input type="text" id="repFormNome" class="form-control" placeholder="Ex: João Silva" autocomplete="off">
+            </div>
+            <div class="rep-field">
+                <label><i class="bi bi-telephone-fill"></i> Número do Cliente</label>
+                <input type="tel" id="repFormTel" class="form-control" placeholder="(11) 99999-9999" autocomplete="off">
+            </div>
+            <div class="rep-field">
+                <label><i class="bi bi-exclamation-triangle-fill"></i> Descrição do Defeito *</label>
+                <textarea id="repFormDefeito" class="form-control" rows="3" placeholder="Ex: Tela quebrada, não liga..."></textarea>
+            </div>
+            <div class="rep-field">
+                <label><i class="bi bi-calendar-event-fill"></i> Data Máxima para Devolução</label>
+                <input type="date" id="repFormPrazo" class="form-control">
+            </div>
+
+            <!-- Valor cobrado do cliente -->
+            <div class="rep-field">
+                <label><i class="bi bi-cash-coin"></i> Valor Cobrado do Cliente</label>
+                <div class="input-group">
+                    <span class="input-group-text">R$</span>
+                    <input type="number" id="repFormValor" class="form-control" placeholder="0,00" step="0.01" min="0">
+                </div>
+            </div>
+
+            <!-- Foto do aparelho — silhueta grande empurra conteúdo acima do teclado -->
+            <div class="rep-field">
+                <label><i class="bi bi-camera-fill"></i> Foto do Aparelho</label>
+                <input type="file" id="repFormPhotoInputCamera"  accept="image/*" capture="environment" style="display:none;">
+                <input type="file" id="repFormPhotoInputGallery" accept="image/*" style="display:none;">
+
+                <!-- Silhueta: visível enquanto não há foto -->
+                <div id="repFormPhotoPlaceholder" class="rep-photo-placeholder">
+                    <div class="rep-photo-silhouette">
+                        <i class="bi bi-phone" style="font-size:3.5rem;"></i>
+                        <i class="bi bi-camera" style="font-size:1.4rem;position:absolute;bottom:8px;right:-4px;"></i>
+                    </div>
+                    <span class="rep-photo-hint">Foto do aparelho</span>
+                    <div class="rep-photo-btns" style="margin-top:12px;">
+                        <button class="rep-btn rep-btn-ghost rep-btn-sm" id="repFormPhotoBtnCamera" type="button">
+                            <i class="bi bi-camera-fill"></i> Câmera
+                        </button>
+                        <button class="rep-btn rep-btn-ghost rep-btn-sm" id="repFormPhotoBtnGallery" type="button">
+                            <i class="bi bi-image-fill"></i> <span id="repFormPhotoBtnLabel">Galeria</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Preview: visível depois que foto é escolhida -->
+                <div id="repFormPhotoPreview" style="display:none;position:relative;">
+                    <img id="repFormPhotoImg" src="" alt="preview" style="width:100%;height:260px;object-fit:cover;border-radius:14px;display:block;">
+                    <button id="repFormPhotoRemove" type="button" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,.7);border:none;color:#fff;border-radius:50%;width:30px;height:30px;font-size:.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="rep-modal-footer">
+            <button class="rep-btn rep-btn-ghost" id="repFormCancel">Cancelar</button>
+            <button class="rep-btn rep-btn-primary" id="repFormSaveBtn"><i class="bi bi-check-lg"></i> Salvar</button>
+        </div>
+    </div>
+</div>
+
+<!-- ─── MODAL: MUDANÇA DE ETAPA (foto obrigatória) ─── -->
+<div class="rep-modal-overlay" id="repStepOverlay">
+    <div class="rep-modal" id="repStepModal">
+        <div class="rep-modal-header">
+            <span id="repStepTitle">Registrar etapa</span>
+            <button class="rep-modal-close" id="repStepClose"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="rep-modal-body">
+            <div id="repStepPhotoNotice" class="rep-photo-notice">
+                <i class="bi bi-camera-fill"></i>
+                A foto é <strong>obrigatória</strong> para avançar o status.
+            </div>
+            <div class="rep-photo-btns" style="margin-bottom:12px;">
+                <input type="file" id="repStepPhotoInputCamera"  accept="image/*" capture="environment" style="display:none;">
+                <input type="file" id="repStepPhotoInputGallery" accept="image/*" style="display:none;">
+                <button class="rep-btn rep-btn-primary rep-btn-sm" id="repStepPhotoBtnCamera">
+                    <i class="bi bi-camera-fill"></i> Câmera
+                </button>
+                <button class="rep-btn rep-btn-ghost rep-btn-sm" id="repStepPhotoBtnGallery">
+                    <i class="bi bi-image-fill"></i> <span id="repStepPhotoBtnLabel">Galeria</span>
+                </button>
+            </div>
+            <div id="repStepPhotoPreview" style="display:none;">
+                <img id="repStepPhotoImg" src="" alt="preview" style="width:100%;max-height:220px;object-fit:cover;border-radius:10px;">
+            </div>
+        </div>
+        <div class="rep-modal-footer">
+            <button class="rep-btn rep-btn-ghost" id="repStepCancel">Cancelar</button>
+            <button class="rep-btn rep-btn-primary" id="repStepSaveBtn" disabled>Confirmar</button>
+        </div>
+    </div>
+</div>
+
+<!-- ─── MODAL: CONFIRMAR EXCLUSÃO ─── -->
+<div class="rep-modal-overlay" id="repConfirmOverlay">
+    <div class="rep-modal rep-modal-sm">
+        <div class="rep-modal-header">
+            <span>Confirmar exclusão</span>
+        </div>
+        <div class="rep-modal-body">
+            <p id="repConfirmMsg" style="margin:0;font-size:.9rem;line-height:1.5;"></p>
+        </div>
+        <div class="rep-modal-footer">
+            <button class="rep-btn rep-btn-ghost" id="repConfirmNo">Cancelar</button>
+            <button class="rep-btn rep-btn-danger" id="repConfirmYes"><i class="bi bi-trash-fill"></i> Excluir</button>
         </div>
     </div>
 </div>
