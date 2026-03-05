@@ -72,6 +72,8 @@ function carregarCacheEquipe() {
     if (cache) {
         try {
             const dados = JSON.parse(cache);
+            // Popula teamProfilesList imediatamente (antes do Firebase responder)
+            teamProfilesList = dados;
             if (typeof renderizarEquipeNaTela === 'function') {
                 renderizarEquipeNaTela(dados);
                 console.log("⚡ Equipe carregada do Cache!");
@@ -129,12 +131,20 @@ function renderizarEquipeNaTela(listaPerfis) {
         const card = document.createElement('div');
         card.className = 'team-card'; 
 
+        // Foto: Firebase (sincronizado) → localStorage (cache) → inicial
+        const _avFirebase = perfil.avatarUrl || null;
+        const _avLsKey    = 'ctwAvatar_' + nome.toLowerCase().replace(/\s+/g, '_');
+        const _avUrl      = _avFirebase || localStorage.getItem(_avLsKey) || null;
+        const _avHtml     = _avUrl
+            ? `<img src="${_avUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" alt="${nome}">`
+            : inicial;
+
         card.innerHTML = `
             <div onclick="apagarPerfil('${perfil.id}', '${nome}')" class="btn-delete-card">
                 <i class="bi bi-trash"></i>
             </div>
             <div onclick="setProfile('${nome}')" style="width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor: pointer;">
-                <div class="team-avatar" style="background: ${cor};">${inicial}</div>
+                <div class="team-avatar" style="background: ${cor}; overflow:hidden; padding:0;">${_avHtml}</div>
                 <div class="text-truncate w-100 fw-bold" style="color: var(--text-color); font-size: 0.9rem;">${nome}</div>
                 <div class="mt-1 d-flex gap-1 justify-content-center flex-wrap">
                     ${nome === currentUserProfile ? '<span class="badge bg-success" style="font-size: 0.6rem">VOCÊ</span>' : ''}
@@ -160,6 +170,21 @@ function setupTeamProfilesListener() {
             teamProfilesList = data;
             salvarCacheEquipe(data);
             renderizarEquipeNaTela(data);
+            // Recarrega avatar quando Firebase confirmar os dados (inclui avatarUrl)
+            if (typeof window._loadAvatar === 'function') setTimeout(window._loadAvatar, 100);
+            // Re-popula o select de atribuição se o modal de edição de cliente estiver aberto
+            setTimeout(function() {
+                var atribEl = document.getElementById('editClientAtribuido');
+                var overlay = document.getElementById('editClientModalOverlay');
+                if (!atribEl || !overlay || !overlay.classList.contains('active')) return;
+                var valorAtual = atribEl.value;
+                var nomes = Object.values(data).map(function(p){ return p.name; }).filter(Boolean).sort();
+                atribEl.innerHTML = '<option value="">— Nenhum (notifica todos) —</option>'
+                    + nomes.map(function(n){ return '<option value="' + n + '"' + (n === valorAtual ? ' selected' : '') + '>' + n + '</option>'; }).join('');
+                if (valorAtual && !nomes.includes(valorAtual)) {
+                    atribEl.innerHTML += '<option value="' + valorAtual + '" selected>' + valorAtual + ' ⚠️</option>';
+                }
+            }, 150);
         } else {
             const container = document.getElementById('profilesList');
             if(container) container.innerHTML = '<div class="text-center text-muted py-4">Nenhum perfil encontrado.</div>';
@@ -6907,6 +6932,41 @@ window.editarCliente = function(id) {
     document.getElementById('editClientEmail').value = cliente.email || '';
     const editBirthEl = document.getElementById('editClientBirthdate');
     if (editBirthEl) editBirthEl.value = cliente.dataNascimento || '';
+    // Popular select com perfis reais — múltiplos fallbacks
+    const atribEl = document.getElementById('editClientAtribuido');
+    if (atribEl) {
+        const valorAtual = cliente.atribuidoA || '';
+
+        // Fonte 1: teamProfilesList (Firebase/cache)
+        // Fonte 2: cache_equipe_local no localStorage
+        // Fonte 3: pelo menos o usuário atual
+        let perfis = Object.values(window.teamProfilesList || {}).map(p => p.name).filter(Boolean);
+        if (!perfis.length) {
+            try {
+                const cacheRaw = localStorage.getItem('cache_equipe_local');
+                if (cacheRaw) {
+                    const cacheData = JSON.parse(cacheRaw);
+                    perfis = Object.values(cacheData).map(p => p.name).filter(Boolean);
+                    // Atualiza teamProfilesList enquanto estamos aqui
+                    window.teamProfilesList = cacheData;
+                }
+            } catch(e) {}
+        }
+        if (!perfis.length) {
+            // Fallback final: usuário atual
+            const current = window.currentUserProfile || localStorage.getItem('ctwUserProfile') || '';
+            if (current) perfis = [current];
+        }
+        perfis.sort();
+
+        atribEl.innerHTML = '<option value="">— Nenhum (notifica todos) —</option>'
+            + perfis.map(n => `<option value="${n}"${n === valorAtual ? ' selected' : ''}>${n}</option>`).join('');
+
+        // Valor legado não encontrado na lista
+        if (valorAtual && !perfis.includes(valorAtual)) {
+            atribEl.innerHTML += `<option value="${valorAtual}" selected>${valorAtual} ⚠️</option>`;
+        }
+    }
     document.getElementById('editClientModalOverlay').classList.add('active');
 };
 
@@ -6944,6 +7004,7 @@ window.editarCliente = function(id) {
                 end: document.getElementById('editClientAddress').value,
                 email: document.getElementById('editClientEmail').value,
                 dataNascimento: (document.getElementById('editClientBirthdate')?.value) || '',
+                atribuidoA: document.getElementById('editClientAtribuido')?.value || '',
                 ultimoCompra: new Date().toISOString()
             };
 
@@ -9041,8 +9102,12 @@ async function limparLixeiraAutomatico() {
     }
 }
 
-// Roda a limpeza toda vez que abrir o app
-setTimeout(limparLixeiraAutomatico, 5000); 
+// Roda a limpeza apenas após autenticação estar pronta
+setTimeout(function() {
+    if (typeof db !== 'undefined' && typeof isAuthReady !== 'undefined' && isAuthReady) {
+        limparLixeiraAutomatico();
+    }
+}, 8000); 
 
 
 // ============================================================
@@ -9235,60 +9300,267 @@ window.showMainSection       = showMainSection;
 window.showCustomModal       = showCustomModal;
 
 // ============================================================
-// 🔔 PREFERÊNCIA DE NOTIFICAÇÕES
-// Chave: 'ctwNotifPref' | valores: 'all' (padrão) | 'urgent'
-// Urgentes = boletos, aniversários, reparos, avisos do admin
+// 🔔 PREFERÊNCIAS DE NOTIFICAÇÃO — painel granular
 // ============================================================
 (function() {
-    var PREF_KEY = 'ctwNotifPref';
+    var PREFS_KEY = 'ctwNotifPrefs';
 
-    function getPref() {
-        return safeStorage.getItem(PREF_KEY) || 'all';
+    function getPrefs() {
+        try {
+            var raw = safeStorage.getItem(PREFS_KEY);
+            if (raw) { var p = JSON.parse(raw); return { aniversarios: p.aniversarios !== false, reparos: p.reparos !== false, boletos: p.boletos !== false }; }
+        } catch(e) {}
+        return { aniversarios: true, reparos: true, boletos: true };
     }
+    function savePrefs(p) { safeStorage.setItem(PREFS_KEY, JSON.stringify(p)); }
 
-    function updateLabels(pref) {
-        var label = pref === 'urgent' ? 'Só urgentes 🔴' : 'Todas ativadas 🔔';
+    function updateLabels(prefs) {
+        var parts = ['📢'];
+        if (prefs.aniversarios) parts.push('🎂');
+        if (prefs.reparos)      parts.push('🔧');
+        if (prefs.boletos)      parts.push('💸');
+        var label = parts.join(' ');
         var el1 = document.getElementById('notifPrefLabel');
         var el2 = document.getElementById('notifPrefLabelSheet');
         if (el1) el1.textContent = label;
         if (el2) el2.textContent = label;
     }
 
+    // Abre/fecha painel bottom-sheet
     window.toggleNotifPref = function() {
-        var current = getPref();
-        var next = current === 'all' ? 'urgent' : 'all';
-        safeStorage.setItem(PREF_KEY, next);
-        updateLabels(next);
-        var msg = next === 'urgent'
-            ? '🔴 Notificações: só urgentes (boletos, aniversários, reparos e avisos)'
-            : '🔔 Notificações: todas ativadas';
-        if (typeof showCustomModal === 'function') showCustomModal({ message: msg });
-        // Re-aplica filtro nas notificações atuais
-        if (typeof window.updateNotificationUI === 'function') {
-            window.updateNotificationUI(window._currentNotifications || []);
+        var existing = document.getElementById('_notifPrefPanel');
+        if (existing) { existing.remove(); return; }
+        var prefs = getPrefs();
+        var cur = Object.assign({}, prefs);
+
+        var panel = document.createElement('div');
+        panel.id = '_notifPrefPanel';
+        panel.style.cssText = 'position:fixed;inset:0;z-index:30000;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);';
+
+        function cbHtml(on) {
+            return on ? '<span style="width:22px;height:22px;border-radius:6px;background:var(--primary-color,#00e5ff);display:flex;align-items:center;justify-content:center;font-size:.85rem;color:#000;font-weight:900;">✓</span>'
+                      : '<span style="width:22px;height:22px;border-radius:6px;border:2px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;"></span>';
         }
-    };
 
-    window.getNotifPref = function() { return getPref(); };
+        function row(id, icon, bg, color, title, sub, key) {
+            return '<div id="_np_' + id + '" style="display:flex;align-items:center;gap:14px;padding:14px 22px;cursor:pointer;">'
+                + '<div style="width:42px;height:42px;border-radius:12px;background:' + bg + ';color:' + color + ';display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0;">' + icon + '</div>'
+                + '<div style="flex:1;"><div style="font-size:.9rem;font-weight:600;">' + title + '</div><div style="font-size:.72rem;color:var(--text-secondary,#8899aa);">' + sub + '</div></div>'
+                + '<div id="_npcb_' + key + '">' + cbHtml(cur[key]) + '</div>'
+                + '</div>';
+        }
 
-    // Filtra array de notificações conforme preferência
-    // Urgentes: boletos (boletoId), aniversários (isBirthday), reparos (repairId), admin geral (isGeneral)
-    window.filterNotifsByPref = function(notifications) {
-        if (getPref() !== 'urgent') return notifications;
-        return notifications.filter(function(n) {
-            // Boletos excluídos propositalmente — usuário não é da cobrança
-        return n.isBirthday || n.repairId || n.isGeneral;
+        panel.innerHTML = '<div style="background:var(--bg-color,#0b1325);border-radius:24px 24px 0 0;padding:0 0 env(safe-area-inset-bottom,16px);width:100%;max-width:480px;">'
+            + '<style>@keyframes _npUp{from{transform:translateY(100%)}to{transform:translateY(0)}}</style>'
+            + '<div style="animation:_npUp .28s cubic-bezier(.34,1.56,.64,1);">'
+            + '<div style="width:40px;height:4px;background:rgba(255,255,255,.15);border-radius:99px;margin:14px auto 18px;"></div>'
+            + '<div style="font-weight:700;font-size:1rem;color:var(--text-color,#fff);padding:0 22px 14px;display:flex;align-items:center;gap:8px;"><i class="bi bi-bell-fill" style="color:var(--primary-color,#00e5ff);"></i> Preferências de Notificação</div>'
+            + '<div style="display:flex;align-items:center;gap:14px;padding:14px 22px;opacity:.5;">'
+            +   '<div style="width:42px;height:42px;border-radius:12px;background:rgba(0,229,255,.12);color:#00e5ff;display:flex;align-items:center;justify-content:center;font-size:1.3rem;">📢</div>'
+            +   '<div style="flex:1;"><div style="font-size:.9rem;font-weight:600;">Avisos do administrador</div><div style="font-size:.72rem;color:var(--text-secondary,#8899aa);">Comunicados e novidades</div></div>'
+            +   '<span style="font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:99px;background:rgba(239,68,68,.15);color:#ef4444;border:1px solid rgba(239,68,68,.3);">Obrigatório</span>'
+            + '</div>'
+            + '<div style="height:1px;background:rgba(255,255,255,.07);margin:0 22px;"></div>'
+            + row('aniv','🎂','rgba(251,146,60,.12)','#fb923c','Aniversários de clientes','Alerta no dia do aniversário','aniversarios')
+            + row('rep','🔧','rgba(168,85,247,.12)','#a855f7','Alertas de reparo','Prazos próximos e vencidos','reparos')
+            + row('bol','💸','rgba(239,68,68,.12)','#ef4444','Boletos vencendo','Parcelas próximas do vencimento','boletos')
+            + '<button id="_npSaveBtn" style="width:calc(100% - 32px);margin:14px 16px 0;padding:14px;border:none;border-radius:14px;background:var(--primary-color,#00e5ff);color:#000;font-weight:700;font-size:.95rem;cursor:pointer;">Salvar preferências</button>'
+            + '</div></div>';
+
+        panel.addEventListener('click', function(e) { if (e.target === panel) panel.remove(); });
+        document.body.appendChild(panel);
+
+        ['aniversarios','reparos','boletos'].forEach(function(key) {
+            var idMap = { aniversarios:'aniv', reparos:'rep', boletos:'bol' };
+            document.getElementById('_np_' + idMap[key]).addEventListener('click', function() {
+                cur[key] = !cur[key];
+                document.getElementById('_npcb_' + key).innerHTML = cbHtml(cur[key]);
+            });
+        });
+        document.getElementById('_npSaveBtn').addEventListener('click', function() {
+            savePrefs(cur);
+            updateLabels(cur);
+            panel.remove();
+            if (typeof window.updateNotificationUI === 'function') window.updateNotificationUI(window._currentNotifications || []);
         });
     };
 
-    // Inicializa labels quando DOM estiver pronto
-    function init() { updateLabels(getPref()); }
+    window.getNotifPref = function() { return getPrefs(); };
+
+    window.filterNotifsByPref = function(notifications) {
+        var prefs = getPrefs();
+        return notifications.filter(function(n) {
+            if (n.isGeneral)  return true;
+            if (n.isBirthday) return prefs.aniversarios;
+            if (n.repairId)   return prefs.reparos;
+            if (n.boletoId)   return prefs.boletos;
+            return true;
+        });
+    };
+
+    function init() { updateLabels(getPrefs()); }
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
         setTimeout(init, 500);
     }
 })();
+
+// ============================================================
+// 📸 AVATAR DO USUÁRIO — salvo no Firebase (sincroniza entre dispositivos)
+// ============================================================
+(function() {
+    // ── Compressão: 256x256 crop quadrado WebP 0.82 ──────────
+    async function comprimirAvatar(file) {
+        return new Promise(function(resolve, reject) {
+            var img = new Image();
+            var url = URL.createObjectURL(file);
+            img.onload = function() {
+                URL.revokeObjectURL(url);
+                var MAX = 256;
+                var w = img.width, h = img.height;
+                var side = Math.min(w, h);
+                var canvas = document.createElement('canvas');
+                canvas.width = MAX; canvas.height = MAX;
+                var ctx = canvas.getContext('2d');
+                var sx = (w - side) / 2, sy = (h - side) / 2;
+                ctx.drawImage(img, sx, sy, side, side, 0, 0, MAX, MAX);
+                resolve(canvas.toDataURL('image/webp', 0.82));
+            };
+            img.onerror = function() { URL.revokeObjectURL(url); reject(new Error('Imagem inválida')); };
+            img.src = url;
+        });
+    }
+
+    // ── Upload para Cloudinary (mesma conta do Bookip) ───────
+    async function uploadAvatarCloudinary(dataUrl) {
+        // Converter dataUrl → Blob
+        var arr = dataUrl.split(','), mime = arr[0].match(/:(.*?);/)[1];
+        var bstr = atob(arr[1]), n = bstr.length, u8 = new Uint8Array(n);
+        while (n--) u8[n] = bstr.charCodeAt(n);
+        var blob = new Blob([u8], { type: mime });
+
+        var fd = new FormData();
+        fd.append('file', blob, 'avatar.webp');
+        fd.append('upload_preset', 'g8rdi3om');
+        fd.append('folder', 'ctw_avatares');
+        try {
+            var r = await fetch('https://api.cloudinary.com/v1_1/dmvynrze6/image/upload', { method:'POST', body: fd });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            var data = await r.json();
+            return data.secure_url || '';
+        } catch(e) {
+            console.warn('Avatar upload falhou:', e);
+            return '';
+        }
+    }
+
+    // ── Encontra o ID do perfil pelo nome ────────────────────
+    function getProfileId(nome) {
+        var lista = window.teamProfilesList || {};
+        for (var id in lista) {
+            if ((lista[id].name || '').toLowerCase() === nome.toLowerCase()) return id;
+        }
+        return null;
+    }
+
+    // ── Carrega avatar do perfil atual ───────────────────────
+    function loadAvatar() {
+        var nome   = localStorage.getItem('ctwUserProfile') || '';
+        var img    = document.getElementById('avatarPhotoImg');
+        var icon   = document.getElementById('avatarPhotoIcon');
+        if (!img) return;
+
+        // Tenta encontrar avatarUrl nos dados do perfil (Firebase)
+        var lista = window.teamProfilesList || {};
+        var avatarUrl = null;
+        for (var id in lista) {
+            if ((lista[id].name || '').toLowerCase() === nome.toLowerCase()) {
+                avatarUrl = lista[id].avatarUrl || null;
+                break;
+            }
+        }
+
+        // Fallback: localStorage (cache offline)
+        if (!avatarUrl) {
+            var lsKey = 'ctwAvatar_' + nome.toLowerCase().replace(/\s+/g, '_');
+            avatarUrl = localStorage.getItem(lsKey) || null;
+        }
+
+        if (avatarUrl) {
+            img.src = avatarUrl;
+            img.style.display = 'block';
+            if (icon) icon.style.display = 'none';
+        } else {
+            img.style.display = 'none';
+            if (icon) icon.style.display = '';
+        }
+    }
+
+    // ── Inicializa input de foto ─────────────────────────────
+    function initAvatar() {
+        loadAvatar();
+        var input = document.getElementById('avatarPhotoInput');
+        if (!input) return;
+        input.addEventListener('change', async function(e) {
+            var file = e.target.files[0];
+            input.value = '';
+            if (!file) return;
+            try {
+                var dataUrl = await comprimirAvatar(file);
+
+                // 1. Mostrar imediatamente (UX)
+                var img  = document.getElementById('avatarPhotoImg');
+                var icon = document.getElementById('avatarPhotoIcon');
+                if (img)  { img.src = dataUrl; img.style.display = 'block'; }
+                if (icon) icon.style.display = 'none';
+
+                // 2. Salvar no localStorage como cache
+                var nome  = localStorage.getItem('ctwUserProfile') || '';
+                var lsKey = 'ctwAvatar_' + nome.toLowerCase().replace(/\s+/g, '_');
+                localStorage.setItem(lsKey, dataUrl);
+
+                // 3. Upload para Cloudinary e salvar URL no Firebase
+                var url = await uploadAvatarCloudinary(dataUrl);
+                if (url) {
+                    var profId = getProfileId(nome);
+                    if (profId && typeof update === 'function' && typeof ref === 'function' && window._firebaseDB) {
+                        update(ref(window._firebaseDB, 'team_profiles/' + profId), { avatarUrl: url })
+                            .then(function() { console.log('✅ Avatar salvo no Firebase'); })
+                            .catch(function(e) { console.warn('Avatar Firebase save falhou:', e); });
+                    }
+                }
+            } catch(err) {
+                if (typeof showCustomModal === 'function') showCustomModal({ message: '❌ Erro ao processar foto.' });
+            }
+        });
+    }
+
+    // Recarrega avatar ao trocar perfil
+    var _origSetProfile = window.setProfile;
+    if (typeof window.setProfile === 'function') {
+        window.setProfile = function(nome) {
+            _origSetProfile(nome);
+            setTimeout(loadAvatar, 300);
+        };
+    }
+
+    // Re-render quando teamProfilesList é atualizado (recebe avatarUrl do Firebase)
+    var _origRenderizarEquipe = window.renderizarEquipeNaTela;
+    window._onTeamProfilesUpdated = function() {
+        loadAvatar();          // Atualiza avatar do perfil atual
+        if (typeof renderizarEquipeNaTela === 'function') renderizarEquipeNaTela(window.teamProfilesList);
+    };
+
+    window._loadAvatar = loadAvatar;
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(initAvatar, 400); });
+    } else {
+        setTimeout(initAvatar, 400);
+    }
+})();
+
 window.setupNotificationListeners = setupNotificationListeners;
 window.escapeHtml            = typeof escapeHtml === 'function' ? escapeHtml : (s) => s;
 window.updateNotificationUI  = updateNotificationUI;
@@ -9815,6 +10087,7 @@ if (document.readyState === 'loading') {
 (function() {
     var _bookipsCache = [];
     var _boletosCache = [];
+    var _repairsCache = [];
     var _activeFilter = 'all';
 
     function setupCaches() {
@@ -9834,6 +10107,15 @@ if (document.readyState === 'loading') {
                 _boletosCache = Object.entries(snap.val()).map(function(e) {
                     return Object.assign({ id: e[0] }, e[1]);
                 });
+            }
+        });
+        onValue(ref(db, 'manutencao'), function(snap) {
+            if (snap.exists()) {
+                _repairsCache = Object.entries(snap.val()).map(function(e) {
+                    return Object.assign({ id: e[0] }, e[1]);
+                });
+            } else {
+                _repairsCache = [];
             }
         });
     }
@@ -9876,6 +10158,14 @@ if (document.readyState === 'loading') {
                 }
             });
         }
+        if (af === 'all' || af === 'conserto') {
+            _repairsCache.forEach(function(r) {
+                if (norm([r.nomeCliente, r.descricaoDefeito, r.numeroCliente].join(' ')).indexOf(nq) >= 0) {
+                    var statusLabels = { loja_sem_analise: 'Levar ao Técnico', em_reparo: 'Em Reparo', loja_reparado: 'Finalizado Loja', finalizado: 'Entregue' };
+                    results.push({ type: 'conserto', id: r.id, title: r.nomeCliente || 'Sem nome', sub: (r.descricaoDefeito || '') + (r.status ? ' · ' + (statusLabels[r.status] || r.status) : ''), data: r });
+                }
+            });
+        }
         return results.slice(0, 30);
     }
 
@@ -9889,7 +10179,7 @@ if (document.readyState === 'loading') {
             return;
         }
         stat.textContent = results.length + (results.length > 1 ? ' resultados' : ' resultado');
-        var icons = { cliente: '&#128101;', bookip: '&#128210;', boleto: '&#128203;' };
+        var icons = { cliente: '&#128101;', bookip: '&#128210;', boleto: '&#128203;' , conserto: '🔧' };
         var tags = { cliente: 'Cliente', bookip: 'Bookip', boleto: 'Contrato' };
         cont.innerHTML = results.map(function(r) {
             return '<div class="gs-card" data-type="' + r.type + '" data-id="' + r.id + '">' +
@@ -9938,6 +10228,17 @@ if (document.readyState === 'loading') {
                 gsNavHide();
             }, 500);
 
+        } else if (type === 'conserto') {
+            gsNavShow('Abrindo conserto...');
+            if (typeof window.showMainSection === 'function') window.showMainSection('repairs');
+            setTimeout(function() {
+                gsNavHide();
+                // Scroll to repair card if visible
+                var card = document.querySelector('[data-rep-id="' + id + '"]');
+                if (card) {
+                    card.closest('.rep-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 600);
         } else if (type === 'bookip') {
             gsNavShow('Encontrando garantia...');
             if (typeof window.showMainSection === 'function') window.showMainSection('contract');

@@ -4629,29 +4629,35 @@ body.ctw-v2-active #documentsHome {
     grid-template-columns: repeat(5, 1fr);
     gap: 6px;
     margin-bottom: 16px;
+    width: 100%;
 }
 .rep-stat {
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 14px;
-    padding: 10px 8px;
+    padding: 10px 4px;
     text-align: center;
     backdrop-filter: blur(5px);
+    min-width: 0;        /* permite shrink no grid */
+    overflow: hidden;
 }
 .rep-stat-num {
     display: block;
-    font-size: 1.4rem;
+    font-size: 1.3rem;
     font-weight: 800;
     line-height: 1;
     font-family: 'Poppins', sans-serif;
 }
 .rep-stat-lbl {
-    font-size: .58rem;
+    font-size: .52rem;
     font-weight: 500;
     opacity: .65;
     display: block;
     margin-top: 3px;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0 2px;
 }
 .rep-stat-yellow .rep-stat-num { color: var(--rep-yellow); }
 .rep-stat-red    .rep-stat-num { color: var(--rep-red);    }

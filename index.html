@@ -1480,6 +1480,14 @@ do que você precisa??</h2>
                     <input type="email" class="form-control" id="editClientEmail">
                 </div>
 
+                <div class="mb-3">
+                    <label class="form-label small">👤 Atribuído ao usuário</label>
+                    <select class="form-select" id="editClientAtribuido">
+                        <option value="">— Nenhum (notifica todos) —</option>
+                    </select>
+                    <div class="form-text" style="font-size:.7rem;opacity:.6;">Aniversários deste cliente só notificam este usuário</div>
+                </div>
+
                 <div class="d-grid gap-2">
                     <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Salvar Alterações</button>
                 </div>
@@ -1878,6 +1886,7 @@ do que você precisa??</h2>
             <button class="gs-filter" data-filter="cliente">👥 Clientes</button>
             <button class="gs-filter" data-filter="bookip">📒 Bookips</button>
             <button class="gs-filter" data-filter="boleto">📋 Contratos</button>
+            <button class="gs-filter" data-filter="conserto">🔧 Consertos</button>
         </div>
         <div class="gs-status-bar" id="gsStatus">Digite para buscar</div>
         <div class="gs-results" id="gsResults"></div>
@@ -1919,7 +1928,12 @@ do que você precisa??</h2>
 
         <!-- Header usuário -->
         <div class="ctw-sheet-user">
-            <div class="ctw-sheet-avatar"><i class="bi bi-person-fill"></i></div>
+            <div class="ctw-sheet-avatar" id="ctwSheetAvatar" onclick="document.getElementById('avatarPhotoInput').click()" style="cursor:pointer;overflow:hidden;position:relative;" title="Toque para trocar foto">
+                <img id="avatarPhotoImg" src="" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:none;">
+                <i class="bi bi-person-fill" id="avatarPhotoIcon"></i>
+                <div id="avatarPhotoHint" style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.55);font-size:.45rem;text-align:center;padding:2px 0;color:#fff;border-radius:0 0 50% 50%;">📷</div>
+            </div>
+            <input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;">
             <div>
                 <div class="ctw-sheet-user-role">Logado como</div>
                 <div class="ctw-sheet-user-name" id="ctwSheetProfileName">Visitante</div>
@@ -1978,23 +1992,23 @@ do que você precisa??</h2>
     <div class="rep-stats-bar">
         <div class="rep-stat rep-stat-gray">
             <span class="rep-stat-num" id="repStat_preparacao">0</span>
-            <span class="rep-stat-lbl">Preparação</span>
+            <span class="rep-stat-lbl">Levar Técnico</span>
         </div>
         <div class="rep-stat rep-stat-yellow">
             <span class="rep-stat-num" id="repStat_reparo">0</span>
-            <span class="rep-stat-lbl">Em reparo</span>
+            <span class="rep-stat-lbl">Em Reparo</span>
         </div>
         <div class="rep-stat rep-stat-red">
             <span class="rep-stat-num" id="repStat_atrasados">0</span>
-            <span class="rep-stat-lbl">Atrasados</span>
+            <span class="rep-stat-lbl">Tempo Esgotado</span>
         </div>
         <div class="rep-stat rep-stat-orange">
             <span class="rep-stat-num" id="repStat_proximos">0</span>
-            <span class="rep-stat-lbl">Prox. prazo</span>
+            <span class="rep-stat-lbl">Prox. Prazo</span>
         </div>
         <div class="rep-stat rep-stat-green">
             <span class="rep-stat-num" id="repStat_finais">0</span>
-            <span class="rep-stat-lbl">Finalizados</span>
+            <span class="rep-stat-lbl">Loja Reparado</span>
         </div>
     </div>
 
@@ -2012,11 +2026,12 @@ do que você precisa??</h2>
     <!-- Filters -->
     <div class="rep-filters">
         <button class="rep-filter-btn rep-filter-active" data-rep-filter="all">Todos</button>
-        <button class="rep-filter-btn" data-rep-filter="preparacao">Preparação</button>
+        <button class="rep-filter-btn" data-rep-filter="levar_tecnico">Levar Técnico</button>
         <button class="rep-filter-btn" data-rep-filter="em_reparo">Em Reparo</button>
-        <button class="rep-filter-btn" data-rep-filter="vencido">Vencidos</button>
+        <button class="rep-filter-btn" data-rep-filter="finalizados_loja">Finalizados Loja</button>
         <button class="rep-filter-btn" data-rep-filter="proximo">Prox. Prazo</button>
-        <button class="rep-filter-btn" data-rep-filter="finalizados">Finalizados</button>
+        <button class="rep-filter-btn" data-rep-filter="tempo_esgotado">Tempo Esgotado</button>
+        <button class="rep-filter-btn" data-rep-filter="entregue">Finalizado/Entregue!</button>
     </div>
 
     <!-- List -->
@@ -2047,8 +2062,13 @@ do que você precisa??</h2>
                 <textarea id="repFormDefeito" class="form-control" rows="3" placeholder="Ex: Tela quebrada, não liga..."></textarea>
             </div>
             <div class="rep-field">
-                <label><i class="bi bi-calendar-event-fill"></i> Data Máxima para Devolução</label>
+                <label><i class="bi bi-calendar-event-fill"></i> Data para Entrega ao Cliente</label>
                 <input type="date" id="repFormPrazo" class="form-control">
+            </div>
+            <div class="rep-field">
+                <label><i class="bi bi-clock-fill"></i> Horário limite para entrega</label>
+                <input type="time" id="repFormHora" class="form-control">
+                <small style="opacity:.55;font-size:.7rem;">Menos de 8h do prazo = alerta Prox. Prazo</small>
             </div>
 
             <!-- Valor cobrado do cliente -->

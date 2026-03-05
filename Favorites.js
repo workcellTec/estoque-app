@@ -86,7 +86,20 @@ const FAV_OPTIONS = [
     { id: 'contrato',     emoji: '📋', label: 'Abrindo Contratos...',         action: () => { window.showMainSection?.('contract'); setTimeout(() => window.openDocumentsSection?.('contrato'), 300); } },
     { id: 'bookip',       emoji: '📒', label: 'Abrindo Bookip...',            action: () => { window.showMainSection?.('contract'); setTimeout(() => document.getElementById('openBookipView')?.click(), 300); } },
     { id: 'clientes',     emoji: '👥', label: 'Abrindo Clientes...',          action: () => window.showMainSection?.('clients') },
-    { id: 'estoque',      emoji: '📦', label: 'Abrindo Estoque...',           action: () => window.showMainSection?.('stock') },
+    { id: 'estoque',      emoji: '📦', label: 'Abrindo Estoque...',           action: () => {
+        if (typeof window.showCustomModal === 'function') {
+            window.showCustomModal({
+                message: 'Digite a senha para acessar o Estoque:',
+                showPassword: true,
+                confirmText: 'Acessar',
+                onConfirm: (pwd) => {
+                    if (pwd === '220390') { window.showMainSection?.('stock'); }
+                    else { window.showCustomModal({ message: '❌ Senha incorreta.' }); }
+                },
+                onCancel: () => {}
+            });
+        }
+    } },
     { id: 'admin',        emoji: '⚙️', label: 'Abrindo Administração...',     action: () => window.showMainSection?.('administracao') },
 ];
 

@@ -1,31 +1,30 @@
 // repairs.js — Gerenciamento de Consertos
-// Depende de: window.db (Firebase), window.currentUserProfile, window.uploadFotoCloudinary, window.showCustomModal
-// Firebase: getDatabase, ref, push, update, remove, onValue, off, get (via window.firebaseDB)
+// Depende de: window._firebaseDB, window.currentUserProfile, window.showCustomModal
 
-import { ref, push, update, remove, onValue, off, get }
+import { ref, push, update, remove, onValue, off }
     from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
 
 // ============================================================
 // CONSTANTES
 // ============================================================
-const REPAIRS_PATH   = 'manutencao';
+const REPAIRS_PATH      = 'manutencao';
 const CLOUDINARY_CLOUD  = 'dmvynrze6';
 const CLOUDINARY_PRESET = 'g8rdi3om';
 const CLOUDINARY_URL    = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`;
 
 // Status do workflow
 const STATUS = {
-    LOJA_SEM_ANALISE: 'loja_sem_analise',
-    EM_REPARO:        'em_reparo',
-    LOJA_REPARADO:    'loja_reparado',
-    FINALIZADO:       'finalizado',
+    LOJA_SEM_ANALISE: 'loja_sem_analise',   // Levar ao técnico
+    EM_REPARO:        'em_reparo',           // Em reparo
+    LOJA_REPARADO:    'loja_reparado',       // Finalizado Loja
+    FINALIZADO:       'finalizado',          // Entregue ao cliente
 };
 
 const STATUS_LABEL = {
-    [STATUS.LOJA_SEM_ANALISE]: '🔴 Loja – Sem Análise',
+    [STATUS.LOJA_SEM_ANALISE]: '🔴 Levar ao Técnico',
     [STATUS.EM_REPARO]:        '🟡 Em Reparo',
-    [STATUS.LOJA_REPARADO]:    '🔵 Na Loja – Reparado',
-    [STATUS.FINALIZADO]:       '🟢 Finalizado',
+    [STATUS.LOJA_REPARADO]:    '🔵 Finalizado Loja',
+    [STATUS.FINALIZADO]:       '🟢 Entregue!',
 };
 
 const STATUS_COLOR = {
@@ -52,12 +51,7 @@ let stepPhotoUrl    = '';
 // ============================================================
 function getDb() {
     if (db) return db;
-    // Reutiliza a instância autenticada do app.js — evita "Permission denied"
     db = window._firebaseDB;
-    if (!db) {
-        // Fallback: aguarda e tenta de novo
-        console.warn('repairs.js: _firebaseDB ainda não disponível, aguardando...');
-    }
     return db;
 }
 
@@ -65,13 +59,7 @@ function getUser() {
     return window.currentUserProfile || localStorage.getItem('ctwUserProfile') || 'Desconhecido';
 }
 
-function today() {
-    return new Date().toISOString().slice(0, 10);
-}
-
-function tsNow() {
-    return Date.now();
-}
+function tsNow() { return Date.now(); }
 
 function formatDate(isoOrTs) {
     if (!isoOrTs) return '—';
@@ -90,18 +78,20 @@ function diasDesde(ts) {
     return Math.floor((Date.now() - ts) / 86400000);
 }
 
-function diasAte(isoDate) {
+// Retorna horas até o prazo (negativo = vencido)
+function horasAte(isoDate, horaMaxima) {
     if (!isoDate) return null;
-    const prazo = new Date(isoDate + 'T23:59:59');
-    return Math.floor((prazo - Date.now()) / 86400000);
+    const hora = horaMaxima || '23:59';
+    const prazo = new Date(isoDate + 'T' + hora + ':00');
+    return (prazo - Date.now()) / 3600000;
 }
 
 function prazoStatus(repair) {
     if (repair.status === STATUS.FINALIZADO) return 'ok';
-    const dias = diasAte(repair.dataMaxima);
-    if (dias === null) return 'ok';
-    if (dias < 0)  return 'vencido';
-    if (dias <= 1) return 'proximo';
+    const horas = horasAte(repair.dataMaxima, repair.horaMaxima);
+    if (horas === null) return 'ok';
+    if (horas < 0)  return 'vencido';
+    if (horas <= 8) return 'proximo';   // < 8 horas = próximo
     return 'ok';
 }
 
@@ -111,7 +101,7 @@ async function comprimirFoto(file) {
         const url = URL.createObjectURL(file);
         img.onload = () => {
             URL.revokeObjectURL(url);
-            const MAX = 1920, Q = 0.88; // igual ao Bookip: legível, ~300-500KB
+            const MAX = 1920, Q = 0.88;
             let w = img.width, h = img.height;
             if (w > MAX || h > MAX) {
                 const r = Math.min(MAX / w, MAX / h);
@@ -144,10 +134,9 @@ async function uploadFoto(blob) {
     }
 }
 
-function showToast(msg, type = 'success') {
+function showToast(msg) {
     if (typeof window.showCustomModal === 'function') {
-        window.showCustomModal({ message: msg });
-        return;
+        window.showCustomModal({ message: msg }); return;
     }
     alert(msg);
 }
@@ -181,15 +170,11 @@ function listenRepairs(callback) {
     repairsListener = onValue(ref(getDb(), REPAIRS_PATH), snap => {
         const items = [];
         if (snap.exists()) {
-            snap.forEach(c => {
-                items.push({ id: c.key, ...c.val() });
-            });
+            snap.forEach(c => { items.push({ id: c.key, ...c.val() }); });
         }
         allRepairs = items;
         callback(items);
-        // Verificar prazos e disparar alertas
         checkDeadlineAlerts(items);
-        // Auto-deletar registros finalizados há mais de 1 ano
         autoDeleteOldRecords(items);
     });
 }
@@ -201,7 +186,6 @@ function stopListenRepairs() {
     }
 }
 
-// Exclusão automática após 1 ano da finalização
 async function autoDeleteOldRecords(items) {
     const UM_ANO = 365 * 24 * 60 * 60 * 1000;
     const now = Date.now();
@@ -210,46 +194,39 @@ async function autoDeleteOldRecords(items) {
         const tsFinalizacao = item.timeline?.finalizado?.ts;
         if (!tsFinalizacao) continue;
         if ((now - tsFinalizacao) >= UM_ANO) {
-            console.log(`🗑️ Auto-deletando conserto ${item.id} (1 ano após finalização)`);
             await deleteRepair(item.id);
         }
     }
 }
 
 // ============================================================
-// ALERTAS DE PRAZO → integra com sistema de notificações
+// ALERTAS DE PRAZO
 // ============================================================
 function checkDeadlineAlerts(items) {
     const notifs = [];
-
     items.forEach(item => {
         if (item.status === STATUS.FINALIZADO) return;
         const ps = prazoStatus(item);
         if (ps === 'ok') return;
-
-        const diasRestantes = diasAte(item.dataMaxima);
+        const horas = horasAte(item.dataMaxima, item.horaMaxima);
         let msg;
         if (ps === 'vencido') {
-            const atraso = Math.abs(diasRestantes);
-            msg = `⚠️ PRAZO VENCIDO: <b>${item.nomeCliente}</b> (${item.descricaoDefeito}) — ${atraso} dia${atraso !== 1 ? 's' : ''} em atraso`;
+            const atrasoH = Math.abs(Math.round(horas));
+            msg = `⚠️ PRAZO VENCIDO: <b>${item.nomeCliente}</b> (${item.descricaoDefeito}) — ${atrasoH}h em atraso`;
         } else {
-            msg = `🕐 Prazo próximo: <b>${item.nomeCliente}</b> (${item.descricaoDefeito}) — vence amanhã`;
+            const restH = Math.ceil(horas);
+            msg = `🕐 Prazo próximo: <b>${item.nomeCliente}</b> (${item.descricaoDefeito}) — ${restH}h restantes`;
         }
-
         notifs.push({
             notificationId: `repair_deadline_${item.id}`,
             message: msg,
-            isGeneral: true,
+            isGeneral: false,
             repairId: item.id,
         });
     });
-
-    // Mesclando com notificações existentes (sem duplicar)
     const existing = (window._currentNotifications || []).filter(n => !n.notificationId?.startsWith('repair_deadline_'));
-    const merged = [...existing, ...notifs];
-
     if (typeof window.updateNotificationUI === 'function') {
-        window.updateNotificationUI(merged);
+        window.updateNotificationUI([...existing, ...notifs]);
     }
 }
 
@@ -258,17 +235,18 @@ function checkDeadlineAlerts(items) {
 // ============================================================
 function getFiltered(filter) {
     switch(filter) {
-        case 'em_reparo':   return allRepairs.filter(r => r.status === STATUS.EM_REPARO);
-        case 'proximo':     return allRepairs.filter(r => prazoStatus(r) === 'proximo');
-        case 'vencido':     return allRepairs.filter(r => prazoStatus(r) === 'vencido');
-        case 'finalizados': return allRepairs.filter(r => r.status === STATUS.FINALIZADO);
-        case 'preparacao':  return allRepairs.filter(r => r.status === STATUS.LOJA_SEM_ANALISE);
-        default:            return [...allRepairs];
+        case 'levar_tecnico':     return allRepairs.filter(r => r.status === STATUS.LOJA_SEM_ANALISE);
+        case 'em_reparo':         return allRepairs.filter(r => r.status === STATUS.EM_REPARO);
+        case 'finalizados_loja':  return allRepairs.filter(r => r.status === STATUS.LOJA_REPARADO);
+        case 'proximo':           return allRepairs.filter(r => prazoStatus(r) === 'proximo');
+        case 'tempo_esgotado':    return allRepairs.filter(r => prazoStatus(r) === 'vencido');
+        case 'entregue':          return allRepairs.filter(r => r.status === STATUS.FINALIZADO);
+        default:                  return [...allRepairs];
     }
 }
 
 // ============================================================
-// RENDER PRINCIPAL
+// RENDER
 // ============================================================
 function render(items) {
     renderStats(items);
@@ -276,18 +254,18 @@ function render(items) {
 }
 
 function renderStats(items) {
-    const preparacao = items.filter(r => r.status === STATUS.LOJA_SEM_ANALISE).length;
-    const reparo     = items.filter(r => r.status === STATUS.EM_REPARO).length;
-    const atrasados  = items.filter(r => prazoStatus(r) === 'vencido').length;
-    const proximos   = items.filter(r => prazoStatus(r) === 'proximo').length;
-    const finais     = items.filter(r => r.status === STATUS.FINALIZADO).length;
+    const levarTecnico   = items.filter(r => r.status === STATUS.LOJA_SEM_ANALISE).length;
+    const emReparo       = items.filter(r => r.status === STATUS.EM_REPARO).length;
+    const tempoEsgotado  = items.filter(r => prazoStatus(r) === 'vencido').length;
+    const proximos       = items.filter(r => prazoStatus(r) === 'proximo').length;
+    const finaisLoja     = items.filter(r => r.status === STATUS.LOJA_REPARADO).length;
 
     const s = id => document.getElementById(id);
-    if (s('repStat_preparacao')) s('repStat_preparacao').textContent = preparacao;
-    if (s('repStat_reparo'))     s('repStat_reparo').textContent     = reparo;
-    if (s('repStat_atrasados'))  s('repStat_atrasados').textContent  = atrasados;
+    if (s('repStat_preparacao')) s('repStat_preparacao').textContent = levarTecnico;
+    if (s('repStat_reparo'))     s('repStat_reparo').textContent     = emReparo;
+    if (s('repStat_atrasados'))  s('repStat_atrasados').textContent  = tempoEsgotado;
     if (s('repStat_proximos'))   s('repStat_proximos').textContent   = proximos;
-    if (s('repStat_finais'))     s('repStat_finais').textContent     = finais;
+    if (s('repStat_finais'))     s('repStat_finais').textContent     = finaisLoja;
 }
 
 function renderList(items) {
@@ -304,7 +282,7 @@ function renderList(items) {
         return;
     }
 
-    // Ordenar: vencidos primeiro, depois proximos, depois por data cadastro
+    // Vencidos primeiro, depois próximos, depois por data
     items.sort((a, b) => {
         const pa = prazoStatus(a), pb = prazoStatus(b);
         const order = { vencido: 0, proximo: 1, ok: 2 };
@@ -314,13 +292,10 @@ function renderList(items) {
 
     container.innerHTML = items.map(r => buildCard(r)).join('');
 
-    // Wire botões
     container.querySelectorAll('[data-rep-action]').forEach(btn => {
         btn.addEventListener('click', e => {
             e.stopPropagation();
-            const action = btn.dataset.repAction;
-            const id     = btn.dataset.repId;
-            handleAction(action, id);
+            handleAction(btn.dataset.repAction, btn.dataset.repId);
         });
     });
     container.querySelectorAll('[data-rep-whatsapp]').forEach(btn => {
@@ -340,17 +315,24 @@ function renderList(items) {
 }
 
 function buildCard(r) {
-    const ps      = prazoStatus(r);
-    const diasPrazo = diasAte(r.dataMaxima);
-    const vencido  = ps === 'vencido';
-    const proximo  = ps === 'proximo';
-    const finaliz  = r.status === STATUS.FINALIZADO;
+    const ps        = prazoStatus(r);
+    const horas     = horasAte(r.dataMaxima, r.horaMaxima);
+    const vencido   = ps === 'vencido';
+    const proximo   = ps === 'proximo';
+    const finaliz   = r.status === STATUS.FINALIZADO;
 
     let prazoLabel = '';
     if (!finaliz && r.dataMaxima) {
-        if (vencido)      prazoLabel = `<span class="rep-badge rep-badge-danger">⚠️ ${Math.abs(diasPrazo)}d em atraso</span>`;
-        else if (proximo) prazoLabel = `<span class="rep-badge rep-badge-warn">⏰ Vence amanhã</span>`;
-        else if (diasPrazo !== null) prazoLabel = `<span class="rep-badge rep-badge-ok">📅 ${diasPrazo}d restantes</span>`;
+        if (vencido) {
+            const h = Math.abs(Math.round(horas));
+            prazoLabel = `<span class="rep-badge rep-badge-danger">⚠️ ${h}h em atraso</span>`;
+        } else if (proximo) {
+            const h = Math.ceil(horas);
+            prazoLabel = `<span class="rep-badge rep-badge-warn">⏰ ${h}h restantes</span>`;
+        } else if (horas !== null) {
+            const d = Math.floor(horas / 24);
+            prazoLabel = `<span class="rep-badge rep-badge-ok">📅 ${d}d restantes</span>`;
+        }
     }
 
     let diasNoStatus = '';
@@ -359,13 +341,16 @@ function buildCard(r) {
         diasNoStatus = `<span class="rep-badge rep-badge-info">🕒 ${d}d com técnico</span>`;
     }
 
-    const nextBtn = buildNextBtn(r);
-
-    const thumb = r.fotoUrl
+    const nextBtn   = buildNextBtn(r);
+    const thumb     = r.fotoUrl
         ? `<img src="${r.fotoUrl}" class="rep-thumb" alt="foto" onclick="window._repAbrirFoto('${r.fotoUrl}')">`
         : `<div class="rep-thumb-placeholder"><i class="bi bi-phone"></i></div>`;
-
     const timelineHtml = buildTimeline(r);
+
+    // Horário de entrega formatado
+    const prazoFormatado = r.dataMaxima
+        ? formatDate(r.dataMaxima) + (r.horaMaxima ? ' às ' + r.horaMaxima : '')
+        : null;
 
     return `
     <div class="rep-card ${vencido ? 'rep-card-vencido' : proximo ? 'rep-card-proximo' : finaliz ? 'rep-card-finalizado' : ''}">
@@ -390,7 +375,7 @@ function buildCard(r) {
         <div class="rep-card-body">
             <div class="rep-card-meta">
                 <span><i class="bi bi-calendar3"></i> Cadastro: ${formatDate(r.tsCadastro)}</span>
-                ${r.dataMaxima ? `<span><i class="bi bi-flag-fill"></i> Prazo: ${formatDate(r.dataMaxima)}</span>` : ''}
+                ${prazoFormatado ? `<span><i class="bi bi-flag-fill"></i> Entrega: ${prazoFormatado}</span>` : ''}
                 ${r.valorCobrado ? `<span><i class="bi bi-cash-coin"></i> R$ ${Number(r.valorCobrado).toFixed(2).replace('.',',')}</span>` : ''}
                 <span><i class="bi bi-person-fill"></i> ${escHtml(r.criadoPor || '—')}</span>
             </div>
@@ -407,7 +392,7 @@ function buildCard(r) {
 function buildNextBtn(r) {
     const map = {
         [STATUS.LOJA_SEM_ANALISE]: { action: 'to_em_reparo',    icon: 'bi-arrow-right-circle-fill', label: 'Entregar ao Técnico', color: 'rep-btn-yellow' },
-        [STATUS.EM_REPARO]:        { action: 'to_loja_reparado', icon: 'bi-check-circle-fill',       label: 'Retornou p/ Loja',   color: 'rep-btn-blue'   },
+        [STATUS.EM_REPARO]:        { action: 'to_loja_reparado', icon: 'bi-check-circle-fill',       label: 'Retornou p/ Loja',    color: 'rep-btn-blue'  },
         [STATUS.LOJA_REPARADO]:    { action: 'to_finalizado',    icon: 'bi-bag-check-fill',          label: 'Entregar ao Cliente', color: 'rep-btn-green' },
     };
     const info = map[r.status];
@@ -425,19 +410,17 @@ function buildTimeline(r) {
         { key: 'loja_reparado', icon: '📦', label: 'Retornou à Loja' },
         { key: 'finalizado',    icon: '✅', label: 'Entregue ao Cliente' },
     ];
-    const items = steps
-        .filter(s => r.timeline[s.key])
-        .map(s => {
-            const ev = r.timeline[s.key];
-            const foto = ev.fotoUrl ? `<a href="${ev.fotoUrl}" target="_blank" class="rep-tl-photo"><i class="bi bi-image-fill"></i> Ver foto</a>` : '';
-            return `<div class="rep-tl-item">
-                <span class="rep-tl-dot">${s.icon}</span>
-                <div class="rep-tl-content">
-                    <div class="rep-tl-label">${s.label}</div>
-                    <div class="rep-tl-meta">${formatDateTime(ev.ts)} · ${escHtml(ev.user || '—')} ${foto}</div>
-                </div>
-            </div>`;
-        }).join('');
+    const items = steps.filter(s => r.timeline[s.key]).map(s => {
+        const ev   = r.timeline[s.key];
+        const foto = ev.fotoUrl ? `<a href="${ev.fotoUrl}" target="_blank" class="rep-tl-photo"><i class="bi bi-image-fill"></i> Ver foto</a>` : '';
+        return `<div class="rep-tl-item">
+            <span class="rep-tl-dot">${s.icon}</span>
+            <div class="rep-tl-content">
+                <div class="rep-tl-label">${s.label}</div>
+                <div class="rep-tl-meta">${formatDateTime(ev.ts)} · ${escHtml(ev.user || '—')} ${foto}</div>
+            </div>
+        </div>`;
+    }).join('');
     return items ? `<div class="rep-timeline">${items}</div>` : '';
 }
 
@@ -451,46 +434,28 @@ function escHtml(str) {
 async function handleAction(action, id) {
     const repair = allRepairs.find(r => r.id === id);
     if (!repair && action !== 'new') return;
-
     switch(action) {
-        case 'edit':
-            openRepairForm(repair);
-            break;
-        case 'delete':
-            confirmDelete(id);
-            break;
-        case 'to_em_reparo':
-            openStepModal(repair, STATUS.EM_REPARO, '📸 Foto: Entrega ao Técnico', 'Registrar entrega ao técnico');
-            break;
-        case 'to_loja_reparado':
-            openStepModal(repair, STATUS.LOJA_REPARADO, '📸 Foto: Devolução pelo Técnico', 'Confirmar retorno à loja');
-            break;
-        case 'to_finalizado':
-            openStepModal(repair, STATUS.FINALIZADO, '📸 Foto: Entrega ao Cliente', 'Confirmar entrega ao cliente');
-            break;
+        case 'edit':          openRepairForm(repair); break;
+        case 'delete':        confirmDelete(id); break;
+        case 'to_em_reparo':    openStepModal(repair, STATUS.EM_REPARO,     '📸 Foto: Entrega ao Técnico',    'Registrar entrega ao técnico'); break;
+        case 'to_loja_reparado': openStepModal(repair, STATUS.LOJA_REPARADO, '📸 Foto: Devolução pelo Técnico', 'Confirmar retorno à loja');     break;
+        case 'to_finalizado':   openStepModal(repair, STATUS.FINALIZADO,    '📸 Foto: Entrega ao Cliente',    'Confirmar entrega ao cliente'); break;
     }
 }
 
 function confirmDelete(id) {
     const repair = allRepairs.find(r => r.id === id);
     if (!repair) return;
-
     const overlay = document.getElementById('repConfirmOverlay');
     const msg     = document.getElementById('repConfirmMsg');
     const btnYes  = document.getElementById('repConfirmYes');
     const btnNo   = document.getElementById('repConfirmNo');
     if (!overlay) return;
-
     msg.textContent = `Excluir conserto de "${repair.nomeCliente}"? Esta ação não pode ser desfeita.`;
     overlay.classList.add('active');
-
     const cleanup = () => overlay.classList.remove('active');
     btnNo.onclick  = cleanup;
-    btnYes.onclick = async () => {
-        cleanup();
-        await deleteRepair(id);
-        showToast('Conserto excluído.');
-    };
+    btnYes.onclick = async () => { cleanup(); await deleteRepair(id); showToast('Conserto excluído.'); };
 }
 
 // ============================================================
@@ -501,39 +466,38 @@ function openRepairForm(repair = null) {
     repairPhotoUrl  = repair?.fotoUrl || '';
 
     const overlay  = document.getElementById('repFormOverlay');
-    const modal    = document.getElementById('repFormModal');
     const title    = document.getElementById('repFormTitle');
     const idInput  = document.getElementById('repFormId');
     const nome     = document.getElementById('repFormNome');
     const tel      = document.getElementById('repFormTel');
     const defeito  = document.getElementById('repFormDefeito');
     const prazo    = document.getElementById('repFormPrazo');
+    const hora     = document.getElementById('repFormHora');
     const imgEl    = document.getElementById('repFormPhotoImg');
     const preview  = document.getElementById('repFormPhotoPreview');
     const lbl      = document.getElementById('repFormPhotoBtnLabel');
+    const ph       = document.getElementById('repFormPhotoPlaceholder');
 
-    if (!overlay || !title) {
-        console.error('repairs: elementos do modal não encontrados. repFormOverlay=', overlay, 'repFormTitle=', title);
-        return;
-    }
+    if (!overlay || !title) return;
+
     title.textContent  = repair ? 'Editar Conserto' : 'Novo Conserto';
     idInput.value      = repair?.id || '';
     nome.value         = repair?.nomeCliente || '';
     tel.value          = repair?.numeroCliente || '';
     defeito.value      = repair?.descricaoDefeito || '';
     prazo.value        = repair?.dataMaxima || '';
+    if (hora) hora.value = repair?.horaMaxima || '';
     const valorEl = document.getElementById('repFormValor');
     if (valorEl) valorEl.value = repair?.valorCobrado || '';
 
-    const placeholder = document.getElementById('repFormPhotoPlaceholder');
     if (repairPhotoUrl && imgEl && preview) {
         imgEl.src = repairPhotoUrl;
         preview.style.display = 'block';
-        if (placeholder) placeholder.style.display = 'none';
+        if (ph) ph.style.display = 'none';
         if (lbl) lbl.textContent = 'Substituir foto';
     } else {
         if (preview) preview.style.display = 'none';
-        if (placeholder) placeholder.style.display = 'flex';
+        if (ph) ph.style.display = 'flex';
         if (lbl) lbl.textContent = 'Galeria';
     }
 
@@ -553,6 +517,7 @@ async function submitRepairForm() {
     const tel     = document.getElementById('repFormTel').value.trim();
     const defeito = document.getElementById('repFormDefeito').value.trim();
     const prazo   = document.getElementById('repFormPrazo').value;
+    const hora    = document.getElementById('repFormHora')?.value || null;
     const valor   = parseFloat(document.getElementById('repFormValor')?.value) || null;
 
     if (!nome || !defeito) {
@@ -563,17 +528,14 @@ async function submitRepairForm() {
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Salvando...'; }
 
     try {
-        // Upload foto se nova
-        if (repairPhotoBlob) {
-            repairPhotoUrl = await uploadFoto(repairPhotoBlob);
-        }
-
+        if (repairPhotoBlob) repairPhotoUrl = await uploadFoto(repairPhotoBlob);
         const existing = id ? allRepairs.find(r => r.id === id) : null;
         const data = {
             nomeCliente:      nome,
             numeroCliente:    tel,
             descricaoDefeito: defeito,
             dataMaxima:       prazo || null,
+            horaMaxima:       hora || null,
             valorCobrado:     valor,
             fotoUrl:          repairPhotoUrl || null,
             status:           existing?.status || STATUS.LOJA_SEM_ANALISE,
@@ -582,7 +544,6 @@ async function submitRepairForm() {
             timeline:         existing?.timeline || { cadastro: { ts: tsNow(), user: getUser() } },
         };
         if (id) data.id = id;
-
         await saveRepair(data);
         closeRepairForm();
         showToast(id ? '✅ Conserto atualizado!' : '✅ Conserto cadastrado!');
@@ -594,7 +555,7 @@ async function submitRepairForm() {
 }
 
 // ============================================================
-// MODAL DE ETAPA (mudança de status com foto obrigatória)
+// MODAL DE ETAPA (mudança de status)
 // ============================================================
 let _stepRepair    = null;
 let _stepNewStatus = null;
@@ -606,7 +567,6 @@ function openStepModal(repair, newStatus, photoTitle, btnLabel) {
     stepPhotoUrl   = '';
 
     const overlay = document.getElementById('repStepOverlay');
-    const modal   = document.getElementById('repStepModal');
     const titleEl = document.getElementById('repStepTitle');
     const btnSave = document.getElementById('repStepSaveBtn');
     const preview = document.getElementById('repStepPhotoPreview');
@@ -615,7 +575,7 @@ function openStepModal(repair, newStatus, photoTitle, btnLabel) {
 
     titleEl.textContent  = photoTitle;
     btnSave.textContent  = btnLabel;
-    btnSave.disabled     = true; // ativa só quando foto for selecionada
+    btnSave.disabled     = true;
     if (preview) preview.style.display = 'none';
     if (notice)  notice.style.display  = 'block';
     if (imgEl)   imgEl.src = '';
@@ -636,14 +596,11 @@ async function submitStepModal() {
     if (!stepPhotoBlob && !stepPhotoUrl) {
         showToast('⚠️ A foto é obrigatória para avançar o status.'); return;
     }
-
     const btn = document.getElementById('repStepSaveBtn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Salvando...'; }
-
     try {
         if (stepPhotoBlob) stepPhotoUrl = await uploadFoto(stepPhotoBlob);
-
-        const tlKey = _stepNewStatus; // chave no timeline == status name
+        const tlKey = _stepNewStatus;
         const update_data = {
             ..._stepRepair,
             status: _stepNewStatus,
@@ -652,7 +609,6 @@ async function submitStepModal() {
                 [tlKey]: { ts: tsNow(), user: getUser(), fotoUrl: stepPhotoUrl || null },
             },
         };
-
         await saveRepair(update_data);
         closeStepModal();
         showToast('✅ Status atualizado!');
@@ -664,7 +620,7 @@ async function submitStepModal() {
 }
 
 // ============================================================
-// PHOTO HANDLERS (form + step)
+// PHOTO HANDLERS
 // ============================================================
 function initPhotoInput(inputId, previewId, imgId, lblId, onBlobReady) {
     const input   = document.getElementById(inputId);
@@ -672,7 +628,6 @@ function initPhotoInput(inputId, previewId, imgId, lblId, onBlobReady) {
     const imgEl   = document.getElementById(imgId);
     const lbl     = document.getElementById(lblId);
     if (!input) return;
-
     input.addEventListener('change', async e => {
         const file = e.target.files[0];
         input.value = '';
@@ -680,9 +635,9 @@ function initPhotoInput(inputId, previewId, imgId, lblId, onBlobReady) {
         try {
             const blob = await comprimirFoto(file);
             const url  = URL.createObjectURL(blob);
-            if (imgEl)   { imgEl.src = url; }
-            if (preview) { preview.style.display = 'block'; }
-            if (lbl)     { lbl.textContent = 'Substituir foto'; }
+            if (imgEl)   imgEl.src = url;
+            if (preview) preview.style.display = 'block';
+            if (lbl)     lbl.textContent = 'Substituir foto';
             onBlobReady(blob);
         } catch(err) {
             showToast('❌ Erro ao processar imagem.');
@@ -691,64 +646,44 @@ function initPhotoInput(inputId, previewId, imgId, lblId, onBlobReady) {
 }
 
 // ============================================================
-// INICIALIZAÇÃO DA SEÇÃO
+// INICIALIZAÇÃO
 // ============================================================
 export function initRepairs() {
-    // Garante que db está disponível antes de usar
     if (!window._firebaseDB) {
-        console.warn('repairs: db não pronto, tentando em 500ms...');
         setTimeout(initRepairs, 500);
         return;
     }
     db = window._firebaseDB;
-
     wireFormEvents();
     wireStepEvents();
     wireFilterBtns();
     wireSearchInput();
-
-    // Ouvir dados em tempo real
-    listenRepairs(items => {
-        render(items);
-    });
+    listenRepairs(items => render(items));
 }
 
-export function destroyRepairs() {
-    stopListenRepairs();
-}
+export function destroyRepairs() { stopListenRepairs(); }
 
 function wireFormEvents() {
-    // Botão novo
     document.getElementById('repNewBtn')?.addEventListener('click', () => openRepairForm());
-
-    // Fechar modal
     document.getElementById('repFormClose')?.addEventListener('click',  closeRepairForm);
     document.getElementById('repFormCancel')?.addEventListener('click', closeRepairForm);
     document.getElementById('repFormOverlay')?.addEventListener('click', e => {
         if (e.target === document.getElementById('repFormOverlay')) closeRepairForm();
     });
-
-    // Salvar
     document.getElementById('repFormSaveBtn')?.addEventListener('click', submitRepairForm);
 
-    // Fotos — câmera e galeria
     initPhotoInput('repFormPhotoInputCamera',  'repFormPhotoPreview', 'repFormPhotoImg', 'repFormPhotoBtnLabel', b => {
         repairPhotoBlob = b;
-        const ph = document.getElementById('repFormPhotoPlaceholder');
-        if (ph) ph.style.display = 'none';
+        document.getElementById('repFormPhotoPlaceholder')?.style && (document.getElementById('repFormPhotoPlaceholder').style.display = 'none');
     });
     initPhotoInput('repFormPhotoInputGallery', 'repFormPhotoPreview', 'repFormPhotoImg', 'repFormPhotoBtnLabel', b => {
         repairPhotoBlob = b;
-        const ph = document.getElementById('repFormPhotoPlaceholder');
-        if (ph) ph.style.display = 'none';
+        document.getElementById('repFormPhotoPlaceholder')?.style && (document.getElementById('repFormPhotoPlaceholder').style.display = 'none');
     });
-
     document.getElementById('repFormPhotoBtnCamera')?.addEventListener('click', () => document.getElementById('repFormPhotoInputCamera')?.click());
     document.getElementById('repFormPhotoBtnGallery')?.addEventListener('click', () => document.getElementById('repFormPhotoInputGallery')?.click());
-
     document.getElementById('repFormPhotoRemove')?.addEventListener('click', () => {
-        repairPhotoBlob = null;
-        repairPhotoUrl  = '';
+        repairPhotoBlob = null; repairPhotoUrl = '';
         const preview = document.getElementById('repFormPhotoPreview');
         const imgEl   = document.getElementById('repFormPhotoImg');
         const lbl     = document.getElementById('repFormPhotoBtnLabel');
@@ -767,8 +702,6 @@ function wireStepEvents() {
     document.getElementById('repStepOverlay')?.addEventListener('click', e => {
         if (e.target === document.getElementById('repStepOverlay')) closeStepModal();
     });
-
-    // Fotos da etapa
     initPhotoInput('repStepPhotoInputCamera',  'repStepPhotoPreview', 'repStepPhotoImg', 'repStepPhotoBtnLabel', b => {
         stepPhotoBlob = b;
         const btn = document.getElementById('repStepSaveBtn');
@@ -783,7 +716,6 @@ function wireStepEvents() {
         if (btn) btn.disabled = false;
         if (notice) notice.style.display = 'none';
     });
-
     document.getElementById('repStepPhotoBtnCamera')?.addEventListener('click',  () => document.getElementById('repStepPhotoInputCamera')?.click());
     document.getElementById('repStepPhotoBtnGallery')?.addEventListener('click', () => document.getElementById('repStepPhotoInputGallery')?.click());
 }
@@ -814,11 +746,11 @@ function wireSearchInput() {
     });
 }
 
-// Auto-init: se a seção já está ativa quando o módulo termina de carregar
+// Auto-init
 (function() {
     function selfInit() {
         var rc = document.getElementById('repairsContainer');
-        if (!rc) return; // DOM não pronto ainda
+        if (!rc) return;
         var isVisible = rc.style.display !== 'none' && !rc.classList.contains('hidden');
         if (isVisible && !window._repairsInited) {
             window._repairsInited = true;
@@ -832,50 +764,34 @@ function wireSearchInput() {
     }
 })();
 
-// ── Keyboard-aware modal ──
-// Usa visualViewport para saber exatamente quanto o teclado ocupa
-// e empurra o modal para cima com transform (mais performático)
+// Keyboard-aware modal
 (function() {
     var overlayIds = ['repFormOverlay', 'repStepOverlay', 'repConfirmOverlay'];
-
     function adjust() {
         var vv = window.visualViewport;
         if (!vv) return;
-
-        // Espaço que o teclado está ocupando
         var kbHeight = window.innerHeight - (vv.offsetTop + vv.height);
         if (kbHeight < 0) kbHeight = 0;
-
         overlayIds.forEach(function(id) {
             var el = document.getElementById(id);
-            if (!el) return;
-            if (el.classList.contains('active')) {
-                // Move o overlay inteiro para cima
+            if (el && el.classList.contains('active')) {
                 el.style.transform  = kbHeight > 0 ? 'translateY(-' + kbHeight + 'px)' : '';
                 el.style.transition = 'transform 0.15s ease';
             }
         });
     }
-
     function reset() {
         overlayIds.forEach(function(id) {
             var el = document.getElementById(id);
-            if (el) {
-                el.style.transform  = '';
-                el.style.transition = 'transform 0.15s ease';
-            }
+            if (el) { el.style.transform = ''; el.style.transition = 'transform 0.15s ease'; }
         });
     }
-
     if (window.visualViewport) {
         window.visualViewport.addEventListener('resize', adjust);
         window.visualViewport.addEventListener('scroll', adjust);
     }
-
-    // Reseta ao fechar o teclado
     document.addEventListener('focusout', function() {
         setTimeout(function() {
-            // Só reseta se nenhum input do modal ainda tiver foco
             var active = document.activeElement;
             var inModal = active && (
                 active.closest('#repFormOverlay') ||
@@ -890,7 +806,7 @@ function wireSearchInput() {
 // Abrir foto em overlay
 window._repAbrirFoto = function(url) {
     const ov = document.createElement('div');
-    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.95);display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.95);display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
     ov.innerHTML = `<img src="${url}" style="max-width:95vw;max-height:90vh;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.8);">`;
     ov.addEventListener('click', () => ov.remove());
     document.body.appendChild(ov);
