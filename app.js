@@ -222,6 +222,52 @@ window.setProfileConfirmed = function(name) {
     }, 200);
 };
 
+// ============================================================
+// 🚪 SAIR DO PERFIL — bloqueia app e exige novo login
+// ============================================================
+window.sairDoPerfil = function() {
+    if (typeof showCustomModal === 'function') {
+        showCustomModal({
+            message: 'Deseja sair do perfil atual?',
+            confirmText: 'Sair',
+            cancelText: 'Cancelar',
+            onConfirm: function() {
+                // 1. Limpa o perfil salvo
+                currentUserProfile = '';
+                localStorage.removeItem('ctwUserProfile');
+
+                // 2. Atualiza display
+                var displayMenu = document.getElementById('displayProfileName');
+                if (displayMenu) displayMenu.innerText = 'Visitante';
+                var sheetName = document.getElementById('ctwSheetProfileName');
+                if (sheetName) sheetName.innerText = 'Visitante';
+                var navLabel = document.getElementById('ctwNavProfileLabel');
+                if (navLabel) navLabel.innerText = 'Perfil';
+
+                // 3. Limpa avatar da tela
+                var avImg  = document.getElementById('avatarPhotoImg');
+                var avIcon = document.getElementById('avatarPhotoIcon');
+                if (avImg)  { avImg.src = ''; avImg.style.display = 'none'; }
+                if (avIcon) avIcon.style.display = '';
+
+                // 4. (sheet já fechado antes de chamar esta função)
+
+                // 5. Esconde o X do modal para forçar seleção
+                setTimeout(function() {
+                    var closeBtn = document.getElementById('profileModalCloseBtn');
+                    if (closeBtn) closeBtn.style.display = 'none';
+
+                    // 6. Abre o seletor de perfil obrigatório
+                    var modal = document.getElementById('profileSelectorModal');
+                    if (modal) modal.classList.add('active');
+                }, 200);
+            },
+            onCancel: function() {}
+        });
+    }
+};
+
+
 // setProfile: verifica se perfil tem senha antes de confirmar
 window.setProfile = function(name) {
     // Busca o perfil no cache
@@ -3470,6 +3516,8 @@ async function main() {
                 isAuthReady = true;
                 // Expõe db AGORA — depois do auth, quando db está pronto
                 window._firebaseDB = db;
+                window._dbRef    = ref;    // expõe ref() para módulos IIFE
+                window._dbUpdate = update; // expõe update() para módulos IIFE
 
                 // PERFORMANCE: esconde loading IMEDIATAMENTE após auth
                 // dados carregam em background sem bloquear a UI
@@ -9407,88 +9455,95 @@ window.showCustomModal       = showCustomModal;
 })();
 
 // ============================================================
-// 📸 AVATAR DO USUÁRIO — salvo no Firebase (sincroniza entre dispositivos)
+// 📸 AVATAR DO USUÁRIO — Cloudinary + Firebase (igual aos consertos)
 // ============================================================
 (function() {
-    // ── Compressão: 256x256 crop quadrado WebP 0.82 ──────────
-    async function comprimirAvatar(file) {
+
+    // ── Mesmas constantes do app ──────────────────────────────
+    var CLD_URL    = 'https://api.cloudinary.com/v1_1/dmvynrze6/image/upload';
+    var CLD_PRESET = 'g8rdi3om';
+
+    // ── Compressão 256x256 WebP ───────────────────────────────
+    function comprimirAvatar(file) {
         return new Promise(function(resolve, reject) {
             var img = new Image();
             var url = URL.createObjectURL(file);
             img.onload = function() {
                 URL.revokeObjectURL(url);
-                var MAX = 256;
-                var w = img.width, h = img.height;
-                var side = Math.min(w, h);
+                var MAX = 256, w = img.width, h = img.height, side = Math.min(w, h);
                 var canvas = document.createElement('canvas');
                 canvas.width = MAX; canvas.height = MAX;
-                var ctx = canvas.getContext('2d');
-                var sx = (w - side) / 2, sy = (h - side) / 2;
-                ctx.drawImage(img, sx, sy, side, side, 0, 0, MAX, MAX);
-                resolve(canvas.toDataURL('image/webp', 0.82));
+                canvas.getContext('2d').drawImage(img, (w-side)/2, (h-side)/2, side, side, 0, 0, MAX, MAX);
+                // Converte para Blob diretamente
+                canvas.toBlob(function(blob) { resolve(blob); }, 'image/webp', 0.82);
             };
             img.onerror = function() { URL.revokeObjectURL(url); reject(new Error('Imagem inválida')); };
             img.src = url;
         });
     }
 
-    // ── Upload para Cloudinary (mesma conta do Bookip) ───────
-    async function uploadAvatarCloudinary(dataUrl) {
-        // Converter dataUrl → Blob
-        var arr = dataUrl.split(','), mime = arr[0].match(/:(.*?);/)[1];
-        var bstr = atob(arr[1]), n = bstr.length, u8 = new Uint8Array(n);
-        while (n--) u8[n] = bstr.charCodeAt(n);
-        var blob = new Blob([u8], { type: mime });
-
+    // ── Upload Cloudinary — IGUAL ao repairs.js ───────────────
+    async function uploadAvatar(blob) {
+        if (!blob) return '';
         var fd = new FormData();
         fd.append('file', blob, 'avatar.webp');
-        fd.append('upload_preset', 'g8rdi3om');
-        fd.append('folder', 'ctw_avatares');
+        fd.append('upload_preset', CLD_PRESET);
+        fd.append('folder', 'bookip_fotos');   // mesma pasta que funciona
         try {
-            var r = await fetch('https://api.cloudinary.com/v1_1/dmvynrze6/image/upload', { method:'POST', body: fd });
+            var r = await fetch(CLD_URL, { method: 'POST', body: fd });
             if (!r.ok) throw new Error('HTTP ' + r.status);
             var data = await r.json();
+            console.log('✅ Avatar no Cloudinary:', data.secure_url);
             return data.secure_url || '';
         } catch(e) {
-            console.warn('Avatar upload falhou:', e);
+            console.warn('Avatar Cloudinary falhou:', e);
             return '';
         }
     }
 
-    // ── Encontra o ID do perfil pelo nome ────────────────────
-    function getProfileId(nome) {
+    // ── Salva URL no Firebase — usa db do escopo do módulo ────
+    // Tenta salvar; se teamProfilesList ainda vazio, agenda retry
+    function salvarUrlFirebase(nome, url, tentativa) {
+        tentativa = tentativa || 1;
+        if (tentativa > 10) { console.warn('Avatar: desistindo após 10 tentativas'); return; }
+
+        // Procura ID no teamProfilesList
         var lista = window.teamProfilesList || {};
+        var profId = null;
         for (var id in lista) {
-            if ((lista[id].name || '').toLowerCase() === nome.toLowerCase()) return id;
+            if ((lista[id].name || '').toLowerCase() === nome.toLowerCase()) { profId = id; break; }
         }
-        return null;
+
+        // Fallback: cache local
+        if (!profId) {
+            try {
+                var c = JSON.parse(localStorage.getItem('cache_equipe_local') || '{}');
+                for (var cid in c) {
+                    if ((c[cid].name || '').toLowerCase() === nome.toLowerCase()) { profId = cid; break; }
+                }
+            } catch(e) {}
+        }
+
+        // Se não tem profId ou db ainda não pronto, tenta de novo em 2s
+        if (!profId || !db) {
+            console.warn('Avatar: aguardando Firebase (tentativa ' + tentativa + ')...');
+            setTimeout(function() { salvarUrlFirebase(nome, url, tentativa + 1); }, 2000);
+            return;
+        }
+
+        // Salva — usa update e ref importados no topo do módulo (igual repairs.js)
+        update(ref(db, 'team_profiles/' + profId), { avatarUrl: url })
+            .then(function()  { console.log('✅ Avatar URL salva no Firebase para:', nome); })
+            .catch(function(e){ console.warn('Avatar Firebase save falhou:', e.message); });
     }
 
-    // ── Carrega avatar do perfil atual ───────────────────────
-    function loadAvatar() {
-        var nome   = localStorage.getItem('ctwUserProfile') || '';
-        var img    = document.getElementById('avatarPhotoImg');
-        var icon   = document.getElementById('avatarPhotoIcon');
+    // ── Renderiza avatar na tela ──────────────────────────────
+    function aplicarAvatar(url) {
+        var img  = document.getElementById('avatarPhotoImg');
+        var icon = document.getElementById('avatarPhotoIcon');
         if (!img) return;
-
-        // Tenta encontrar avatarUrl nos dados do perfil (Firebase)
-        var lista = window.teamProfilesList || {};
-        var avatarUrl = null;
-        for (var id in lista) {
-            if ((lista[id].name || '').toLowerCase() === nome.toLowerCase()) {
-                avatarUrl = lista[id].avatarUrl || null;
-                break;
-            }
-        }
-
-        // Fallback: localStorage (cache offline)
-        if (!avatarUrl) {
-            var lsKey = 'ctwAvatar_' + nome.toLowerCase().replace(/\s+/g, '_');
-            avatarUrl = localStorage.getItem(lsKey) || null;
-        }
-
-        if (avatarUrl) {
-            img.src = avatarUrl;
+        if (url) {
+            img.src = url;
             img.style.display = 'block';
             if (icon) icon.style.display = 'none';
         } else {
@@ -9497,60 +9552,72 @@ window.showCustomModal       = showCustomModal;
         }
     }
 
-    // ── Inicializa input de foto ─────────────────────────────
+    // ── Carrega avatar: Firebase → localStorage ───────────────
+    function loadAvatar() {
+        var nome = localStorage.getItem('ctwUserProfile') || '';
+        if (!nome) { aplicarAvatar(null); return; }
+
+        // 1. Firebase (teamProfilesList já carregado)
+        var lista = window.teamProfilesList || {};
+        for (var id in lista) {
+            if ((lista[id].name || '').toLowerCase() === nome.toLowerCase()) {
+                if (lista[id].avatarUrl) {
+                    aplicarAvatar(lista[id].avatarUrl);
+                    localStorage.setItem('ctwAvatar_' + nome.toLowerCase().replace(/\s+/g,'_'), lista[id].avatarUrl);
+                    return;
+                }
+                break;
+            }
+        }
+
+        // 2. Fallback cache local
+        aplicarAvatar(localStorage.getItem('ctwAvatar_' + nome.toLowerCase().replace(/\s+/g,'_')) || null);
+    }
+
+    // ── Inicializa input ──────────────────────────────────────
     function initAvatar() {
         loadAvatar();
         var input = document.getElementById('avatarPhotoInput');
         if (!input) return;
+
         input.addEventListener('change', async function(e) {
             var file = e.target.files[0];
             input.value = '';
             if (!file) return;
             try {
-                var dataUrl = await comprimirAvatar(file);
+                var blob = await comprimirAvatar(file);
+                var nome = localStorage.getItem('ctwUserProfile') || '';
 
-                // 1. Mostrar imediatamente (UX)
-                var img  = document.getElementById('avatarPhotoImg');
-                var icon = document.getElementById('avatarPhotoIcon');
-                if (img)  { img.src = dataUrl; img.style.display = 'block'; }
-                if (icon) icon.style.display = 'none';
+                // 1. Preview imediato via objectURL
+                var previewUrl = URL.createObjectURL(blob);
+                aplicarAvatar(previewUrl);
 
-                // 2. Salvar no localStorage como cache
-                var nome  = localStorage.getItem('ctwUserProfile') || '';
-                var lsKey = 'ctwAvatar_' + nome.toLowerCase().replace(/\s+/g, '_');
-                localStorage.setItem(lsKey, dataUrl);
-
-                // 3. Upload para Cloudinary e salvar URL no Firebase
-                var url = await uploadAvatarCloudinary(dataUrl);
-                if (url) {
-                    var profId = getProfileId(nome);
-                    if (profId && typeof update === 'function' && typeof ref === 'function' && window._firebaseDB) {
-                        update(ref(window._firebaseDB, 'team_profiles/' + profId), { avatarUrl: url })
-                            .then(function() { console.log('✅ Avatar salvo no Firebase'); })
-                            .catch(function(e) { console.warn('Avatar Firebase save falhou:', e); });
-                    }
+                // 2. Upload Cloudinary (igual repairs)
+                var url = await uploadAvatar(blob);
+                if (!url) {
+                    showCustomModal && showCustomModal({ message: '❌ Falha no upload da foto.' });
+                    return;
                 }
+
+                // 3. Cache local com a URL definitiva
+                localStorage.setItem('ctwAvatar_' + nome.toLowerCase().replace(/\s+/g,'_'), url);
+                aplicarAvatar(url); // troca preview por URL definitiva
+
+                // 4. Salva no Firebase com retry automático
+                salvarUrlFirebase(nome, url);
+
             } catch(err) {
-                if (typeof showCustomModal === 'function') showCustomModal({ message: '❌ Erro ao processar foto.' });
+                console.error('Avatar erro:', err);
+                showCustomModal && showCustomModal({ message: '❌ Erro ao processar foto.' });
             }
         });
     }
 
-    // Recarrega avatar ao trocar perfil
-    var _origSetProfile = window.setProfile;
+    // Recarrega ao trocar perfil
     if (typeof window.setProfile === 'function') {
-        window.setProfile = function(nome) {
-            _origSetProfile(nome);
-            setTimeout(loadAvatar, 300);
-        };
+        var _orig = window.setProfile;
+        window.setProfile = function(nome) { _orig(nome); setTimeout(loadAvatar, 300); };
     }
-
-    // Re-render quando teamProfilesList é atualizado (recebe avatarUrl do Firebase)
-    var _origRenderizarEquipe = window.renderizarEquipeNaTela;
-    window._onTeamProfilesUpdated = function() {
-        loadAvatar();          // Atualiza avatar do perfil atual
-        if (typeof renderizarEquipeNaTela === 'function') renderizarEquipeNaTela(window.teamProfilesList);
-    };
 
     window._loadAvatar = loadAvatar;
 

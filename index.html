@@ -220,6 +220,21 @@ class="dropdown-menu-custom">
                     </div>
                 </button>
             </li>
+
+            <!-- Sair — versão clássica -->
+            <li class="p-2">
+                <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 mt-1"
+                        onclick="window.sairDoPerfil()"
+                        style="color:#ef4444;">
+                    <div class="icon-box" style="background:rgba(239,68,68,.15);color:#ef4444;">
+                        <i class="bi bi-box-arrow-right"></i>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:1px;">
+                        <span style="font-weight:600;">Sair</span>
+                        <small style="font-size:.6rem;opacity:.6;">Trocar ou bloquear usuário</small>
+                    </div>
+                </button>
+            </li>
         </ul>
     </div>
 
@@ -1968,6 +1983,17 @@ do que você precisa??</h2>
                 <div style="display:flex;flex-direction:column;gap:1px;text-align:left;">
                     <span id="ctwSheetStyleLabel">Voltar ao estilo clássico</span>
                     <small style="font-size:.6rem;opacity:.6;" id="ctwSheetStyleSub">Layout em lista original</small>
+                </div>
+            </button>
+
+            <!-- Sair -->
+            <button class="ctw-sheet-item" onclick="window.closeCtwSheet(); setTimeout(window.sairDoPerfil, 320);" style="margin-top:4px;">
+                <div class="ctw-sheet-item-icon" style="background:rgba(239,68,68,.15);color:#ef4444;">
+                    <i class="bi bi-box-arrow-right"></i>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:1px;text-align:left;">
+                    <span style="color:#ef4444;font-weight:600;">Sair</span>
+                    <small style="font-size:.6rem;opacity:.6;">Trocar ou bloquear usuário</small>
                 </div>
             </button>
         </div>
