@@ -135,16 +135,27 @@ window.checarAniversariosHoje = function() {
     if (!clientes.length) return;
     const hoje = new Date();
     const mes = hoje.getMonth() + 1, dia = hoje.getDate();
+    // Só notifica clientes atribuídos ao perfil atual
+    const perfilAtual = (window.currentUserProfile || localStorage.getItem('ctwUserProfile') || '').toLowerCase().trim();
     const aniv = clientes.filter(c => {
         if (!c.dataNascimento) return false;
         const p = c.dataNascimento.split('-');
-        return p.length >= 3 && +p[1] === mes && +p[2] === dia;
+        const dataOk = p.length >= 3 && +p[1] === mes && +p[2] === dia;
+        if (!dataOk) return false;
+        // Se cliente tem atribuição, só notifica o dono
+        if (c.atribuidoA) {
+            return c.atribuidoA.toLowerCase().trim() === perfilAtual;
+        }
+        // Sem atribuição → notifica todos
+        return true;
     });
     if (!aniv.length) return;
     window.dispararNotificacaoNativa(aniv.map(c => ({
         isBirthday: true,
         notificationId: 'birthday_' + c.id,
-        message: '🎂 Hoje é aniversário de ' + c.nome + '!'
+        message: '🎂 Hoje é aniversário de ' + c.nome + '!',
+        clienteNome: c.nome,
+        clienteTel: c.tel,
     })));
 };
 
