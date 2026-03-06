@@ -2375,7 +2375,14 @@ function removeAparelhoFavorite(name) {
 }
 
 function setupPWA() {
-    const manifestData = document.getElementById('manifest-data').textContent;
+    // Resolve URL base para que ícones relativos funcionem dentro do blob manifest
+    const base = window.location.href.replace(/\/[^\/]*$/, '/');
+    let manifestData = document.getElementById('manifest-data').textContent;
+    // Substitui caminhos relativos de ícones por URLs absolutas
+    manifestData = manifestData
+        .replace(/"icon-192\.png"/g,  '"' + base + 'icon-192.png"')
+        .replace(/"icon-512\.png"/g,  '"' + base + 'icon-512.png"')
+        .replace(/"icon-1024\.png"/g, '"' + base + 'icon-1024.png"');
     const manifestBlob = new Blob([manifestData], {type: 'application/json'});
     const manifestURL = URL.createObjectURL(manifestBlob);
     document.querySelector('link[rel="manifest"]').setAttribute('href', manifestURL);

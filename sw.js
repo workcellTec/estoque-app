@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-v84';
+const CACHE = 'ctw-v85';
 
 self.addEventListener('install', e => {
     self.skipWaiting();
@@ -10,7 +10,7 @@ self.addEventListener('install', e => {
             Promise.allSettled([
                 c.add('./'), c.add('./index.html'),
                 c.add('./app.js'), c.add('./style.css'), c.add('./sw.js'),
-                c.add('./icon-192.png'), c.add('./icon-512.png'), c.add('./badge.png'),
+                c.add('./icon-192.png'), c.add('./icon-512.png'), c.add('./icon-1024.png'), c.add('./badge.png'),
             ])
         )
     );
