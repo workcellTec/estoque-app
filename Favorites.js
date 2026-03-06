@@ -105,14 +105,83 @@ const FAV_OPTIONS = [
 
 const MAX_FAVS = 5;
 
-function getFavKey() {
-    const p = localStorage.getItem('ctwUserProfile') || 'default';
+// ── Favoritos: localStorage (cache) + Firebase (sync) ────────
+function getFavKey(nome) {
+    const p = nome || localStorage.getItem('ctwUserProfile') || 'default';
     return 'ctw_favs_' + p.toLowerCase().replace(/\s+/g, '_');
 }
-function getFavs() {
-    try { return JSON.parse(localStorage.getItem(getFavKey()) || '[]'); } catch(e) { return []; }
+
+function getProfileIdForFav(nome) {
+    const lista = window.teamProfilesList || {};
+    for (const id in lista) {
+        if ((lista[id].name || '').toLowerCase() === nome.toLowerCase()) return id;
+    }
+    try {
+        const cache = JSON.parse(localStorage.getItem('cache_equipe_local') || '{}');
+        for (const id in cache) {
+            if ((cache[id].name || '').toLowerCase() === nome.toLowerCase()) return id;
+        }
+    } catch(e) {}
+    return null;
 }
-function saveFavs(ids) { localStorage.setItem(getFavKey(), JSON.stringify(ids)); }
+
+// Lê favs: Firebase em memória (teamProfilesList) → localStorage
+function getFavs() {
+    const nome  = localStorage.getItem('ctwUserProfile') || '';
+    const lista = window.teamProfilesList || {};
+    for (const id in lista) {
+        if ((lista[id].name || '').toLowerCase() === nome.toLowerCase()) {
+            const fbFavs = lista[id].favorites;
+            if (Array.isArray(fbFavs) && fbFavs.length > 0) {
+                localStorage.setItem(getFavKey(nome), JSON.stringify(fbFavs));
+                return fbFavs;
+            }
+            break;
+        }
+    }
+    try { return JSON.parse(localStorage.getItem(getFavKey(nome)) || '[]'); } catch(e) { return []; }
+}
+
+function saveFavs(ids) {
+    const nome   = localStorage.getItem('ctwUserProfile') || '';
+    const profId = getProfileIdForFav(nome);
+
+    // 1. localStorage
+    localStorage.setItem(getFavKey(nome), JSON.stringify(ids));
+
+    // 2. teamProfilesList em memória (getFavs acha imediatamente)
+    if (profId && window.teamProfilesList && window.teamProfilesList[profId]) {
+        window.teamProfilesList[profId].favorites = ids;
+    }
+
+    // 3. Firebase
+    const _db     = window._firebaseDB;
+    const _ref    = window._dbRef;
+    const _update = window._dbUpdate;
+    if (profId && _db && _ref && _update) {
+        _update(_ref(_db, 'team_profiles/' + profId), { favorites: ids })
+            .then(() => console.log('[Favs] ✅ Firebase salvo'))
+            .catch(e => console.warn('[Favs] Firebase erro:', e.message));
+    }
+}
+
+// Carrega favoritos do Firebase para o perfil atual
+function loadFavsFromFirebase() {
+    const nome  = localStorage.getItem('ctwUserProfile') || '';
+    if (!nome) return;
+    const lista = window.teamProfilesList || {};
+    for (const id in lista) {
+        if ((lista[id].name || '').toLowerCase() === nome.toLowerCase()) {
+            const firebaseFavs = lista[id].favorites || null;
+            if (firebaseFavs && Array.isArray(firebaseFavs)) {
+                // Atualiza cache local e re-renderiza
+                localStorage.setItem(getFavKey(), JSON.stringify(firebaseFavs));
+                renderFavStories();
+            }
+            break;
+        }
+    }
+}
 
 function renderFavStories() {
     const wrap = document.getElementById('favStoriesWrap');
@@ -340,14 +409,46 @@ function initFavoritos() {
     renderFavStories();
 }
 
-// Re-renderiza quando perfil muda
+// Ao trocar perfil: renderiza os favs do novo perfil (getFavs lê Firebase em memória)
 const _origSetProfileFav = window.setProfile;
 if (typeof window.setProfile === 'function') {
     window.setProfile = function(nome) {
         _origSetProfileFav(nome);
-        setTimeout(renderFavStories, 200);
+        setTimeout(renderFavStories, 350);
     };
 }
+
+// Carrega favs para um perfil específico (chamado ao logar)
+window._loadFavsForProfile = function(nome) {
+    const lista = window.teamProfilesList || {};
+    for (const id in lista) {
+        if ((lista[id].name || '').toLowerCase() === nome.toLowerCase()) {
+            const firebaseFavs = lista[id].favorites || null;
+            if (firebaseFavs && Array.isArray(firebaseFavs) && firebaseFavs.length > 0) {
+                // Firebase tem dados — usa e atualiza cache local
+                localStorage.setItem(getFavKey(), JSON.stringify(firebaseFavs));
+                renderFavStories();
+            } else {
+                // Firebase não tem favs — migra do localStorage para Firebase
+                const localFavs = getFavs();
+                if (localFavs.length > 0) {
+                    console.log('📤 Migrando favoritos locais para Firebase:', localFavs);
+                    saveFavs(localFavs); // saveFavs agora salva no Firebase também
+                }
+                renderFavStories();
+            }
+            return;
+        }
+    }
+    // teamProfilesList ainda vazio — tenta de novo em 1s
+    setTimeout(function() { window._loadFavsForProfile && window._loadFavsForProfile(nome); }, 1000);
+};
+
+// Quando Firebase retorna novos dados de perfil, recarrega os favs
+window._onFavsFirebaseUpdate = function() {
+    const nome = localStorage.getItem('ctwUserProfile') || '';
+    if (nome) window._loadFavsForProfile(nome);
+};
 
 // Módulo carrega após DOM pronto — chama diretamente
 if (document.readyState === 'loading') {
