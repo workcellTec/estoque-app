@@ -4618,15 +4618,11 @@ body.ctw-v2-active #documentsHome {
 #repairsContainer {
     flex-direction: column;
     padding: 16px;
-    padding-bottom: 120px;
+    padding-bottom: 100px;
     max-width: 640px;
     margin: 0 auto;
     width: 100%;
-    overflow-x: hidden;
-}
-
-body.ctw-v2-active #repairsContainer {
-    padding-bottom: 140px !important;
+    overflow-x: hidden; /* previne vazamento lateral */
 }
 
 /* Filters: wrap to avoid overflow-x:hidden conflict with parent */
@@ -4858,76 +4854,6 @@ body.ctw-v2-active #repairsContainer {
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 12px;
-}
-
-/* ── Botão Desfazer etapa ── */
-.rep-btn-undo {
-    background: rgba(148, 163, 184, 0.08);
-    color: var(--text-secondary, #94a3b8);
-    border: 1px dashed rgba(148, 163, 184, 0.3);
-}
-.rep-btn-undo:hover { background: rgba(148, 163, 184, 0.16); }
-
-/* Botão confirmar undo (no modal) */
-.rep-btn-undo-confirm {
-    background: rgba(245, 158, 11, 0.15);
-    color: #f59e0b;
-    border: 1px solid rgba(245, 158, 11, 0.35);
-}
-.rep-btn-undo-confirm:hover { background: rgba(245, 158, 11, 0.25); }
-
-/* ── Swipe feedback ── */
-.rep-card {
-    position: relative;
-    overflow: hidden;  /* contém o hint */
-}
-
-.rep-card-header {
-    position: relative;
-    z-index: 2;
-    will-change: transform;
-    background: inherit;
-    border-radius: inherit;
-}
-
-/* Hint que aparece atrás do header durante o swipe */
-.rep-swipe-hint {
-    position: absolute;
-    top: 0; bottom: 0;
-    width: 100%;
-    display: flex;
-    align-items: center;
-    padding: 0 20px;
-    font-size: .82rem;
-    font-weight: 600;
-    opacity: 0;
-    border-radius: 12px 12px 0 0;
-    pointer-events: none;
-    transition: opacity .1s, background .15s;
-    z-index: 1;
-    gap: 6px;
-}
-
-/* Arrastar esquerda = avançar (verde/azul) */
-.rep-swipe-hint-next {
-    background: rgba(59, 130, 246, 0.18);
-    color: #60a5fa;
-    justify-content: flex-end;
-}
-.rep-swipe-hint-next.activated {
-    background: rgba(59, 130, 246, 0.32);
-    color: #93c5fd;
-}
-
-/* Arrastar direita = desfazer (âmbar) */
-.rep-swipe-hint-undo {
-    background: rgba(245, 158, 11, 0.15);
-    color: #fbbf24;
-    justify-content: flex-start;
-}
-.rep-swipe-hint-undo.activated {
-    background: rgba(245, 158, 11, 0.28);
-    color: #fde68a;
 }
 
 /* ── Timeline ── */
@@ -5249,3 +5175,151 @@ body.ctw-v2-active #repairsContainer {
     gap: 5px;
     min-height: 24px;
 }
+
+
+/* ============================================================
+   BANNER PROMO — Layout 2.0
+   ============================================================ */
+.v2-promo-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 99000;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0 0 env(safe-area-inset-bottom, 0);
+    animation: v2PromoFadeIn .3s ease;
+}
+
+@keyframes v2PromoFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.v2-promo-card {
+    background: linear-gradient(160deg, #1a1f35 0%, #0f1220 100%);
+    border: 1px solid rgba(var(--primary-color-rgb, 255,107,107), .25);
+    border-bottom: none;
+    border-radius: 24px 24px 0 0;
+    padding: 28px 24px 32px;
+    width: 100%;
+    max-width: 480px;
+    text-align: center;
+    position: relative;
+    animation: v2PromoSlideUp .35s cubic-bezier(.2,.8,.3,1);
+    box-shadow: 0 -8px 40px rgba(0,0,0,.5);
+}
+
+@keyframes v2PromoSlideUp {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+}
+
+/* Ícone topo */
+.v2-promo-icon-wrap {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 14px;
+}
+
+.v2-promo-icon-ring {
+    width: 62px;
+    height: 62px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(var(--primary-color-rgb,255,107,107),.18) 0%, rgba(var(--primary-color-rgb,255,107,107),.05) 70%);
+    border: 1.5px solid rgba(var(--primary-color-rgb,255,107,107),.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    color: var(--primary-color, #ff6b6b);
+    box-shadow: 0 0 24px rgba(var(--primary-color-rgb,255,107,107),.2);
+}
+
+/* Badge */
+.v2-promo-badge {
+    display: inline-block;
+    background: rgba(var(--primary-color-rgb,255,107,107),.15);
+    color: var(--primary-color, #ff6b6b);
+    border: 1px solid rgba(var(--primary-color-rgb,255,107,107),.3);
+    border-radius: 999px;
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .05em;
+    padding: 3px 12px;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+}
+
+/* Título */
+.v2-promo-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-color, #e2e8f0);
+    margin: 0 0 10px;
+    line-height: 1.3;
+}
+
+/* Descrição */
+.v2-promo-desc {
+    font-size: .88rem;
+    color: rgba(var(--text-color-rgb, 226,232,240), .72);
+    line-height: 1.6;
+    margin: 0 0 14px;
+}
+
+/* Nota rodapé */
+.v2-promo-note {
+    font-size: .75rem;
+    color: rgba(var(--text-color-rgb, 226,232,240), .45);
+    background: rgba(255,255,255,.04);
+    border-radius: 10px;
+    padding: 8px 12px;
+    margin: 0 0 22px;
+    line-height: 1.5;
+}
+.v2-promo-note i { opacity: .7; margin-right: 3px; }
+
+/* Botões */
+.v2-promo-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.v2-promo-btn-no {
+    flex: 0 0 auto;
+    background: rgba(255,255,255,.06);
+    color: rgba(var(--text-color-rgb,226,232,240),.6);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 12px;
+    padding: 12px 18px;
+    font-size: .85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background .15s;
+    white-space: nowrap;
+}
+.v2-promo-btn-no:hover { background: rgba(255,255,255,.1); }
+
+.v2-promo-btn-yes {
+    flex: 1;
+    background: var(--primary-color, #ff6b6b);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 12px 20px;
+    font-size: .92rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: filter .15s, transform .1s;
+    box-shadow: 0 4px 18px rgba(var(--primary-color-rgb,255,107,107),.35);
+}
+.v2-promo-btn-yes:hover  { filter: brightness(1.1); }
+.v2-promo-btn-yes:active { transform: scale(.97); }

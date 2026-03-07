@@ -2266,7 +2266,7 @@ function filterStockProducts() {
     const stockHint = document.getElementById('stockNotFoundHint');
     if (stockHint) {
         if (searchTerm && searchTerm.length >= 2 && filtered.length === 0) {
-            stockHint.innerHTML = `<a href="#" class="search-not-found-hint stock-hint" id="stockAddHintLink">🤨🤔Hmm... <strong>"${escapeHtml(searchTerm)}"</strong> parece não estar cadastrado. <span class="hint-action-link">Adicionar agora?</span></a>`;
+            stockHint.innerHTML = `<a href="#" class="search-not-found-hint stock-hint" id="stockAddHintLink">Hmm... <strong>"${escapeHtml(searchTerm)}"</strong> parece não estar cadastrado. <span class="hint-action-link">Adicionar agora?</span></a>`;
             const link = document.getElementById('stockAddHintLink');
             if (link) link.onclick = (e) => { e.preventDefault(); openQuickAddModal(searchTerm, 'stock'); };
         } else {
@@ -10878,4 +10878,88 @@ if (document.readyState === 'loading') {
     } else {
         initBottomNav();
     }
+})();
+
+// ============================================================
+// PROMO BANNER — Sugestão de migrar para o Layout 2.0
+// Lógica:
+//   · Sem registro  → aparece imediatamente (novo deploy / primeira vez)
+//   · "Sim"         → ativa v2, grava 'accepted', nunca mais aparece
+//   · "Não" (1ª vez)→ aguarda 3 dias
+//   · "Não" (2ª vez+)→ aguarda 4 dias (ciclo fixo)
+// ============================================================
+(function() {
+    var PROMO_STATUS_KEY  = 'ctwV2PromoStatus';   // 'accepted' | ausente
+    var PROMO_NEXT_KEY    = 'ctwV2PromoNext';      // timestamp ms | ausente
+    var PROMO_REFUSALS_KEY = 'ctwV2PromoRefusals'; // número inteiro
+
+    var DELAY_FIRST = 3 * 24 * 60 * 60 * 1000;  // 3 dias em ms
+    var DELAY_LOOP  = 4 * 24 * 60 * 60 * 1000;  // 4 dias em ms
+
+    function isV2Active() {
+        return localStorage.getItem('ctwMenuStyle') === 'v2';
+    }
+
+    function shouldShow() {
+        if (isV2Active())                                          return false;
+        if (localStorage.getItem(PROMO_STATUS_KEY) === 'accepted') return false;
+
+        var next = localStorage.getItem(PROMO_NEXT_KEY);
+        if (!next) return true;                    // sem registro = mostra agora
+        return Date.now() >= parseInt(next, 10);   // passou do prazo?
+    }
+
+    function showBanner() {
+        var banner = document.getElementById('v2PromoBanner');
+        if (!banner) return;
+        banner.style.display = 'flex';
+
+        var btnYes = document.getElementById('v2PromoBtnYes');
+        var btnNo  = document.getElementById('v2PromoBtnNo');
+
+        function closeBanner() {
+            banner.style.animation = 'v2PromoFadeIn .25s ease reverse forwards';
+            setTimeout(function() { banner.style.display = 'none'; banner.style.animation = ''; }, 260);
+        }
+
+        if (btnYes) {
+            btnYes.onclick = function() {
+                closeBanner();
+                // Marca como aceito
+                localStorage.setItem(PROMO_STATUS_KEY, 'accepted');
+                // Ativa layout 2.0 (usa a mesma função do app)
+                setTimeout(function() {
+                    if (typeof window.ativarEstilo20 === 'function') {
+                        // ativarEstilo20 é um toggle — garante que estamos ativando, não desativando
+                        if (!isV2Active()) window.ativarEstilo20();
+                    }
+                }, 300);
+            };
+        }
+
+        if (btnNo) {
+            btnNo.onclick = function() {
+                closeBanner();
+                var refusals = parseInt(localStorage.getItem(PROMO_REFUSALS_KEY) || '0', 10);
+                refusals += 1;
+                localStorage.setItem(PROMO_REFUSALS_KEY, String(refusals));
+                var delay = refusals === 1 ? DELAY_FIRST : DELAY_LOOP;
+                localStorage.setItem(PROMO_NEXT_KEY, String(Date.now() + delay));
+            };
+        }
+
+        // Toque no fundo escuro = mesmo que "Não"
+        banner.addEventListener('click', function(e) {
+            if (e.target === banner && btnNo) btnNo.click();
+        }, { once: true });
+    }
+
+    // Aguarda um tick depois do login para não conflitar com animações do app
+    var _origConfirmed = window.setProfileConfirmed;
+    window.setProfileConfirmed = function(name) {
+        if (typeof _origConfirmed === 'function') _origConfirmed(name);
+        setTimeout(function() {
+            if (shouldShow()) showBanner();
+        }, 900); // pequeno delay para o usuário ver a tela principal primeiro
+    };
 })();

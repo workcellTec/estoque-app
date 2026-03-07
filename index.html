@@ -2241,19 +2241,39 @@ do que você precisa??</h2>
     </div>
 </div>
 
-<!-- ─── MODAL: DESFAZER ETAPA ─── -->
-<div class="rep-modal-overlay" id="repUndoOverlay">
-    <div class="rep-modal rep-modal-sm">
-        <div class="rep-modal-header">
-            <span>↩️ Desfazer etapa</span>
+<!-- ─── BANNER: EXPERIMENTAR LAYOUT 2.0 ─── -->
+<div id="v2PromoBanner" class="v2-promo-overlay" style="display:none;" aria-modal="true" role="dialog">
+    <div class="v2-promo-card">
+        <!-- Ícone topo -->
+        <div class="v2-promo-icon-wrap">
+            <div class="v2-promo-icon-ring">
+                <i class="bi bi-stars"></i>
+            </div>
         </div>
-        <div class="rep-modal-body">
-            <div id="repUndoMsg" style="font-size:.88rem;line-height:1.6;"></div>
-        </div>
-        <div class="rep-modal-footer">
-            <button class="rep-btn rep-btn-ghost" id="repUndoNo">Cancelar</button>
-            <button class="rep-btn rep-btn-undo-confirm" id="repUndoYes">
-                <i class="bi bi-arrow-counterclockwise"></i> Confirmar
+
+        <!-- Badge novidade -->
+        <span class="v2-promo-badge">✨ Novidade</span>
+
+        <!-- Título -->
+        <h3 class="v2-promo-title">Layout 2.0 disponível!</h3>
+
+        <!-- Descrição -->
+        <p class="v2-promo-desc">
+            Seu app foi atualizado com um novo visual moderno — navegação flutuante, acesso rápido e uma experiência muito mais limpa.
+        </p>
+
+        <!-- Nota rodapé -->
+        <p class="v2-promo-note">
+            <i class="bi bi-arrow-left-right"></i>
+            Você pode voltar ao layout clássico a qualquer momento em
+            <strong>Perfil → Voltar ao estilo clássico</strong>
+        </p>
+
+        <!-- Botões -->
+        <div class="v2-promo-actions">
+            <button class="v2-promo-btn-no"  id="v2PromoBtnNo">Agora não</button>
+            <button class="v2-promo-btn-yes" id="v2PromoBtnYes">
+                <i class="bi bi-lightning-charge-fill"></i> Experimentar!
             </button>
         </div>
     </div>
