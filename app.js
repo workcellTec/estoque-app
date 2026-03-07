@@ -45,6 +45,20 @@ async function garantirPdfLibs() {
 // 👥 SISTEMA DE PERFIS EM NUVEM (FIREBASE)
 // ============================================================
 
+// ============================================================
+// AUTO-LOGOUT DIÁRIO — segurança de sessão
+// Roda ANTES de ler o perfil. Se mudou o dia, apaga a sessão.
+// ============================================================
+(function() {
+    var today   = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+    var lastDay = localStorage.getItem('ctwLastActiveDay');
+    if (localStorage.getItem('ctwUserProfile') && lastDay && lastDay !== today) {
+        localStorage.removeItem('ctwUserProfile');
+        try { localStorage.removeItem('ctwLastSection'); } catch(e) {}
+    }
+    localStorage.setItem('ctwLastActiveDay', today);
+})();
+
 // O perfil ATUAL (quem sou eu) continua salvo só no meu celular
 let currentUserProfile = localStorage.getItem('ctwUserProfile') || '';
 // A lista de perfis agora é uma variável que vem do banco
@@ -10883,35 +10897,41 @@ if (document.readyState === 'loading') {
 // ============================================================
 // PROMO BANNER — Sugestão de migrar para o Layout 2.0
 // Lógica:
-//   · Sem registro  → aparece imediatamente (novo deploy / primeira vez)
-//   · "Sim"         → ativa v2, grava 'accepted', nunca mais aparece
-//   · "Não" (1ª vez)→ aguarda 3 dias
+//   · "Sim"          → ativa v2, grava 'accepted', nunca mais aparece
+//   · "Não" (1ª vez) → aguarda 3 dias
 //   · "Não" (2ª vez+)→ aguarda 4 dias (ciclo fixo)
+//
+// QUANDO APARECE — dois hooks independentes:
+//   Hook 1 (setProfileConfirmed): após login — cobre logins normais e
+//           re-logins após auto-logout diário
+//   Hook 2 (DOMContentLoaded): se o usuário JÁ está logado ao abrir o app
+//           — cobre deploys onde o usuário não precisou re-logar
+//           — SÓ funciona se o sw.js foi atualizado (versão do cache bumped),
+//             caso contrário o browser entrega o app.js antigo do cache
 // ============================================================
 (function() {
-    var PROMO_STATUS_KEY  = 'ctwV2PromoStatus';   // 'accepted' | ausente
-    var PROMO_NEXT_KEY    = 'ctwV2PromoNext';      // timestamp ms | ausente
-    var PROMO_REFUSALS_KEY = 'ctwV2PromoRefusals'; // número inteiro
+    var PROMO_STATUS_KEY   = 'ctwV2PromoStatus';
+    var PROMO_NEXT_KEY     = 'ctwV2PromoNext';
+    var PROMO_REFUSALS_KEY = 'ctwV2PromoRefusals';
 
-    var DELAY_FIRST = 3 * 24 * 60 * 60 * 1000;  // 3 dias em ms
-    var DELAY_LOOP  = 4 * 24 * 60 * 60 * 1000;  // 4 dias em ms
+    var DELAY_FIRST = 3 * 24 * 60 * 60 * 1000;  // 3 dias
+    var DELAY_LOOP  = 4 * 24 * 60 * 60 * 1000;  // 4 dias
 
     function isV2Active() {
         return localStorage.getItem('ctwMenuStyle') === 'v2';
     }
 
     function shouldShow() {
-        if (isV2Active())                                          return false;
+        if (isV2Active())                                           return false;
         if (localStorage.getItem(PROMO_STATUS_KEY) === 'accepted') return false;
-
         var next = localStorage.getItem(PROMO_NEXT_KEY);
-        if (!next) return true;                    // sem registro = mostra agora
-        return Date.now() >= parseInt(next, 10);   // passou do prazo?
+        if (!next) return true;
+        return Date.now() >= parseInt(next, 10);
     }
 
     function showBanner() {
         var banner = document.getElementById('v2PromoBanner');
-        if (!banner) return;
+        if (!banner || banner.style.display === 'flex') return;
         banner.style.display = 'flex';
 
         var btnYes = document.getElementById('v2PromoBtnYes');
@@ -10919,47 +10939,58 @@ if (document.readyState === 'loading') {
 
         function closeBanner() {
             banner.style.animation = 'v2PromoFadeIn .25s ease reverse forwards';
-            setTimeout(function() { banner.style.display = 'none'; banner.style.animation = ''; }, 260);
+            setTimeout(function() {
+                banner.style.display = 'none';
+                banner.style.animation = '';
+            }, 260);
+        }
+
+        function recusar() {
+            closeBanner();
+            var refusals = parseInt(localStorage.getItem(PROMO_REFUSALS_KEY) || '0', 10);
+            refusals += 1;
+            localStorage.setItem(PROMO_REFUSALS_KEY, String(refusals));
+            var delay = refusals === 1 ? DELAY_FIRST : DELAY_LOOP;
+            localStorage.setItem(PROMO_NEXT_KEY, String(Date.now() + delay));
         }
 
         if (btnYes) {
             btnYes.onclick = function() {
                 closeBanner();
-                // Marca como aceito
                 localStorage.setItem(PROMO_STATUS_KEY, 'accepted');
-                // Ativa layout 2.0 (usa a mesma função do app)
                 setTimeout(function() {
-                    if (typeof window.ativarEstilo20 === 'function') {
-                        // ativarEstilo20 é um toggle — garante que estamos ativando, não desativando
-                        if (!isV2Active()) window.ativarEstilo20();
+                    if (typeof window.ativarEstilo20 === 'function' && !isV2Active()) {
+                        window.ativarEstilo20();
                     }
                 }, 300);
             };
         }
 
         if (btnNo) {
-            btnNo.onclick = function() {
-                closeBanner();
-                var refusals = parseInt(localStorage.getItem(PROMO_REFUSALS_KEY) || '0', 10);
-                refusals += 1;
-                localStorage.setItem(PROMO_REFUSALS_KEY, String(refusals));
-                var delay = refusals === 1 ? DELAY_FIRST : DELAY_LOOP;
-                localStorage.setItem(PROMO_NEXT_KEY, String(Date.now() + delay));
-            };
+            btnNo.onclick = recusar;
         }
 
-        // Toque no fundo escuro = mesmo que "Não"
         banner.addEventListener('click', function(e) {
-            if (e.target === banner && btnNo) btnNo.click();
+            if (e.target === banner) recusar();
         }, { once: true });
     }
 
-    // Aguarda um tick depois do login para não conflitar com animações do app
+    // ── Hook 1: após login normal ou re-login pós auto-logout
     var _origConfirmed = window.setProfileConfirmed;
     window.setProfileConfirmed = function(name) {
         if (typeof _origConfirmed === 'function') _origConfirmed(name);
         setTimeout(function() {
             if (shouldShow()) showBanner();
-        }, 900); // pequeno delay para o usuário ver a tela principal primeiro
+        }, 900);
     };
+
+    // ── Hook 2: usuário já estava logado ao carregar o novo app.js
+    //    (ex: deploy feito sem deslogar ninguém — funciona porque o sw.js
+    //    foi atualizado e forçou o download do novo app.js)
+    document.addEventListener('DOMContentLoaded', function() {
+        if (!localStorage.getItem('ctwUserProfile')) return;
+        setTimeout(function() {
+            if (shouldShow()) showBanner();
+        }, 1200);
+    });
 })();
