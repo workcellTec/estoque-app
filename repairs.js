@@ -40,8 +40,7 @@ const PREV_STATUS = {
     [STATUS.LOJA_REPARADO]: STATUS.EM_REPARO,
     [STATUS.FINALIZADO]:    STATUS.LOJA_REPARADO,
 };
-
-// Chave da timeline que precisa ser removida ao fazer undo
+// Chave da timeline que deve ser removida ao desfazer
 const PREV_TL_KEY = {
     [STATUS.EM_REPARO]:     'em_reparo',
     [STATUS.LOJA_REPARADO]: 'loja_reparado',
@@ -260,6 +259,141 @@ function getFiltered(filter) {
 }
 
 // ============================================================
+// SWIPE GESTURE (estilo Gmail)
+// ← arrastar esquerda  = avançar etapa (pede foto)
+// → arrastar direita   = desfazer etapa (pede confirmação)
+// ============================================================
+function attachSwipeToCard(card, repId) {
+    const header = card.querySelector('.rep-card-header');
+    if (!header) return;
+
+    const THRESHOLD    = 72;   // px mínimos para disparar a ação
+    const CANCEL_VERT  = 18;   // px vertical antes de cancelar swipe
+    const MAX_DRAG     = 110;  // px máximos de deslocamento visual
+
+    let startX = 0, startY = 0;
+    let dragging = false, cancelled = false;
+    let rafId = null;
+
+    // Elementos de hint que surgem atrás do header durante o swipe
+    let hintEl = null;
+
+    function getHint() {
+        if (hintEl) return hintEl;
+        hintEl = document.createElement('div');
+        hintEl.className = 'rep-swipe-hint';
+        card.insertBefore(hintEl, header);
+        return hintEl;
+    }
+
+    function reset(animate) {
+        dragging = false;
+        cancelled = false;
+        if (rafId) cancelAnimationFrame(rafId);
+        if (animate) {
+            header.style.transition = 'transform .25s cubic-bezier(.25,.8,.25,1)';
+        }
+        header.style.transform = '';
+        header.style.borderRadius = '';
+        const hint = card.querySelector('.rep-swipe-hint');
+        if (hint) { hint.style.opacity = '0'; hint.textContent = ''; hint.className = 'rep-swipe-hint'; }
+        setTimeout(() => { header.style.transition = ''; }, 260);
+    }
+
+    header.addEventListener('touchstart', e => {
+        // Não interfere se o card está expandido (body visível) — swipe só no collapsed
+        const body = card.querySelector('.rep-card-body');
+        const isCollapsed = body.classList.contains('rep-collapsed');
+        if (!isCollapsed) return;
+
+        startX    = e.touches[0].clientX;
+        startY    = e.touches[0].clientY;
+        dragging  = true;
+        cancelled = false;
+    }, { passive: true });
+
+    header.addEventListener('touchmove', e => {
+        if (!dragging || cancelled) return;
+
+        const dx = e.touches[0].clientX - startX;
+        const dy = e.touches[0].clientY - startY;
+
+        // Cancela se movimento vertical maior que horizontal
+        if (Math.abs(dy) > CANCEL_VERT && Math.abs(dy) > Math.abs(dx)) {
+            cancelled = true;
+            reset(true);
+            return;
+        }
+
+        // Só processa se horizontal dominante
+        if (Math.abs(dx) < 6) return;
+        e.preventDefault();
+
+        const repair    = allRepairs.find(r => r.id === repId);
+        if (!repair) return;
+
+        const canNext   = !!buildNextBtn(repair);
+        const canUndo   = !!PREV_STATUS[repair.status];
+
+        // Limita o drag e aplica resistência perto do limite
+        let clamped = Math.max(-MAX_DRAG, Math.min(MAX_DRAG, dx));
+        if ((dx < 0 && !canNext) || (dx > 0 && !canUndo)) {
+            clamped = dx * 0.12; // resistência elástica se ação não disponível
+        }
+
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(() => {
+            header.style.transition = 'none';
+            header.style.transform  = `translateX(${clamped}px)`;
+
+            const hint      = getHint();
+            const pct       = Math.abs(clamped) / THRESHOLD;
+            const activated = Math.abs(clamped) >= THRESHOLD;
+
+            if (dx < -8 && canNext) {
+                // Arrastar pra esquerda = AVANÇAR
+                hint.className  = `rep-swipe-hint rep-swipe-hint-next ${activated ? 'activated' : ''}`;
+                hint.innerHTML  = activated ? '📸 Avançar!' : `<i class="bi bi-arrow-right-circle-fill"></i> Avançar`;
+                hint.style.opacity = Math.min(1, pct).toFixed(2);
+                hint.style.right = '0'; hint.style.left = 'auto';
+            } else if (dx > 8 && canUndo) {
+                // Arrastar pra direita = DESFAZER
+                hint.className  = `rep-swipe-hint rep-swipe-hint-undo ${activated ? 'activated' : ''}`;
+                hint.innerHTML  = activated ? '↩️ Desfazer!' : `<i class="bi bi-arrow-counterclockwise"></i> Desfazer`;
+                hint.style.opacity = Math.min(1, pct).toFixed(2);
+                hint.style.left = '0'; hint.style.right = 'auto';
+            } else {
+                hint.style.opacity = '0';
+            }
+        });
+    }, { passive: false });
+
+    header.addEventListener('touchend', e => {
+        if (!dragging || cancelled) { dragging = false; return; }
+        const dx     = e.changedTouches[0].clientX - startX;
+        const repair = allRepairs.find(r => r.id === repId);
+        reset(true);
+        if (!repair) return;
+
+        if (dx < -THRESHOLD && buildNextBtn(repair)) {
+            // Swipe left confirmado → avança
+            const map = {
+                [STATUS.LOJA_SEM_ANALISE]: [STATUS.EM_REPARO,     '📸 Foto: Entrega ao Técnico',    'Registrar entrega ao técnico'],
+                [STATUS.EM_REPARO]:        [STATUS.LOJA_REPARADO, '📸 Foto: Devolução pelo Técnico', 'Confirmar retorno à loja'],
+                [STATUS.LOJA_REPARADO]:    [STATUS.FINALIZADO,    '📸 Foto: Entrega ao Cliente',    'Confirmar entrega ao cliente'],
+            };
+            const info = map[repair.status];
+            if (info) openStepModal(repair, info[0], info[1], info[2]);
+        } else if (dx > THRESHOLD && PREV_STATUS[repair.status]) {
+            // Swipe right confirmado → desfaz (com confirmação)
+            confirmUndo(repair);
+        }
+    }, { passive: true });
+
+    header.addEventListener('touchcancel', () => reset(true), { passive: true });
+}
+
+// ============================================================
 // RENDER
 // ============================================================
 function render(items) {
@@ -326,6 +460,12 @@ function renderList(items) {
             h.querySelector('.rep-chevron').classList.toggle('rep-chevron-open');
         });
     });
+
+    // Swipe estilo Gmail: ← avança etapa | → desfaz etapa
+    container.querySelectorAll('.rep-card').forEach(card => {
+        const repId = card.querySelector('[data-rep-id]')?.dataset.repId;
+        if (repId) attachSwipeToCard(card, repId);
+    });
 }
 
 function buildCard(r) {
@@ -383,10 +523,10 @@ function buildCard(r) {
             </div>
             <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
                 ${r.numeroCliente ? `<button class="rep-icon-btn rep-wpp" data-rep-whatsapp="${escHtml(r.numeroCliente)}" title="WhatsApp"><i class="bi bi-whatsapp"></i></button>` : ''}
-                <i class="bi bi-chevron-down rep-chevron rep-chevron-open"></i>
+                <i class="bi bi-chevron-down rep-chevron"></i>
             </div>
         </div>
-        <div class="rep-card-body">
+        <div class="rep-card-body rep-collapsed">
             <div class="rep-card-meta">
                 <span><i class="bi bi-calendar3"></i> Cadastro: ${formatDate(r.tsCadastro)}</span>
                 ${prazoFormatado ? `<span><i class="bi bi-flag-fill"></i> Entrega: ${prazoFormatado}</span>` : ''}
@@ -418,10 +558,8 @@ function buildNextBtn(r) {
 }
 
 function buildUndoBtn(r) {
-    // Só aparece se há status anterior (não no primeiro estado)
     if (!PREV_STATUS[r.status]) return '';
-    const prevLabel = STATUS_LABEL[PREV_STATUS[r.status]];
-    return `<button class="rep-btn rep-btn-undo" data-rep-action="undo_step" data-rep-id="${r.id}" title="Voltar para: ${prevLabel}">
+    return `<button class="rep-btn rep-btn-undo rep-btn-sm" data-rep-action="undo_step" data-rep-id="${r.id}">
         <i class="bi bi-arrow-counterclockwise"></i> Desfazer etapa
     </button>`;
 }
@@ -459,33 +597,35 @@ async function handleAction(action, id) {
     const repair = allRepairs.find(r => r.id === id);
     if (!repair && action !== 'new') return;
     switch(action) {
-        case 'edit':          openRepairForm(repair); break;
-        case 'delete':        confirmDelete(id); break;
-        case 'undo_step':     confirmUndo(repair); break;
-        case 'to_em_reparo':    openStepModal(repair, STATUS.EM_REPARO,     '📸 Foto: Entrega ao Técnico',    'Registrar entrega ao técnico'); break;
+        case 'edit':             openRepairForm(repair); break;
+        case 'delete':           confirmDelete(id); break;
+        case 'undo_step':        confirmUndo(repair); break;
+        case 'to_em_reparo':     openStepModal(repair, STATUS.EM_REPARO,     '📸 Foto: Entrega ao Técnico',    'Registrar entrega ao técnico'); break;
         case 'to_loja_reparado': openStepModal(repair, STATUS.LOJA_REPARADO, '📸 Foto: Devolução pelo Técnico', 'Confirmar retorno à loja');     break;
-        case 'to_finalizado':   openStepModal(repair, STATUS.FINALIZADO,    '📸 Foto: Entrega ao Cliente',    'Confirmar entrega ao cliente'); break;
+        case 'to_finalizado':    openStepModal(repair, STATUS.FINALIZADO,    '📸 Foto: Entrega ao Cliente',    'Confirmar entrega ao cliente'); break;
     }
 }
 
 function confirmUndo(repair) {
     if (!repair || !PREV_STATUS[repair.status]) return;
-
     const overlay = document.getElementById('repUndoOverlay');
     const msgEl   = document.getElementById('repUndoMsg');
     const btnYes  = document.getElementById('repUndoYes');
     const btnNo   = document.getElementById('repUndoNo');
     if (!overlay) return;
 
-    const statusAtual   = STATUS_LABEL[repair.status];
-    const statusAnterior = STATUS_LABEL[PREV_STATUS[repair.status]];
+    const labelAtual    = STATUS_LABEL[repair.status];
+    const labelAnterior = STATUS_LABEL[PREV_STATUS[repair.status]];
+    const corAtual      = STATUS_COLOR[repair.status];
 
     msgEl.innerHTML = `
         <strong>${escHtml(repair.nomeCliente)}</strong><br>
-        <span style="font-size:.8rem;opacity:.75;">${escHtml(repair.descricaoDefeito)}</span><br><br>
-        Status atual: <span style="color:${STATUS_COLOR[repair.status]};font-weight:600;">${statusAtual}</span><br>
-        Voltará para: <span style="font-weight:600;">${statusAnterior}</span><br><br>
-        <span style="font-size:.78rem;opacity:.65;">A foto e o registro da etapa atual serão removidos.</span>`;
+        <span style="font-size:.8rem;opacity:.7;">${escHtml(repair.descricaoDefeito)}</span>
+        <div style="margin-top:12px;padding:10px 12px;background:rgba(255,255,255,.04);border-radius:8px;font-size:.83rem;line-height:1.8;">
+            Status atual: <span style="color:${corAtual};font-weight:600;">${labelAtual}</span><br>
+            Voltará para: <span style="font-weight:600;">${labelAnterior}</span><br>
+            <span style="opacity:.55;font-size:.75rem;">A foto e o registro desta etapa serão removidos.</span>
+        </div>`;
 
     overlay.classList.add('active');
     const cleanup = () => overlay.classList.remove('active');
@@ -497,18 +637,10 @@ async function executeUndo(repair) {
     const prevStatus = PREV_STATUS[repair.status];
     const tlKey      = PREV_TL_KEY[repair.status];
     if (!prevStatus || !tlKey) return;
-
     try {
-        // Remove o registro da etapa atual da timeline e reverte o status
         const newTimeline = { ...repair.timeline };
         delete newTimeline[tlKey];
-
-        const updateData = {
-            ...repair,
-            status:   prevStatus,
-            timeline: newTimeline,
-        };
-        await saveRepair(updateData);
+        await saveRepair({ ...repair, status: prevStatus, timeline: newTimeline });
         showToast(`↩️ Voltou para: ${STATUS_LABEL[prevStatus]}`);
     } catch(e) {
         showToast('❌ Erro ao desfazer: ' + e.message);
@@ -794,12 +926,11 @@ function wireStepEvents() {
 }
 
 function wireUndoEvents() {
-    // Fechar ao clicar fora
     document.getElementById('repUndoOverlay')?.addEventListener('click', e => {
         if (e.target === document.getElementById('repUndoOverlay'))
             document.getElementById('repUndoOverlay').classList.remove('active');
     });
-    // Os botões Sim/Não são wired dinamicamente em confirmUndo()
+    // btnYes e btnNo são wired dinamicamente em confirmUndo()
 }
 
 function wireFilterBtns() {

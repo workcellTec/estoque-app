@@ -2266,7 +2266,7 @@ function filterStockProducts() {
     const stockHint = document.getElementById('stockNotFoundHint');
     if (stockHint) {
         if (searchTerm && searchTerm.length >= 2 && filtered.length === 0) {
-            stockHint.innerHTML = `<a href="#" class="search-not-found-hint stock-hint" id="stockAddHintLink">Hmm... <strong>"${escapeHtml(searchTerm)}"</strong> parece não estar cadastrado. <span class="hint-action-link">Adicionar agora?</span></a>`;
+            stockHint.innerHTML = `<a href="#" class="search-not-found-hint stock-hint" id="stockAddHintLink">🤨🤔Hmm... <strong>"${escapeHtml(searchTerm)}"</strong> parece não estar cadastrado. <span class="hint-action-link">Adicionar agora?</span></a>`;
             const link = document.getElementById('stockAddHintLink');
             if (link) link.onclick = (e) => { e.preventDefault(); openQuickAddModal(searchTerm, 'stock'); };
         } else {

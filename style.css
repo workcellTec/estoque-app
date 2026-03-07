@@ -4622,10 +4622,9 @@ body.ctw-v2-active #documentsHome {
     max-width: 640px;
     margin: 0 auto;
     width: 100%;
-    overflow-x: hidden; /* previne vazamento lateral */
+    overflow-x: hidden;
 }
 
-/* Quando nav 2.0 está ativa, garante espaço extra acima do nav flutuante */
 body.ctw-v2-active #repairsContainer {
     padding-bottom: 140px !important;
 }
@@ -4859,6 +4858,76 @@ body.ctw-v2-active #repairsContainer {
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 12px;
+}
+
+/* ── Botão Desfazer etapa ── */
+.rep-btn-undo {
+    background: rgba(148, 163, 184, 0.08);
+    color: var(--text-secondary, #94a3b8);
+    border: 1px dashed rgba(148, 163, 184, 0.3);
+}
+.rep-btn-undo:hover { background: rgba(148, 163, 184, 0.16); }
+
+/* Botão confirmar undo (no modal) */
+.rep-btn-undo-confirm {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.35);
+}
+.rep-btn-undo-confirm:hover { background: rgba(245, 158, 11, 0.25); }
+
+/* ── Swipe feedback ── */
+.rep-card {
+    position: relative;
+    overflow: hidden;  /* contém o hint */
+}
+
+.rep-card-header {
+    position: relative;
+    z-index: 2;
+    will-change: transform;
+    background: inherit;
+    border-radius: inherit;
+}
+
+/* Hint que aparece atrás do header durante o swipe */
+.rep-swipe-hint {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    font-size: .82rem;
+    font-weight: 600;
+    opacity: 0;
+    border-radius: 12px 12px 0 0;
+    pointer-events: none;
+    transition: opacity .1s, background .15s;
+    z-index: 1;
+    gap: 6px;
+}
+
+/* Arrastar esquerda = avançar (verde/azul) */
+.rep-swipe-hint-next {
+    background: rgba(59, 130, 246, 0.18);
+    color: #60a5fa;
+    justify-content: flex-end;
+}
+.rep-swipe-hint-next.activated {
+    background: rgba(59, 130, 246, 0.32);
+    color: #93c5fd;
+}
+
+/* Arrastar direita = desfazer (âmbar) */
+.rep-swipe-hint-undo {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    justify-content: flex-start;
+}
+.rep-swipe-hint-undo.activated {
+    background: rgba(245, 158, 11, 0.28);
+    color: #fde68a;
 }
 
 /* ── Timeline ── */
