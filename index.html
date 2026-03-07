@@ -1379,7 +1379,7 @@ do que você precisa??</h2>
             <button aria-label="Voltar" class="btn-back" id="backFromStock"><i class="bi bi-arrow-left"></i></button>
         </div>
         <div class="content-card w-100">
-            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-2">
                 <input class="form-control" id="stockSearchInput" placeholder="Filtrar produtos..." style="flex: 1; min-width: 180px;" type="text">
                 <div class="btn-group">
                     <button class="btn btn-outline-secondary btn-sm" id="toggleIgnoredBtn" title="Mostrar produtos ignorados"><i class="bi bi-eye-slash-fill"></i></button>
@@ -1387,6 +1387,7 @@ do que você precisa??</h2>
                     <button class="btn btn-info btn-sm" id="generateReportBtn"><i class="bi bi-printer"></i> Relatório</button>
                 </div>
             </div>
+            <div id="stockNotFoundHint"></div>
             <div id="stockProgressContainer" class="mb-3" style="background: rgba(0,0,0,0.2); padding: 10px 15px; border-radius: 15px; border: 1px solid var(--glass-border);">
     <div class="d-flex justify-content-between align-items-center mb-2">
         <small class="text-secondary" style="font-weight: 500;"><i class="bi bi-clipboard-check"></i> Progresso da Contagem</small>
@@ -1538,6 +1539,50 @@ do que você precisa??</h2>
             <div class="d-flex gap-2 justify-content-center mt-3">
                 <button class="btn btn-secondary" id="cancelEditPriceBtn">Cancelar</button>
                 <button class="btn btn-primary" id="confirmEditPriceBtn">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Editar Nome do Produto -->
+    <div class="custom-modal-overlay" id="editNameModalOverlay">
+        <div class="custom-modal-content">
+            <h4>Editar Nome do Produto</h4>
+            <p class="text-warning small mb-3"><i class="bi bi-exclamation-triangle"></i> Atenção: Isso altera o nome oficial no sistema.</p>
+            <input class="form-control form-control-lg mb-3" id="editNameInput" type="text" placeholder="Nome do produto"/>
+            <input type="hidden" id="editNameProductId"/>
+            <input type="hidden" id="editNameProductIndex"/>
+            <div class="d-flex gap-2 justify-content-center mt-3">
+                <button class="btn btn-secondary" id="cancelEditNameBtn">Cancelar</button>
+                <button class="btn btn-primary" id="confirmEditNameBtn">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Adicionar Produto Rápido -->
+    <div class="custom-modal-overlay" id="quickAddModalOverlay">
+        <div class="custom-modal-content" style="max-width: 400px;">
+            <h4><i class="bi bi-plus-circle me-2"></i>Adicionar Produto</h4>
+            <p class="text-secondary small mb-3">Preencha as informações e o produto será salvo no sistema.</p>
+            <div class="mb-3">
+                <label class="form-label small fw-bold text-secondary" style="letter-spacing:.5px;">NOME</label>
+                <input class="form-control" id="quickAddProductName" type="text" placeholder="Nome do produto"/>
+            </div>
+            <div class="mb-3">
+                <label class="form-label small fw-bold text-secondary" style="letter-spacing:.5px;">VALOR BASE (R$)</label>
+                <input class="form-control" id="quickAddProductValue" type="text" inputmode="numeric" placeholder="R$ 0,00"/>
+            </div>
+            <div class="mb-3">
+                <label class="form-label small fw-bold text-secondary" style="letter-spacing:.5px;">QUANTIDADE EM ESTOQUE</label>
+                <input class="form-control" id="quickAddProductQty" type="number" min="0" value="1"/>
+            </div>
+            <div class="mb-3">
+                <label class="form-label small fw-bold text-secondary" style="letter-spacing:.5px;">CORES DISPONÍVEIS</label>
+                <div id="quickAddColorPalette" class="quick-add-palette"></div>
+                <div id="quickAddSelectedColors" class="quick-add-selected mt-2"></div>
+            </div>
+            <div class="d-flex gap-2 mt-3">
+                <button class="btn btn-secondary flex-fill" id="cancelQuickAddBtn">Cancelar</button>
+                <button class="btn btn-primary flex-fill" id="confirmQuickAddBtn"><i class="bi bi-check-lg me-1"></i>Adicionar</button>
             </div>
         </div>
     </div>
@@ -2192,6 +2237,22 @@ do que você precisa??</h2>
         <div class="rep-modal-footer">
             <button class="rep-btn rep-btn-ghost" id="repConfirmNo">Cancelar</button>
             <button class="rep-btn rep-btn-danger" id="repConfirmYes"><i class="bi bi-trash-fill"></i> Excluir</button>
+        </div>
+    </div>
+</div>
+
+<!-- ─── MODAL: DESFAZER ETAPA ─── -->
+<div class="rep-modal-overlay" id="repUndoOverlay">
+    <div class="rep-modal rep-modal-sm">
+        <div class="rep-modal-header">
+            <span>↩️ Desfazer etapa</span>
+        </div>
+        <div class="rep-modal-body">
+            <p id="repUndoMsg" style="margin:0;font-size:.88rem;line-height:1.6;"></p>
+        </div>
+        <div class="rep-modal-footer">
+            <button class="rep-btn rep-btn-ghost" id="repUndoNo">Cancelar</button>
+            <button class="rep-btn rep-btn-undo-confirm" id="repUndoYes"><i class="bi bi-arrow-counterclockwise"></i> Confirmar</button>
         </div>
     </div>
 </div>

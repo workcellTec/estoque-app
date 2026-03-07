@@ -1353,11 +1353,14 @@ function renderCarrinho() {
                 <span class="admin-warning-label"><i class="bi bi-exclamation-triangle"></i> Editar Cadastro no Sistema</span>
                 
                 <div class="product-action-buttons">
+                    <button class="btn-action-sm edit-name-btn" data-index="${index}" data-id="${product.id}">
+                        <i class="bi bi-pencil"></i> Nome
+                    </button>
                     <button class="btn-action-sm edit-price-btn" data-index="${index}">
-                        <i class="bi bi-cash-coin"></i> Editar Valor Base
+                        <i class="bi bi-cash-coin"></i> Valor
                     </button>
                     <button class="btn-action-sm edit-colors-btn" data-id="${product.id}">
-                        <i class="bi bi-palette"></i> Editar Cores
+                        <i class="bi bi-palette"></i> Cores
                     </button>
                 </div>
             </div>
@@ -2094,6 +2097,15 @@ function displayDynamicSearchResults(searchTerm, resultsContainerId, onItemClick
         } else if (activeTagFilter) {
              resultsContainer.innerHTML = `<div class="list-group-item bg-transparent text-secondary border-0 small">Nenhum produto com a etiqueta "${activeTagFilter}".</div>`;
         }
+        // Hint "não cadastrado?" — apenas para a busca de aparelho
+        if (searchTerm && searchTerm.length >= 2 && resultsContainerId === 'aparelhoResultsContainer') {
+            const hint = document.createElement('a');
+            hint.href = '#';
+            hint.className = 'search-not-found-hint';
+            hint.innerHTML = `🤨🤔Hmm... <strong>"${escapeHtml(searchTerm)}"</strong> parece não estar cadastrado. <span class="hint-action-link">Adicionar agora?</span>`;
+            hint.onclick = (e) => { e.preventDefault(); openQuickAddModal(searchTerm, 'aparelho'); };
+            resultsContainer.appendChild(hint);
+        }
         return; 
     }
     
@@ -2249,7 +2261,19 @@ function filterStockProducts() {
 
     // Se não tiver nada escrito, mostra tudo. Se tiver, usa a busca inteligente.
     const filtered = !searchTerm ? baseList : fuseInstance.search(searchTerm).map(r => r.item);
-    
+
+    // Hint "não cadastrado?" — exibido perto do campo de busca
+    const stockHint = document.getElementById('stockNotFoundHint');
+    if (stockHint) {
+        if (searchTerm && searchTerm.length >= 2 && filtered.length === 0) {
+            stockHint.innerHTML = `<a href="#" class="search-not-found-hint stock-hint" id="stockAddHintLink">Hmm... <strong>"${escapeHtml(searchTerm)}"</strong> parece não estar cadastrado. <span class="hint-action-link">Adicionar agora?</span></a>`;
+            const link = document.getElementById('stockAddHintLink');
+            if (link) link.onclick = (e) => { e.preventDefault(); openQuickAddModal(searchTerm, 'stock'); };
+        } else {
+            stockHint.innerHTML = '';
+        }
+    }
+
     renderStockList(filtered);
 }
 
@@ -2342,6 +2366,56 @@ function toggleColorSelection(hex, nome) {
     renderColorPickerPalette();
     renderSelectedColors();
 }
+
+// ============================================================
+// QUICK ADD PRODUCT MODAL
+// ============================================================
+let _quickAddContext = 'aparelho'; // 'aparelho' ou 'stock'
+let _quickAddColors = [];
+
+function renderQuickAddColors() {
+    const palette = document.getElementById('quickAddColorPalette');
+    const selected = document.getElementById('quickAddSelectedColors');
+    if (!palette || !selected) return;
+    palette.innerHTML = colorPalette.map(c => {
+        const isSel = _quickAddColors.some(s => s.hex.toLowerCase() === c.hex.toLowerCase());
+        return `<div class="quick-swatch ${isSel ? 'selected' : ''}" style="background:${c.hex};" title="${c.nome}" data-hex="${c.hex}" data-nome="${c.nome}"></div>`;
+    }).join('');
+    selected.innerHTML = _quickAddColors.length === 0
+        ? '<span class="text-secondary" style="font-size:0.75rem;">Nenhuma cor selecionada</span>'
+        : _quickAddColors.map(c => `
+            <div class="selected-color-tag">
+                <div class="color-swatch-sm" style="background:${c.hex};"></div>
+                <span>${c.nome}</span>
+                <span class="remove-color-btn" data-hex="${c.hex}">&times;</span>
+            </div>`).join('');
+    palette.querySelectorAll('.quick-swatch').forEach(el => {
+        el.addEventListener('click', () => {
+            const hex = el.dataset.hex; const nome = el.dataset.nome;
+            const idx = _quickAddColors.findIndex(c => c.hex.toLowerCase() === hex.toLowerCase());
+            if (idx > -1) _quickAddColors.splice(idx, 1); else _quickAddColors.push({ nome, hex });
+            renderQuickAddColors();
+        });
+    });
+    selected.querySelectorAll('.remove-color-btn').forEach(el => {
+        el.addEventListener('click', () => {
+            _quickAddColors = _quickAddColors.filter(c => c.hex.toLowerCase() !== el.dataset.hex.toLowerCase());
+            renderQuickAddColors();
+        });
+    });
+}
+
+function openQuickAddModal(searchTerm, context) {
+    _quickAddContext = context || 'aparelho';
+    _quickAddColors = [];
+    document.getElementById('quickAddProductName').value = searchTerm || '';
+    document.getElementById('quickAddProductValue').value = '';
+    document.getElementById('quickAddProductQty').value = '1';
+    renderQuickAddColors();
+    document.getElementById('quickAddModalOverlay').classList.add('active');
+    setTimeout(() => document.getElementById('quickAddProductValue').focus(), 150);
+}
+window.openQuickAddModal = openQuickAddModal;
 
 function getAparelhoFavorites() { return JSON.parse(safeStorage.getItem(APARELHO_FAVORITES_KEY) || '{}'); }
 function saveAparelhoFavorites(favorites) { safeStorage.setItem(APARELHO_FAVORITES_KEY, JSON.stringify(favorites)); }
@@ -3728,6 +3802,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            // 3. Botão Editar Nome
+            const nameBtn = e.target.closest('.edit-name-btn');
+            if (nameBtn) {
+                e.preventDefault();
+                const index = nameBtn.dataset.index;
+                const item = carrinhoDeAparelhos[index];
+                document.getElementById('editNameInput').value = item.nome;
+                document.getElementById('editNameProductId').value = nameBtn.dataset.id;
+                document.getElementById('editNameProductIndex').value = index;
+                document.getElementById('editNameModalOverlay').classList.add('active');
+                setTimeout(() => { const el = document.getElementById('editNameInput'); el.focus(); el.select(); }, 100);
+                return;
+            }
+
             // 3. NOVO: Botão Salvar Favorito (A Estrelinha)
             const favBtn = e.target.closest('.save-favorite-shortcut');
             if (favBtn) {
@@ -3753,6 +3841,70 @@ document.addEventListener('DOMContentLoaded', () => {
     // Lógica do Modal de Editar Preço
     const closePriceModal = () => document.getElementById('editPriceModalOverlay').classList.remove('active');
     document.getElementById('cancelEditPriceBtn').addEventListener('click', closePriceModal);
+
+    // Lógica do Modal de Editar Nome
+    const closeNameModal = () => { const m = document.getElementById('editNameModalOverlay'); if(m) m.classList.remove('active'); };
+    const _cancelEditNameBtn = document.getElementById('cancelEditNameBtn');
+    const _confirmEditNameBtn = document.getElementById('confirmEditNameBtn');
+    const _editNameModalOverlay = document.getElementById('editNameModalOverlay');
+    if (_cancelEditNameBtn) _cancelEditNameBtn.addEventListener('click', closeNameModal);
+    if (_editNameModalOverlay) _editNameModalOverlay.addEventListener('click', (e) => { if (e.target.id === 'editNameModalOverlay') closeNameModal(); });
+    if (_confirmEditNameBtn) _confirmEditNameBtn.addEventListener('click', async () => {
+        const newName = document.getElementById('editNameInput').value.trim();
+        const productId = document.getElementById('editNameProductId').value;
+        const index = document.getElementById('editNameProductIndex').value;
+        if (!newName) { showCustomModal({ message: 'O nome não pode ficar vazio.' }); return; }
+        try {
+            await updateProductInDB(productId, { nome: newName });
+            // Atualiza carrinho
+            if (carrinhoDeAparelhos[index]) carrinhoDeAparelhos[index].nome = newName;
+            // Atualiza lista em memória
+            const p = products.find(p => p.id === productId);
+            if (p) p.nome = newName;
+            renderCarrinho();
+            calculateAparelho();
+            closeNameModal();
+            showCustomModal({ message: `Nome atualizado para "${newName}" com sucesso!` });
+        } catch (err) {
+            showCustomModal({ message: 'Erro ao salvar o nome.' });
+        }
+    });
+
+    // Lógica do Modal Quick Add Produto
+    const closeQuickAddModal = () => { const m = document.getElementById('quickAddModalOverlay'); if(m) m.classList.remove('active'); };
+    const _cancelQuickAddBtn = document.getElementById('cancelQuickAddBtn');
+    const _confirmQuickAddBtn = document.getElementById('confirmQuickAddBtn');
+    const _quickAddModalOverlay = document.getElementById('quickAddModalOverlay');
+    if (_cancelQuickAddBtn) _cancelQuickAddBtn.addEventListener('click', closeQuickAddModal);
+    if (_quickAddModalOverlay) _quickAddModalOverlay.addEventListener('click', (e) => { if (e.target.id === 'quickAddModalOverlay') closeQuickAddModal(); });
+    if (_confirmQuickAddBtn) _confirmQuickAddBtn.addEventListener('click', async () => {
+        const nome = document.getElementById('quickAddProductName').value.trim();
+        const valorRaw = document.getElementById('quickAddProductValue').value;
+        const quantidade = parseInt(document.getElementById('quickAddProductQty').value) || 1;
+        if (!nome) { showCustomModal({ message: 'O nome é obrigatório.' }); return; }
+        const valor = parseBrazilianCurrencyToFloat(valorRaw);
+        if (isNaN(valor) || valor <= 0) { showCustomModal({ message: 'Informe um valor válido.' }); return; }
+        const newProduct = { nome, valor, quantidade, cores: [..._quickAddColors], ignorarContagem: false, tag: 'Nenhuma' };
+        try {
+            const newRef = await push(getProductsRef(), newProduct);
+            const saved = { ...newProduct, id: newRef.key };
+            closeQuickAddModal();
+            const aparelhoInput = document.getElementById('aparelhoSearch');
+            const stockInput = document.getElementById('stockSearchInput');
+            if (_quickAddContext === 'aparelho') {
+                if (aparelhoInput) { aparelhoInput.value = ''; document.getElementById('aparelhoResultsContainer').innerHTML = ''; }
+                handleProductSelectionForAparelho(saved);
+            } else {
+                if (stockInput) { stockInput.value = ''; }
+                const hint = document.getElementById('stockNotFoundHint');
+                if (hint) hint.innerHTML = '';
+                filterStockProducts();
+            }
+            showCustomModal({ message: `"${nome}" adicionado ao sistema com sucesso!` });
+        } catch (err) {
+            showCustomModal({ message: `Erro ao salvar: ${err.message}` });
+        }
+    });
     
     document.getElementById('notificationList').addEventListener('click', (e) => {
         const item = e.target.closest('.notification-item');

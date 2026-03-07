@@ -2461,40 +2461,48 @@ tr, td, .card, .list-group-item {
 /* --- PRODUTOS E AÇÕES --- */
 .product-action-buttons {
     display: flex !important;
-    gap: 12px !important;
-    margin-top: 15px !important;
+    gap: 6px !important;
+    margin-top: 10px !important;
 }
 
 .btn-action-sm {
     flex: 1 !important;
-    display: flex !important;
+    display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 8px !important;
-    padding: 12px 15px !important;
-    border-radius: 50px !important;
-    font-size: 0.9rem !important;
+    gap: 5px !important;
+    padding: 6px 10px !important;
+    border-radius: 8px !important;
+    font-size: 0.72rem !important;
     font-weight: 600 !important;
     border: none !important;
     cursor: pointer !important;
-    transition: transform 0.2s ease, box-shadow 0.2s ease !important;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+    letter-spacing: 0.3px !important;
+    transition: filter 0.15s ease, transform 0.12s ease !important;
+}
+
+.edit-name-btn {
+    background-color: rgba(59, 130, 246, 0.12) !important;
+    color: #60a5fa !important;
+    border: 1px solid rgba(59, 130, 246, 0.25) !important;
 }
 
 .edit-price-btn {
-    background-color: rgba(16, 185, 129, 0.15) !important;
+    background-color: rgba(16, 185, 129, 0.12) !important;
     color: #10b981 !important;
+    border: 1px solid rgba(16, 185, 129, 0.25) !important;
 }
 
 .edit-colors-btn {
-    background-color: rgba(139, 92, 246, 0.15) !important;
+    background-color: rgba(139, 92, 246, 0.12) !important;
     color: #8b5cf6 !important;
+    border: 1px solid rgba(139, 92, 246, 0.25) !important;
 }
 
 .btn-action-sm:active,
 .btn-action-sm:hover {
-    transform: translateY(-2px) !important;
-    filter: brightness(1.1) !important;
+    transform: translateY(-1px) !important;
+    filter: brightness(1.15) !important;
 }
 
 /* --- FAVORITOS --- */
@@ -4610,11 +4618,16 @@ body.ctw-v2-active #documentsHome {
 #repairsContainer {
     flex-direction: column;
     padding: 16px;
-    padding-bottom: 100px;
+    padding-bottom: 120px;
     max-width: 640px;
     margin: 0 auto;
     width: 100%;
     overflow-x: hidden; /* previne vazamento lateral */
+}
+
+/* Quando nav 2.0 está ativa, garante espaço extra acima do nav flutuante */
+body.ctw-v2-active #repairsContainer {
+    padding-bottom: 140px !important;
 }
 
 /* Filters: wrap to avoid overflow-x:hidden conflict with parent */
@@ -5102,4 +5115,68 @@ body.ctw-v2-active #documentsHome {
     color: var(--text-secondary);
     margin-top: 8px;
     opacity: .6;
+}
+
+/* ============================================================
+   🔍 HINT "PRODUTO NÃO CADASTRADO"
+   ============================================================ */
+.search-not-found-hint {
+    display: block;
+    padding: 10px 14px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    text-decoration: none !important;
+    border-radius: 10px;
+    background: rgba(var(--primary-color-rgb, 0,229,255), 0.04);
+    border: 1px dashed rgba(var(--primary-color-rgb, 0,229,255), 0.2);
+    margin-top: 4px;
+    transition: background 0.15s;
+    cursor: pointer;
+}
+.search-not-found-hint:hover {
+    background: rgba(var(--primary-color-rgb, 0,229,255), 0.09);
+}
+.hint-action-link {
+    color: var(--primary-color, #00e5ff);
+    font-weight: 600;
+    text-decoration: underline;
+}
+/* No estoque, o hint fica colado abaixo do campo */
+#stockNotFoundHint {
+    padding: 0 0 8px;
+}
+.stock-hint {
+    border-radius: 8px;
+    font-size: 0.77rem;
+}
+
+/* ============================================================
+   ⚡ QUICK ADD MODAL — Paleta de cores
+   ============================================================ */
+.quick-add-palette {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 0 4px;
+}
+.quick-swatch {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform 0.12s, border-color 0.12s;
+    flex-shrink: 0;
+}
+.quick-swatch:hover { transform: scale(1.15); }
+.quick-swatch.selected {
+    border-color: #fff;
+    transform: scale(1.1);
+    box-shadow: 0 0 0 2px var(--primary-color, #00e5ff);
+}
+.quick-add-selected {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    min-height: 24px;
 }

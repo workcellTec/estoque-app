@@ -34,6 +34,20 @@ const STATUS_COLOR = {
     [STATUS.FINALIZADO]:       'var(--rep-green)',
 };
 
+// Mapa de status anterior (para o undo)
+const PREV_STATUS = {
+    [STATUS.EM_REPARO]:     STATUS.LOJA_SEM_ANALISE,
+    [STATUS.LOJA_REPARADO]: STATUS.EM_REPARO,
+    [STATUS.FINALIZADO]:    STATUS.LOJA_REPARADO,
+};
+
+// Chave da timeline que precisa ser removida ao fazer undo
+const PREV_TL_KEY = {
+    [STATUS.EM_REPARO]:     'em_reparo',
+    [STATUS.LOJA_REPARADO]: 'loja_reparado',
+    [STATUS.FINALIZADO]:    'finalizado',
+};
+
 // ============================================================
 // STATE
 // ============================================================
@@ -382,6 +396,7 @@ function buildCard(r) {
             ${timelineHtml}
             <div class="rep-card-actions">
                 ${nextBtn}
+                ${buildUndoBtn(r)}
                 <button class="rep-btn rep-btn-ghost rep-btn-sm" data-rep-action="edit" data-rep-id="${r.id}"><i class="bi bi-pencil-fill"></i> Editar</button>
                 <button class="rep-btn rep-btn-danger rep-btn-sm" data-rep-action="delete" data-rep-id="${r.id}"><i class="bi bi-trash-fill"></i></button>
             </div>
@@ -399,6 +414,15 @@ function buildNextBtn(r) {
     if (!info) return '';
     return `<button class="rep-btn ${info.color}" data-rep-action="${info.action}" data-rep-id="${r.id}">
         <i class="bi ${info.icon}"></i> ${info.label}
+    </button>`;
+}
+
+function buildUndoBtn(r) {
+    // Só aparece se há status anterior (não no primeiro estado)
+    if (!PREV_STATUS[r.status]) return '';
+    const prevLabel = STATUS_LABEL[PREV_STATUS[r.status]];
+    return `<button class="rep-btn rep-btn-undo" data-rep-action="undo_step" data-rep-id="${r.id}" title="Voltar para: ${prevLabel}">
+        <i class="bi bi-arrow-counterclockwise"></i> Desfazer etapa
     </button>`;
 }
 
@@ -437,9 +461,57 @@ async function handleAction(action, id) {
     switch(action) {
         case 'edit':          openRepairForm(repair); break;
         case 'delete':        confirmDelete(id); break;
+        case 'undo_step':     confirmUndo(repair); break;
         case 'to_em_reparo':    openStepModal(repair, STATUS.EM_REPARO,     '📸 Foto: Entrega ao Técnico',    'Registrar entrega ao técnico'); break;
         case 'to_loja_reparado': openStepModal(repair, STATUS.LOJA_REPARADO, '📸 Foto: Devolução pelo Técnico', 'Confirmar retorno à loja');     break;
         case 'to_finalizado':   openStepModal(repair, STATUS.FINALIZADO,    '📸 Foto: Entrega ao Cliente',    'Confirmar entrega ao cliente'); break;
+    }
+}
+
+function confirmUndo(repair) {
+    if (!repair || !PREV_STATUS[repair.status]) return;
+
+    const overlay = document.getElementById('repUndoOverlay');
+    const msgEl   = document.getElementById('repUndoMsg');
+    const btnYes  = document.getElementById('repUndoYes');
+    const btnNo   = document.getElementById('repUndoNo');
+    if (!overlay) return;
+
+    const statusAtual   = STATUS_LABEL[repair.status];
+    const statusAnterior = STATUS_LABEL[PREV_STATUS[repair.status]];
+
+    msgEl.innerHTML = `
+        <strong>${escHtml(repair.nomeCliente)}</strong><br>
+        <span style="font-size:.8rem;opacity:.75;">${escHtml(repair.descricaoDefeito)}</span><br><br>
+        Status atual: <span style="color:${STATUS_COLOR[repair.status]};font-weight:600;">${statusAtual}</span><br>
+        Voltará para: <span style="font-weight:600;">${statusAnterior}</span><br><br>
+        <span style="font-size:.78rem;opacity:.65;">A foto e o registro da etapa atual serão removidos.</span>`;
+
+    overlay.classList.add('active');
+    const cleanup = () => overlay.classList.remove('active');
+    btnNo.onclick  = cleanup;
+    btnYes.onclick = async () => { cleanup(); await executeUndo(repair); };
+}
+
+async function executeUndo(repair) {
+    const prevStatus = PREV_STATUS[repair.status];
+    const tlKey      = PREV_TL_KEY[repair.status];
+    if (!prevStatus || !tlKey) return;
+
+    try {
+        // Remove o registro da etapa atual da timeline e reverte o status
+        const newTimeline = { ...repair.timeline };
+        delete newTimeline[tlKey];
+
+        const updateData = {
+            ...repair,
+            status:   prevStatus,
+            timeline: newTimeline,
+        };
+        await saveRepair(updateData);
+        showToast(`↩️ Voltou para: ${STATUS_LABEL[prevStatus]}`);
+    } catch(e) {
+        showToast('❌ Erro ao desfazer: ' + e.message);
     }
 }
 
@@ -656,6 +728,7 @@ export function initRepairs() {
     db = window._firebaseDB;
     wireFormEvents();
     wireStepEvents();
+    wireUndoEvents();
     wireFilterBtns();
     wireSearchInput();
     listenRepairs(items => render(items));
@@ -718,6 +791,15 @@ function wireStepEvents() {
     });
     document.getElementById('repStepPhotoBtnCamera')?.addEventListener('click',  () => document.getElementById('repStepPhotoInputCamera')?.click());
     document.getElementById('repStepPhotoBtnGallery')?.addEventListener('click', () => document.getElementById('repStepPhotoInputGallery')?.click());
+}
+
+function wireUndoEvents() {
+    // Fechar ao clicar fora
+    document.getElementById('repUndoOverlay')?.addEventListener('click', e => {
+        if (e.target === document.getElementById('repUndoOverlay'))
+            document.getElementById('repUndoOverlay').classList.remove('active');
+    });
+    // Os botões Sim/Não são wired dinamicamente em confirmUndo()
 }
 
 function wireFilterBtns() {
