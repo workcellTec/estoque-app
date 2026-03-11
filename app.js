@@ -45,20 +45,6 @@ async function garantirPdfLibs() {
 // 👥 SISTEMA DE PERFIS EM NUVEM (FIREBASE)
 // ============================================================
 
-// ============================================================
-// AUTO-LOGOUT DIÁRIO — segurança de sessão
-// Roda ANTES de ler o perfil. Se mudou o dia, apaga a sessão.
-// ============================================================
-(function() {
-    var today   = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
-    var lastDay = localStorage.getItem('ctwLastActiveDay');
-    if (localStorage.getItem('ctwUserProfile') && lastDay && lastDay !== today) {
-        localStorage.removeItem('ctwUserProfile');
-        try { localStorage.removeItem('ctwLastSection'); } catch(e) {}
-    }
-    localStorage.setItem('ctwLastActiveDay', today);
-})();
-
 // O perfil ATUAL (quem sou eu) continua salvo só no meu celular
 let currentUserProfile = localStorage.getItem('ctwUserProfile') || '';
 // A lista de perfis agora é uma variável que vem do banco
@@ -525,50 +511,7 @@ window.alternarModoInput = function() {
 
 
 
-// SISTEMA DE CONTROLE DE TELA (RECIBO vs GARANTIA) - FINAL
-// ============================================================
-
-// FUNÇÃO BLINDADA: ABRIR NOVO RECIBO
-window.abrirReciboSimples = function() {
-    console.log("Abrindo Recibo Simples...");
-
-    // 1. Configura Variáveis Globais
-    window.isSimpleReceiptMode = true;
-    window.currentEditingBookipId = null; 
-    
-    // 2. Chama a Faxina (Limpa campos e zera produtos)
-    if(typeof window.resetFormulariosBookip === 'function') {
-        window.resetFormulariosBookip();
-    }
-
-    // 3. Configura Títulos
-    const titulo = document.querySelector('#areaBookipWrapper h3');
-    if (titulo) titulo.innerText = "Novo Recibo (Simples)";
-
-    const txtNovo = document.getElementById('txtToggleNovo');
-    if (txtNovo) txtNovo.innerHTML = '<i class="bi bi-plus-lg"></i> Novo Recibo';
-
-    // 4. Configura Interface (Esconde busca, mostra toggle)
-    const toggle = document.getElementById('toggleModoInputContainer');
-    if (toggle) toggle.style.display = 'flex'; 
-
-    const buscaContainer = document.querySelector('#camposProduto .search-wrapper');
-    if (buscaContainer) buscaContainer.classList.add('hidden'); 
-
-    // 5. Troca a Tela (Esconde menus, mostra Bookip)
-    const menus = document.querySelectorAll('#mainMenu, #documentsHome, .section-content');
-    menus.forEach(m => m.style.display = 'none');
-    
-    const tela = document.getElementById('areaBookipWrapper');
-    if (tela) tela.style.display = 'block';
-    
-    // Garante aba "Novo" ativa visualmente
-    const tabToggle = document.getElementById('bookipModeToggle');
-    if(tabToggle) {
-        tabToggle.checked = false; 
-        tabToggle.dispatchEvent(new Event('change'));
-    }
-};
+// → Movido para bookip.js: abrirReciboSimples
 
 // O botão de garantia agora é controlado pelo código novo que adicionamos anteriormente.
 
@@ -9455,78 +9398,7 @@ if (selectGarantia && inputGarantiaManual) {
         });
 
 
-// Abre foto do produto do bookip com tela de carregamento
-window.abrirFotoBookip = function(fotoUrl, nome) {
-    if (!fotoUrl) return;
-
-    // Overlay com loading igual ao da transição de favoritos
-    const overlay = document.createElement('div');
-    overlay.id = 'fotoBookipOverlay';
-    overlay.style.cssText = `
-        position: fixed; inset: 0; z-index: 19999;
-        background: rgba(0,0,0,0.95);
-        display: flex; flex-direction: column;
-        align-items: center; justify-content: center;
-        gap: 16px;
-        animation: notif-overlay-in 0.2s ease;
-    `;
-
-    // Loading state inicial
-    overlay.innerHTML = `
-        <div style="position:relative;width:110px;height:110px;display:flex;align-items:center;justify-content:center;">
-            <div style="position:absolute;width:90px;height:90px;border-radius:50%;border:2px solid transparent;border-top-color:var(--primary-color);animation:fav-tr-spin 0.9s linear infinite;"></div>
-            <div style="position:absolute;width:110px;height:110px;border-radius:50%;border:2px solid transparent;border-bottom-color:#8b5cf6;animation:fav-tr-spin 1.4s linear infinite reverse;"></div>
-            <span style="font-size:2.2rem;">🖼️</span>
-        </div>
-        <div style="color:rgba(255,255,255,0.5);font-size:0.8rem;font-family:'Poppins',sans-serif;">Carregando imagem...</div>
-    `;
-
-    // Fecha ao clicar fora da foto
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay || e.target.id === 'fotoBookipOverlay') {
-            overlay.style.opacity = '0';
-            overlay.style.transition = 'opacity 0.2s';
-            setTimeout(() => overlay.remove(), 200);
-        }
-    });
-
-    document.body.appendChild(overlay);
-
-    // Carrega a imagem
-    const img = new Image();
-    img.onload = () => {
-        overlay.innerHTML = `
-            <div style="position:relative;max-width:min(95vw,600px);">
-                <img src="${fotoUrl}" 
-                    style="width:100%;max-height:80vh;object-fit:contain;border-radius:12px;display:block;box-shadow:0 8px 40px rgba(0,0,0,0.8);">
-                <button onclick="document.getElementById('fotoBookipOverlay').remove()" style="
-                    position:absolute;top:-12px;right:-12px;
-                    background:rgba(0,0,0,0.8);border:1px solid rgba(255,255,255,0.2);
-                    border-radius:50%;width:36px;height:36px;
-                    color:#fff;font-size:1rem;cursor:pointer;
-                    display:flex;align-items:center;justify-content:center;
-                    ">✕</button>
-            </div>
-            <div style="color:rgba(255,255,255,0.4);font-size:0.72rem;font-family:'Poppins',sans-serif;text-align:center;">
-                ${nome} · Toque fora para fechar
-            </div>
-        `;
-    };
-    img.onerror = () => {
-        overlay.innerHTML = `
-            <div style="color:rgba(255,255,255,0.5);font-size:0.9rem;text-align:center;padding:20px;">
-                ⚠️ Não foi possível carregar a foto
-                <br><br>
-                <button onclick="document.getElementById('fotoBookipOverlay').remove()" 
-                    style="background:var(--primary-color);border:none;border-radius:8px;color:#fff;padding:8px 20px;cursor:pointer;">
-                    Fechar
-                </button>
-            </div>
-        `;
-    };
-    img.src = fotoUrl;
-};
-
+// → Movido para bookip.js: abrirFotoBookip
 
 // ============================================================
 // EXPORTS — expõe funções para os módulos externos
@@ -9936,63 +9808,207 @@ window.updateNotificationUI  = updateNotificationUI;
         var ov = document.createElement('div');
         ov.style.cssText = 'position:fixed;inset:0;z-index:26000;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px;';
         ov.innerHTML = `
-            <div style="background:var(--bg-color,#0b1325);border:1px solid var(--glass-border);border-radius:20px;padding:24px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:14px;">
-                <div style="font-weight:700;font-size:1rem;color:var(--text-color);">✏️ Editar: ${nome}</div>
+            <div style="background:var(--bg-color,#0b1325);border:1px solid var(--glass-border);border-radius:20px;padding:24px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:16px;">
+
+                <div style="font-weight:700;font-size:1rem;color:var(--text-color);">✏️ Editar Perfil</div>
+
+                <!-- Nome -->
                 <div>
                     <label style="font-size:.75rem;color:var(--text-secondary);margin-bottom:4px;display:block;">Nome</label>
                     <input id="_editPerfilNome" class="form-control" type="text" value="${nome}" autocomplete="off">
                 </div>
-                <div>
-                    <label style="font-size:.75rem;color:var(--text-secondary);margin-bottom:4px;display:block;">Senha (deixe vazio para sem senha)</label>
-                    <input id="_editPerfilSenha" class="form-control" type="password" placeholder="Nova senha..." autocomplete="new-password">
-                    ${senhaAtual ? '<div style="font-size:.68rem;color:#f59e0b;margin-top:4px;">⚠️ Já tem senha — deixe vazio para manter a atual</div>' : ''}
+
+                <!-- Bloco de senha -->
+                <div style="background:rgba(255,255,255,0.04);border:1px solid var(--glass-border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;">
+
+                    ${senhaAtual ? `
+                    <!-- Tem senha: mostra status + opções -->
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:1.1rem;">🔐</span>
+                        <span style="font-size:.78rem;color:var(--text-color);font-weight:600;">Senha definida</span>
+                    </div>
+
+                    <div id="_editSenhaOpcoes" style="display:flex;flex-direction:column;gap:8px;">
+                        <button id="_btnAlterarSenha" style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);color:#3b82f6;border-radius:8px;padding:8px;font-size:.75rem;cursor:pointer;font-weight:600;">
+                            🔄 Alterar senha
+                        </button>
+                        <button id="_btnRemoverSenha" style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#ef4444;border-radius:8px;padding:8px;font-size:.75rem;cursor:pointer;font-weight:600;">
+                            🔓 Remover senha (deixar sem senha)
+                        </button>
+                    </div>
+
+                    <div id="_novaSenhaContainer" style="display:none;">
+                        <label style="font-size:.72rem;color:var(--text-secondary);margin-bottom:4px;display:block;">Nova senha</label>
+                        <input id="_editPerfilSenha" class="form-control" type="password" placeholder="Digite a nova senha..." autocomplete="new-password">
+                    </div>
+
+                    <div id="_removerSenhaConfirm" style="display:none;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:10px;font-size:.75rem;color:#ef4444;line-height:1.4;">
+                        ⚠️ A senha será <strong>removida</strong> ao salvar. Este perfil ficará sem proteção.
+                    </div>
+                    ` : `
+                    <!-- Sem senha: mostra campo direto -->
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+                        <span style="font-size:1.1rem;">🔓</span>
+                        <span style="font-size:.78rem;color:var(--text-secondary);">Sem senha definida</span>
+                    </div>
+                    <label style="font-size:.72rem;color:var(--text-secondary);margin-bottom:2px;display:block;">Definir senha (opcional)</label>
+                    <input id="_editPerfilSenha" class="form-control" type="password" placeholder="Deixe vazio para continuar sem senha..." autocomplete="new-password">
+                    `}
                 </div>
+
                 <div style="display:flex;gap:10px;">
                     <button id="_editPerfilCancel" class="btn btn-outline-secondary flex-fill">Cancelar</button>
-                    <button id="_editPerfilSave"   class="btn btn-primary flex-fill">Salvar</button>
+                    <button id="_editPerfilSave"   class="btn btn-primary flex-fill">💾 Salvar</button>
                 </div>
             </div>
         `;
         document.body.appendChild(ov);
+
         var nomeInp  = document.getElementById('_editPerfilNome');
         var senhaInp = document.getElementById('_editPerfilSenha');
         setTimeout(function(){ if(nomeInp) nomeInp.focus(); }, 80);
 
+        // Lógica dos botões de senha (só existe se já tiver senha)
+        var _removerSenha = false;
+        if (senhaAtual) {
+            document.getElementById('_btnAlterarSenha').addEventListener('click', function() {
+                _removerSenha = false;
+                document.getElementById('_novaSenhaContainer').style.display = 'block';
+                document.getElementById('_removerSenhaConfirm').style.display = 'none';
+                document.getElementById('_editSenhaOpcoes').style.display = 'none';
+                setTimeout(function(){ if(senhaInp) senhaInp.focus(); }, 60);
+            });
+            document.getElementById('_btnRemoverSenha').addEventListener('click', function() {
+                _removerSenha = true;
+                document.getElementById('_removerSenhaConfirm').style.display = 'block';
+                document.getElementById('_novaSenhaContainer').style.display = 'none';
+                document.getElementById('_editSenhaOpcoes').style.display = 'none';
+            });
+        }
+
         document.getElementById('_editPerfilCancel').addEventListener('click', function(){ ov.remove(); });
         document.getElementById('_editPerfilSave').addEventListener('click', function(){
             var novoNome  = nomeInp.value.trim();
-            var novaSenha = senhaInp.value;
+            var novaSenha = senhaInp ? senhaInp.value : '';
             if(!novoNome) { alert('Nome obrigatório.'); return; }
 
             var updates = { name: novoNome };
-            if(novaSenha) {
+
+            if (_removerSenha) {
+                // Remove explicitamente a senha do Firebase
+                updates.senha = null;
+            } else if (novaSenha) {
                 updates.senha = novaSenha;
-            } else if(senhaAtual) {
+            } else if (senhaAtual && !_removerSenha) {
                 updates.senha = senhaAtual; // mantém a existente
             }
 
             update(ref(db, 'team_profiles/' + pid), updates).then(function(){
-                // Atualiza currentUserProfile se o nome mudou
                 if(nome === currentUserProfile && novoNome !== nome) {
                     currentUserProfile = novoNome;
                     localStorage.setItem('ctwUserProfile', novoNome);
                 }
                 ov.remove();
                 _loadPerfis();
-                if(typeof showCustomModal === 'function') showCustomModal({ message: '✅ Perfil atualizado!' });
+                var msg = _removerSenha ? '✅ Senha removida! Perfil sem proteção.' : '✅ Perfil atualizado!';
+                if(typeof showCustomModal === 'function') showCustomModal({ message: msg });
             }).catch(function(e){ alert('Erro: ' + e.message); });
         });
     }
 
     function _deletePerfil(pid, nome) {
-        if(!confirm('Remover "' + nome + '" da equipe? Isso remove para todos.')) return;
-        remove(ref(db, 'team_profiles/' + pid)).then(function(){
-            if(nome === currentUserProfile) {
-                currentUserProfile = '';
-                localStorage.removeItem('ctwUserProfile');
+        // Modal estilizado de confirmação com senha de admin
+        var ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;inset:0;z-index:26000;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px);';
+        ov.innerHTML = `
+            <div style="background:var(--bg-color,#0b1325);border:1px solid rgba(239,68,68,.35);border-radius:20px;padding:24px;width:100%;max-width:340px;display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;">
+
+                <!-- Ícone de perigo -->
+                <div style="width:60px;height:60px;border-radius:50%;background:rgba(239,68,68,.15);border:2px solid rgba(239,68,68,.3);display:flex;align-items:center;justify-content:center;font-size:1.8rem;">
+                    🗑️
+                </div>
+
+                <!-- Título -->
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    <span style="font-size:1rem;font-weight:700;color:#ef4444;">Excluir perfil?</span>
+                    <span style="font-size:.82rem;color:var(--text-color);font-weight:600;">"${nome}"</span>
+                    <span style="font-size:.73rem;color:var(--text-secondary);line-height:1.4;margin-top:2px;">
+                        Essa ação é irreversível e vai remover<br>este perfil para <strong>toda a equipe</strong>.
+                    </span>
+                </div>
+
+                <!-- Campo de senha -->
+                <div style="width:100%;text-align:left;">
+                    <label style="font-size:.72rem;color:var(--text-secondary);margin-bottom:6px;display:block;">🔑 Confirme com a senha de administrador:</label>
+                    <input id="_deletePerfilSenha" class="form-control" type="password"
+                           placeholder="••••••"
+                           autocomplete="off"
+                           style="text-align:center;letter-spacing:6px;font-size:1.1rem;">
+                    <div id="_deletePerfilErro" style="display:none;margin-top:6px;font-size:.72rem;color:#ef4444;font-weight:600;">
+                        ❌ Senha incorreta. Tente novamente.
+                    </div>
+                </div>
+
+                <!-- Botões -->
+                <div style="display:flex;gap:10px;width:100%;">
+                    <button id="_deletePerfilCancel" style="
+                        flex:1;padding:10px;border-radius:10px;
+                        background:rgba(255,255,255,0.06);
+                        border:1px solid var(--glass-border);
+                        color:var(--text-color);font-size:.85rem;
+                        font-weight:600;cursor:pointer;">
+                        Cancelar
+                    </button>
+                    <button id="_deletePerfilConfirm" style="
+                        flex:1;padding:10px;border-radius:10px;
+                        background:rgba(239,68,68,.2);
+                        border:1px solid rgba(239,68,68,.4);
+                        color:#ef4444;font-size:.85rem;
+                        font-weight:700;cursor:pointer;">
+                        🗑️ Excluir
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(ov);
+
+        var senhaInp = document.getElementById('_deletePerfilSenha');
+        var erroDiv  = document.getElementById('_deletePerfilErro');
+        setTimeout(function(){ if(senhaInp) senhaInp.focus(); }, 80);
+
+        document.getElementById('_deletePerfilCancel').addEventListener('click', function(){ ov.remove(); });
+
+        document.getElementById('_deletePerfilConfirm').addEventListener('click', function(){
+            if(senhaInp.value !== '220390') {
+                erroDiv.style.display = 'block';
+                senhaInp.value = '';
+                senhaInp.focus();
+                // Shake animation
+                senhaInp.style.transition = 'transform 0.08s';
+                var shakes = ['-6px','6px','-4px','4px','0px'];
+                var i = 0;
+                var shake = setInterval(function(){
+                    senhaInp.style.transform = 'translateX(' + shakes[i++] + ')';
+                    if(i >= shakes.length) { clearInterval(shake); senhaInp.style.transform = ''; }
+                }, 60);
+                return;
             }
-            _loadPerfis();
-        }).catch(function(e){ alert('Erro: ' + e.message); });
+            // Senha correta — exclui
+            ov.remove();
+            remove(ref(db, 'team_profiles/' + pid)).then(function(){
+                if(nome === currentUserProfile) {
+                    currentUserProfile = '';
+                    localStorage.removeItem('ctwUserProfile');
+                }
+                _loadPerfis();
+                if(typeof showCustomModal === 'function') showCustomModal({ message: '✅ Perfil "' + nome + '" removido.' });
+            }).catch(function(e){ alert('Erro: ' + e.message); });
+        });
+
+        // Enter no campo de senha confirma
+        senhaInp.addEventListener('keydown', function(e){
+            if(e.key === 'Enter') document.getElementById('_deletePerfilConfirm').click();
+        });
     }
 
     function _addPerfil() {
@@ -10209,137 +10225,7 @@ window.updateNotificationUI  = updateNotificationUI;
 
 
 
-// ============================================================
-// FOTO DO PRODUTO — BOOKIP com Cloudinary
-// Compressão WebP 88% max 1920px · Upload gratuito Cloudinary
-// Cloud: dmvynrze6 · Preset: g8rdi3om (Unsigned)
-// ============================================================
-
-const CLOUDINARY_CLOUD  = 'dmvynrze6';
-const CLOUDINARY_PRESET = 'g8rdi3om';
-const CLOUDINARY_URL    = 'https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/image/upload';
-
-window._bookipFotoUrl  = '';
-window._bookipFotoBlob = null;
-
-// Comprime: max 1920px, WebP 88% — IMEI legível, tamanho ~300-500KB
-function comprimirFotoBookip(file) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        const objUrl = URL.createObjectURL(file);
-        img.onload = () => {
-            URL.revokeObjectURL(objUrl);
-            const MAX = 1920, Q = 0.88;
-            let w = img.width, h = img.height;
-            if (w > MAX || h > MAX) {
-                const r = Math.min(MAX / w, MAX / h);
-                w = Math.round(w * r);
-                h = Math.round(h * r);
-            }
-            const c = document.createElement('canvas');
-            c.width = w; c.height = h;
-            c.getContext('2d').drawImage(img, 0, 0, w, h);
-            c.toBlob(
-                blob => blob ? resolve(blob) : reject(new Error('Compressão falhou')),
-                'image/webp', Q
-            );
-        };
-        img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('Imagem inválida')); };
-        img.src = objUrl;
-    });
-}
-
-// Upload para Cloudinary — retorna URL segura (https)
-window.uploadFotoCloudinary = async function(blob) {
-    if (!blob) return '';
-    try {
-        const formData = new FormData();
-        formData.append('file', blob, 'foto.webp');
-        formData.append('upload_preset', CLOUDINARY_PRESET);
-        formData.append('folder', 'bookip_fotos');
-
-        const resp = await fetch(CLOUDINARY_URL, {
-            method: 'POST',
-            body: formData
-        });
-
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const data = await resp.json();
-
-        if (data.secure_url) {
-            const kb = Math.round(blob.size / 1024);
-            console.log('Foto enviada ao Cloudinary:', data.secure_url, '| ' + kb + 'KB');
-            return data.secure_url;
-        }
-        console.warn('Cloudinary resposta inesperada:', data);
-        return '';
-    } catch(e) {
-        console.warn('Upload Cloudinary falhou:', e);
-        return '';
-    }
-};
-
-// Inicializa botão de foto
-function initBookipPhoto() {
-    const inputCamera  = document.getElementById('bookipPhotoInputCamera');
-    const inputGallery = document.getElementById('bookipPhotoInputGallery');
-    const btnCamera    = document.getElementById('bookipPhotoBtnCamera');
-    const btnGallery   = document.getElementById('bookipPhotoBtnGallery');
-    const preview      = document.getElementById('bookipPhotoPreview');
-    const imgEl        = document.getElementById('bookipPhotoImg');
-    const btnLabel     = document.getElementById('bookipPhotoBtnLabel');
-    const removeBtn    = document.getElementById('bookipPhotoRemove');
-    if (!inputCamera || !inputGallery) return;
-
-    if (btnCamera) btnCamera.addEventListener('click', () => inputCamera.click());
-    if (btnGallery) btnGallery.addEventListener('click', () => inputGallery.click());
-
-    async function handleFile(file) {
-        if (!file) return;
-        if (btnLabel) btnLabel.textContent = 'Comprimindo...';
-        if (btnCamera) btnCamera.disabled = true;
-        if (btnGallery) btnGallery.disabled = true;
-        try {
-            const compressed = await comprimirFotoBookip(file);
-            const kb = Math.round(compressed.size / 1024);
-            const previewUrl = URL.createObjectURL(compressed);
-            if (imgEl) imgEl.src = previewUrl;
-            if (preview) preview.classList.remove('hidden');
-            if (btnLabel) btnLabel.textContent = 'Foto pronta (' + kb + 'KB)';
-            window._bookipFotoBlob = compressed;
-            window._bookipFotoUrl  = '';
-        } catch(e) {
-            if (btnLabel) btnLabel.textContent = 'Da galeria';
-            if (typeof window.showCustomModal === 'function') {
-                window.showCustomModal({ message: 'Não foi possível processar a foto. Tente novamente.' });
-            }
-        }
-        if (btnCamera) btnCamera.disabled = false;
-        if (btnGallery) btnGallery.disabled = false;
-    }
-
-    inputCamera.addEventListener('change', () => { handleFile(inputCamera.files[0]); inputCamera.value = ''; });
-    inputGallery.addEventListener('change', () => { handleFile(inputGallery.files[0]); inputGallery.value = ''; });
-
-    if (removeBtn) {
-        removeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (imgEl) imgEl.src = '';
-            if (preview) preview.classList.add('hidden');
-            if (btnLabel) btnLabel.textContent = 'Da galeria';
-            window._bookipFotoBlob = null;
-            window._bookipFotoUrl  = '';
-        });
-    }
-}
-
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initBookipPhoto);
-} else {
-    initBookipPhoto();
-}
-
+// → Movido para bookip.js: comprimirFotoBookip, uploadFotoCloudinary, initBookipPhoto
 
 // ============================================================
 // BUSCA GLOBAL
@@ -10897,41 +10783,35 @@ if (document.readyState === 'loading') {
 // ============================================================
 // PROMO BANNER — Sugestão de migrar para o Layout 2.0
 // Lógica:
-//   · "Sim"          → ativa v2, grava 'accepted', nunca mais aparece
-//   · "Não" (1ª vez) → aguarda 3 dias
+//   · Sem registro  → aparece imediatamente (novo deploy / primeira vez)
+//   · "Sim"         → ativa v2, grava 'accepted', nunca mais aparece
+//   · "Não" (1ª vez)→ aguarda 3 dias
 //   · "Não" (2ª vez+)→ aguarda 4 dias (ciclo fixo)
-//
-// QUANDO APARECE — dois hooks independentes:
-//   Hook 1 (setProfileConfirmed): após login — cobre logins normais e
-//           re-logins após auto-logout diário
-//   Hook 2 (DOMContentLoaded): se o usuário JÁ está logado ao abrir o app
-//           — cobre deploys onde o usuário não precisou re-logar
-//           — SÓ funciona se o sw.js foi atualizado (versão do cache bumped),
-//             caso contrário o browser entrega o app.js antigo do cache
 // ============================================================
 (function() {
-    var PROMO_STATUS_KEY   = 'ctwV2PromoStatus';
-    var PROMO_NEXT_KEY     = 'ctwV2PromoNext';
-    var PROMO_REFUSALS_KEY = 'ctwV2PromoRefusals';
+    var PROMO_STATUS_KEY  = 'ctwV2PromoStatus';   // 'accepted' | ausente
+    var PROMO_NEXT_KEY    = 'ctwV2PromoNext';      // timestamp ms | ausente
+    var PROMO_REFUSALS_KEY = 'ctwV2PromoRefusals'; // número inteiro
 
-    var DELAY_FIRST = 3 * 24 * 60 * 60 * 1000;  // 3 dias
-    var DELAY_LOOP  = 4 * 24 * 60 * 60 * 1000;  // 4 dias
+    var DELAY_FIRST = 3 * 24 * 60 * 60 * 1000;  // 3 dias em ms
+    var DELAY_LOOP  = 4 * 24 * 60 * 60 * 1000;  // 4 dias em ms
 
     function isV2Active() {
         return localStorage.getItem('ctwMenuStyle') === 'v2';
     }
 
     function shouldShow() {
-        if (isV2Active())                                           return false;
+        if (isV2Active())                                          return false;
         if (localStorage.getItem(PROMO_STATUS_KEY) === 'accepted') return false;
+
         var next = localStorage.getItem(PROMO_NEXT_KEY);
-        if (!next) return true;
-        return Date.now() >= parseInt(next, 10);
+        if (!next) return true;                    // sem registro = mostra agora
+        return Date.now() >= parseInt(next, 10);   // passou do prazo?
     }
 
     function showBanner() {
         var banner = document.getElementById('v2PromoBanner');
-        if (!banner || banner.style.display === 'flex') return;
+        if (!banner) return;
         banner.style.display = 'flex';
 
         var btnYes = document.getElementById('v2PromoBtnYes');
@@ -10939,58 +10819,47 @@ if (document.readyState === 'loading') {
 
         function closeBanner() {
             banner.style.animation = 'v2PromoFadeIn .25s ease reverse forwards';
-            setTimeout(function() {
-                banner.style.display = 'none';
-                banner.style.animation = '';
-            }, 260);
-        }
-
-        function recusar() {
-            closeBanner();
-            var refusals = parseInt(localStorage.getItem(PROMO_REFUSALS_KEY) || '0', 10);
-            refusals += 1;
-            localStorage.setItem(PROMO_REFUSALS_KEY, String(refusals));
-            var delay = refusals === 1 ? DELAY_FIRST : DELAY_LOOP;
-            localStorage.setItem(PROMO_NEXT_KEY, String(Date.now() + delay));
+            setTimeout(function() { banner.style.display = 'none'; banner.style.animation = ''; }, 260);
         }
 
         if (btnYes) {
             btnYes.onclick = function() {
                 closeBanner();
+                // Marca como aceito
                 localStorage.setItem(PROMO_STATUS_KEY, 'accepted');
+                // Ativa layout 2.0 (usa a mesma função do app)
                 setTimeout(function() {
-                    if (typeof window.ativarEstilo20 === 'function' && !isV2Active()) {
-                        window.ativarEstilo20();
+                    if (typeof window.ativarEstilo20 === 'function') {
+                        // ativarEstilo20 é um toggle — garante que estamos ativando, não desativando
+                        if (!isV2Active()) window.ativarEstilo20();
                     }
                 }, 300);
             };
         }
 
         if (btnNo) {
-            btnNo.onclick = recusar;
+            btnNo.onclick = function() {
+                closeBanner();
+                var refusals = parseInt(localStorage.getItem(PROMO_REFUSALS_KEY) || '0', 10);
+                refusals += 1;
+                localStorage.setItem(PROMO_REFUSALS_KEY, String(refusals));
+                var delay = refusals === 1 ? DELAY_FIRST : DELAY_LOOP;
+                localStorage.setItem(PROMO_NEXT_KEY, String(Date.now() + delay));
+            };
         }
 
+        // Toque no fundo escuro = mesmo que "Não"
         banner.addEventListener('click', function(e) {
-            if (e.target === banner) recusar();
+            if (e.target === banner && btnNo) btnNo.click();
         }, { once: true });
     }
 
-    // ── Hook 1: após login normal ou re-login pós auto-logout
+    // Aguarda um tick depois do login para não conflitar com animações do app
     var _origConfirmed = window.setProfileConfirmed;
     window.setProfileConfirmed = function(name) {
         if (typeof _origConfirmed === 'function') _origConfirmed(name);
         setTimeout(function() {
             if (shouldShow()) showBanner();
-        }, 900);
+        }, 900); // pequeno delay para o usuário ver a tela principal primeiro
     };
-
-    // ── Hook 2: usuário já estava logado ao carregar o novo app.js
-    //    (ex: deploy feito sem deslogar ninguém — funciona porque o sw.js
-    //    foi atualizado e forçou o download do novo app.js)
-    document.addEventListener('DOMContentLoaded', function() {
-        if (!localStorage.getItem('ctwUserProfile')) return;
-        setTimeout(function() {
-            if (shouldShow()) showBanner();
-        }, 1200);
-    });
 })();

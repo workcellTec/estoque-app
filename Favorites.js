@@ -553,6 +553,122 @@ window.toggleNotifBalloons = function() {
     });
 };
 
+// Modal centralizado para mensagens longas
+function _abrirModalMensagemCompleta(texto, icon, accentH, accentRGB) {
+    // Remove modal anterior se existir
+    const old = document.getElementById('notif-full-modal');
+    if (old) old.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'notif-full-modal';
+    modal.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        background: rgba(0,0,0,0.7);
+        backdrop-filter: blur(4px);
+        animation: notif-overlay-in 0.2s ease;
+        padding: 0;
+    `;
+
+    modal.innerHTML = `
+        <div style="
+            width: 100%;
+            max-width: 480px;
+            background: #0d1526;
+            border: 1px solid rgba(${accentRGB},0.3);
+            border-bottom: none;
+            border-radius: 20px 20px 0 0;
+            padding: 0;
+            animation: notif-sheet-up 0.3s cubic-bezier(0.34,1.2,0.64,1) both;
+            display: flex;
+            flex-direction: column;
+            max-height: 80vh;
+        ">
+            <!-- Handle -->
+            <div style="display:flex;justify-content:center;padding:10px 0 4px;">
+                <div style="width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,0.15);"></div>
+            </div>
+
+            <!-- Header -->
+            <div style="
+                display:flex;align-items:center;gap:10px;
+                padding:12px 18px 10px;
+                border-bottom:1px solid rgba(255,255,255,0.07);
+            ">
+                <div style="
+                    width:36px;height:36px;border-radius:10px;flex-shrink:0;
+                    background:rgba(${accentRGB},0.12);
+                    border:1px solid rgba(${accentRGB},0.25);
+                    display:flex;align-items:center;justify-content:center;
+                    font-size:1.2rem;
+                ">${icon}</div>
+                <span style="
+                    font-family:'Poppins',sans-serif;
+                    font-size:0.85rem;font-weight:700;
+                    color:rgba(255,255,255,0.95);flex:1;
+                ">📢 Mensagem Completa</span>
+                <button id="notif-full-modal-close" style="
+                    background:none;border:none;
+                    color:rgba(255,255,255,0.4);
+                    font-size:1.1rem;cursor:pointer;padding:4px;
+                    line-height:1;
+                ">✕</button>
+            </div>
+
+            <!-- Corpo com scroll -->
+            <div style="
+                overflow-y: auto;
+                padding: 16px 18px 32px;
+                flex: 1;
+                -webkit-overflow-scrolling: touch;
+            ">
+                <p style="
+                    font-family:'Poppins',sans-serif;
+                    font-size:0.82rem;
+                    line-height:1.65;
+                    color:rgba(255,255,255,0.88);
+                    white-space:pre-wrap;
+                    word-break:break-word;
+                    margin:0;
+                ">${texto}</p>
+            </div>
+        </div>
+    `;
+
+    // Injeta keyframe do sheet se não existir
+    if (!document.getElementById('notif-sheet-style')) {
+        const s = document.createElement('style');
+        s.id = 'notif-sheet-style';
+        s.textContent = `@keyframes notif-sheet-up {
+            from { transform: translateY(100%); opacity:0; }
+            to   { transform: translateY(0);    opacity:1; }
+        }`;
+        document.head.appendChild(s);
+    }
+
+    document.body.appendChild(modal);
+
+    const fechar = () => {
+        modal.style.transition = 'opacity 0.2s';
+        modal.style.opacity = '0';
+        setTimeout(() => modal.remove(), 200);
+    };
+
+    modal.querySelector('#notif-full-modal-close').addEventListener('click', (e) => {
+        e.stopPropagation();
+        fechar();
+    });
+
+    // Toque no fundo fecha
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) fechar();
+    });
+}
+
 function closeBalloons(container) {
     const overlay = container.querySelector('div');
     if (overlay) {
@@ -620,6 +736,7 @@ function createNotifCard(notif, idx) {
     `;
 
     // Glow sutil no fundo
+    const isLong = texto.length > 160;
     card.innerHTML = `
         <div style="position:absolute;inset:0;border-radius:14px;background:radial-gradient(ellipse at top right,rgba(${accentRGB},0.07),transparent 65%);pointer-events:none;"></div>
 
@@ -641,8 +758,21 @@ function createNotifCard(notif, idx) {
                     line-height:1.45;
                     font-weight:500;
                     font-family:'Poppins',sans-serif;
-                    margin-bottom:${actionPrimary || actionSecondary ? '10px' : '0'};
+                    display:-webkit-box;
+                    -webkit-line-clamp:3;
+                    -webkit-box-orient:vertical;
+                    overflow:hidden;
+                    word-break:break-word;
+                    margin-bottom:${isLong ? '6px' : (actionPrimary || actionSecondary ? '10px' : '0')};
                 ">${texto}</div>
+
+                ${isLong ? `<button class="notif-vermais-btn" data-action="vermais" style="
+                    background:none;border:none;padding:0;
+                    color:rgba(${accentRGB},0.9);
+                    font-size:0.67rem;font-weight:700;
+                    font-family:'Poppins',sans-serif;cursor:pointer;
+                    margin-bottom:${actionPrimary || actionSecondary ? '8px' : '0'};
+                    letter-spacing:.3px;">Ver mensagem completa ↗</button>` : ''}
 
                 ${actionPrimary || actionSecondary ? `
                 <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -699,6 +829,14 @@ function createNotifCard(notif, idx) {
             ">✕</button>
         </div>
     `;
+
+    // Wira botão "Ver mensagem completa"
+    if (isLong) {
+        card.querySelector('[data-action="vermais"]')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            _abrirModalMensagemCompleta(texto, icon, accentH, accentRGB);
+        });
+    }
 
     // Wira os botões de ação
     if (actionPrimary) {

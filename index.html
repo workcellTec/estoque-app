@@ -151,15 +151,30 @@ class="dropdown-menu-custom">
                             <span class="position-absolute top-0 start-100 translate-middle bg-danger rounded-circle" class="notification-badge-small"></span>
                         </div>
                         
-                        <div class="notification-text-container">
+                        <div class="notification-text-container" style="max-width:210px;">
                             <span class="d-block fw-bold mb-1" class="notification-title-text">
                                 Nova Mensagem
                             </span>
                             
-                            <small class="d-block" id="menu-notification-text" 
-                                   class="notification-text-clamped">
-                                Carregando...
-                            </small>
+                            <small id="menu-notification-text" style="
+                                display: -webkit-box;
+                                -webkit-line-clamp: 2;
+                                -webkit-box-orient: vertical;
+                                overflow: hidden;
+                                text-overflow: ellipsis;
+                                white-space: normal;
+                                line-height: 1.4;
+                                word-break: break-word;
+                            ">Carregando...</small>
+
+                            <small style="
+                                display: block;
+                                margin-top: 4px;
+                                color: var(--primary-color, #00e5ff);
+                                font-size: .65rem;
+                                font-weight: 600;
+                                letter-spacing: .3px;
+                            ">Toque para ver completa →</small>
                         </div>
                     </div>
                 </button>
@@ -1800,6 +1815,7 @@ do que você precisa??</h2>
                 import('./ambilight.js'),
                 import('./Favorites.js'),
                 import('./repairs.js?v=2').then(m => { window._repairsModule = m; }),
+                import('./bookip.js'),
             ]);
         }
         // Módulos carregam assim que o DOM está pronto
