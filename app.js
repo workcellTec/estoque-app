@@ -7110,7 +7110,11 @@ window.editarCliente = function(id) {
     document.getElementById('editClientAddress').value = cliente.end || '';
     document.getElementById('editClientEmail').value = cliente.email || '';
     const editBirthEl = document.getElementById('editClientBirthdate');
-    if (editBirthEl) editBirthEl.value = cliente.dataNascimento || '';
+    if (editBirthEl) {
+        editBirthEl.value = cliente.dataNascimento || '';
+        if (typeof window._bdSetValor === 'function')
+            window._bdSetValor('editClientBirthdate','editClientBirthdateBtn','editClientBirthdateLabel', cliente.dataNascimento || '');
+    }
     // Popular select com perfis reais — múltiplos fallbacks
     const atribEl = document.getElementById('editClientAtribuido');
     if (atribEl) {
@@ -8260,6 +8264,8 @@ window.processarTextoZap = function() {
     if (dataNascISO) {
         const nascEl = document.getElementById('bookipNascimento');
         if (nascEl) nascEl.value = dataNascISO;
+        if (typeof window._bdSetValor === 'function')
+            window._bdSetValor('bookipNascimento','bookipNascimentoBtn','bookipNascimentoLabel', dataNascISO);
     }
 
     // Fecha janela

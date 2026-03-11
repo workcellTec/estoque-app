@@ -513,6 +513,7 @@ function buildCard(r) {
                 ${thumb}
                 <div class="rep-card-info">
                     <div class="rep-card-name">${escHtml(r.nomeCliente)}</div>
+                    ${r.modeloAparelho ? `<div class="rep-card-model"><i class="bi bi-phone-fill" style="font-size:.65rem;opacity:.6;"></i> ${escHtml(r.modeloAparelho)}</div>` : ''}
                     <div class="rep-card-defect">${escHtml(r.descricaoDefeito)}</div>
                     <div class="rep-card-badges">
                         <span class="rep-status-pill" style="background:${STATUS_COLOR[r.status]}22;color:${STATUS_COLOR[r.status]};border:1px solid ${STATUS_COLOR[r.status]}44;">${STATUS_LABEL[r.status]}</span>
@@ -531,7 +532,8 @@ function buildCard(r) {
                 <span><i class="bi bi-calendar3"></i> Cadastro: ${formatDate(r.tsCadastro)}</span>
                 ${prazoFormatado ? `<span><i class="bi bi-flag-fill"></i> Entrega: ${prazoFormatado}</span>` : ''}
                 ${r.valorCobrado ? `<span><i class="bi bi-cash-coin"></i> R$ ${Number(r.valorCobrado).toFixed(2).replace('.',',')}</span>` : ''}
-                <span><i class="bi bi-person-fill"></i> ${escHtml(r.criadoPor || '—')}</span>
+                <span><i class="bi bi-person-fill"></i> Criado por: ${escHtml(r.criadoPor || '—')}</span>
+                ${r.responsavel ? `<span style="color:var(--rep-blue);font-weight:600;"><i class="bi bi-person-badge-fill"></i> Responsável: ${escHtml(r.responsavel)}</span>` : ''}
             </div>
             ${timelineHtml}
             <div class="rep-card-actions">
@@ -674,9 +676,10 @@ function openRepairForm(repair = null) {
     const idInput  = document.getElementById('repFormId');
     const nome     = document.getElementById('repFormNome');
     const tel      = document.getElementById('repFormTel');
+    const modelo   = document.getElementById('repFormModelo');
     const defeito  = document.getElementById('repFormDefeito');
-    const prazo    = document.getElementById('repFormPrazo');
-    const hora     = document.getElementById('repFormHora');
+    const prazo    = document.getElementById('repFormPrazoDatetime');
+    const hora     = null; // unificado em prazo
     const imgEl    = document.getElementById('repFormPhotoImg');
     const preview  = document.getElementById('repFormPhotoPreview');
     const lbl      = document.getElementById('repFormPhotoBtnLabel');
@@ -684,12 +687,31 @@ function openRepairForm(repair = null) {
 
     if (!overlay || !title) return;
 
+    // Popula select de responsável com perfis da equipe
+    const responsavelSel = document.getElementById('repFormResponsavel');
+    if (responsavelSel) {
+        const perfis = window.teamProfilesList || {};
+        const nomes = Object.values(perfis).map(p => p.name).filter(Boolean).sort();
+        responsavelSel.innerHTML = '<option value="">— Sem responsável definido —</option>'
+            + nomes.map(n => `<option value="${escHtml(n)}">${escHtml(n)}</option>`).join('');
+        responsavelSel.value = repair?.responsavel || '';
+    }
+
     title.textContent  = repair ? 'Editar Conserto' : 'Novo Conserto';
     idInput.value      = repair?.id || '';
     nome.value         = repair?.nomeCliente || '';
     tel.value          = repair?.numeroCliente || '';
+    if (modelo)  modelo.value  = repair?.modeloAparelho || '';
     defeito.value      = repair?.descricaoDefeito || '';
-    prazo.value        = repair?.dataMaxima || '';
+    // Monta valor datetime-local a partir dos campos separados salvos no Firebase
+    if (prazo) {
+        if (repair?.dataMaxima) {
+            const hora = repair?.horaMaxima || '00:00';
+            prazo.value = repair.dataMaxima + 'T' + hora;
+        } else {
+            prazo.value = '';
+        }
+    }
     if (hora) hora.value = repair?.horaMaxima || '';
     const valorEl = document.getElementById('repFormValor');
     if (valorEl) valorEl.value = repair?.valorCobrado || '';
@@ -716,13 +738,16 @@ function closeRepairForm() {
 }
 
 async function submitRepairForm() {
-    const id      = document.getElementById('repFormId').value;
-    const nome    = document.getElementById('repFormNome').value.trim();
-    const tel     = document.getElementById('repFormTel').value.trim();
-    const defeito = document.getElementById('repFormDefeito').value.trim();
-    const prazo   = document.getElementById('repFormPrazo').value;
-    const hora    = document.getElementById('repFormHora')?.value || null;
-    const valor   = parseFloat(document.getElementById('repFormValor')?.value) || null;
+    const id          = document.getElementById('repFormId').value;
+    const nome        = document.getElementById('repFormNome').value.trim();
+    const tel         = document.getElementById('repFormTel').value.trim();
+    const modelo      = document.getElementById('repFormModelo')?.value.trim() || '';
+    const defeito     = document.getElementById('repFormDefeito').value.trim();
+    const prazoRaw    = document.getElementById('repFormPrazoDatetime')?.value || '';
+    const prazo       = prazoRaw ? prazoRaw.split('T')[0] : null;
+    const hora        = prazoRaw ? prazoRaw.split('T')[1]?.slice(0,5) || null : null;
+    const valor       = parseFloat(document.getElementById('repFormValor')?.value) || null;
+    const responsavel = document.getElementById('repFormResponsavel')?.value || '';
 
     if (!nome || !defeito) {
         showToast('⚠️ Nome do cliente e defeito são obrigatórios.'); return;
@@ -737,10 +762,12 @@ async function submitRepairForm() {
         const data = {
             nomeCliente:      nome,
             numeroCliente:    tel,
+            modeloAparelho:   modelo || null,
             descricaoDefeito: defeito,
             dataMaxima:       prazo || null,
             horaMaxima:       hora || null,
             valorCobrado:     valor,
+            responsavel:      responsavel || null,
             fotoUrl:          repairPhotoUrl || null,
             status:           existing?.status || STATUS.LOJA_SEM_ANALISE,
             tsCadastro:       existing?.tsCadastro || tsNow(),
@@ -953,7 +980,9 @@ function wireSearchInput() {
         const filtered = getFiltered(activeFilter).filter(r =>
             r.nomeCliente?.toLowerCase().includes(q) ||
             r.descricaoDefeito?.toLowerCase().includes(q) ||
-            r.numeroCliente?.includes(q)
+            r.numeroCliente?.includes(q) ||
+            r.modeloAparelho?.toLowerCase().includes(q) ||
+            r.responsavel?.toLowerCase().includes(q)
         );
         renderList(filtered);
     });

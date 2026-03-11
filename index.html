@@ -1146,7 +1146,11 @@ do que você precisa??</h2>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">🎂 Data de Nascimento</label>
-                            <input type="date" class="form-control" id="bookipNascimento">
+                            <input type="hidden" id="bookipNascimento">
+                            <button type="button" id="bookipNascimentoBtn" class="rep-datetime-btn" style="width:100%;font-size:.82rem;padding:10px 12px;" onclick="window._abrirBirthdayPicker('bookipNascimento','bookipNascimentoBtn','bookipNascimentoLabel')">
+                                <i class="bi bi-calendar-heart" style="color:var(--primary-color);font-size:.9rem;flex-shrink:0;"></i>
+                                <span id="bookipNascimentoLabel" style="flex:1;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Definir data</span>
+                            </button>
                         </div>
                         <div class="col-md-12 mb-3">
                             <label class="form-label">Endereço / CEP</label>
@@ -1498,7 +1502,11 @@ do que você precisa??</h2>
                     </div>
                     <div class="col-6 mb-2">
                         <label class="form-label small">🎂 Aniversário</label>
-                        <input type="date" class="form-control" id="editClientBirthdate">
+                        <input type="hidden" id="editClientBirthdate">
+                        <button type="button" id="editClientBirthdateBtn" class="rep-datetime-btn" style="width:100%;font-size:.8rem;padding:9px 10px;" onclick="window._abrirBirthdayPicker('editClientBirthdate','editClientBirthdateBtn','editClientBirthdateLabel')">
+                            <i class="bi bi-calendar-heart" style="color:var(--primary-color);font-size:.9rem;"></i>
+                            <span id="editClientBirthdateLabel" style="flex:1;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Definir data</span>
+                        </button>
                     </div>
                 </div>
 
@@ -2147,16 +2155,23 @@ do que você precisa??</h2>
                 <input type="tel" id="repFormTel" class="form-control" placeholder="(11) 99999-9999" autocomplete="off">
             </div>
             <div class="rep-field">
+                <label><i class="bi bi-phone-fill"></i> Modelo do Aparelho</label>
+                <input type="text" id="repFormModelo" class="form-control" placeholder="Ex: iPhone 13, Samsung A54..." autocomplete="off">
+            </div>
+            <div class="rep-field">
                 <label><i class="bi bi-exclamation-triangle-fill"></i> Descrição do Defeito *</label>
                 <textarea id="repFormDefeito" class="form-control" rows="3" placeholder="Ex: Tela quebrada, não liga..."></textarea>
             </div>
             <div class="rep-field">
-                <label><i class="bi bi-calendar-event-fill"></i> Data para Entrega ao Cliente</label>
-                <input type="date" id="repFormPrazo" class="form-control">
-            </div>
-            <div class="rep-field">
-                <label><i class="bi bi-clock-fill"></i> Horário limite para entrega</label>
-                <input type="time" id="repFormHora" class="form-control">
+                <label><i class="bi bi-calendar-event-fill"></i> Data e Hora de Entrega</label>
+                <!-- Input oculto que armazena o valor real (compatível com repairs.js) -->
+                <input type="hidden" id="repFormPrazoDatetime">
+                <!-- Botão visual que abre o picker customizado -->
+                <button type="button" id="repFormPrazoBtn" class="rep-datetime-btn" onclick="window._abrirDatetimePicker()">
+                    <i class="bi bi-calendar3"></i>
+                    <span id="repFormPrazoLabel">Toque para definir data e hora</span>
+                    <i class="bi bi-chevron-right" style="margin-left:auto;opacity:.4;font-size:.8rem;"></i>
+                </button>
                 <small style="opacity:.55;font-size:.7rem;">Menos de 8h do prazo = alerta Prox. Prazo</small>
             </div>
 
@@ -2167,6 +2182,14 @@ do que você precisa??</h2>
                     <span class="input-group-text">R$</span>
                     <input type="number" id="repFormValor" class="form-control" placeholder="0,00" step="0.01" min="0">
                 </div>
+            </div>
+
+            <!-- Responsável pelo conserto -->
+            <div class="rep-field">
+                <label><i class="bi bi-person-badge-fill"></i> Responsável</label>
+                <select id="repFormResponsavel" class="form-select">
+                    <option value="">— Sem responsável definido —</option>
+                </select>
             </div>
 
             <!-- Foto do aparelho — silhueta grande empurra conteúdo acima do teclado -->
@@ -2294,6 +2317,550 @@ do que você precisa??</h2>
         </div>
     </div>
 </div>
+
+<!-- ═══════════════════════════════════════
+     CUSTOM DATETIME PICKER — Consertos
+═══════════════════════════════════════ -->
+<div id="ctwDatetimePicker" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);align-items:flex-end;justify-content:center;">
+    <div style="width:100%;max-width:480px;background:var(--bg-color,#0b1325);border:1px solid var(--glass-border);border-bottom:none;border-radius:22px 22px 0 0;padding:0 0 24px;animation:dtPickerUp .28s cubic-bezier(.34,1.2,.64,1) both;">
+        
+        <!-- Handle -->
+        <div style="display:flex;justify-content:center;padding:10px 0 4px;">
+            <div style="width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.12);"></div>
+        </div>
+
+        <!-- Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 20px 16px;">
+            <span style="font-weight:700;font-size:1rem;color:var(--text-color);">📅 Data e Hora de Entrega</span>
+            <button onclick="window._fecharDatetimePicker()" style="background:none;border:none;color:var(--text-secondary);font-size:1.2rem;cursor:pointer;padding:4px;">✕</button>
+        </div>
+
+        <!-- Abas Data / Hora -->
+        <div style="display:flex;gap:8px;padding:0 20px 16px;">
+            <button id="dtTabData" onclick="window._dtMostrarAba('data')" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--primary-color);background:rgba(var(--primary-color-rgb),.15);color:var(--primary-color);font-weight:600;font-size:.85rem;cursor:pointer;">
+                <i class="bi bi-calendar3"></i> <span id="dtTabDataLabel">Data</span>
+            </button>
+            <button id="dtTabHora" onclick="window._dtMostrarAba('hora')" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--glass-border);background:transparent;color:var(--text-secondary);font-weight:600;font-size:.85rem;cursor:pointer;">
+                <i class="bi bi-clock"></i> <span id="dtTabHoraLabel">Hora</span>
+            </button>
+        </div>
+
+        <!-- PAINEL DATA -->
+        <div id="dtPainelData" style="padding:0 20px;">
+            <!-- Nav mês/ano -->
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                <button onclick="window._dtMudarMes(-1)" style="background:rgba(255,255,255,.06);border:1px solid var(--glass-border);color:var(--text-color);border-radius:8px;width:36px;height:36px;cursor:pointer;font-size:1rem;">‹</button>
+                <span id="dtMesAnoLabel" style="font-weight:700;font-size:.95rem;color:var(--text-color);"></span>
+                <button onclick="window._dtMudarMes(1)"  style="background:rgba(255,255,255,.06);border:1px solid var(--glass-border);color:var(--text-color);border-radius:8px;width:36px;height:36px;cursor:pointer;font-size:1rem;">›</button>
+            </div>
+            <!-- Dias da semana -->
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px;">
+                <div style="text-align:center;font-size:.65rem;font-weight:600;color:var(--text-secondary);padding:4px 0;">Dom</div>
+                <div style="text-align:center;font-size:.65rem;font-weight:600;color:var(--text-secondary);padding:4px 0;">Seg</div>
+                <div style="text-align:center;font-size:.65rem;font-weight:600;color:var(--text-secondary);padding:4px 0;">Ter</div>
+                <div style="text-align:center;font-size:.65rem;font-weight:600;color:var(--text-secondary);padding:4px 0;">Qua</div>
+                <div style="text-align:center;font-size:.65rem;font-weight:600;color:var(--text-secondary);padding:4px 0;">Qui</div>
+                <div style="text-align:center;font-size:.65rem;font-weight:600;color:var(--text-secondary);padding:4px 0;">Sex</div>
+                <div style="text-align:center;font-size:.65rem;font-weight:600;color:var(--text-secondary);padding:4px 0;">Sáb</div>
+            </div>
+            <!-- Grid de dias -->
+            <div id="dtDiasGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;"></div>
+        </div>
+
+        <!-- PAINEL HORA -->
+        <div id="dtPainelHora" style="display:none;padding:0 20px;">
+            <div style="display:flex;align-items:center;justify-content:center;gap:16px;padding:8px 0 24px;">
+                <!-- Horas -->
+                <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+                    <button onclick="window._dtAjustarHora(1)"  style="background:rgba(255,255,255,.06);border:1px solid var(--glass-border);color:var(--text-color);border-radius:10px;width:52px;height:40px;cursor:pointer;font-size:1.2rem;">▲</button>
+                    <div id="dtHoraDisplay" style="font-size:2.4rem;font-weight:700;color:var(--text-color);width:70px;text-align:center;background:rgba(var(--primary-color-rgb),.1);border:1px solid rgba(var(--primary-color-rgb),.3);border-radius:12px;padding:8px 0;">00</div>
+                    <button onclick="window._dtAjustarHora(-1)" style="background:rgba(255,255,255,.06);border:1px solid var(--glass-border);color:var(--text-color);border-radius:10px;width:52px;height:40px;cursor:pointer;font-size:1.2rem;">▼</button>
+                    <span style="font-size:.7rem;color:var(--text-secondary);font-weight:600;">HORA</span>
+                </div>
+                <span style="font-size:2rem;font-weight:700;color:var(--text-secondary);margin-top:-24px;">:</span>
+                <!-- Minutos -->
+                <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+                    <button onclick="window._dtAjustarMin(1)"  style="background:rgba(255,255,255,.06);border:1px solid var(--glass-border);color:var(--text-color);border-radius:10px;width:52px;height:40px;cursor:pointer;font-size:1.2rem;">▲</button>
+                    <div id="dtMinDisplay" style="font-size:2.4rem;font-weight:700;color:var(--text-color);width:70px;text-align:center;background:rgba(var(--primary-color-rgb),.1);border:1px solid rgba(var(--primary-color-rgb),.3);border-radius:12px;padding:8px 0;">00</div>
+                    <button onclick="window._dtAjustarMin(-1)" style="background:rgba(255,255,255,.06);border:1px solid var(--glass-border);color:var(--text-color);border-radius:10px;width:52px;height:40px;cursor:pointer;font-size:1.2rem;">▼</button>
+                    <span style="font-size:.7rem;color:var(--text-secondary);font-weight:600;">MIN</span>
+                </div>
+            </div>
+            <!-- Atalhos de hora -->
+            <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">
+                <button onclick="window._dtSetHoraRapida(8,0)"  class="dt-quick-btn">08:00</button>
+                <button onclick="window._dtSetHoraRapida(9,0)"  class="dt-quick-btn">09:00</button>
+                <button onclick="window._dtSetHoraRapida(12,0)" class="dt-quick-btn">12:00</button>
+                <button onclick="window._dtSetHoraRapida(14,0)" class="dt-quick-btn">14:00</button>
+                <button onclick="window._dtSetHoraRapida(17,0)" class="dt-quick-btn">17:00</button>
+                <button onclick="window._dtSetHoraRapida(18,0)" class="dt-quick-btn">18:00</button>
+            </div>
+        </div>
+
+        <!-- Botões de ação -->
+        <div style="display:flex;gap:10px;padding:20px 20px 0;">
+            <button onclick="window._dtLimpar()" style="flex:1;padding:12px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid var(--glass-border);color:var(--text-secondary);font-weight:600;font-size:.85rem;cursor:pointer;">
+                🗑️ Limpar
+            </button>
+            <button onclick="window._dtConfirmar()" style="flex:2;padding:12px;border-radius:12px;background:var(--primary-color);border:none;color:#fff;font-weight:700;font-size:.9rem;cursor:pointer;">
+                ✓ Confirmar
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+@keyframes dtPickerUp {
+    from { transform: translateY(100%); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+}
+.rep-datetime-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--glass-border);
+    background: rgba(255,255,255,.04);
+    color: var(--text-color);
+    font-size: .9rem;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color .2s;
+}
+.rep-datetime-btn:active { border-color: var(--primary-color); }
+.rep-datetime-btn i:first-child { color: var(--primary-color); font-size: 1rem; }
+.dt-quick-btn {
+    background: rgba(255,255,255,.06);
+    border: 1px solid var(--glass-border);
+    color: var(--text-color);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: .78rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'Poppins', sans-serif;
+    transition: background .15s;
+}
+.dt-quick-btn:active { background: rgba(var(--primary-color-rgb),.2); }
+.dt-dia-btn {
+    aspect-ratio: 1;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-color);
+    font-size: .82rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: 'Poppins', sans-serif;
+    transition: background .12s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.dt-dia-btn:hover   { background: rgba(255,255,255,.08); }
+.dt-dia-btn.hoje    { border: 1px solid rgba(var(--primary-color-rgb),.5); color: var(--primary-color); }
+.dt-dia-btn.selecionado { background: var(--primary-color) !important; color: #fff !important; font-weight: 700; border: none; }
+.dt-dia-btn.outro-mes  { opacity: .28; }
+</style>
+
+<script>
+(function() {
+    var _dtState = { ano: 0, mes: 0, dia: 0, hora: 0, min: 0, abaAtual: 'data' };
+    var MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+    function pad(n) { return String(n).padStart(2,'0'); }
+
+    window._abrirDatetimePicker = function() {
+        var picker = document.getElementById('ctwDatetimePicker');
+        var val    = document.getElementById('repFormPrazoDatetime').value;
+        var agora  = new Date();
+        if (val) {
+            var parts = val.split('T');
+            var d = parts[0].split('-');
+            var t = (parts[1] || '00:00').split(':');
+            _dtState.ano  = parseInt(d[0]); _dtState.mes = parseInt(d[1])-1;
+            _dtState.dia  = parseInt(d[2]);
+            _dtState.hora = parseInt(t[0]); _dtState.min = parseInt(t[1]);
+        } else {
+            _dtState.ano  = agora.getFullYear(); _dtState.mes = agora.getMonth();
+            _dtState.dia  = agora.getDate();
+            _dtState.hora = agora.getHours();    _dtState.min = 0;
+        }
+        _dtRenderCalendario();
+        _dtRenderHora();
+        _dtMostrarAba('data');
+        picker.style.display = 'flex';
+    };
+
+    window._fecharDatetimePicker = function() {
+        document.getElementById('ctwDatetimePicker').style.display = 'none';
+    };
+
+    window._dtMostrarAba = function(aba) {
+        _dtState.abaAtual = aba;
+        document.getElementById('dtPainelData').style.display = aba === 'data' ? 'block' : 'none';
+        document.getElementById('dtPainelHora').style.display = aba === 'hora' ? 'block' : 'none';
+        var tabData = document.getElementById('dtTabData');
+        var tabHora = document.getElementById('dtTabHora');
+        var pc = 'rgba(var(--primary-color-rgb),.15)';
+        tabData.style.background  = aba==='data' ? pc : 'transparent';
+        tabData.style.borderColor = aba==='data' ? 'var(--primary-color)' : 'var(--glass-border)';
+        tabData.style.color       = aba==='data' ? 'var(--primary-color)' : 'var(--text-secondary)';
+        tabHora.style.background  = aba==='hora' ? pc : 'transparent';
+        tabHora.style.borderColor = aba==='hora' ? 'var(--primary-color)' : 'var(--glass-border)';
+        tabHora.style.color       = aba==='hora' ? 'var(--primary-color)' : 'var(--text-secondary)';
+    };
+
+    window._dtMudarMes = function(delta) {
+        _dtState.mes += delta;
+        if (_dtState.mes > 11) { _dtState.mes = 0;  _dtState.ano++; }
+        if (_dtState.mes < 0)  { _dtState.mes = 11; _dtState.ano--; }
+        _dtRenderCalendario();
+    };
+
+    function _dtRenderCalendario() {
+        document.getElementById('dtMesAnoLabel').textContent = MESES[_dtState.mes] + ' ' + _dtState.ano;
+        var grid    = document.getElementById('dtDiasGrid');
+        var hoje    = new Date();
+        var primeiro = new Date(_dtState.ano, _dtState.mes, 1).getDay();
+        var totalDias = new Date(_dtState.ano, _dtState.mes+1, 0).getDate();
+        var html = '';
+        // Dias do mês anterior
+        var mesAnt   = _dtState.mes === 0 ? 11 : _dtState.mes - 1;
+        var anoAnt   = _dtState.mes === 0 ? _dtState.ano-1 : _dtState.ano;
+        var diasMesAnt = new Date(anoAnt, mesAnt+1, 0).getDate();
+        for (var i = 0; i < primeiro; i++) {
+            var d = diasMesAnt - primeiro + 1 + i;
+            html += '<button class="dt-dia-btn outro-mes" onclick="window._dtMudarMes(-1);window._dtSelectDia(' + d + ');">' + d + '</button>';
+        }
+        for (var d = 1; d <= totalDias; d++) {
+            var isHoje = (d === hoje.getDate() && _dtState.mes === hoje.getMonth() && _dtState.ano === hoje.getFullYear());
+            var isSel  = (d === _dtState.dia);
+            html += '<button class="dt-dia-btn' + (isHoje ? ' hoje' : '') + (isSel ? ' selecionado' : '') + '" onclick="window._dtSelectDia(' + d + ')">' + d + '</button>';
+        }
+        grid.innerHTML = html;
+        // Atualiza label da aba
+        if (_dtState.dia) {
+            document.getElementById('dtTabDataLabel').textContent = pad(_dtState.dia) + '/' + pad(_dtState.mes+1) + '/' + _dtState.ano;
+        } else {
+            document.getElementById('dtTabDataLabel').textContent = 'Data';
+        }
+    }
+
+    window._dtSelectDia = function(d) {
+        _dtState.dia = d;
+        _dtRenderCalendario();
+        // Vai automaticamente pra aba de hora
+        setTimeout(function(){ window._dtMostrarAba('hora'); }, 180);
+    };
+
+    function _dtRenderHora() {
+        document.getElementById('dtHoraDisplay').textContent = pad(_dtState.hora);
+        document.getElementById('dtMinDisplay').textContent  = pad(_dtState.min);
+        document.getElementById('dtTabHoraLabel').textContent = pad(_dtState.hora) + ':' + pad(_dtState.min);
+    }
+
+    window._dtAjustarHora = function(delta) {
+        _dtState.hora = (_dtState.hora + delta + 24) % 24;
+        _dtRenderHora();
+    };
+
+    window._dtAjustarMin = function(delta) {
+        _dtState.min = (_dtState.min + delta + 60) % 60;
+        _dtRenderHora();
+    };
+
+    window._dtSetHoraRapida = function(h, m) {
+        _dtState.hora = h; _dtState.min = m;
+        _dtRenderHora();
+    };
+
+    window._dtLimpar = function() {
+        document.getElementById('repFormPrazoDatetime').value = '';
+        document.getElementById('repFormPrazoLabel').textContent = 'Toque para definir data e hora';
+        document.getElementById('repFormPrazoBtn').style.borderColor = '';
+        window._fecharDatetimePicker();
+    };
+
+    window._dtConfirmar = function() {
+        if (!_dtState.dia) {
+            alert('Selecione uma data primeiro.'); return;
+        }
+        var val = _dtState.ano + '-' + pad(_dtState.mes+1) + '-' + pad(_dtState.dia)
+                + 'T' + pad(_dtState.hora) + ':' + pad(_dtState.min);
+        document.getElementById('repFormPrazoDatetime').value = val;
+        var labelFormatado = pad(_dtState.dia) + '/' + pad(_dtState.mes+1) + '/' + _dtState.ano
+                           + ' às ' + pad(_dtState.hora) + ':' + pad(_dtState.min);
+        document.getElementById('repFormPrazoLabel').textContent = labelFormatado;
+        document.getElementById('repFormPrazoBtn').style.borderColor = 'var(--primary-color)';
+        window._fecharDatetimePicker();
+    };
+
+    // Fecha tocando no fundo
+    document.getElementById('ctwDatetimePicker').addEventListener('click', function(e) {
+        if (e.target === this) window._fecharDatetimePicker();
+    });
+})();
+</script>
+
+<!-- ═══════════════════════════════════════
+     CUSTOM BIRTHDAY PICKER — Clientes
+═══════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════
+     BIRTHDAY PICKER v2 — grade mês + grade ano
+═══════════════════════════════════════ -->
+
+<!-- PICKER PRINCIPAL -->
+<div id="ctwBirthdayPicker" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);align-items:flex-end;justify-content:center;">
+    <div style="width:100%;max-width:480px;background:var(--bg-color,#0b1325);border:1px solid var(--glass-border);border-bottom:none;border-radius:22px 22px 0 0;padding:0 0 28px;animation:dtPickerUp .28s cubic-bezier(.34,1.2,.64,1) both;">
+        <div style="display:flex;justify-content:center;padding:10px 0 4px;">
+            <div style="width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.12);"></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 20px 14px;">
+            <span style="font-weight:700;font-size:1rem;color:var(--text-color);">🎂 Data de Aniversário</span>
+            <button onclick="window._fecharBirthdayPicker()" style="background:none;border:none;color:var(--text-secondary);font-size:1.2rem;cursor:pointer;padding:4px;">✕</button>
+        </div>
+
+        <!-- Linha principal: DIA | MÊS (clicável) | ANO (clicável) -->
+        <div style="display:flex;gap:10px;padding:0 20px 20px;align-items:center;">
+
+            <!-- DIA — toque abre grade -->
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;">
+                <div style="height:36px;"></div>
+                <div id="bdDiaDisplay" class="bd-display-box bd-tappable" style="font-size:1.8rem;width:100%;" onclick="window._bdAbrirGradeDia()">
+                    <span>01</span><i class="bi bi-chevron-down" style="font-size:.65rem;opacity:.5;margin-left:3px;"></i>
+                </div>
+                <div style="height:36px;"></div>
+                <span class="bd-col-label">DIA <span style="opacity:.5;font-size:.55rem;">↓ toque</span></span>
+            </div>
+
+            <!-- MÊS — toque abre grade -->
+            <div style="flex:2;display:flex;flex-direction:column;align-items:center;gap:6px;">
+                <div style="height:36px;"></div>
+                <div id="bdMesDisplay" class="bd-display-box bd-tappable" style="font-size:1.05rem;width:100%;" onclick="window._bdAbrirGradeMes()">
+                    <span>Janeiro</span><i class="bi bi-chevron-down" style="font-size:.65rem;opacity:.5;margin-left:4px;"></i>
+                </div>
+                <div style="height:36px;"></div>
+                <span class="bd-col-label">MÊS <span style="opacity:.5;font-size:.55rem;">↓ toque</span></span>
+            </div>
+
+            <!-- ANO — toque abre grade -->
+            <div style="flex:1.3;display:flex;flex-direction:column;align-items:center;gap:6px;">
+                <div style="height:36px;"></div>
+                <div id="bdAnoDisplay" class="bd-display-box bd-tappable" style="font-size:1.35rem;width:100%;" onclick="window._bdAbrirGradeAno()">
+                    <span>2000</span><i class="bi bi-chevron-down" style="font-size:.65rem;opacity:.5;margin-left:2px;"></i>
+                </div>
+                <div style="height:36px;"></div>
+                <span class="bd-col-label">ANO <span style="opacity:.5;font-size:.55rem;">↓ toque</span></span>
+            </div>
+        </div>
+
+        <!-- Botões -->
+        <div style="display:flex;gap:10px;padding:0 20px;">
+            <button onclick="window._bdLimpar()" style="flex:1;padding:12px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid var(--glass-border);color:var(--text-secondary);font-weight:600;font-size:.85rem;cursor:pointer;">🗑️ Limpar</button>
+            <button onclick="window._bdConfirmar()" style="flex:2;padding:12px;border-radius:12px;background:var(--primary-color);border:none;color:#fff;font-weight:700;font-size:.9rem;cursor:pointer;">✓ Confirmar</button>
+        </div>
+    </div>
+</div>
+
+<!-- GRADE DE DIAS -->
+<div id="ctwBdDiaGrid" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+    <div style="width:calc(100% - 40px);max-width:380px;background:var(--bg-color,#0b1325);border:1px solid var(--glass-border);border-radius:20px;padding:20px;animation:dtPickerUp .2s ease both;">
+        <div style="font-weight:700;font-size:.95rem;color:var(--text-color);margin-bottom:14px;text-align:center;">Selecione o dia</div>
+        <div id="bdDiaGridItems" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;"></div>
+        <button onclick="document.getElementById('ctwBdDiaGrid').style.display='none'" style="width:100%;margin-top:14px;padding:10px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--glass-border);color:var(--text-secondary);font-weight:600;cursor:pointer;">Cancelar</button>
+    </div>
+</div>
+
+<!-- GRADE DE MESES -->
+<div id="ctwBdMesGrid" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+    <div style="width:calc(100% - 40px);max-width:380px;background:var(--bg-color,#0b1325);border:1px solid var(--glass-border);border-radius:20px;padding:20px;animation:dtPickerUp .2s ease both;">
+        <div style="font-weight:700;font-size:.95rem;color:var(--text-color);margin-bottom:14px;text-align:center;">Selecione o mês</div>
+        <div id="bdMesGridItems" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;"></div>
+        <button onclick="document.getElementById('ctwBdMesGrid').style.display='none'" style="width:100%;margin-top:14px;padding:10px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--glass-border);color:var(--text-secondary);font-weight:600;cursor:pointer;">Cancelar</button>
+    </div>
+</div>
+
+<!-- GRADE DE ANOS -->
+<div id="ctwBdAnoGrid" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+    <div style="width:calc(100% - 40px);max-width:380px;background:var(--bg-color,#0b1325);border:1px solid var(--glass-border);border-radius:20px;padding:20px;animation:dtPickerUp .2s ease both;">
+        <div style="font-weight:700;font-size:.95rem;color:var(--text-color);margin-bottom:14px;text-align:center;">Selecione o ano</div>
+        <div id="bdAnoGridItems" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;max-height:52vh;overflow-y:auto;"></div>
+        <button onclick="document.getElementById('ctwBdAnoGrid').style.display='none'" style="width:100%;margin-top:14px;padding:10px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--glass-border);color:var(--text-secondary);font-weight:600;cursor:pointer;">Cancelar</button>
+    </div>
+</div>
+
+<style>
+.bd-arrow-btn {
+    background: rgba(255,255,255,.06);
+    border: 1px solid var(--glass-border);
+    color: var(--text-color);
+    border-radius: 10px;
+    width: 100%;
+    height: 36px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-family: 'Poppins', sans-serif;
+}
+.bd-arrow-btn:active { background: rgba(var(--primary-color-rgb),.2); }
+.bd-display-box {
+    font-weight: 700;
+    color: var(--text-color);
+    text-align: center;
+    background: rgba(var(--primary-color-rgb),.1);
+    border: 1px solid rgba(var(--primary-color-rgb),.3);
+    border-radius: 12px;
+    padding: 10px 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.bd-tappable { cursor: pointer; transition: background .15s; }
+.bd-tappable:active { background: rgba(var(--primary-color-rgb),.22); }
+.bd-col-label { font-size:.62rem; color:var(--text-secondary); font-weight:600; letter-spacing:.06em; }
+.bd-grade-btn {
+    padding: 10px 4px;
+    border-radius: 10px;
+    border: 1px solid var(--glass-border);
+    background: rgba(255,255,255,.04);
+    color: var(--text-color);
+    font-size: .82rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'Poppins', sans-serif;
+    text-align: center;
+    transition: background .12s;
+}
+.bd-grade-btn:active, .bd-grade-btn.bd-sel {
+    background: var(--primary-color) !important;
+    color: #fff !important;
+    border-color: var(--primary-color) !important;
+}
+</style>
+
+<script>
+(function() {
+    var MESES_BD = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    var MESES_CURTOS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    var _bd = { dia: 1, mes: 0, ano: 2000 };
+    var _bdTarget = { inputId: '', btnId: '', labelId: '' };
+    function pad(n) { return String(n).padStart(2,'0'); }
+
+    function _bdRender() {
+        document.getElementById('bdDiaDisplay').innerHTML = pad(_bd.dia) + '<i class="bi bi-chevron-down" style="font-size:.65rem;opacity:.5;margin-left:3px;"></i>';
+        document.getElementById('bdMesDisplay').innerHTML = MESES_BD[_bd.mes] + '<i class="bi bi-chevron-down" style="font-size:.65rem;opacity:.5;margin-left:4px;"></i>';
+        document.getElementById('bdAnoDisplay').innerHTML = _bd.ano + '<i class="bi bi-chevron-down" style="font-size:.65rem;opacity:.5;margin-left:2px;"></i>';
+    }
+
+    function _bdMaxDia() { return new Date(_bd.ano, _bd.mes + 1, 0).getDate(); }
+
+    // Grade de dias — respeita o mês atual
+    window._bdAbrirGradeDia = function() {
+        var max = _bdMaxDia();
+        var grid = document.getElementById('bdDiaGridItems');
+        var html = '';
+        for (var d = 1; d <= max; d++) {
+            html += '<button class="bd-grade-btn' + (d === _bd.dia ? ' bd-sel' : '') + '" onclick="window._bdSelecionarDia(' + d + ')">' + d + '</button>';
+        }
+        grid.innerHTML = html;
+        document.getElementById('ctwBdDiaGrid').style.display = 'flex';
+    };
+
+    window._bdSelecionarDia = function(d) {
+        _bd.dia = d;
+        _bdRender();
+        document.getElementById('ctwBdDiaGrid').style.display = 'none';
+    };
+
+    // Grade de meses
+    window._bdAbrirGradeMes = function() {
+        var grid = document.getElementById('bdMesGridItems');
+        grid.innerHTML = MESES_CURTOS.map(function(m, i) {
+            return '<button class="bd-grade-btn' + (i === _bd.mes ? ' bd-sel' : '') + '" onclick="window._bdSelecionarMes(' + i + ')">' + m + '</button>';
+        }).join('');
+        document.getElementById('ctwBdMesGrid').style.display = 'flex';
+    };
+
+    window._bdSelecionarMes = function(i) {
+        _bd.mes = i;
+        if (_bd.dia > _bdMaxDia()) _bd.dia = _bdMaxDia();
+        _bdRender();
+        document.getElementById('ctwBdMesGrid').style.display = 'none';
+    };
+
+    // Grade de anos
+    window._bdAbrirGradeAno = function() {
+        var anoAtual = new Date().getFullYear();
+        var grid = document.getElementById('bdAnoGridItems');
+        var html = '';
+        for (var a = anoAtual; a >= 1930; a--) {
+            html += '<button class="bd-grade-btn' + (a === _bd.ano ? ' bd-sel' : '') + '" onclick="window._bdSelecionarAno(' + a + ')">' + a + '</button>';
+        }
+        grid.innerHTML = html;
+        document.getElementById('ctwBdAnoGrid').style.display = 'flex';
+        // Scroll até o ano selecionado
+        setTimeout(function() {
+            var sel = grid.querySelector('.bd-sel');
+            if (sel) sel.scrollIntoView({ block: 'center' });
+        }, 60);
+    };
+
+    window._bdSelecionarAno = function(a) {
+        _bd.ano = a;
+        if (_bd.dia > _bdMaxDia()) _bd.dia = _bdMaxDia();
+        _bdRender();
+        document.getElementById('ctwBdAnoGrid').style.display = 'none';
+    };
+
+    window._abrirBirthdayPicker = function(inputId, btnId, labelId) {
+        _bdTarget = { inputId: inputId, btnId: btnId, labelId: labelId };
+        var val = document.getElementById(inputId) && document.getElementById(inputId).value;
+        if (val) {
+            var p = val.split('-');
+            _bd.ano = parseInt(p[0]); _bd.mes = parseInt(p[1]) - 1; _bd.dia = parseInt(p[2]);
+        } else {
+            _bd.dia = 1; _bd.mes = 0; _bd.ano = 2000;
+        }
+        _bdRender();
+        document.getElementById('ctwBirthdayPicker').style.display = 'flex';
+    };
+
+    window._fecharBirthdayPicker = function() {
+        document.getElementById('ctwBirthdayPicker').style.display = 'none';
+    };
+
+    window._bdLimpar = function() {
+        document.getElementById(_bdTarget.inputId).value = '';
+        document.getElementById(_bdTarget.labelId).textContent = 'Definir data';
+        document.getElementById(_bdTarget.btnId).style.borderColor = '';
+        window._fecharBirthdayPicker();
+    };
+
+    window._bdConfirmar = function() {
+        var iso = _bd.ano + '-' + pad(_bd.mes + 1) + '-' + pad(_bd.dia);
+        document.getElementById(_bdTarget.inputId).value = iso;
+        document.getElementById(_bdTarget.labelId).textContent =
+            pad(_bd.dia) + ' de ' + MESES_BD[_bd.mes] + ' de ' + _bd.ano;
+        document.getElementById(_bdTarget.btnId).style.borderColor = 'var(--primary-color)';
+        window._fecharBirthdayPicker();
+    };
+
+    window._bdSetValor = function(inputId, btnId, labelId, isoVal) {
+        if (!isoVal) return;
+        document.getElementById(inputId).value = isoVal;
+        var p = isoVal.split('-');
+        var label = pad(parseInt(p[2])) + ' de ' + MESES_BD[parseInt(p[1])-1] + ' de ' + p[0];
+        document.getElementById(labelId).textContent = label;
+        document.getElementById(btnId).style.borderColor = 'var(--primary-color)';
+    };
+
+    document.getElementById('ctwBirthdayPicker').addEventListener('click', function(e) {
+        if (e.target === this) window._fecharBirthdayPicker();
+    });
+})();
+</script>
 
 </body>
 </html>

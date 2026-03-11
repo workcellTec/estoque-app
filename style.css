@@ -4799,6 +4799,15 @@ body.ctw-v2-active #documentsHome {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+.rep-card-model {
+    font-size: .72rem;
+    color: var(--primary-color);
+    opacity: .8;
+    margin-top: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .rep-card-badges {
     display: flex;
     flex-wrap: wrap;
