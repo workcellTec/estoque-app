@@ -906,10 +906,11 @@ function openCalculatorSection(sectionId) {
 
     // Mapeamento de qual select pertence a qual seção
     const sectionMap = {
-        'fecharVenda': { m: 'machine1', b: 'brand1', init: () => { updateInstallmentsOptions(); updateFecharVendaUI(); } },
-        'repassarValores': { m: 'machine2', b: 'brand2', init: () => updateRepassarValoresUI() },
+        'fecharVenda':        { m: 'machine1', b: 'brand1', init: () => { updateInstallmentsOptions(); updateFecharVendaUI(); } },
+        'repassarValores':    { m: 'machine2', b: 'brand2', init: () => updateRepassarValoresUI() },
         'calcularEmprestimo': { m: 'machine4', b: 'brand4', init: () => updateCalcularEmprestimoUI() },
-        'calcularPorAparelho': { m: 'machine3', b: 'brand3', init: () => updateCalcularPorAparelhoUI() }
+        'calcularPorAparelho':{ m: 'machine3', b: 'brand3', init: () => updateCalcularPorAparelhoUI() },
+        'emprestarValores':   { m: 'machine5', b: 'brand5', init: () => calculateEmprestarValores() },
     };
 
     const config = sectionMap[sectionId];
@@ -4005,6 +4006,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Botão Voltar do Sub-menu da Calculadora
     document.getElementById('backFromCalculatorHome').addEventListener('click', () => showMainSection('main'));
+
+    // ── Aplica padrão de maquininha em TODOS os selects logo no início ──
+    (function aplicarPadraoMaquinaGlobal() {
+        const defMachine = safeStorage.getItem('ctwDefaultMachine');
+        const defBrand   = safeStorage.getItem('ctwDefaultBrand');
+        if (!defMachine) return;
+        ['machine1','machine2','machine3','machine4','machine5'].forEach(id => {
+            const sel = document.getElementById(id);
+            if (sel) sel.value = defMachine;
+        });
+        if (defMachine !== 'pagbank' && defBrand) {
+            ['brand1','brand2','brand3','brand4','brand5'].forEach(id => {
+                const sel = document.getElementById(id);
+                if (sel) sel.value = defBrand;
+            });
+        }
+    })();
 
     ['openFecharVenda', 'openRepassarValores', 'openCalcularEmprestimo', 'openCalcularPorAparelho'].forEach(id => { document.getElementById(id).addEventListener('click', () => openCalculatorSection(id.replace('open', '').charAt(0).toLowerCase() + id.slice(5))); });
     ['backFromFecharVenda', 'backFromRepassarValores', 'backFromCalcularEmprestimo', 'backFromCalcularPorAparelho'].forEach(id => { document.getElementById(id).addEventListener('click', () => openCalculatorSection('calculatorHome')); });
