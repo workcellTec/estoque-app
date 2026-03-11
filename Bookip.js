@@ -142,12 +142,15 @@ function comprimirFotoBookip(file) {
             const c = document.createElement('canvas');
             c.width = w; c.height = h;
             c.getContext('2d').drawImage(img, 0, 0, w, h);
-            c.toBlob(
-                blob => blob ? resolve(blob) : reject(new Error('Compressão falhou')),
-                'image/webp', Q
-            );
+            // Tenta WebP; se o dispositivo nao suportar, cai pra JPEG
+            c.toBlob(blob => {
+                if (blob) { resolve(blob); return; }
+                c.toBlob(blobJpeg => {
+                    blobJpeg ? resolve(blobJpeg) : reject(new Error('Compressao falhou'));
+                }, 'image/jpeg', Q);
+            }, 'image/webp', Q);
         };
-        img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('Imagem inválida')); };
+        img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('Imagem invalida')); };
         img.src = objUrl;
     });
 }

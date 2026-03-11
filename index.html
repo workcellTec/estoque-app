@@ -1823,7 +1823,7 @@ do que você precisa??</h2>
                 import('./ambilight.js'),
                 import('./Favorites.js'),
                 import('./repairs.js?v=2').then(m => { window._repairsModule = m; }),
-                import('./bookip.js'),
+                import('./Bookip.js'),
             ]);
         }
         // Módulos carregam assim que o DOM está pronto
@@ -2265,6 +2265,22 @@ do que você precisa??</h2>
 </div>
 
 <!-- ─── MODAL: CONFIRMAR EXCLUSÃO ─── -->
+<!-- Overlay: Desfazer Etapa -->
+<div class="rep-modal-overlay" id="repUndoOverlay">
+    <div class="rep-modal rep-modal-sm">
+        <div class="rep-modal-header">
+            <span>↩️ Desfazer Etapa</span>
+        </div>
+        <div class="rep-modal-body">
+            <p id="repUndoMsg" style="margin:0;font-size:.9rem;line-height:1.5;"></p>
+        </div>
+        <div class="rep-modal-footer">
+            <button class="rep-btn rep-btn-ghost" id="repUndoNo">Cancelar</button>
+            <button class="rep-btn rep-btn-yellow" id="repUndoYes"><i class="bi bi-arrow-counterclockwise"></i> Desfazer</button>
+        </div>
+    </div>
+</div>
+
 <div class="rep-modal-overlay" id="repConfirmOverlay">
     <div class="rep-modal rep-modal-sm">
         <div class="rep-modal-header">
