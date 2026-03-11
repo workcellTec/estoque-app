@@ -4545,8 +4545,8 @@ body.ctw-v2-active #globalSearchBtn {
 
 /* Balanceamento vertical do mainMenu no v2 */
 body.ctw-v2-active #mainMenu {
-    padding-top: 170px;  /* espaço para header + pill de busca */
-    padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px)); /* espaço para o bottom nav */
+    padding-top: 170px;
+    padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
     justify-content: flex-start;
 }
 
