@@ -4213,7 +4213,7 @@ body::after {
 
 .ctw-bottom-nav {
     position: fixed;
-    bottom: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     left: 50%;
     transform: translateX(-50%);
     z-index: 1060;
@@ -4546,7 +4546,7 @@ body.ctw-v2-active #globalSearchBtn {
 /* Balanceamento vertical do mainMenu no v2 */
 body.ctw-v2-active #mainMenu {
     padding-top: 170px;  /* espaço para header + pill de busca */
-    padding-bottom: 100px; /* espaço para o bottom nav */
+    padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px)); /* espaço para o bottom nav */
     justify-content: flex-start;
 }
 
