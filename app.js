@@ -2919,6 +2919,8 @@ function renderBoletosHistory(data) {
             document.getElementById('compradorEndereco').value = boleto.compradorEndereco || '';
             document.getElementById('produtoModelo').value = boleto.produtoModelo || '';
             document.getElementById('produtoImei').value = boleto.produtoImei || '';
+            if (document.getElementById('aparelhoEstado')) document.getElementById('aparelhoEstado').value = boleto.aparelhoEstado || 'Novo';
+            if (document.getElementById('aparelhoAcessorios')) document.getElementById('aparelhoAcessorios').value = boleto.aparelhoAcessorios || '';
             document.getElementById('valorTotal').value = boleto.valorTotal || '';
             document.getElementById('valorEntrada').value = boleto.valorEntrada || '';
             document.getElementById('numeroParcelas').value = boleto.numeroParcelas || '';
@@ -2941,7 +2943,7 @@ function renderBoletosHistory(data) {
             });
 
             const nomeArq = 'Contrato-' + (boleto.compradorNome || 'cliente').split(' ')[0] + '.pdf';
-            await garantirPdfLibs();
+            garantirPdfLibs(); // sem await — preserva ativação de gesto do Android
           const opt = {
                 margin: [10, 10, 10, 10],
                 filename: nomeArq,
@@ -5090,6 +5092,8 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             compradorEndereco: document.getElementById('compradorEndereco').value,
             produtoModelo: document.getElementById('produtoModelo').value,
             produtoImei: document.getElementById('produtoImei').value,
+            aparelhoEstado: document.getElementById('aparelhoEstado')?.value || 'Novo',
+            aparelhoAcessorios: document.getElementById('aparelhoAcessorios')?.value || '',
             valorTotal: parseFloat(document.getElementById('valorTotal').value) || 0,
             valorEntrada: parseFloat(document.getElementById('valorEntrada').value) || 0,
             saldoRestante: document.getElementById('saldoRestante').value,
