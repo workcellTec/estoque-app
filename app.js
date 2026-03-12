@@ -2614,8 +2614,11 @@ function populatePreview() {
 
             <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 4 – DO PREÇO E FORMA DE PAGAMENTO</div>
             <p>4.1. Pela locação do bem, o LOCATÁRIO pagará à LOCADORA:<br>
-            Entrada: R$ <strong id="prevEntrada"></strong> e <strong id="prevQtdParcelas"></strong> parcelas mensais de R$ <strong id="prevValorParcela"></strong>.<br>
-            4.2. O pagamento será realizado mediante boleto bancário com vencimento todo dia <strong id="prevVencimento"></strong> de cada mês.<br>
+            Valor total: R$ <strong id="prevValorTotal"></strong><br>
+            Entrada: R$ <strong id="prevEntrada"></strong><br>
+            Saldo restante: R$ <strong id="prevSaldoRestante"></strong><br>
+            Parcelado em: <strong id="prevQtdParcelas"></strong> parcelas <strong id="prevTipoParcela"></strong> de R$ <strong id="prevValorParcela"></strong>.<br>
+            4.2. O pagamento será realizado mediante boleto bancário com vencimento todo dia <strong id="prevVencimento"></strong> do período, com início em <strong id="prevDataVencimento"></strong>.<br>
             4.3. O não recebimento do boleto não exime o LOCATÁRIO da obrigação de pagamento na data de vencimento.<br>
             4.4. O atraso implicará incidência de multa, juros e correção monetária conforme legislação vigente.</p>
 
@@ -2696,8 +2699,15 @@ function populatePreview() {
         const safeSet = (idSpan, idInput) => {
             const span = document.getElementById(idSpan);
             const input = document.getElementById(idInput);
+            if (span && input) span.textContent = input.value;
+        };
+        // Para campos de moeda: formata como R$ 1.500,00
+        const safeSetCurrency = (idSpan, idInput) => {
+            const span = document.getElementById(idSpan);
+            const input = document.getElementById(idInput);
             if (span && input) {
-                span.textContent = input.value;
+                const v = parseFloat(String(input.value).replace(',', '.')) || 0;
+                span.textContent = v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             }
         };
 
@@ -2705,7 +2715,7 @@ function populatePreview() {
         const spanData = document.getElementById('prevDataAtual');
         if (spanData) spanData.textContent = dataDeHoje;
 
-        // Puxando dos IDs originais que o seu JS gosta:
+        // Dados do cliente
         safeSet('prevNome', 'compradorNome');
         safeSet('prevAssinaturaNome', 'compradorNome');
         safeSet('prevCPF', 'compradorCpf');
@@ -2713,28 +2723,43 @@ function populatePreview() {
         safeSet('prevRG', 'compradorRg');
         safeSet('prevEndereco', 'compradorEndereco');
         safeSet('prevTelefone', 'compradorTelefone');
+
+        // Dados do aparelho
         safeSet('prevModelo', 'produtoModelo');
         safeSet('prevIMEI', 'produtoImei');
-        
-        // Puxando dos campos novos que criei pra você
         safeSet('prevEstado', 'aparelhoEstado');
         safeSet('prevAcessorios', 'aparelhoAcessorios');
+
+        // Condições do contrato
         safeSet('prevPrazo', 'contratoPrazo');
-        
-        // Puxando das finanças usando seus IDs
-        safeSet('prevEntrada', 'valorEntrada');
         safeSet('prevQtdParcelas', 'numeroParcelas');
-        safeSet('prevValorParcela', 'valorParcela');
-        
-        // Extrai apenas o dia (ex: 10) da data completa que o usuário selecionar
+
+        // Valores financeiros — formatados como moeda
+        safeSetCurrency('prevValorTotal', 'valorTotal');
+        safeSetCurrency('prevEntrada', 'valorEntrada');
+        safeSet('prevSaldoRestante', 'saldoRestante'); // já formatado pelo calculateContractPayments
+        safeSet('prevValorParcela', 'valorParcela');   // já formatado pelo calculateContractPayments
+
+        // Tipo de parcela (mensal/semanal)
+        const tipoParcelaEl = document.getElementById('tipoParcela');
+        const spanTipo = document.getElementById('prevTipoParcela');
+        if (tipoParcelaEl && spanTipo) spanTipo.textContent = tipoParcelaEl.value || 'mensais';
+
+        // Data 1º vencimento — exibe dia E data completa
         const dataVenc = document.getElementById('primeiroVencimento')?.value;
-        let diaVenc = "";
+        let diaVenc = '', dataVencFormatada = '';
         if (dataVenc) {
             const parts = dataVenc.split('-');
-            if(parts.length === 3) diaVenc = parts[2];
+            if (parts.length === 3) {
+                diaVenc = parts[2];
+                const d = new Date(dataVenc + 'T00:00:00');
+                dataVencFormatada = d.toLocaleDateString('pt-BR');
+            }
         }
         const spanVenc = document.getElementById('prevVencimento');
         if (spanVenc) spanVenc.textContent = diaVenc;
+        const spanDataVenc = document.getElementById('prevDataVencimento');
+        if (spanDataVenc) spanDataVenc.textContent = dataVencFormatada;
 
     } catch (error) {
         console.error("Erro no contrato:", error);
@@ -2863,6 +2888,12 @@ function renderBoletosHistory(data) {
             document.getElementById('compradorEndereco').value = boleto.compradorEndereco || '';
             document.getElementById('produtoModelo').value = boleto.produtoModelo || '';
             document.getElementById('produtoImei').value = boleto.produtoImei || '';
+            if (document.getElementById('aparelhoEstado')) {
+                if (boleto.aparelhoEstado !== undefined) document.getElementById('aparelhoEstado').value = boleto.aparelhoEstado;
+                else document.getElementById('aparelhoEstado').value = 'Novo';
+            }
+            if (document.getElementById('aparelhoAcessorios')) document.getElementById('aparelhoAcessorios').value = boleto.aparelhoAcessorios || '';
+            if (document.getElementById('contratoPrazo')) document.getElementById('contratoPrazo').value = boleto.contratoPrazo || '';
             document.getElementById('valorTotal').value = boleto.valorTotal || '';
             document.getElementById('valorEntrada').value = boleto.valorEntrada || '';
             document.getElementById('numeroParcelas').value = boleto.numeroParcelas || '';
@@ -2919,14 +2950,19 @@ function renderBoletosHistory(data) {
             document.getElementById('compradorEndereco').value = boleto.compradorEndereco || '';
             document.getElementById('produtoModelo').value = boleto.produtoModelo || '';
             document.getElementById('produtoImei').value = boleto.produtoImei || '';
-            if (document.getElementById('aparelhoEstado')) document.getElementById('aparelhoEstado').value = boleto.aparelhoEstado || 'Novo';
+            if (document.getElementById('aparelhoEstado')) {
+                if (boleto.aparelhoEstado !== undefined) document.getElementById('aparelhoEstado').value = boleto.aparelhoEstado;
+                else document.getElementById('aparelhoEstado').value = 'Novo';
+            }
             if (document.getElementById('aparelhoAcessorios')) document.getElementById('aparelhoAcessorios').value = boleto.aparelhoAcessorios || '';
+            if (document.getElementById('contratoPrazo')) document.getElementById('contratoPrazo').value = boleto.contratoPrazo || '';
             document.getElementById('valorTotal').value = boleto.valorTotal || '';
             document.getElementById('valorEntrada').value = boleto.valorEntrada || '';
             document.getElementById('numeroParcelas').value = boleto.numeroParcelas || '';
             document.getElementById('tipoParcela').value = boleto.tipoParcela || 'mensais';
             document.getElementById('primeiroVencimento').value = boleto.primeiroVencimento || '';
-
+            // Recalcula saldo e parcela
+            calculateContractPayments();
             populatePreview();
 
             const tempDiv = document.createElement('div');
@@ -2943,8 +2979,7 @@ function renderBoletosHistory(data) {
             });
 
             const nomeArq = 'Contrato-' + (boleto.compradorNome || 'cliente').split(' ')[0] + '.pdf';
-            garantirPdfLibs(); // sem await — preserva ativação de gesto do Android
-          const opt = {
+            const opt = {
                 margin: [10, 10, 10, 10],
                 filename: nomeArq,
                 image: { type: 'jpeg', quality: 0.98 },
@@ -2954,7 +2989,10 @@ function renderBoletosHistory(data) {
 
             showCustomModal({ message: 'Gerando PDF, aguarde...' });
 
-            html2pdf().set(opt).from(tempDiv).output('blob').then(async function(pdfBlob) {
+            // Aguarda libs, depois gera PDF e compartilha — tudo na mesma chain de Promise
+            garantirPdfLibs().then(() => {
+                return html2pdf().set(opt).from(tempDiv).output('blob');
+            }).then(async function(pdfBlob) {
                 const file = new File([pdfBlob], nomeArq, { type: 'application/pdf' });
                 if (navigator.canShare && navigator.canShare({ files: [file] })) {
                     try {
@@ -5083,6 +5121,9 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             return;
         }
 
+        // Garante que saldo e parcela estejam calculados antes de tudo
+        calculateContractPayments();
+
         const boletosRef = ref(db, 'boletos');
         const boletoData = {
             compradorNome: document.getElementById('compradorNome').value,
@@ -5094,6 +5135,7 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             produtoImei: document.getElementById('produtoImei').value,
             aparelhoEstado: document.getElementById('aparelhoEstado')?.value || 'Novo',
             aparelhoAcessorios: document.getElementById('aparelhoAcessorios')?.value || '',
+            contratoPrazo: document.getElementById('contratoPrazo').value,
             valorTotal: parseFloat(document.getElementById('valorTotal').value) || 0,
             valorEntrada: parseFloat(document.getElementById('valorEntrada').value) || 0,
             saldoRestante: document.getElementById('saldoRestante').value,
@@ -7430,6 +7472,8 @@ setupProductTags();
                 areaContrato.classList.remove('hidden');
                 areaContrato.style.display = 'block';
                 if (typeof loadContractDraft === 'function') loadContractDraft();
+                // Pré-carrega as libs de PDF em background para que o share funcione na hora H
+                if (typeof garantirPdfLibs === 'function') garantirPdfLibs();
             }
         } 
         else if (subSectionId === 'bookip') {
