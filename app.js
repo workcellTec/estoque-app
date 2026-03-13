@@ -2448,18 +2448,54 @@ function formatCurrency(value) {
 }
 
 function calculateContractPayments() {
-    const total = parseFloat(document.getElementById('valorTotal').value) || 0;
-    const entrada = parseFloat(document.getElementById('valorEntrada').value) || 0;
-    const parcelas = parseInt(document.getElementById('numeroParcelas').value, 10) || 0;
-    const saldo = total - entrada;
-    document.getElementById('saldoRestante').value = saldo > 0 ? formatCurrency(saldo) : '0,00';
-    
-    if (parcelas > 0 && saldo > 0) {
-        const valorParcela = saldo / parcelas;
-        document.getElementById('valorParcela').value = formatCurrency(valorParcela);
-    } else {
-        document.getElementById('valorParcela').value = '0,00';
+    // ── NOVA LÓGICA: usuário digita parcela → sistema calcula total e prazo ──
+    const parcelas    = parseInt(document.getElementById('numeroParcelas')?.value, 10) || 0;
+    const entrada     = parseFloat(document.getElementById('valorEntrada')?.value)     || 0;
+    const valorParc   = parseFloat(document.getElementById('valorParcela')?.value)     || 0;
+    const frequencia  = document.getElementById('tipoParcela')?.value || 'mensais';
+
+    // Valor Total = entrada + (parcela × nº parcelas)
+    const total = entrada + (valorParc * parcelas);
+    const saldo = total - entrada; // = valorParc * parcelas
+
+    // Preenche campos hidden usados pelo contrato e pelo Firebase
+    const hiddenTotal = document.getElementById('valorTotal');
+    if (hiddenTotal) hiddenTotal.value = total.toFixed(2);
+
+    // Exibe formatado
+    const dispTotal = document.getElementById('valorTotalDisplay');
+    if (dispTotal) dispTotal.value = total > 0 ? formatCurrency(total) : '—';
+
+    const dispSaldo = document.getElementById('saldoRestante');
+    if (dispSaldo) dispSaldo.value = saldo > 0 ? formatCurrency(saldo) : '0,00';
+
+    // Calcula prazo automaticamente: 
+    //   mensais   → parcelas meses
+    //   quinzenais → parcelas × 0.5 meses (arredondado)
+    //   semanais  → parcelas semanas (exibe como "X semanas")
+    let prazoTexto = '—';
+    let prazoValor = '';
+    if (parcelas > 0) {
+        if (frequencia === 'mensais') {
+            prazoValor = String(parcelas);
+            prazoTexto = parcelas === 1 ? '1 mês' : `${parcelas} meses`;
+        } else if (frequencia === 'quinzenais') {
+            const meses = Math.round(parcelas * 0.5 * 10) / 10;
+            prazoValor = String(meses);
+            prazoTexto = meses === 1 ? '1 mês' : `${meses} meses`;
+        } else if (frequencia === 'semanais') {
+            prazoValor = String(parcelas); // em semanas
+            prazoTexto = parcelas === 1 ? '1 semana' : `${parcelas} semanas`;
+        }
     }
+
+    // Campo oculto que alimenta contrato (safeSet 'prevPrazo' lê 'contratoPrazo')
+    const hiddenPrazo = document.getElementById('contratoPrazo');
+    if (hiddenPrazo) hiddenPrazo.value = prazoValor;
+
+    // Campo de exibição readonly
+    const dispPrazo = document.getElementById('contratoPrazoDisplay');
+    if (dispPrazo) dispPrazo.value = prazoTexto;
 }
 
 function numeroPorExtenso(numero, tipo = 'normal') {
@@ -2738,7 +2774,13 @@ function populatePreview() {
         safeSetCurrency('prevValorTotal', 'valorTotal');
         safeSetCurrency('prevEntrada', 'valorEntrada');
         safeSet('prevSaldoRestante', 'saldoRestante'); // já formatado pelo calculateContractPayments
-        safeSet('prevValorParcela', 'valorParcela');   // já formatado pelo calculateContractPayments
+        // valorParcela agora é input numérico — formata na hora
+        const elParcela = document.getElementById('valorParcela');
+        const spanParcela = document.getElementById('prevValorParcela');
+        if (elParcela && spanParcela) {
+            const vp = parseFloat(elParcela.value) || 0;
+            spanParcela.textContent = formatCurrency(vp);
+        }
 
         // Tipo de parcela (mensal/semanal)
         const tipoParcelaEl = document.getElementById('tipoParcela');
@@ -2894,10 +2936,18 @@ function renderBoletosHistory(data) {
             }
             if (document.getElementById('aparelhoAcessorios')) document.getElementById('aparelhoAcessorios').value = boleto.aparelhoAcessorios || '';
             if (document.getElementById('contratoPrazo')) document.getElementById('contratoPrazo').value = boleto.contratoPrazo || '';
+            // valorTotal → campo hidden
             document.getElementById('valorTotal').value = boleto.valorTotal || '';
             document.getElementById('valorEntrada').value = boleto.valorEntrada || '';
             document.getElementById('numeroParcelas').value = boleto.numeroParcelas || '';
             document.getElementById('tipoParcela').value = boleto.tipoParcela || 'mensais';
+            // valorParcela salvo como "R$ X,XX" — extrai o número para o input numérico
+            if (boleto.valorParcela) {
+                const vpNum = parseBrazilianCurrencyToFloat(String(boleto.valorParcela));
+                if (!isNaN(vpNum)) document.getElementById('valorParcela').value = vpNum.toFixed(2);
+            }
+            // Recalcula todos os campos derivados (prazo display, total display, saldo)
+            calculateContractPayments();
             document.getElementById('primeiroVencimento').value = boleto.primeiroVencimento || '';
             document.getElementById('valorTotal').dispatchEvent(new Event('input'));
 
@@ -2956,10 +3006,18 @@ function renderBoletosHistory(data) {
             }
             if (document.getElementById('aparelhoAcessorios')) document.getElementById('aparelhoAcessorios').value = boleto.aparelhoAcessorios || '';
             if (document.getElementById('contratoPrazo')) document.getElementById('contratoPrazo').value = boleto.contratoPrazo || '';
+            // valorTotal → campo hidden
             document.getElementById('valorTotal').value = boleto.valorTotal || '';
             document.getElementById('valorEntrada').value = boleto.valorEntrada || '';
             document.getElementById('numeroParcelas').value = boleto.numeroParcelas || '';
             document.getElementById('tipoParcela').value = boleto.tipoParcela || 'mensais';
+            // valorParcela salvo como "R$ X,XX" — extrai o número para o input numérico
+            if (boleto.valorParcela) {
+                const vpNum = parseBrazilianCurrencyToFloat(String(boleto.valorParcela));
+                if (!isNaN(vpNum)) document.getElementById('valorParcela').value = vpNum.toFixed(2);
+            }
+            // Recalcula todos os campos derivados (prazo display, total display, saldo)
+            calculateContractPayments();
             document.getElementById('primeiroVencimento').value = boleto.primeiroVencimento || '';
             // Recalcula saldo e parcela
             calculateContractPayments();
@@ -3026,11 +3084,11 @@ function renderBoletosHistory(data) {
             const boleto = boletosArray.find(b => b.id === boletoId);
             const nomeCliente = boleto ? boleto.compradorNome : 'este registro';
             showCustomModal({
-                message: 'Tem certeza que deseja excluir o contrato de <strong>' + escapeHtml(nomeCliente) + '</strong>? Esta ação NÃO pode ser desfeita.',
+                message: 'Tem certeza que deseja excluir o contrato de ' + escapeHtml(nomeCliente) + '? Esta ação NÃO pode ser desfeita.',
                 confirmText: "Sim, Excluir",
                 onConfirm: async () => {
                     showCustomModal({
-                        message: 'CONFIRMAÇÃO FINAL: Apagar o contrato de <strong>' + escapeHtml(nomeCliente) + '</strong> permanentemente?',
+                        message: 'CONFIRMAÇÃO FINAL: Apagar o contrato de ' + escapeHtml(nomeCliente) + ' permanentemente?',
                         confirmText: "Apagar Definitivamente",
                         onConfirm: async () => {
                             try {
@@ -3511,6 +3569,143 @@ window.applyColorTheme = function(color) {
 
 
 
+
+
+// ═══════════════════════════════════════════════════════════════
+// CAPCUT SAVE PREVIEW ENGINE — Central Workcell
+// Uso:
+//   const confirmed = await ctwSavePreview.show({ type, previewHtml, docInfo });
+//   if (confirmed) { /* executa salvamento real */ }
+// ═══════════════════════════════════════════════════════════════
+const ctwSavePreview = (() => {
+    // Perímetro do retângulo SVG (266+374)×2 = 1280
+    // O rect no SVG: x=3,y=3,w=266,h=374 → perímetro = (266+374)*2 = 1280
+    const CIRCUMFERENCE = 1280;
+
+    let _resolvePromise = null;
+    let _animFrame      = null;
+
+    function _el(id) { return document.getElementById(id); }
+
+    // Anima o arco de 0→100% em ~1.8s, depois revela os botões
+    function _runRing() {
+        const arc    = _el('ctwSpArc');
+        const pctEl  = _el('ctwSpPct');
+        if (!arc || !pctEl) return;
+
+        const DURATION = 1800; // ms
+        const start    = performance.now();
+
+        function step(now) {
+            const elapsed  = now - start;
+            const progress = Math.min(elapsed / DURATION, 1);
+
+            // Easing: ease-in-out
+            const eased = progress < 0.5
+                ? 2 * progress * progress
+                : -1 + (4 - 2 * progress) * progress;
+
+            const offset = CIRCUMFERENCE * (1 - eased);
+            arc.style.strokeDashoffset = offset.toFixed(2);
+
+            const pct = Math.round(eased * 100);
+            pctEl.textContent = pct + '%';
+
+            if (progress < 1) {
+                _animFrame = requestAnimationFrame(step);
+            } else {
+                // Chegou a 100%
+                arc.classList.add('done');
+                pctEl.classList.add('done');
+                pctEl.textContent = '100%';
+                // Revela botões de ação
+                _el('ctwSpLoading')?.classList.add('hidden');
+                _el('ctwSpActions')?.classList.remove('hidden');
+            }
+        }
+
+        _animFrame = requestAnimationFrame(step);
+    }
+
+    // Fecha o overlay com animação de saída
+    function _close(confirmed) {
+        const overlay = _el('ctwSavePreviewOverlay');
+        if (!overlay) return;
+
+        if (_animFrame) { cancelAnimationFrame(_animFrame); _animFrame = null; }
+
+        overlay.classList.remove('entering');
+        overlay.classList.add('leaving');
+
+        setTimeout(() => {
+            overlay.classList.remove('leaving');
+            overlay.classList.add('hidden');
+            // Limpa estado
+            const arc = _el('ctwSpArc');
+            if (arc) {
+                arc.style.strokeDashoffset = 1280;
+                arc.classList.remove('done');
+            }
+            const pctEl = _el('ctwSpPct');
+            if (pctEl) { pctEl.textContent = '0%'; pctEl.classList.remove('done'); }
+            _el('ctwSpActions')?.classList.add('hidden');
+            _el('ctwSpLoading')?.classList.remove('hidden');
+            _el('ctwSpPreviewInner').innerHTML = '';
+        }, 300);
+
+        if (_resolvePromise) { _resolvePromise(confirmed); _resolvePromise = null; }
+    }
+
+    // API pública
+    return {
+        // Retorna uma Promise<boolean>
+        // true = usuário confirmou → executar salvamento
+        // false = cancelou
+        show({ type = 'bookip', previewHtml = '', docInfo = '', title = '', subtitle = '' }) {
+            return new Promise(resolve => {
+                _resolvePromise = resolve;
+
+                // Textos dinâmicos
+                const titles = {
+                    bookip:  { t: 'Pré-visualização', s: 'Confira o documento antes de salvar' },
+                    boleto:  { t: 'Pré-visualização do Contrato', s: 'Revise os dados antes de salvar' },
+                };
+                const cfg = titles[type] || titles.bookip;
+                _el('ctwSpTitle').textContent    = title    || cfg.t;
+                _el('ctwSpSubtitle').textContent = subtitle || cfg.s;
+                _el('ctwSpDocInfo').innerHTML    = docInfo;
+
+                // Injeta preview
+                const inner = _el('ctwSpPreviewInner');
+                if (inner) inner.innerHTML = previewHtml;
+
+                // Mostra overlay
+                const overlay = _el('ctwSavePreviewOverlay');
+                overlay.classList.remove('hidden', 'leaving');
+                overlay.classList.add('entering');
+
+                // Dispara anel após um frame (garante que o CSS aplique)
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        _runRing();
+                    });
+                });
+
+                // Botão confirmar
+                const btnConfirm = _el('ctwSpBtnConfirm');
+                const btnCancel  = _el('ctwSpBtnCancel');
+                // Remove listeners antigos (clone replace trick)
+                const newConfirm = btnConfirm.cloneNode(true);
+                const newCancel  = btnCancel.cloneNode(true);
+                btnConfirm.replaceWith(newConfirm);
+                btnCancel.replaceWith(newCancel);
+
+                _el('ctwSpBtnConfirm').addEventListener('click', () => _close(true),  { once: true });
+                _el('ctwSpBtnCancel').addEventListener('click',  () => _close(false), { once: true });
+            });
+        },
+    };
+})();
 
 async function main() {
     try {
@@ -5113,7 +5308,7 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
         safeStorage.removeItem(CONTRACT_DRAFT_KEY);
         showCustomModal({ message: 'Rascunho apagado.' });
     });
-    document.getElementById('btnImprimir').addEventListener('click', () => {
+    document.getElementById('btnImprimir').addEventListener('click', async () => {
         const contractForm = document.getElementById('contractForm');
         if (!contractForm.checkValidity()) {
             showCustomModal({ message: "Por favor, preencha todos os campos obrigatórios." });
@@ -5123,6 +5318,41 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
 
         // Garante que saldo e parcela estejam calculados antes de tudo
         calculateContractPayments();
+
+        // Validação extra dos campos calculados
+        const _vp = parseFloat(document.getElementById('valorParcela')?.value) || 0;
+        const _np = parseInt(document.getElementById('numeroParcelas')?.value, 10) || 0;
+        if (_vp <= 0 || _np <= 0) {
+            showCustomModal({ message: 'Preencha o Valor da Parcela e o Nº de Parcelas.' });
+            return;
+        }
+
+        // ── CAPCUT PREVIEW ──────────────────────────────────
+        // Usa o contractPreview já populado pelo populatePreview()
+        populatePreview();
+        const contractPreviewEl = document.getElementById('contractPreview');
+        const _rawBoleto = contractPreviewEl ? contractPreviewEl.innerHTML : '<p style="color:#000;padding:20px">Prévia indisponível</p>';
+        // Adiciona um reset inline de cores para o contrato que não tem color definido
+        const previewHtmlBoleto = `<div style="width:750px;overflow:hidden;background:#fff;color:#000;font-family:Times New Roman,serif;font-size:10pt;line-height:1.5;">${_rawBoleto}</div>`;
+
+        const nomeClientePreview = document.getElementById('compradorNome')?.value || 'Cliente';
+        const modeloPreview      = document.getElementById('produtoModelo')?.value  || '';
+        const valorTotalPreview  = parseFloat(document.getElementById('valorTotal')?.value) || 0;
+        const prazoDisplay       = document.getElementById('contratoPrazoDisplay')?.value || '';
+        const docInfoBoleto = `
+            <strong style="color:var(--text-color,#e2e8f0)">${nomeClientePreview}</strong><br>
+            ${modeloPreview}${valorTotalPreview > 0 ? ' · R$ ' + valorTotalPreview.toLocaleString('pt-BR', {minimumFractionDigits:2}) : ''}
+            ${prazoDisplay ? ' · ' + prazoDisplay : ''}
+        `;
+
+        const confirmedBoleto = await ctwSavePreview.show({
+            type: 'boleto',
+            previewHtml: previewHtmlBoleto,
+            docInfo: docInfoBoleto,
+        });
+
+        if (!confirmedBoleto) return; // usuário cancelou
+        // ────────────────────────────────────────────────────
 
         const boletosRef = ref(db, 'boletos');
         const boletoData = {
@@ -5140,7 +5370,7 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             valorEntrada: parseFloat(document.getElementById('valorEntrada').value) || 0,
             saldoRestante: document.getElementById('saldoRestante').value,
             numeroParcelas: parseInt(document.getElementById('numeroParcelas').value, 10) || 0,
-            valorParcela: document.getElementById('valorParcela').value,
+            valorParcela: formatCurrency(parseFloat(document.getElementById('valorParcela').value) || 0),
             tipoParcela: document.getElementById('tipoParcela').value,
             primeiroVencimento: document.getElementById('primeiroVencimento').value,
             criadoEm: new Date().toISOString(),
@@ -5177,7 +5407,6 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
         const nomeCliente = document.getElementById('compradorNome').value || 'contrato';
         const nomeArquivo = 'Contrato-' + nomeCliente.split(' ')[0] + '.pdf';
 
-        garantirPdfLibs(); // carrega libs em paralelo (já estarão prontas quando html2pdf rodar)
         const opt = {
             margin: [10, 10, 10, 10],
             filename: nomeArquivo,
@@ -5188,18 +5417,21 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
 
         showCustomModal({ message: 'Gerando PDF, aguarde...' });
 
-        html2pdf().set(opt).from(tempDiv).output('blob').then(async function(pdfBlob) {
+        try {
+            // ✅ FIX 1: await garantirPdfLibs — garante que html2pdf e html2canvas estejam carregados
+            await garantirPdfLibs();
+
+            // ✅ FIX 2: await aqui dentro de handler async — preserva o user gesture para navigator.share
+            const pdfBlob = await html2pdf().set(opt).from(tempDiv).output('blob');
+
             // Salva ou atualiza no Firebase
-            // Lê o ID do campo hidden (mais confiável que variável JS)
             const hiddenIdEl = document.getElementById('editingBoletoId');
             const editId = (hiddenIdEl && hiddenIdEl.value) ? hiddenIdEl.value : window.currentEditingBoletoId;
 
             if (editId) {
-                // EDITANDO registro existente - atualiza sem criar novo
                 update(ref(db, 'boletos/' + editId), boletoData).catch(function(e) {
                     console.error("Erro ao atualizar contrato: ", e);
                 });
-                // Reseta estado de edição
                 if (hiddenIdEl) hiddenIdEl.value = '';
                 window.currentEditingBoletoId = null;
                 const btnImprimir2 = document.getElementById('btnImprimir');
@@ -5211,7 +5443,6 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                 const banner2 = document.getElementById('editingBannerBoleto');
                 if (banner2) banner2.style.display = 'none';
             } else {
-                // NOVO registro
                 push(boletosRef, boletoData).catch(function(error) {
                     console.error("Erro ao salvar contrato: ", error);
                 });
@@ -5220,7 +5451,6 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             const nomeCliente2 = document.getElementById('compradorNome').value || 'Cliente';
             const file = new File([pdfBlob], nomeArquivo, { type: 'application/pdf' });
 
-            // Tenta compartilhar (celular)
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
                 try {
                     await navigator.share({
@@ -5249,10 +5479,10 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
                 URL.revokeObjectURL(url);
                 showCustomModal({ message: 'Contrato salvo! ✅' });
             }
-        }).catch(function(error) {
+        } catch(error) {
             console.error("Erro ao gerar PDF:", error);
             showCustomModal({ message: 'Erro ao gerar PDF: ' + error.message });
-        });
+        }
     });
 
     document.getElementById('exportRepassarBtn').addEventListener('click', () => {
@@ -6484,6 +6714,37 @@ if (btnSave) {
             showCustomModal({ message: "A lista está vazia! Adicione itens primeiro." });
             return;
         }
+
+        // ── CAPCUT PREVIEW ──────────────────────────────────
+        // Monta preview parcial com dados atuais do formulário
+        // (sem foto ainda — foto só sobe após confirmar)
+        const previewDadosTemp = {
+            nome:        document.getElementById('bookipNome')?.value || 'Consumidor',
+            cpf:         document.getElementById('bookipCpf')?.value  || '',
+            tel:         document.getElementById('bookipTelefone')?.value || '',
+            items:       bookipCartList,
+            diasGarantia: parseInt(document.getElementById('bookipGarantiaSelect')?.value) || 365,
+            dataVenda:   document.getElementById('bookipDataManual')?.value || new Date().toISOString().split('T')[0],
+            criadoEm:    new Date().toISOString(),
+            type:        bookipCartList.some(i => i.isSituation) ? 'situacao' : (window.isSimpleReceiptMode ? 'recibo' : 'garantia'),
+            fotoUrl:     window._bookipFotoUrl || '',
+        };
+        const _rawHtml = (typeof getReciboHTML === 'function') ? getReciboHTML(previewDadosTemp) : '<p style="color:#000;padding:20px">Prévia indisponível</p>';
+        const previewHtmlTemp = `<div style="width:750px;overflow:hidden;background:#fff;color:#000;">${_rawHtml}</div>`;
+
+        const docInfoHtml = `
+            <strong style="color:var(--text-color)">${previewDadosTemp.nome}</strong><br>
+            ${previewDadosTemp.items.length} ${previewDadosTemp.items.length === 1 ? 'item' : 'itens'} · Garantia: ${previewDadosTemp.diasGarantia} dias
+        `;
+
+        const confirmed = await ctwSavePreview.show({
+            type: 'bookip',
+            previewHtml: previewHtmlTemp,
+            docInfo: docInfoHtml,
+        });
+
+        if (!confirmed) return; // usuário cancelou
+        // ────────────────────────────────────────────────────
 
         // Feedback visual
         const originalText = btnSave.innerHTML;

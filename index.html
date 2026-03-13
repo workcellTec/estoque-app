@@ -1068,16 +1068,55 @@ do que você precisa??</h2>
                         
                         <h5 class="form-section-title">Condições do Contrato</h5>
                         <div class="row">
-                            <div class="col-md-4 mb-3"><label for="contratoPrazo" class="form-label">Prazo (Meses)</label><input type="number" class="form-control" id="contratoPrazo" required></div>
-                            <div class="col-md-4 mb-3"><label for="valorTotal" class="form-label">Valor Total (R$)</label><input type="number" step="0.01" class="form-control" id="valorTotal" required></div>
-                            <div class="col-md-4 mb-3"><label for="valorEntrada" class="form-label">Valor da Entrada (R$)</label><input type="number" step="0.01" class="form-control" id="valorEntrada" required></div>
-                            
-                            <div class="col-md-4 mb-3"><label for="numeroParcelas" class="form-label">Nº de Parcelas</label><input type="number" step="1" class="form-control" id="numeroParcelas" required></div>
-                            <div class="col-md-4 mb-3"><label for="tipoParcela" class="form-label">Frequência</label><select class="form-select" id="tipoParcela"><option value="mensais" selected>Mensais</option><option value="semanais">Semanais</option></select></div>
-                            <div class="col-md-4 mb-3"><label for="primeiroVencimento" class="form-label">Data 1º Vencimento</label><input type="date" class="form-control" id="primeiroVencimento"></div>
-                            
-                            <div class="col-md-6 mb-3"><label for="saldoRestante" class="form-label">Saldo Restante (R$)</label><input type="text" class="form-control" id="saldoRestante" readonly></div>
-                            <div class="col-md-6 mb-3"><label for="valorParcela" class="form-label">Valor da Parcela (R$)</label><input type="text" class="form-control" id="valorParcela" readonly></div>
+
+                            <!-- Frequência — col-12: um embaixo do outro -->
+                            <div class="col-12 mb-3">
+                                <label for="tipoParcela" class="form-label">Frequência</label>
+                                <select class="form-select" id="tipoParcela">
+                                    <option value="mensais" selected>Mensais</option>
+                                    <option value="semanais">Semanais</option>
+                                    <option value="quinzenais">Quinzenais</option>
+                                </select>
+                            </div>
+
+                            <div class="col-12 mb-3">
+                                <label for="numeroParcelas" class="form-label">Nº de Parcelas</label>
+                                <input type="number" step="1" min="1" class="form-control" id="numeroParcelas" required placeholder="Ex: 5">
+                            </div>
+
+                            <div class="col-12 mb-3">
+                                <label for="valorEntrada" class="form-label">Valor da Entrada (R$)</label>
+                                <input type="number" step="0.01" min="0" class="form-control" id="valorEntrada" required placeholder="0,00">
+                            </div>
+
+                            <div class="col-12 mb-3">
+                                <label for="valorParcela" class="form-label">Valor da Parcela (R$)</label>
+                                <input type="number" step="0.01" min="0.01" class="form-control" id="valorParcela" required placeholder="Ex: 300,00">
+                            </div>
+
+                            <div class="col-12 mb-3">
+                                <label for="primeiroVencimento" class="form-label">Data 1º Vencimento</label>
+                                <input type="date" class="form-control" id="primeiroVencimento">
+                            </div>
+
+                            <!-- Prazo calculado automaticamente — readonly -->
+                            <div class="col-12 mb-3">
+                                <label class="form-label">Prazo (calculado automaticamente)</label>
+                                <input type="text" class="form-control" id="contratoPrazoDisplay" readonly placeholder="—">
+                                <input type="hidden" id="contratoPrazo">
+                            </div>
+
+                            <!-- Valor Total e Saldo — readonly, derivados do cálculo -->
+                            <div class="col-12 mb-3">
+                                <label class="form-label">Valor Total (R$)</label>
+                                <input type="text" class="form-control" id="valorTotalDisplay" readonly placeholder="—">
+                                <input type="hidden" id="valorTotal">
+                            </div>
+                            <div class="col-12 mb-3">
+                                <label class="form-label">Saldo Restante (R$)</label>
+                                <input type="text" class="form-control" id="saldoRestante" readonly placeholder="—">
+                            </div>
+
                         </div>
                         
                         <div class="text-center mt-4 d-flex justify-content-center gap-2 flex-wrap">
@@ -2875,6 +2914,64 @@ do que você precisa??</h2>
     });
 })();
 </script>
+
+
+<!-- ═══════════════════════════════════════════════
+     CAPCUT SAVE PREVIEW — Bookip & Boleto
+     ═══════════════════════════════════════════════ -->
+<div id="ctwSavePreviewOverlay" class="ctw-sp-overlay hidden" aria-modal="true" role="dialog">
+    <div class="ctw-sp-backdrop"></div>
+    <div class="ctw-sp-panel">
+
+        <!-- Título dinâmico -->
+        <div class="ctw-sp-title" id="ctwSpTitle">Confirmar e Salvar</div>
+        <div class="ctw-sp-subtitle" id="ctwSpSubtitle">Revise antes de salvar na nuvem</div>
+
+        <!-- Pré-visualização A4 com borda animada estilo CapCut -->
+        <div class="ctw-sp-ring-wrap">
+            <!-- SVG da borda animada sobre o retângulo A4 -->
+            <svg class="ctw-sp-ring-svg" viewBox="0 0 272 380"
+                 xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+                <!-- Trilha cinza — contorno total do papel -->
+                <rect class="ctw-sp-track" x="3" y="3" width="266" height="374" rx="10" ry="10"/>
+                <!-- Arco de progresso — percorre o retângulo (perímetro 1280) -->
+                <rect class="ctw-sp-arc" id="ctwSpArc"
+                      x="3" y="3" width="266" height="374" rx="10" ry="10"/>
+            </svg>
+            <!-- Miniatura A4 do documento -->
+            <div class="ctw-sp-preview-box">
+                <div class="ctw-sp-preview-scroll">
+                    <div class="ctw-sp-preview-inner" id="ctwSpPreviewInner">
+                        <!-- conteúdo injetado via JS -->
+                    </div>
+                </div>
+            </div>
+            <!-- % abaixo do preview -->
+            <div class="ctw-sp-pct" id="ctwSpPct">0%</div>
+        </div>
+
+        <!-- Info do documento -->
+        <div class="ctw-sp-doc-info" id="ctwSpDocInfo"></div>
+
+        <!-- Botões de ação — só aparecem após 100% -->
+        <div class="ctw-sp-actions hidden" id="ctwSpActions">
+            <button class="ctw-sp-btn-confirm" id="ctwSpBtnConfirm">
+                <i class="bi bi-cloud-check-fill"></i> Salvar agora
+            </button>
+            <button class="ctw-sp-btn-cancel" id="ctwSpBtnCancel">
+                <i class="bi bi-x-lg"></i> Cancelar
+            </button>
+        </div>
+
+        <!-- Loader inicial (enquanto o preview renderiza) -->
+        <div class="ctw-sp-loading" id="ctwSpLoading">
+            <div class="ctw-sp-dot-loader">
+                <span></span><span></span><span></span>
+            </div>
+            <p>Gerando pré-visualização...</p>
+        </div>
+    </div>
+</div>
 
 </body>
 </html>

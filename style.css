@@ -5332,3 +5332,269 @@ body.ctw-v2-active #documentsHome {
 }
 .v2-promo-btn-yes:hover  { filter: brightness(1.1); }
 .v2-promo-btn-yes:active { transform: scale(.97); }
+
+
+
+/* ═══════════════════════════════════════════════════════════
+   CAPCUT SAVE PREVIEW SYSTEM — A4 Document Edition
+   ═══════════════════════════════════════════════════════════ */
+
+.ctw-sp-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    transition: opacity 0.3s ease;
+}
+.ctw-sp-overlay.hidden { display: none; }
+.ctw-sp-overlay.entering {
+    animation: ctwSpSlideIn 0.38s cubic-bezier(0.34, 1.2, 0.64, 1) both;
+}
+.ctw-sp-overlay.leaving {
+    animation: ctwSpSlideOut 0.28s ease-in both;
+}
+@keyframes ctwSpSlideIn {
+    from { transform: translateY(100%); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+}
+@keyframes ctwSpSlideOut {
+    from { transform: translateY(0);    opacity: 1; }
+    to   { transform: translateY(100%); opacity: 0; }
+}
+
+.ctw-sp-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+.ctw-sp-panel {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 480px;
+    background: var(--card-bg, #1a1d26);
+    border-radius: 28px 28px 0 0;
+    padding: 20px 20px 36px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    max-height: 92vh;
+    overflow-y: auto;
+}
+
+.ctw-sp-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-color, #e2e8f0);
+    text-align: center;
+}
+.ctw-sp-subtitle {
+    font-size: 0.76rem;
+    color: var(--text-secondary, #64748b);
+    text-align: center;
+    margin-top: -8px;
+}
+
+/* ── A4 PREVIEW WRAP (replaces circle) ─────────── */
+.ctw-sp-ring-wrap {
+    position: relative;
+    /* doc real = 750px, scale=0.347 → 260px; A4 ratio h = 260×297/210 = 368px */
+    width: 260px;
+    height: 368px;
+    flex-shrink: 0;
+}
+
+/* SVG de borda animada — cobre todo o retângulo */
+.ctw-sp-ring-svg {
+    position: absolute;
+    inset: -6px; /* padding pra o stroke não cortar */
+    width: calc(100% + 12px);
+    height: calc(100% + 12px);
+    pointer-events: none;
+    z-index: 2;
+    overflow: visible;
+}
+
+/* Trilha de fundo — contorno cinza do "papel" */
+.ctw-sp-track {
+    fill: none;
+    stroke: rgba(255,255,255,0.08);
+    stroke-width: 5;
+    rx: 10;
+}
+
+/* Arco de progresso que percorre o retângulo */
+.ctw-sp-arc {
+    fill: none;
+    stroke: var(--primary-color, #e53e3e);
+    stroke-width: 5;
+    stroke-linecap: round;
+    stroke-dasharray: 1280; /* perímetro: (266+374)×2 = 1280 */
+    stroke-dashoffset: 1280;
+    transition: stroke-dashoffset 0.06s linear, stroke 0.4s ease;
+    filter: drop-shadow(0 0 5px var(--primary-color, #e53e3e));
+}
+.ctw-sp-arc.done {
+    stroke: #22c55e;
+    filter: drop-shadow(0 0 8px #22c55e);
+}
+
+/* ── PREVIEW DO DOCUMENTO (A4 real em miniatura) ─ */
+.ctw-sp-preview-box {
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+}
+
+/* Container de scroll interno do preview */
+.ctw-sp-preview-scroll {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+}
+
+/* Documento usa width:750px internamente — escalado para caber em 260px */
+.ctw-sp-preview-inner {
+    width: 750px;                   /* largura real do getReciboHTML */
+    transform-origin: top left;
+    transform: scale(0.3467);       /* 260/750 = 0.3467 */
+    pointer-events: none;
+    user-select: none;
+    position: absolute;
+    top: 0; left: 0;
+    /* Força contexto de cores como papel branco — anula dark-theme */
+    background: #fff !important;
+    color: #000 !important;
+    /* Reseta CSS custom properties do dark-theme para valores de papel */
+    --text-color: #000;
+    --text-secondary: #444;
+    --primary-color: #6da037;
+    --bg-color: #fff;
+    --card-bg: #fff;
+    --glass-bg: #fff;
+    --secondary-color: #f5f5f5;
+    --glass-border: #ddd;
+}
+
+/* Qualquer elemento que herde via CSS var vai pegar os valores acima */
+/* Para elementos sem cor inline (como o contractPreview), força #000 */
+.ctw-sp-preview-inner p,
+.ctw-sp-preview-inner div:not([style*="background-color"]),
+.ctw-sp-preview-inner span:not([style*="color"]),
+.ctw-sp-preview-inner strong,
+.ctw-sp-preview-inner h4,
+.ctw-sp-preview-inner small {
+    color: #000;
+}
+
+/* Badge de progresso — canto inferior do preview */
+.ctw-sp-pct {
+    position: absolute;
+    bottom: -26px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--primary-color, #e53e3e);
+    transition: color 0.4s;
+    white-space: nowrap;
+    letter-spacing: 0.5px;
+}
+.ctw-sp-pct.done { color: #22c55e; }
+
+/* ── INFO DO DOCUMENTO ──────────────────────────── */
+.ctw-sp-doc-info {
+    font-size: 0.8rem;
+    color: var(--text-secondary, #64748b);
+    text-align: center;
+    line-height: 1.5;
+    min-height: 32px;
+    margin-top: 14px;
+}
+
+/* ── BOTÕES ─────────────────────────────────────── */
+.ctw-sp-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    animation: ctwSpFadeUp 0.35s cubic-bezier(0.34,1.2,0.64,1) both;
+}
+.ctw-sp-actions.hidden { display: none; }
+
+@keyframes ctwSpFadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.ctw-sp-btn-confirm {
+    width: 100%;
+    padding: 16px;
+    border-radius: 16px;
+    border: none;
+    background: var(--primary-color, #e53e3e);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: opacity 0.2s, transform 0.15s;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.ctw-sp-btn-confirm:active { opacity: 0.85; transform: scale(0.97); }
+
+.ctw-sp-btn-cancel {
+    width: 100%;
+    padding: 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: transparent;
+    color: var(--text-secondary, #64748b);
+    font-size: 0.9rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: background 0.2s;
+}
+.ctw-sp-btn-cancel:active { background: rgba(255,255,255,0.06); }
+
+/* ── LOADER ─────────────────────────────────────── */
+.ctw-sp-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-secondary, #64748b);
+    font-size: 0.82rem;
+}
+.ctw-sp-loading.hidden { display: none; }
+.ctw-sp-dot-loader { display: flex; gap: 6px; }
+.ctw-sp-dot-loader span {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--primary-color, #e53e3e);
+    animation: ctwSpDotBounce 1.2s ease-in-out infinite;
+}
+.ctw-sp-dot-loader span:nth-child(2) { animation-delay: 0.2s; }
+.ctw-sp-dot-loader span:nth-child(3) { animation-delay: 0.4s; }
+
+
+@keyframes ctwSpDotBounce {
+    0%, 80%, 100% { transform: scale(0.7); opacity: 0.4; }
+    40%            { transform: scale(1);   opacity: 1; }
+}
