@@ -850,6 +850,15 @@ class="dropdown-menu-custom">
 
         <div id="adminRatesContent" class="hidden">
             <div class="admin-section">
+                <h4 class="text-start"><i class="bi bi-robot"></i> IA para Scan de Estoque</h4>
+                <p class="text-start text-secondary small">Cole sua chave da API Groq para usar o Scan em Lote. Gratuito em <a href="https://console.groq.com" target="_blank" class="text-primary">console.groq.com</a></p>
+                <div class="input-group mb-2">
+                    <input type="password" class="form-control" id="groqApiKeyInput" placeholder="gsk_...">
+                    <button class="btn btn-outline-secondary" type="button" id="groqApiKeyToggle"><i class="bi bi-eye"></i></button>
+                </div>
+                <button class="btn btn-primary w-100 mb-2" id="groqApiKeySaveBtn"><i class="bi bi-save-fill"></i> Salvar Chave</button>
+            </div>
+            <div class="admin-section">
                 <h4 class="text-start"><i class="bi bi-eye-fill"></i> Maquininhas Visíveis</h4>
                 <p class="text-start text-secondary">Desative as maquininhas que você não utiliza para simplificar as telas de cálculo.</p>
                 <div id="machineVisibilityToggles">
@@ -1165,7 +1174,7 @@ do que você precisa??</h2>
                 <div class="content-card w-100">
                     <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="form-section-title mb-0"><i class="bi bi-person-lines-fill"></i> Dados do Cliente</h5>
-    <button class="btn btn-sm btn-success" onclick="abrirModalColarZap()" style="border-radius: 20px;">
+    <button id="btnZapMagico" class="btn btn-sm btn-success" onclick="abrirModalColarZap()" style="border-radius: 20px;">
         <i class="bi bi-whatsapp"></i> Colar do Zap
     </button>
 </div>
@@ -1444,6 +1453,7 @@ do que você precisa??</h2>
                     <button class="btn btn-outline-secondary btn-sm" id="toggleIgnoredBtn" title="Mostrar produtos ignorados"><i class="bi bi-eye-slash-fill"></i></button>
                     <button class="btn btn-outline-danger btn-sm" id="resetCountBtn" title="Resetar Contagem"><i class="bi bi-arrow-counterclockwise"></i></button>
                     <button class="btn btn-info btn-sm" id="generateReportBtn"><i class="bi bi-printer"></i> Relatório</button>
+<!-- Scan IA removido — substituído pelo botão 📷 em cada card do estoque -->
                 </div>
             </div>
             <div id="stockNotFoundHint"></div>
@@ -1854,6 +1864,7 @@ do que você precisa??</h2>
 
 
 <script src="app.js?v=1001" type="module" defer></script>
+<script src="stockCount.js" defer></script>
     <!-- Módulos independentes — carregam em paralelo após app.js -->
     <script type="module" defer>
         // Carrega módulos após o app estar pronto
@@ -2973,5 +2984,63 @@ do que você precisa??</h2>
     </div>
 </div>
 
+
+<!-- ======== SCAN IA OVERLAY ======== -->
+<div id="scanIaOverlay" class="scan-ia-overlay">
+    <div class="scan-ia-panel">
+        <div id="scanNoKeyScreen" class="scan-screen hidden">
+            <div class="text-center p-4">
+                <i class="bi bi-key-fill" style="font-size:3rem;color:var(--primary-color)"></i>
+                <h5 class="mt-3">Chave Groq não configurada</h5>
+                <p class="text-secondary small">Vá em Administração → Taxas e configure sua chave da API Groq.</p>
+                <button class="btn btn-primary mt-2" id="scanGoToSettingsBtn">Configurar agora</button>
+                <button class="btn btn-outline-secondary mt-2 ms-2" id="scanNoKeyCloseBtn">Fechar</button>
+            </div>
+        </div>
+        <div id="scanSelectScreen" class="scan-screen">
+            <div class="scan-ia-header">
+                <span><i class="bi bi-camera-fill"></i> Scan em Lote</span>
+                <button class="scan-ia-close" id="scanCloseBtn"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <p class="text-secondary small mb-3">Fotografe todas as caixas do lote. A IA conta as unidades e identifica as cores.</p>
+            <div class="scan-dropzone" id="scanDropzone">
+                <i class="bi bi-images" style="font-size:2.5rem;color:var(--primary-color)"></i>
+                <p class="mt-2 mb-0 fw-bold">Selecione as fotos</p>
+                <div class="d-flex gap-2 mt-3 justify-content-center">
+                    <button class="btn btn-primary btn-sm" id="scanBtnGaleria"><i class="bi bi-image"></i> Galeria</button>
+                    <button class="btn btn-outline-light btn-sm" id="scanBtnCamera"><i class="bi bi-camera"></i> Câmera</button>
+                </div>
+            </div>
+            <input type="file" id="scanFileInputGaleria" accept="image/*" multiple style="display:none">
+            <input type="file" id="scanFileInput" accept="image/*" multiple capture="environment" style="display:none">
+            <div id="scanPreviewGrid" class="scan-preview-grid hidden"></div>
+            <button class="btn btn-success w-100 mt-3 fw-bold" id="scanBtnAnalisar" disabled>
+                <i class="bi bi-cpu-fill"></i> Analisar com IA
+            </button>
+        </div>
+        <div id="scanProcessingScreen" class="scan-screen hidden">
+            <div class="text-center p-4">
+                <div class="scan-ai-pulse"><i class="bi bi-cpu-fill"></i></div>
+                <h5 class="mt-4">Analisando fotos...</h5>
+                <p id="scanProcessingStatus" class="text-secondary small">Foto 1 de <span id="scanTotalFotos">?</span></p>
+                <div class="progress mt-3" style="height:6px;border-radius:10px;background:rgba(255,255,255,0.1)">
+                    <div id="scanProgressBar" class="progress-bar bg-success" style="width:0%;transition:width 0.3s ease"></div>
+                </div>
+            </div>
+        </div>
+        <div id="scanResultsScreen" class="scan-screen hidden">
+            <div class="scan-ia-header">
+                <span><i class="bi bi-check2-square"></i> Resultados</span>
+                <button class="btn btn-link btn-sm text-secondary p-0" id="scanVoltarBtn"><i class="bi bi-arrow-left"></i> Nova scan</button>
+            </div>
+            <p class="text-secondary small mb-3">Revise e confirme.</p>
+            <div id="scanResultsList"></div>
+            <button class="btn btn-success w-100 mt-3 fw-bold" id="scanBtnConfirmar">
+                <i class="bi bi-cloud-check-fill"></i> Confirmar e Atualizar Estoque
+            </button>
+        </div>
+    </div>
+</div>
+<!-- ===================================== -->
 </body>
 </html>

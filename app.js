@@ -333,8 +333,10 @@ window._showPasswordModal = function(userName, onConfirm) {
         ov.remove();
         onConfirm(val);
     }
-    document.getElementById('_profilePwdConfirm').addEventListener('click', doConfirm);
-    document.getElementById('_profilePwdCancel').addEventListener('click', function() { ov.remove(); });
+    var _pwdConfBtn = document.getElementById('_profilePwdConfirm');
+    var _pwdCancBtn = document.getElementById('_profilePwdCancel');
+    if (_pwdConfBtn) _pwdConfBtn.addEventListener('click', doConfirm);
+    if (_pwdCancBtn) _pwdCancBtn.addEventListener('click', function() { ov.remove(); });
     if(input) input.addEventListener('keydown', function(e) { if(e.key === 'Enter') doConfirm(); });
 };
 
@@ -1774,6 +1776,7 @@ function loadProductsFromDB() {
         searchContainers.forEach(c => hideSkeletonLoader(c));
         const data = snapshot.val(); 
         products = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
+        window.products = products; // expõe para stockCount.js
         setupFuse();
         
         const aparelhoContent = document.getElementById('aparelhoContentWrapper');
@@ -5156,6 +5159,554 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
             onCancel: () => {}
         });
     });
+
+    // ============================================================
+    // 📷 SCAN IA — GROQ VISION LOTE
+    // ============================================================
+    (function initScanIa() {
+        const GROQ_KEY_STORAGE = 'ctwGroqApiKey';
+        function getGroqKey() { return safeStorage.getItem(GROQ_KEY_STORAGE) || ''; }
+
+        function mostrarTela(id) {
+            ['scanNoKeyScreen','scanSelectScreen','scanProcessingScreen','scanResultsScreen']
+                .forEach(s => {
+                    const el = document.getElementById(s);
+                    if (el) el.classList.add('hidden');
+                });
+            const show = document.getElementById(id);
+            if (show) show.classList.remove('hidden');
+        }
+
+        function openOverlay() {
+            const ov = document.getElementById('scanIaOverlay');
+            if (!ov) return;
+            ov.classList.add('active');
+            if (!getGroqKey()) {
+                mostrarTela('scanNoKeyScreen');
+            } else {
+                mostrarTela('scanSelectScreen');
+                resetSelectScreen();
+            }
+        }
+
+        function closeOverlay() {
+            const ov = document.getElementById('scanIaOverlay');
+            if (ov) ov.classList.remove('active');
+            resetSelectScreen();
+        }
+
+        let _fotos = [];
+        let _resultados = [];
+
+        function resetSelectScreen() {
+            _fotos = [];
+            _resultados = [];
+            const grid = document.getElementById('scanPreviewGrid');
+            if (grid) { grid.classList.add('hidden'); grid.innerHTML = ''; }
+            const btn = document.getElementById('scanBtnAnalisar');
+            if (btn) btn.disabled = true;
+        }
+
+        // Redimensiona imagem para max 1280px antes de enviar — Groq rejeita imagens grandes
+        function redimensionarImagem(file) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                const url = URL.createObjectURL(file);
+                img.onload = () => {
+                    URL.revokeObjectURL(url);
+                    const MAX = 1280;
+                    let w = img.width, h = img.height;
+                    if (w > MAX || h > MAX) {
+                        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+                        else { w = Math.round(w * MAX / h); h = MAX; }
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    canvas.toBlob(blob => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result.split(',')[1]);
+                        reader.readAsDataURL(blob);
+                    }, 'image/jpeg', 0.88);
+                };
+                img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+                img.src = url;
+            });
+        }
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const r = new FileReader();
+                r.onload = () => resolve(r.result.split(',')[1]);
+                r.onerror = reject;
+                r.readAsDataURL(file);
+            });
+        }
+
+        function adicionarFotos(files) {
+            Array.from(files).forEach(file => {
+                if (!file.type.startsWith('image/')) return;
+                const url = URL.createObjectURL(file);
+                _fotos.push({ file, dataUrl: url, status: 'pending' });
+            });
+            renderPreviewGrid();
+            const btn = document.getElementById('scanBtnAnalisar');
+            if (btn) btn.disabled = _fotos.length === 0;
+        }
+
+        function renderPreviewGrid() {
+            const grid = document.getElementById('scanPreviewGrid');
+            if (!grid) return;
+            if (_fotos.length === 0) { grid.classList.add('hidden'); return; }
+            grid.classList.remove('hidden');
+            grid.innerHTML = _fotos.map((f, i) => `
+                <div class="scan-thumb-wrap">
+                    <img src="${f.dataUrl}" alt="foto ${i+1}">
+                    <button class="scan-thumb-remove" data-idx="${i}"><i class="bi bi-x"></i></button>
+                </div>`).join('');
+            grid.querySelectorAll('.scan-thumb-remove').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    const idx = parseInt(e.currentTarget.dataset.idx);
+                    _fotos.splice(idx, 1);
+                    renderPreviewGrid();
+                    const ab = document.getElementById('scanBtnAnalisar');
+                    if (ab) ab.disabled = _fotos.length === 0;
+                });
+            });
+        }
+
+        async function analisarFotoGroq(base64, mimeType) {
+            const key = getGroqKey();
+
+            const prompt = `Leia TODAS as etiquetas/rótulos de smartphones visíveis nesta foto.
+
+Para cada modelo diferente extraia:
+- modelo: nome completo como está na caixa
+- armazenamento: ex "256GB"
+- cores: lista de cores diferentes deste modelo na foto
+- quantidade: total de unidades deste modelo (todas as cores somadas)
+
+Agrupe por modelo: "Redmi Note 14 Pro 5G Midnight Black" e "Redmi Note 14 Pro 5G Coral Green" = 1 item com cores:["Midnight Black","Coral Green"] e quantidade=2.
+
+Responda SOMENTE com array JSON, sem markdown:
+[{"modelo":"NOME","armazenamento":"256GB","quantidade":2,"cores":["Cor1","Cor2"]}]
+
+Se não houver smartphones: []`;
+
+            const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+                body: JSON.stringify({
+                    model: 'llama-3.2-90b-vision-preview',
+                    max_tokens: 1500,
+                    temperature: 0.1,
+                    messages: [{ role: 'user', content: [
+                        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
+                        { type: 'text', text: prompt }
+                    ]}]
+                })
+            });
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                const msg = err.error?.message || `Erro HTTP ${resp.status}`;
+                console.error('Groq API error:', msg);
+                throw new Error(msg);
+            }
+
+            const data = await resp.json();
+            const texto = (data.choices?.[0]?.message?.content || '').trim();
+            console.log('🤖 Groq response:', texto);
+
+            const clean = texto.replace(/```json|```/gi, '').trim();
+            const match = clean.match(/\[[\s\S]*\]/);
+            if (!match) {
+                console.warn('Groq não retornou array:', texto);
+                return [];
+            }
+            try { return JSON.parse(match[0]); }
+            catch(e) { console.error('JSON parse error:', e); return []; }
+        }
+
+        function mapearCor(corDetectada) {
+            if (!corDetectada) return null;
+            const lower = corDetectada.toLowerCase().trim();
+            const exato = colorPalette.find(c => c.nome.toLowerCase() === lower);
+            if (exato) return exato;
+            for (const cor of colorPalette) {
+                if (lower.includes(cor.nome.toLowerCase()) || cor.nome.toLowerCase().includes(lower)) return cor;
+            }
+            const palavrasChave = {
+                'preto': 'Preto', 'black': 'Preto', 'branco': 'Branco', 'white': 'Branco',
+                'cinza': 'Grafite', 'gray': 'Grafite', 'grey': 'Grafite', 'prata': 'Prata',
+                'azul': 'Azul', 'blue': 'Azul', 'verde': 'Verde', 'green': 'Verde',
+                'roxo': 'Roxo', 'purple': 'Roxo', 'rosa': 'Rosa', 'pink': 'Rosa',
+                'dourado': 'Dourado', 'gold': 'Dourado', 'amarelo': 'Amarelo', 'yellow': 'Amarelo',
+                'laranja': 'Laranja', 'orange': 'Laranja', 'vermelho': 'Vermelho', 'red': 'Vermelho',
+                'titanio': 'Titânio Natural', 'titanium': 'Titânio Natural',
+            };
+            for (const [palavra, nome] of Object.entries(palavrasChave)) {
+                if (lower.includes(palavra)) {
+                    const found = colorPalette.find(c => c.nome === nome);
+                    if (found) return found;
+                }
+            }
+            return { nome: corDetectada, hex: '#888888' };
+        }
+
+        function agruparResultados(itensPorFoto) {
+            // itensPorFoto: array de arrays (cada foto retorna um array de itens)
+            // Agrupa tudo por modelo+armazenamento somando quantidades
+            const grupos = {};
+
+            itensPorFoto.forEach(itensUmaFoto => {
+                if (!Array.isArray(itensUmaFoto)) return;
+                itensUmaFoto.forEach(item => {
+                    if (!item.modelo) return;
+                    const arm = (item.armazenamento || '').toUpperCase().replace(/\s/g,'');
+                    const armFormatado = arm ? (arm.includes('GB') ? arm : arm + 'GB') : '';
+                    const chave = armFormatado
+                        ? `${item.modelo.toUpperCase().trim()} DE ${armFormatado}`
+                        : item.modelo.toUpperCase().trim();
+
+                    if (!grupos[chave]) grupos[chave] = { nome: chave, quantidade: 0, coresMapeadas: [] };
+                    grupos[chave].quantidade += (parseInt(item.quantidade) || 1);
+
+                    // Adiciona cores
+                    const coresDaFoto = Array.isArray(item.cores) ? item.cores : (item.cor ? [item.cor] : []);
+                    coresDaFoto.forEach(cor => {
+                        const corMapeada = mapearCor(cor);
+                        if (corMapeada) {
+                            const jaExiste = grupos[chave].coresMapeadas.some(c => c.hex.toLowerCase() === corMapeada.hex.toLowerCase());
+                            if (!jaExiste) grupos[chave].coresMapeadas.push(corMapeada);
+                        }
+                    });
+                });
+            });
+
+            // Faz match com produtos do Firebase
+            const fuseLocal = new Fuse(products, { keys: ['nome'], threshold: 0.45, ignoreLocation: true, minMatchCharLength: 3 });
+            return Object.values(grupos).map(grupo => {
+                const matches = fuseLocal.search(grupo.nome);
+                return { ...grupo, produtoMatch: matches.length > 0 ? matches[0].item : null };
+            });
+        }
+
+        function renderResultados(grupos) {
+            const container = document.getElementById('scanResultsList');
+            if (!container) return;
+
+            // Produtos do estoque não vistos nas fotos
+            const produtosVistosIds = new Set(grupos.filter(g => g.produtoMatch).map(g => g.produtoMatch.id));
+            const naoEncontrados = products.filter(p => !p.ignorarContagem && !produtosVistosIds.has(p.id));
+
+            if (grupos.length === 0) {
+                container.innerHTML = `
+                <div style="text-align:center;padding:20px 10px;">
+                    <i class="bi bi-camera-slash" style="font-size:2.5rem;color:var(--text-secondary)"></i>
+                    <p class="mt-3 fw-bold">A IA não identificou aparelhos nas fotos</p>
+                    <p class="text-secondary small">Dicas para melhorar:<br>
+                    • Garanta boa iluminação<br>
+                    • A etiqueta da caixa deve estar legível<br>
+                    • Evite reflexos no plástico da embalagem<br>
+                    • Tente fotografar mais de perto</p>
+                    <button class="btn btn-outline-light btn-sm mt-2" id="scanVoltarBtnInner">
+                        <i class="bi bi-arrow-left"></i> Tentar novamente
+                    </button>
+                </div>`;
+                const vb = container.querySelector('#scanVoltarBtnInner');
+                if (vb) vb.addEventListener('click', () => { mostrarTela('scanSelectScreen'); renderPreviewGrid(); });
+                return;
+            }
+
+            // — Cabeçalho resumo —
+            const totalUnidades = grupos.reduce((s, g) => s + g.quantidade, 0);
+            let html = `
+            <div style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);border-radius:12px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <div style="font-weight:700;font-size:.95rem;color:#4ade80;">
+                        <i class="bi bi-check-circle-fill"></i> ${grupos.length} modelo(s) identificado(s)
+                    </div>
+                    <div style="font-size:.78rem;color:var(--text-secondary);margin-top:2px;">
+                        ${totalUnidades} unidade(s) no total · Revise abaixo antes de confirmar
+                    </div>
+                </div>
+            </div>`;
+
+            // — Cards dos aparelhos identificados —
+            html += grupos.map((g, idx) => {
+                const matchLabel = g.produtoMatch
+                    ? `<span class="scan-match-badge found"><i class="bi bi-link-45deg"></i> ${escapeHtml(g.produtoMatch.nome)}</span>`
+                    : `<span class="scan-match-badge new"><i class="bi bi-plus-circle"></i> Não cadastrado — será criado</span>`;
+
+                const coresHtml = colorPalette.map(cor => {
+                    const sel = g.coresMapeadas.some(c => c.hex.toLowerCase() === cor.hex.toLowerCase());
+                    return `<span class="scan-cor-chip ${sel ? 'selected' : ''}" data-hex="${cor.hex}" data-nome="${escapeHtml(cor.nome)}" data-grupo="${idx}">
+                        <span class="scan-cor-dot" style="background:${cor.hex}"></span><span>${escapeHtml(cor.nome)}</span></span>`;
+                }).join('');
+
+                return `
+                <div class="scan-result-card ${g.produtoMatch ? '' : 'sem-match'}" data-grupo="${idx}">
+                    <div class="scan-result-nome">${escapeHtml(g.nome)}</div>
+                    <div class="mb-2">${matchLabel}</div>
+                    <div class="scan-result-row">
+                        <span class="scan-result-label"><i class="bi bi-hash"></i> Quantidade</span>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <button class="btn btn-outline-secondary btn-sm px-2 py-0 scan-qty-dec" data-grupo="${idx}">−</button>
+                            <input type="number" class="form-control form-control-sm text-center" style="max-width:65px" value="${g.quantidade}" min="0" data-field="quantidade" data-grupo="${idx}">
+                            <button class="btn btn-outline-secondary btn-sm px-2 py-0 scan-qty-inc" data-grupo="${idx}">+</button>
+                        </div>
+                    </div>
+                    <div class="scan-result-row" style="flex-direction:column;align-items:flex-start;gap:6px">
+                        <span class="scan-result-label"><i class="bi bi-palette"></i> Cores detectadas</span>
+                        <div style="display:flex;flex-wrap:wrap;gap:5px;max-height:100px;overflow-y:auto">${coresHtml}</div>
+                    </div>
+                    ${!g.produtoMatch ? `
+                    <div class="scan-result-row mt-1">
+                        <span class="scan-result-label"><i class="bi bi-tag"></i> Preço (R$)</span>
+                        <input type="text" class="form-control form-control-sm" style="max-width:120px" placeholder="0,00" data-field="valor" data-grupo="${idx}">
+                    </div>` : ''}
+                </div>`;
+            }).join('');
+
+            // — Seção "não encontrados" colapsável —
+            if (naoEncontrados.length > 0) {
+                const listaHtml = naoEncontrados.map(p => `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <span style="font-size:.78rem;color:var(--text-color);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.nome)}</span>
+                    <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                        <span style="font-size:.72rem;color:var(--text-secondary);">Qtd: ${p.quantidade || 0}</span>
+                        <button class="btn btn-outline-warning py-0 px-2" style="font-size:.7rem;border-radius:8px;" data-zero-id="${p.id}" data-zero-nome="${escapeHtml(p.nome)}">Zerar</button>
+                    </div>
+                </div>`).join('');
+
+                html += `
+                <details style="margin-bottom:12px;">
+                    <summary style="background:rgba(250,204,21,0.08);border:1px solid rgba(250,204,21,0.3);border-radius:12px;padding:10px 14px;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;">
+                        <span style="font-weight:700;font-size:.82rem;color:#facc15;">
+                            <i class="bi bi-exclamation-triangle-fill"></i> ${naoEncontrados.length} produto(s) não apareceram nas fotos
+                        </span>
+                        <span style="font-size:.75rem;color:var(--text-secondary)">Toque para ver ▾</span>
+                    </summary>
+                    <div style="border:1px solid rgba(250,204,21,0.2);border-top:none;border-radius:0 0 12px 12px;overflow:hidden;background:rgba(0,0,0,0.2);">
+                        <p style="font-size:.73rem;color:var(--text-secondary);padding:8px 10px 4px;margin:0;">Não foram identificados nas fotos. Estoque zerado ou esqueceu de fotografar?</p>
+                        ${listaHtml}
+                    </div>
+                </details>`;
+            }
+
+            container.innerHTML = html;
+
+            // Listeners — toggle cores
+            container.querySelectorAll('.scan-cor-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    const idx = parseInt(chip.dataset.grupo);
+                    const hex = chip.dataset.hex, nome = chip.dataset.nome;
+                    const grupo = _resultados[idx];
+                    const jaIdx = grupo.coresMapeadas.findIndex(c => c.hex.toLowerCase() === hex.toLowerCase());
+                    if (jaIdx > -1) { grupo.coresMapeadas.splice(jaIdx, 1); chip.classList.remove('selected'); }
+                    else { grupo.coresMapeadas.push({ nome, hex }); chip.classList.add('selected'); }
+                });
+            });
+
+            // Listeners — quantidade (input + botões +/-)
+            container.querySelectorAll('[data-field="quantidade"]').forEach(input => {
+                input.addEventListener('input', () => {
+                    _resultados[parseInt(input.dataset.grupo)].quantidade = parseInt(input.value) || 0;
+                });
+            });
+            container.querySelectorAll('.scan-qty-inc').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const idx = parseInt(btn.dataset.grupo);
+                    const inp = container.querySelector(`[data-field="quantidade"][data-grupo="${idx}"]`);
+                    if (inp) { inp.value = (parseInt(inp.value) || 0) + 1; _resultados[idx].quantidade = parseInt(inp.value); }
+                });
+            });
+            container.querySelectorAll('.scan-qty-dec').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const idx = parseInt(btn.dataset.grupo);
+                    const inp = container.querySelector(`[data-field="quantidade"][data-grupo="${idx}"]`);
+                    if (inp) { const v = Math.max(0, (parseInt(inp.value) || 0) - 1); inp.value = v; _resultados[idx].quantidade = v; }
+                });
+            });
+
+            // Listeners — zerar produto não encontrado
+            container.querySelectorAll('[data-zero-id]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.dataset.zeroId, nome = btn.dataset.zeroNome;
+                    showCustomModal({
+                        message: `Zerar estoque de "${nome}"?`,
+                        confirmText: 'Sim, Zerar',
+                        onConfirm: async () => {
+                            await updateProductInDB(id, { quantidade: 0 });
+                            btn.textContent = '✓ Zerado';
+                            btn.disabled = true;
+                            btn.classList.remove('btn-outline-warning');
+                            btn.classList.add('btn-outline-secondary');
+                            filterStockProducts();
+                        },
+                        onCancel: () => {}
+                    });
+                });
+            });
+        }
+
+        async function confirmarESalvar() {
+            const btn = document.getElementById('scanBtnConfirmar');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Salvando...'; }
+            let salvos = 0, novos = 0, erros = 0;
+            for (const grupo of _resultados) {
+                try {
+                    const cores = grupo.coresMapeadas;
+                    if (grupo.produtoMatch) {
+                        const coresAtuais = grupo.produtoMatch.cores || [];
+                        const coresMerge = [...coresAtuais];
+                        cores.forEach(nc => { if (!coresMerge.some(c => c.hex.toLowerCase() === nc.hex.toLowerCase())) coresMerge.push(nc); });
+                        await updateProductInDB(grupo.produtoMatch.id, { quantidade: grupo.quantidade, cores: coresMerge });
+                        salvos++;
+                    } else {
+                        const gi = _resultados.indexOf(grupo);
+                        const card = document.querySelector(`.scan-result-card[data-grupo="${gi}"]`);
+                        const valorInput = card ? card.querySelector('[data-field="valor"]') : null;
+                        const valor = parseBrazilianCurrencyToFloat(valorInput ? valorInput.value : '0') || 0;
+                        await push(getProductsRef(), { nome: grupo.nome, valor, quantidade: grupo.quantidade, cores, ignorarContagem: false, tag: 'Nenhuma' });
+                        novos++;
+                    }
+                } catch(e) { console.error('Erro scan save:', e); erros++; }
+            }
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-cloud-check-fill"></i> Confirmar e Atualizar Estoque'; }
+            closeOverlay();
+            filterStockProducts();
+            let msg = '';
+            if (salvos > 0) msg += `${salvos} produto(s) atualizado(s). `;
+            if (novos > 0) msg += `${novos} novo(s) cadastrado(s). `;
+            if (erros > 0) msg += `${erros} erro(s).`;
+            showCustomModal({ message: msg.trim() || 'Estoque atualizado!' });
+        }
+
+        async function executarAnalise() {
+            if (_fotos.length === 0) return;
+            mostrarTela('scanProcessingScreen');
+            const totalEl = document.getElementById('scanTotalFotos');
+            if (totalEl) totalEl.textContent = _fotos.length;
+            const progBar = document.getElementById('scanProgressBar');
+            if (progBar) progBar.style.width = '0%';
+
+            const itensPorFoto = [];
+            for (let i = 0; i < _fotos.length; i++) {
+                const statusEl = document.getElementById('scanProcessingStatus');
+                if (statusEl) statusEl.textContent = `Foto ${i+1} de ${_fotos.length}...`;
+                try {
+                    // Redimensiona antes de enviar — Groq rejeita imagens muito grandes
+                    const b64 = await redimensionarImagem(_fotos[i].file)
+                        || await fileToBase64(_fotos[i].file);
+                    const res = await analisarFotoGroq(b64, 'image/jpeg');
+                    itensPorFoto.push(Array.isArray(res) ? res : []);
+                } catch(e) {
+                    console.error(`Foto ${i+1} erro:`, e);
+                    // Mostra erro real ao usuário em vez de falhar silenciosamente
+                    const statusEl2 = document.getElementById('scanProcessingStatus');
+                    if (statusEl2) statusEl2.textContent = `Erro foto ${i+1}: ${e.message}`;
+                    itensPorFoto.push([]);
+                    // Se for erro de autenticação, para tudo
+                    if (e.message && (e.message.includes('401') || e.message.includes('invalid_api_key') || e.message.includes('auth'))) {
+                        showCustomModal({ message: `❌ Chave Groq inválida ou expirada.\n${e.message}` });
+                        mostrarTela('scanSelectScreen');
+                        return;
+                    }
+                }
+                if (progBar) progBar.style.width = Math.round(((i+1) / _fotos.length) * 100) + '%';
+                if (i < _fotos.length - 1) await new Promise(r => setTimeout(r, 400));
+            }
+
+            _resultados = agruparResultados(itensPorFoto);
+            mostrarTela('scanResultsScreen');
+            renderResultados(_resultados);
+        }
+
+        // — Event Listeners —
+        const btnScan = document.getElementById('btnScanLote');
+        if (btnScan) btnScan.addEventListener('click', openOverlay);
+
+        const closeBtn = document.getElementById('scanCloseBtn');
+        if (closeBtn) closeBtn.addEventListener('click', closeOverlay);
+
+        const overlay = document.getElementById('scanIaOverlay');
+        if (overlay) overlay.addEventListener('click', e => { if (e.target.id === 'scanIaOverlay') closeOverlay(); });
+
+        const noKeyClose = document.getElementById('scanNoKeyCloseBtn');
+        if (noKeyClose) noKeyClose.addEventListener('click', closeOverlay);
+
+        const goSettings = document.getElementById('scanGoToSettingsBtn');
+        if (goSettings) goSettings.addEventListener('click', () => {
+            closeOverlay();
+            showMainSection('administracao');
+            setTimeout(() => {
+                const ratesBtn = document.querySelector('[data-admin-section="adminRatesContent"]');
+                if (ratesBtn) ratesBtn.click();
+                setTimeout(() => { const inp = document.getElementById('groqApiKeyInput'); if (inp) inp.focus(); }, 400);
+            }, 300);
+        });
+
+        const inputGal = document.getElementById('scanFileInputGaleria');
+        const btnGal = document.getElementById('scanBtnGaleria');
+        if (btnGal && inputGal) {
+            btnGal.addEventListener('click', () => inputGal.click());
+            inputGal.addEventListener('change', e => { adicionarFotos(e.target.files); e.target.value = ''; });
+        }
+
+        const inputCam = document.getElementById('scanFileInput');
+        const btnCam = document.getElementById('scanBtnCamera');
+        if (btnCam && inputCam) {
+            btnCam.addEventListener('click', () => inputCam.click());
+            inputCam.addEventListener('change', e => { adicionarFotos(e.target.files); e.target.value = ''; });
+        }
+
+        const dropzone = document.getElementById('scanDropzone');
+        if (dropzone) dropzone.addEventListener('click', e => { if (!e.target.closest('button') && inputGal) inputGal.click(); });
+
+        const btnAnalisar = document.getElementById('scanBtnAnalisar');
+        if (btnAnalisar) btnAnalisar.addEventListener('click', executarAnalise);
+
+        const btnVoltar = document.getElementById('scanVoltarBtn');
+        if (btnVoltar) btnVoltar.addEventListener('click', () => { mostrarTela('scanSelectScreen'); renderPreviewGrid(); });
+
+        const btnConfirmar = document.getElementById('scanBtnConfirmar');
+        if (btnConfirmar) btnConfirmar.addEventListener('click', confirmarESalvar);
+
+        // — Groq Key UI — inicializa quando a aba de taxas abre
+        function initGroqKeyUI() {
+            const input = document.getElementById('groqApiKeyInput');
+            const saveBtn = document.getElementById('groqApiKeySaveBtn');
+            const toggleBtn = document.getElementById('groqApiKeyToggle');
+            if (!input || input.dataset.groqInit) return;
+            input.dataset.groqInit = '1';
+            const saved = getGroqKey();
+            if (saved) input.value = saved;
+            if (toggleBtn) toggleBtn.addEventListener('click', () => {
+                const vis = input.type === 'text';
+                input.type = vis ? 'password' : 'text';
+                const icon = toggleBtn.querySelector('i');
+                if (icon) icon.className = vis ? 'bi bi-eye' : 'bi bi-eye-slash';
+            });
+            if (saveBtn) saveBtn.addEventListener('click', () => {
+                const val = input.value.trim();
+                if (val && !val.startsWith('gsk_')) {
+                    showCustomModal({ message: 'Chave inválida. Deve começar com gsk_' });
+                    return;
+                }
+                safeStorage.setItem(GROQ_KEY_STORAGE, val);
+                showCustomModal({ message: val ? '✅ Chave Groq salva!' : 'Chave removida.' });
+            });
+        }
+
+        // Hook no clique do admin nav para inicializar a UI da chave
+        const adminNav = document.getElementById('admin-nav-buttons');
+        if (adminNav) adminNav.addEventListener('click', () => setTimeout(initGroqKeyUI, 150));
+        // Tenta já na carga caso a aba já esteja aberta
+        setTimeout(initGroqKeyUI, 800);
+    })();
+    // ============================================================
 
     const stockTableBody = document.getElementById('stockTableBody');
     const handleStockUpdate = (inputElement) => {
@@ -9813,12 +10364,15 @@ window.showCustomModal       = showCustomModal;
 
         ['aniversarios','reparos','boletos'].forEach(function(key) {
             var idMap = { aniversarios:'aniv', reparos:'rep', boletos:'bol' };
-            document.getElementById('_np_' + idMap[key]).addEventListener('click', function() {
+            var _npBtn = document.getElementById('_np_' + idMap[key]);
+            if (_npBtn) _npBtn.addEventListener('click', function() {
                 cur[key] = !cur[key];
-                document.getElementById('_npcb_' + key).innerHTML = cbHtml(cur[key]);
+                var _npcb = document.getElementById('_npcb_' + key);
+                if (_npcb) _npcb.innerHTML = cbHtml(cur[key]);
             });
         });
-        document.getElementById('_npSaveBtn').addEventListener('click', function() {
+        var _npSaveBtn = document.getElementById('_npSaveBtn');
+        if (_npSaveBtn) _npSaveBtn.addEventListener('click', function() {
             savePrefs(cur);
             updateLabels(cur);
             panel.remove();
@@ -10028,6 +10582,13 @@ window.showCustomModal       = showCustomModal;
 
 window.setupNotificationListeners = setupNotificationListeners;
 window.escapeHtml            = typeof escapeHtml === 'function' ? escapeHtml : (s) => s;
+window.safeStorage           = safeStorage;
+window.checkedItems          = checkedItems;
+window.saveCheckedItems      = typeof saveCheckedItems === 'function' ? saveCheckedItems : null;
+window.updateProductInDB     = typeof updateProductInDB === 'function' ? updateProductInDB : null;
+window.filterStockProducts   = typeof filterStockProducts === 'function' ? filterStockProducts : null;
+window.colorPalette          = typeof colorPalette !== 'undefined' ? colorPalette : [];
+// window.products já é atualizado diretamente via listener do Firebase
 window.updateNotificationUI  = updateNotificationUI;
 // db exposto via window._firebaseDB no onAuthStateChanged (ver abaixo)
 
@@ -10066,8 +10627,10 @@ window.updateNotificationUI  = updateNotificationUI;
                 if(typeof showCustomModal === 'function') showCustomModal({ message: '❌ Senha incorreta.' });
             }
         }
-        document.getElementById('_gPerfisSenhaOk').addEventListener('click', check);
-        document.getElementById('_gPerfisSenhaCancel').addEventListener('click', function(){ ov.remove(); });
+        var _gSOk = document.getElementById('_gPerfisSenhaOk');
+        var _gSCan = document.getElementById('_gPerfisSenhaCancel');
+        if (_gSOk) _gSOk.addEventListener('click', check);
+        if (_gSCan) _gSCan.addEventListener('click', function(){ ov.remove(); });
         if(inp) inp.addEventListener('keydown', function(e){ if(e.key==='Enter') check(); });
     };
 
@@ -10093,8 +10656,10 @@ window.updateNotificationUI  = updateNotificationUI;
         `;
         document.body.appendChild(panel);
 
-        document.getElementById('_gPerfisClose').addEventListener('click', function(){ panel.remove(); });
-        document.getElementById('_gPerfisAddBtn').addEventListener('click', _addPerfil);
+        var _gClose = document.getElementById('_gPerfisClose');
+        var _gAdd = document.getElementById('_gPerfisAddBtn');
+        if (_gClose) _gClose.addEventListener('click', function(){ panel.remove(); });
+        if (_gAdd) _gAdd.addEventListener('click', _addPerfil);
         _loadPerfis();
     }
 
@@ -10204,14 +10769,16 @@ window.updateNotificationUI  = updateNotificationUI;
         // Lógica dos botões de senha (só existe se já tiver senha)
         var _removerSenha = false;
         if (senhaAtual) {
-            document.getElementById('_btnAlterarSenha').addEventListener('click', function() {
+            var _btnAlt = document.getElementById('_btnAlterarSenha');
+            var _btnRem = document.getElementById('_btnRemoverSenha');
+            if (_btnAlt) _btnAlt.addEventListener('click', function() {
                 _removerSenha = false;
                 document.getElementById('_novaSenhaContainer').style.display = 'block';
                 document.getElementById('_removerSenhaConfirm').style.display = 'none';
                 document.getElementById('_editSenhaOpcoes').style.display = 'none';
                 setTimeout(function(){ if(senhaInp) senhaInp.focus(); }, 60);
             });
-            document.getElementById('_btnRemoverSenha').addEventListener('click', function() {
+            if (_btnRem) _btnRem.addEventListener('click', function() {
                 _removerSenha = true;
                 document.getElementById('_removerSenhaConfirm').style.display = 'block';
                 document.getElementById('_novaSenhaContainer').style.display = 'none';
@@ -10219,8 +10786,10 @@ window.updateNotificationUI  = updateNotificationUI;
             });
         }
 
-        document.getElementById('_editPerfilCancel').addEventListener('click', function(){ ov.remove(); });
-        document.getElementById('_editPerfilSave').addEventListener('click', function(){
+        var _editCan = document.getElementById('_editPerfilCancel');
+        var _editSav = document.getElementById('_editPerfilSave');
+        if (_editCan) _editCan.addEventListener('click', function(){ ov.remove(); });
+        if (_editSav) _editSav.addEventListener('click', function(){
             var novoNome  = nomeInp.value.trim();
             var novaSenha = senhaInp ? senhaInp.value : '';
             if(!novoNome) { alert('Nome obrigatório.'); return; }
@@ -10309,9 +10878,10 @@ window.updateNotificationUI  = updateNotificationUI;
         var erroDiv  = document.getElementById('_deletePerfilErro');
         setTimeout(function(){ if(senhaInp) senhaInp.focus(); }, 80);
 
-        document.getElementById('_deletePerfilCancel').addEventListener('click', function(){ ov.remove(); });
-
-        document.getElementById('_deletePerfilConfirm').addEventListener('click', function(){
+        var _delCan = document.getElementById('_deletePerfilCancel');
+        var _delCon = document.getElementById('_deletePerfilConfirm');
+        if (_delCan) _delCan.addEventListener('click', function(){ ov.remove(); });
+        if (_delCon) _delCon.addEventListener('click', function(){
             if(senhaInp.value !== '220390') {
                 erroDiv.style.display = 'block';
                 senhaInp.value = '';
@@ -10439,8 +11009,10 @@ window.updateNotificationUI  = updateNotificationUI;
         var senhaInp = document.getElementById('_addPerfilSenha');
         setTimeout(function(){ if(nomeInp) nomeInp.focus(); }, 80);
 
-        document.getElementById('_addPerfilCancel').addEventListener('click', function(){ ov.remove(); });
-        document.getElementById('_addPerfilSave').addEventListener('click', function(){
+        var _addCan = document.getElementById('_addPerfilCancel');
+        var _addSav = document.getElementById('_addPerfilSave');
+        if (_addCan) _addCan.addEventListener('click', function(){ ov.remove(); });
+        if (_addSav) _addSav.addEventListener('click', function(){
             var nome  = nomeInp.value.trim();
             var senha = senhaInp.value;
             if(!nome) { alert('Nome obrigatório.'); return; }
