@@ -686,6 +686,13 @@ function showMainSection(sectionId) {
             clientsContainer.classList.remove('hidden');
             clientsContainer.style.display = 'flex';
             
+            // Ranking clientes estrelas — tenta agora e re-tenta se cache ainda carregando
+            setTimeout(() => {
+                window._renderRankingEstrelas();
+                // Re-tenta após 2s caso o cache ainda estivesse vazio
+                setTimeout(window._renderRankingEstrelas, 2000);
+            }, 300);
+            setTimeout(()=>{window._renderRankingEstrelas?.();setTimeout(()=>window._renderRankingEstrelas?.(),2000);},300);
             // OTIMIZAÇÃO: Renderiza a tabela de clientes no próximo quadro
             if (typeof renderClientsTable === 'function') {
                 requestAnimationFrame(() => {
@@ -1776,7 +1783,8 @@ function loadProductsFromDB() {
         searchContainers.forEach(c => hideSkeletonLoader(c));
         const data = snapshot.val(); 
         products = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
-        window.products = products; // expõe para stockCount.js
+        window.products = products;
+        window.checkedItems = checkedItems; // sync para StockCount.js // expõe para stockCount.js
         setupFuse();
         
         const aparelhoContent = document.getElementById('aparelhoContentWrapper');
@@ -3811,6 +3819,20 @@ async function main() {
                 window._dbRef    = ref;    // expõe ref() para módulos IIFE
                 window._dbUpdate = update; // expõe update() para módulos IIFE
 
+                // Cache bookips para VIP/Ranking
+                window._bookipsCache = [];
+                onValue(ref(db, 'bookips'), snap => {
+                    const v = snap.val();
+                    window._bookipsCache = v ? Object.values(v) : [];
+                });
+
+                // Cache de bookips para VIP/Ranking — carrega independente da aba aberta
+                window._bookipsCache = [];
+                onValue(ref(db, 'bookips'), snap => {
+                    const v = snap.val();
+                    window._bookipsCache = v ? Object.values(v) : [];
+                });
+
                 // PERFORMANCE: esconde loading IMEDIATAMENTE após auth
                 // dados carregam em background sem bloquear a UI
                 const loadingOverlay = document.getElementById('loadingOverlay');
@@ -5128,7 +5150,11 @@ document.getElementById('admin-nav-buttons').addEventListener('click', e => {
 
     document.addEventListener('click', (e) => { document.querySelectorAll('.search-wrapper').forEach(wrapper => { if (!wrapper.contains(e.target)) { const resultsContainer = wrapper.querySelector('.search-results-container'); if (resultsContainer) resultsContainer.innerHTML = ''; } }); });
 
-    document.getElementById('stockSearchInput').addEventListener('input', filterStockProducts);
+    document.getElementById('stockSearchInput').addEventListener('input', function() {
+        filterStockProducts();
+        const clearBtn = document.getElementById('stockSearchClear');
+        if (clearBtn) clearBtn.style.display = this.value ? 'block' : 'none';
+    });
     document.getElementById('generateReportBtn').addEventListener('click', generateStockReport);
     document.getElementById('toggleIgnoredBtn').addEventListener('click', (e) => {
         onlyShowIgnored = !onlyShowIgnored;
@@ -5674,7 +5700,8 @@ Se não houver smartphones: []`;
         const btnConfirmar = document.getElementById('scanBtnConfirmar');
         if (btnConfirmar) btnConfirmar.addEventListener('click', confirmarESalvar);
 
-        // — Groq Key UI — inicializa quando a aba de taxas abre
+
+        // — Groq Key UI —
         function initGroqKeyUI() {
             const input = document.getElementById('groqApiKeyInput');
             const saveBtn = document.getElementById('groqApiKeySaveBtn');
@@ -5696,13 +5723,20 @@ Se não houver smartphones: []`;
                     return;
                 }
                 safeStorage.setItem(GROQ_KEY_STORAGE, val);
+                // Salva também no Firebase para sobreviver ao clear do cache
+                if (val) {
+                    try {
+                        update(ref(db, 'settings'), { groqKey: val });
+                        console.log('[App] Chave Groq salva no Firebase');
+                    } catch(e) { console.warn('Firebase groqKey save:', e); }
+                }
                 showCustomModal({ message: val ? '✅ Chave Groq salva!' : 'Chave removida.' });
             });
         }
 
         // Hook no clique do admin nav para inicializar a UI da chave
         const adminNav = document.getElementById('admin-nav-buttons');
-        if (adminNav) adminNav.addEventListener('click', () => setTimeout(initGroqKeyUI, 150));
+        if (adminNav) adminNav.addEventListener('click', () => { setTimeout(initGroqKeyUI, 150); });
         // Tenta já na carga caso a aba já esteja aberta
         setTimeout(initGroqKeyUI, 800);
     })();
@@ -6708,6 +6742,8 @@ function loadBookipHistory() {
             const data = snapshot.val();
             // 1. Transforma em lista
             listaCompletaCache = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+            window._bookipsCache = listaCompletaCache;
+            window._bookipsCache = listaCompletaCache; // para VIP e Zelador
             
             // ==========================================================
             // 2. ORDENAÇÃO INTELIGENTE (MODIFICADO AQUI)
@@ -7792,6 +7828,32 @@ window.preencherCliente = function(id, idListaParaFechar) {
                 setTimeout(() => el.classList.remove('is-valid'), 1000);
             }
         });
+
+        // 🏆 Botão (i) VIP no Bookip
+        if (typeof window._getNivelVip === 'function' && cliente.cpf) {
+            const nivel = window._getNivelVip(cliente.cpf);
+            window._vipInfoAtual = { cliente, nivel };
+            // Injeta ou atualiza o botão (i) no formulário
+            const existente = document.getElementById('bookipVipInfoBtn');
+            if (existente) existente.remove();
+            if (nivel && nivel.total > 0) {
+                const cor = nivel.cor || 'var(--primary-color)';
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.id = 'bookipVipInfoBtn';
+                btn.title = 'Informações do cliente';
+                btn.style.cssText = `position:absolute;top:8px;right:8px;background:${cor}22;border:1px solid ${cor}55;color:${cor};border-radius:50%;width:28px;height:28px;font-weight:700;font-size:.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;`;
+                btn.innerHTML = 'i';
+                btn.onclick = window._mostrarVipBanner;
+                // Insere relativo ao campo nome
+                const nomeField = document.getElementById('bookipNome');
+                if (nomeField) {
+                    const parent = nomeField.closest('.col-md-12, .col-md-6, .mb-3') || nomeField.parentElement;
+                    parent.style.position = 'relative';
+                    parent.appendChild(btn);
+                }
+            }
+        }
     }
 };
 
@@ -7894,6 +7956,761 @@ if (typeof db !== 'undefined') {
 
 // 3. Função Visual: Desenhar Tabela
 // 3. Função Visual OTIMIZADA (Para listas gigantes)
+
+// ============================================================
+// 🏆 SISTEMA VIP — conta bookips por CPF
+// Bronze(3) Ouro(5) VIP(8) Extraordinário(15)
+// ============================================================
+window._getNivelVip = function(cpf) {
+    if (!cpf) return null;
+    const cpfLimpo = cpf.replace(/\D/g, '');
+    if (!cpfLimpo) return null;
+    const cache = window._bookipsCache || [];
+    const total = cache.filter(b => (b.cpf || '').replace(/\D/g, '') === cpfLimpo).length;
+    if (total >= 15) return { label: '⭐ Extraordinário', cor: '#a78bfa', total, prox: null };
+    if (total >= 8)  return { label: '💎 VIP',           cor: '#00e5ff', total, prox: 15 };
+    if (total >= 5)  return { label: '🥇 Ouro',          cor: '#ffd700', total, prox: 8 };
+    if (total >= 3)  return { label: '🥉 Bronze',        cor: '#cd7f32', total, prox: 5 };
+    return { label: null, cor: null, total, prox: 3 };
+};
+
+window._nivelVipBadgeHTML = function(cpf) {
+    const n = window._getNivelVip(cpf);
+    if (!n || !n.label) return '';
+    const proxMsg = n.prox ? ` · falta ${n.prox - n.total} p/ subir` : ' · máximo!';
+    return `<span style="display:inline-block;background:${n.cor}22;border:1px solid ${n.cor}55;color:${n.cor};border-radius:20px;padding:1px 8px;font-size:.68rem;font-weight:700;vertical-align:middle;">${n.label}${proxMsg}</span>`;
+};
+
+// ── Ranking top 10 clientes mais fiéis ──
+window._renderRankingEstrelas = function() {
+    const el = document.getElementById('rankingClientesBody');
+    if (!el) return;
+    const cache = window._bookipsCache || [];
+    const clientes = window.dbClientsCache || [];
+    if (!cache.length) {
+        el.innerHTML = '<p class="text-secondary small text-center mb-0">Nenhuma compra registrada ainda.</p>';
+        return;
+    }
+    const contagem = {};
+    cache.forEach(b => {
+        const cpf = (b.cpf || '').replace(/\D/g, '');
+        if (cpf) contagem[cpf] = (contagem[cpf] || 0) + 1;
+    });
+    const top = Object.entries(contagem)
+        .sort((a, b) => b[1] - a[1]).slice(0, 10)
+        .map(([cpf, qtd]) => {
+            const c = clientes.find(x => (x.cpf || '').replace(/\D/g, '') === cpf);
+            return { nome: c?.nome || 'Cliente sem cadastro', cpf, qtd, nivel: window._getNivelVip(cpf) };
+        });
+    if (!top.length) { el.innerHTML = '<p class="text-secondary small text-center mb-0">Nenhum dado ainda.</p>'; return; }
+    const medalhas = ['🥇','🥈','🥉'];
+    el.innerHTML = top.map((t, i) => {
+        const badge = t.nivel?.label
+            ? `<span style="background:${t.nivel.cor}22;border:1px solid ${t.nivel.cor}55;color:${t.nivel.cor};border-radius:20px;padding:1px 7px;font-size:.65rem;font-weight:700;">${t.nivel.label}</span>`
+            : '';
+        const clienteId = (window.dbClientsCache||[]).find(c => (c.cpf||'').replace(/\D/g,'') === t.cpf)?.id || '';
+        const clickFn = clienteId ? `onclick="window.abrirEstrelaCliente('${clienteId}', ${i})"` : '';
+        return `<div ${clickFn} style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--glass-border);cursor:${clienteId?'pointer':'default'};">
+            <span style="font-size:1.2rem;width:28px;text-align:center;">${medalhas[i] || (i+1)+'.'}</span>
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.nome} ${badge}</div>
+                <div style="font-size:.72rem;color:var(--text-secondary);">${t.qtd} compra(s)</div>
+            </div>
+            ${clienteId ? '<i class="bi bi-chevron-right" style="color:var(--text-secondary);font-size:.7rem;"></i>' : ''}
+        </div>`;
+    }).join('');
+};
+
+// ============================================================
+// 🔍 ZELADOR DE DADOS — Detecta e mescla duplicatas
+// Usa hash map — funciona rápido mesmo com 10k+ clientes
+// ============================================================
+window.abrirZelador = function() {
+    const clientes = window.dbClientsCache || [];
+    if (clientes.length < 2) { showCustomModal({ message: 'Poucos clientes para analisar.' }); return; }
+
+    function normCpf(s)  { return (s || '').replace(/\D/g, ''); }
+    function normTel(s)  { return (s || '').replace(/\D/g, '').replace(/^0+/, ''); }
+    function normNome(s) {
+        return (s || '').toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z\s]/g, '').trim()
+            .split(/\s+/).sort().join(' ');
+    }
+
+    // ── Agrupa por hash map (O(n) por critério) ──
+    const idParaGrupo = new Map(); // id → índice do grupo
+    const grupos = [];
+
+    function adicionarAoGrupo(a, b, motivo) {
+        const ga = idParaGrupo.get(a.id);
+        const gb = idParaGrupo.get(b.id);
+        if (ga !== undefined && gb !== undefined && ga === gb) return; // já no mesmo grupo
+        if (ga !== undefined && gb !== undefined) {
+            // Mescla dois grupos existentes
+            const menor = Math.min(ga, gb), maior = Math.max(ga, gb);
+            grupos[menor].itens.push(...grupos[maior].itens);
+            grupos[maior].itens.forEach(c => idParaGrupo.set(c.id, menor));
+            grupos[menor].motivos = [...new Set([...grupos[menor].motivos, ...grupos[maior].motivos, motivo])];
+            grupos[maior] = null;
+        } else if (ga !== undefined) {
+            grupos[ga].itens.push(b);
+            grupos[ga].motivos = [...new Set([...grupos[ga].motivos, motivo])];
+            idParaGrupo.set(b.id, ga);
+        } else if (gb !== undefined) {
+            grupos[gb].itens.push(a);
+            grupos[gb].motivos = [...new Set([...grupos[gb].motivos, motivo])];
+            idParaGrupo.set(a.id, gb);
+        } else {
+            const idx = grupos.length;
+            grupos.push({ itens: [a, b], motivos: [motivo] });
+            idParaGrupo.set(a.id, idx);
+            idParaGrupo.set(b.id, idx);
+        }
+    }
+
+    // Passa 1: CPF
+    const porCpf = {};
+    clientes.forEach(c => {
+        const cpf = normCpf(c.cpf);
+        if (cpf.length !== 11) return;
+        if (!porCpf[cpf]) porCpf[cpf] = [];
+        porCpf[cpf].push(c);
+    });
+    Object.values(porCpf).filter(g => g.length > 1).forEach(g => {
+        for (let i = 1; i < g.length; i++) adicionarAoGrupo(g[0], g[i], 'mesmo CPF');
+    });
+
+    // Passa 2: Nome
+    const porNome = {};
+    clientes.forEach(c => {
+        const nome = normNome(c.nome);
+        if (nome.length < 6) return;
+        if (!porNome[nome]) porNome[nome] = [];
+        porNome[nome].push(c);
+    });
+    Object.values(porNome).filter(g => g.length > 1).forEach(g => {
+        for (let i = 1; i < g.length; i++) adicionarAoGrupo(g[0], g[i], 'mesmo nome');
+    });
+
+    // Passa 3: Telefone
+    const porTel = {};
+    clientes.forEach(c => {
+        const tel = normTel(c.tel);
+        if (tel.length < 10) return;
+        if (!porTel[tel]) porTel[tel] = [];
+        porTel[tel].push(c);
+    });
+    Object.values(porTel).filter(g => g.length > 1).forEach(g => {
+        for (let i = 1; i < g.length; i++) adicionarAoGrupo(g[0], g[i], 'mesmo telefone');
+    });
+
+    // Remove grupos nulos
+    const gruposValidos = grupos.filter(g => g !== null && g.itens.length > 1);
+
+    // ── Mesclagem ──
+    async function mesclarGrupo(grupo) {
+        const melhor = (campo) => grupo.itens
+            .map(c => c[campo] || '').sort((a, b) => b.length - a.length)[0] || '';
+        const mesclado = {
+            nome: melhor('nome'), cpf: melhor('cpf'), tel: melhor('tel'),
+            end: melhor('end'), email: melhor('email'), dataNascimento: melhor('dataNascimento'),
+        };
+        const idManter  = grupo.itens.map(c => c.id).sort()[0];
+        const idsRemover = grupo.itens.map(c => c.id).filter(id => id !== idManter);
+        try {
+            await set(ref(db, `clientes/${idManter}`), { ...mesclado, id: idManter });
+            for (const id of idsRemover) await remove(ref(db, `clientes/${id}`));
+            return true;
+        } catch(e) { console.error('[Zelador] merge:', e); return false; }
+    }
+
+    // ── Modal ──
+    document.getElementById('zeladorOverlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'zeladorOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:1050;background:rgba(0,0,0,.8);display:flex;align-items:flex-end;justify-content:center;';
+
+    function renderZelador() {
+        let corpo = '';
+        if (!gruposValidos.length) {
+            corpo = '<div style="text-align:center;padding:28px;"><span style="font-size:2.5rem;">✅</span><p style="margin-top:10px;color:var(--text-secondary);">Tudo limpo! Nenhuma duplicata encontrada.</p></div>';
+        } else {
+            corpo = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <p style="margin:0;color:var(--text-secondary);font-size:.83rem;">
+                    <strong style="color:var(--primary-color)">${gruposValidos.length}</strong> duplicata(s) em ${clientes.length} clientes.
+                </p>
+                <button onclick="window._zeladorMesclarTodos()" style="padding:5px 12px;border:none;border-radius:8px;background:var(--primary-color);color:#000;font-weight:700;font-size:.75rem;cursor:pointer;">Mesclar Todos</button>
+            </div>`;
+
+            gruposValidos.forEach((grupo, gi) => {
+                if (!grupo) return;
+                const campos = grupo.itens.map(c => `
+                    <div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+                        <strong>${c.nome || '?'}</strong>
+                        <div style="font-size:.72rem;color:var(--text-secondary);margin-top:2px;display:flex;flex-wrap:wrap;gap:8px;">
+                            ${c.cpf ? `<span>📋 ${c.cpf}</span>` : '<span style="opacity:.4">sem CPF</span>'}
+                            ${c.tel ? `<span>📱 ${c.tel}</span>` : '<span style="opacity:.4">sem tel</span>'}
+                            ${c.end ? `<span>📍 ${c.end.substring(0,25)}</span>` : ''}
+                        </div>
+                    </div>`).join('');
+                corpo += `
+                <div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px;margin-bottom:10px;" id="zelGrupo_${gi}">
+                    <div style="font-size:.7rem;color:var(--primary-color);font-weight:700;margin-bottom:6px;">🔗 ${grupo.motivos.join(' · ')}</div>
+                    ${campos}
+                    <button onclick="window._zeladorMesclar(${gi})" style="width:100%;margin-top:8px;padding:7px;border:1px solid var(--primary-color);border-radius:8px;background:rgba(var(--primary-color-rgb),.15);color:var(--primary-color);font-weight:700;font-size:.78rem;cursor:pointer;">
+                        ✂️ Mesclar este grupo
+                    </button>
+                </div>`;
+            });
+        }
+
+        const panel = overlay.querySelector('#zelPanel');
+        if (panel) panel.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <span style="font-weight:700;font-size:1rem;color:var(--text-color);">🔍 Zelador de Dados</span>
+                <button onclick="document.getElementById('zeladorOverlay').remove()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;">✕</button>
+            </div>
+            <div style="font-size:.85rem;color:var(--text-color);">${corpo}</div>`;
+    }
+
+    overlay.innerHTML = '<div id="zelPanel" style="background:var(--card-bg,#1a1a2e);border-radius:20px 20px 0 0;width:100%;max-width:600px;max-height:88vh;overflow-y:auto;padding:20px 18px 36px;border-top:2px solid var(--primary-color);"></div>';
+    document.body.appendChild(overlay);
+    renderZelador();
+
+    window._zeladorMesclar = async function(gi) {
+        const grupo = gruposValidos[gi];
+        if (!grupo) return;
+        const btn = document.querySelector(`#zelGrupo_${gi} button`);
+        if (btn) { btn.disabled = true; btn.textContent = 'Mesclando...'; }
+        const ok = await mesclarGrupo(grupo);
+        if (ok) {
+            gruposValidos[gi] = null;
+            showCustomModal({ message: '✅ Mesclado!' });
+            renderZelador();
+        } else {
+            showCustomModal({ message: '❌ Erro ao mesclar.' });
+            if (btn) { btn.disabled = false; btn.textContent = '✂️ Mesclar este grupo'; }
+        }
+    };
+
+    window._zeladorMesclarTodos = async function() {
+        showCustomModal({
+            message: `Mesclar todos os ${gruposValidos.filter(Boolean).length} grupos?`,
+            confirmText: 'Sim, mesclar tudo',
+            onConfirm: async () => {
+                const total = gruposValidos.filter(Boolean).length;
+                showCustomModal({ message: `Mesclando ${total} grupos em paralelo...` });
+                // Dispara todas as mesclagens em paralelo — não bloqueia navegação
+                const promises = gruposValidos.map((g, i) => {
+                    if (!g) return Promise.resolve(false);
+                    return mesclarGrupo(g).then(ok => { if (ok) gruposValidos[i] = null; return ok; });
+                });
+                const results = await Promise.all(promises);
+                const ok = results.filter(Boolean).length;
+                showCustomModal({ message: `✅ ${ok} de ${total} grupo(s) mesclado(s)!` });
+                setTimeout(() => document.getElementById('zeladorOverlay')?.remove(), 300);
+            },
+            onCancel: () => {}
+        });
+    };
+};
+
+
+// ============================================================
+// 👤 RESUMO DO CLIENTE — bookips + Groq
+// ============================================================
+window.abrirResumoCliente = async function(id) {
+    const cliente = (window.dbClientsCache || []).find(c => c.id === id);
+    if (!cliente) return;
+
+    // Bookips deste cliente
+    const bookips = (window._bookipsCache || []).filter(b => {
+        const cpfB = (b.cpf || '').replace(/\D/g,'');
+        const cpfC = (cliente.cpf || '').replace(/\D/g,'');
+        const nomeB = (b.nome || '').toLowerCase().trim();
+        const nomeC = (cliente.nome || '').toLowerCase().trim();
+        return (cpfB && cpfC && cpfB === cpfC) || (nomeB && nomeC && nomeB === nomeC);
+    }).sort((a, b) => (b.dataVenda || b.criadoEm || '') > (a.dataVenda || a.criadoEm || '') ? 1 : -1);
+
+    const nivel = typeof window._getNivelVip === 'function' ? window._getNivelVip(cliente.cpf) : null;
+    const nivelHTML = nivel?.label
+        ? `<span style="background:${nivel.cor}22;border:1px solid ${nivel.cor}55;color:${nivel.cor};border-radius:20px;padding:2px 10px;font-size:.75rem;font-weight:700;">${nivel.label}</span>`
+        : '';
+
+    // Monta HTML das compras
+    const comprasHTML = bookips.length
+        ? bookips.slice(0, 15).map(b => {
+            const itens = (b.items || b.produtos || []).map(i => i.nome || i.name || '').filter(Boolean).join(', ') || 'Sem detalhes';
+            const data  = b.dataVenda || (b.criadoEm ? b.criadoEm.substring(0,10) : '');
+            const dataFmt = data ? data.split('-').reverse().join('/') : '---';
+            const tipo  = b.type === 'recibo' ? '🧾' : b.type === 'situacao' ? '📋' : '📄';
+            const vend  = b.criadoPor ? `<span style="background:rgba(var(--primary-color-rgb),.15);color:var(--primary-color);border-radius:6px;padding:1px 6px;font-size:.67rem;font-weight:600;margin-left:4px;">${b.criadoPor}</span>` : '';
+            return `<div onclick="window._abrirGarantiaDoBanner('${b.id}')" style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;border-radius:6px;" onmouseover="this.style.background='rgba(255,255,255,.04)'" onmouseout="this.style.background=''">
+                <span style="font-size:1.1rem;">${tipo}</span>
+                <div style="flex:1;">
+                    <div style="font-size:.82rem;font-weight:600;">${itens}${vend}</div>
+                    <div style="font-size:.72rem;color:var(--text-secondary);">${dataFmt}</div>
+                </div>
+                <i class="bi bi-chevron-right" style="color:var(--text-secondary);font-size:.7rem;align-self:center;"></i>
+            </div>`;
+          }).join('')
+        : '<p style="color:var(--text-secondary);text-align:center;padding:12px;">Nenhuma compra registrada.</p>';
+
+    document.getElementById('resumoClienteOverlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'resumoClienteOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10002;background:rgba(0,0,0,.8);display:flex;align-items:flex-end;justify-content:center;';
+    overlay.innerHTML = `
+        <div style="background:var(--card-bg,#1a1a2e);border-radius:20px 20px 0 0;width:100%;max-width:600px;max-height:88vh;overflow-y:auto;padding:20px 18px 36px;border-top:2px solid var(--primary-color);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <span style="font-weight:700;font-size:1rem;color:var(--text-color);">👤 Perfil do Cliente</span>
+                <button onclick="document.getElementById('resumoClienteOverlay').remove()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;">✕</button>
+            </div>
+            <div style="margin-bottom:14px;">
+                <div style="font-size:1.1rem;font-weight:700;color:var(--text-color);">${cliente.nome || '?'} ${nivelHTML}</div>
+                <div style="font-size:.8rem;color:var(--text-secondary);margin-top:4px;display:flex;flex-wrap:wrap;gap:10px;">
+                    ${cliente.cpf ? `<span>📋 ${cliente.cpf}</span>` : ''}
+                    ${cliente.tel ? `<span>📱 ${cliente.tel}</span>` : ''}
+                    ${cliente.end ? `<span>📍 ${cliente.end}</span>` : ''}
+                </div>
+                <div style="margin-top:8px;font-size:.8rem;color:var(--text-secondary);">${bookips.length} compra(s) registrada(s)</div>
+            </div>
+            <div style="font-weight:600;font-size:.85rem;margin-bottom:8px;color:var(--text-color);">Histórico de Compras</div>
+            <div>${comprasHTML}</div>
+        </div>`;
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+};
+
+
+// ============================================================
+// 🏆 BANNER ESTRELA — clique no ranking
+// ============================================================
+window.abrirEstrelaCliente = async function(id, posicao) {
+    const cliente = (window.dbClientsCache || []).find(c => c.id === id);
+    if (!cliente) return;
+
+    const bookips = (window._bookipsCache || []).filter(b => {
+        const cpfB = (b.cpf || '').replace(/\D/g,'');
+        const cpfC = (cliente.cpf || '').replace(/\D/g,'');
+        const nomeB = (b.nome || '').toLowerCase().trim();
+        const nomeC = (cliente.nome || '').toLowerCase().trim();
+        return (cpfB && cpfC && cpfB === cpfC) || (nomeB && nomeC && nomeB === nomeC);
+    }).sort((a, b) => (b.dataVenda || '') > (a.dataVenda || '') ? 1 : -1);
+
+    const nivel = typeof window._getNivelVip === 'function' ? window._getNivelVip(cliente.cpf) : null;
+    const medalhas = ['🥇','🥈','🥉'];
+    const medalha  = medalhas[posicao] || '⭐';
+    const corNivel = nivel?.cor || '#ffd700';
+
+    const comprasHTML = bookips.slice(0, 8).map(b => {
+        const itens = (b.items || b.produtos || []).map(i => i.nome || i.name || '').filter(Boolean).join(', ') || '—';
+        const data  = (b.dataVenda || '').split('-').reverse().join('/') || '---';
+        const vend  = b.criadoPor ? `<span style="background:rgba(var(--primary-color-rgb),.15);color:var(--primary-color);border-radius:6px;padding:1px 6px;font-size:.68rem;font-weight:600;">${b.criadoPor}</span>` : '';
+        return `<div onclick="window._abrirGarantiaDoBanner('${b.id}')" style="display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.06);font-size:.78rem;cursor:pointer;border-radius:6px;" onmouseover="this.style.background='rgba(255,255,255,.04)'" onmouseout="this.style.background=''">
+            <div style="flex:1;">
+                <div style="color:var(--text-color);font-weight:500;">${itens}</div>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:3px;">${vend}<span style="color:var(--text-secondary);">${data}</span></div>
+            </div>
+            <i class="bi bi-file-earmark-text" style="color:var(--text-secondary);font-size:.85rem;"></i>
+        </div>`;
+    }).join('');
+
+    document.getElementById('estrelaOverlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'estrelaOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10002;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.innerHTML = `
+        <div style="background:var(--card-bg,#1a1a2e);border-radius:24px;width:100%;max-width:460px;max-height:90vh;overflow-y:auto;padding:28px 22px;border:1px solid ${corNivel}44;box-shadow:0 0 40px ${corNivel}22;text-align:center;">
+            <div style="font-size:3.5rem;margin-bottom:4px;">${medalha}</div>
+            <div style="font-size:.75rem;color:${corNivel};font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;">${nivel?.label || 'Cliente Fiel'}</div>
+            <div style="font-size:1.3rem;font-weight:800;color:var(--text-color);margin-bottom:4px;">${cliente.nome}</div>
+            <div style="font-size:.8rem;color:var(--text-secondary);margin-bottom:16px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap;">
+                ${cliente.cpf ? `<span>📋 ${cliente.cpf}</span>` : ''}
+                ${cliente.tel ? `<span>📱 ${cliente.tel}</span>` : ''}
+            </div>
+            <div style="background:${corNivel}15;border:1px solid ${corNivel}33;border-radius:14px;padding:12px;margin-bottom:18px;display:flex;justify-content:center;gap:24px;">
+                <div><div style="font-size:1.6rem;font-weight:800;color:${corNivel};">${bookips.length}</div><div style="font-size:.72rem;color:var(--text-secondary);">compras</div></div>
+                ${nivel?.prox ? `<div><div style="font-size:1.6rem;font-weight:800;color:var(--text-secondary);">${nivel.prox - (nivel.total||0)}</div><div style="font-size:.72rem;color:var(--text-secondary);">p/ próx. nível</div></div>` : '<div><div style="font-size:1.6rem;">🎉</div><div style="font-size:.72rem;color:var(--text-secondary);">nível máximo</div></div>'}
+            </div>
+            <div style="text-align:left;">
+                <div style="font-weight:700;font-size:.82rem;color:var(--text-color);margin-bottom:8px;">Últimas compras</div>
+                ${comprasHTML || '<p style="color:var(--text-secondary);font-size:.78rem;">Sem histórico detalhado.</p>'}
+            </div>
+            <button onclick="document.getElementById('estrelaOverlay').remove()" style="margin-top:18px;width:100%;padding:12px;border:none;border-radius:14px;background:var(--primary-color);color:#000;font-weight:700;font-size:.9rem;cursor:pointer;">Fechar</button>
+        </div>`;
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+};
+
+
+// Abre o bookip específico a partir do banner estrela
+window._abrirGarantiaDoBanner = function(bookipId) {
+    document.getElementById('estrelaOverlay')?.remove();
+    document.getElementById('resumoClienteOverlay')?.remove();
+
+    // Vai pra aba de documentos
+    if (typeof window.showMainSection === 'function') window.showMainSection('contract');
+
+    // Polling: espera o DOM do accordion estar pronto
+    let n = 0;
+    const poll = setInterval(() => {
+        n++;
+
+        // Passo 1: garante que o item está na lista visível
+        if (typeof window._bookipNavigateTo === 'function') window._bookipNavigateTo(bookipId);
+
+        // Passo 2: verifica se o collapse já existe no DOM
+        const el = document.getElementById('collapse-bk-' + bookipId);
+        if (el) {
+            clearInterval(poll);
+
+            // Passo 3: abre o accordion deste item
+            el.classList.add('show');
+            const btn = document.querySelector(`[data-bs-target="#collapse-bk-${bookipId}"]`);
+            if (btn) btn.classList.remove('collapsed');
+
+            // Passo 4: scroll suave até ele
+            setTimeout(() => el.closest('.accordion-item, .card, [id]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+        }
+
+        if (n > 30) clearInterval(poll); // desiste após 3s
+    }, 100);
+};
+
+
+// Banner VIP ao clicar no botão (i) do Bookip
+window._mostrarVipBanner = function() {
+    const info = window._vipInfoAtual;
+    if (!info) return;
+    const { cliente, nivel } = info;
+    if (!nivel || !nivel.total) return;
+
+    const cor = nivel.cor || '#ffd700';
+    const label = nivel.label || `${nivel.total} compra(s)`;
+    const prox = nivel.prox
+        ? `Falta <strong>${nivel.prox - nivel.total}</strong> compra(s) para o próximo nível.`
+        : '🎉 Nível máximo atingido!';
+
+    document.getElementById('vipBannerOverlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'vipBannerOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10003;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:24px;';
+    overlay.innerHTML = `
+        <div style="background:var(--card-bg,#1a1a2e);border-radius:20px;width:100%;max-width:340px;padding:28px 22px;border:1px solid ${cor}44;box-shadow:0 0 30px ${cor}22;text-align:center;">
+            <div style="font-size:2.8rem;margin-bottom:6px;">${nivel.label ? nivel.label.split(' ')[0] : '⭐'}</div>
+            <div style="font-size:.72rem;color:${cor};font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">${label}</div>
+            <div style="font-size:1.1rem;font-weight:700;color:var(--text-color);margin-bottom:6px;">${cliente.nome}</div>
+            <div style="background:${cor}15;border:1px solid ${cor}33;border-radius:12px;padding:12px;margin:14px 0;font-size:.85rem;color:var(--text-color);">
+                Já comprou <strong style="color:${cor};font-size:1.2rem;">${nivel.total}x</strong> com você!<br>
+                <span style="font-size:.75rem;color:var(--text-secondary);">${prox}</span>
+            </div>
+            <button onclick="document.getElementById('vipBannerOverlay').remove()" style="width:100%;padding:10px;border:none;border-radius:12px;background:var(--primary-color);color:#000;font-weight:700;cursor:pointer;">Fechar</button>
+        </div>`;
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+};
+
+
+// ============================================================
+// Abre bookip específico — mesmo padrão da busca global
+// ============================================================
+window._abrirGarantiaDoBanner = function(bookipId) {
+    document.getElementById('estrelaOverlay')?.remove();
+    document.getElementById('resumoClienteOverlay')?.remove();
+
+    if (typeof window.showMainSection === 'function') window.showMainSection('contract');
+
+    setTimeout(function() {
+        // 1. Abre a área de histórico
+        if (typeof window.openDocumentsSection === 'function') window.openDocumentsSection('bookip');
+
+        // 2. Ativa o toggle de histórico (igual a busca global faz)
+        var t = document.getElementById('bookipModeToggle');
+        if (t && !t.checked) { t.checked = true; t.dispatchEvent(new Event('change')); }
+
+        // 3. Polling: espera o accordion renderizar
+        var attempts = 0;
+        function tryOpen() {
+            attempts++;
+            // Garante que item está visível na lista
+            if (typeof window._bookipNavigateTo === 'function') window._bookipNavigateTo(bookipId);
+
+            var el = document.getElementById('collapse-bk-' + bookipId);
+            if (el) {
+                // Abre o accordion
+                if (window.bootstrap) {
+                    bootstrap.Collapse.getOrCreateInstance(el, { toggle: false }).show();
+                    el.addEventListener('shown.bs.collapse', function() {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, { once: true });
+                } else {
+                    el.classList.add('show');
+                    setTimeout(function() { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 200);
+                }
+            } else if (attempts < 15) {
+                setTimeout(tryOpen, 300);
+            }
+        }
+        setTimeout(tryOpen, 500);
+    }, 300);
+};
+
+
+// ============================================================
+// 🏆 SISTEMA VIP
+// ============================================================
+window._getNivelVip = function(cpf) {
+    if (!cpf) return null;
+    const cpfLimpo = cpf.replace(/\D/g, '');
+    if (!cpfLimpo) return null;
+    const total = (window._bookipsCache || []).filter(b => (b.cpf||'').replace(/\D/g,'') === cpfLimpo).length;
+    if (total >= 15) return { label: '⭐ Extraordinário', cor: '#a78bfa', total, prox: null };
+    if (total >= 8)  return { label: '💎 VIP',           cor: '#00e5ff', total, prox: 15 };
+    if (total >= 5)  return { label: '🥇 Ouro',          cor: '#ffd700', total, prox: 8 };
+    if (total >= 3)  return { label: '🥉 Bronze',        cor: '#cd7f32', total, prox: 5 };
+    return { label: null, cor: null, total, prox: 3 };
+};
+window._nivelVipBadgeHTML = function(cpf) {
+    const n = window._getNivelVip(cpf);
+    if (!n || !n.label) return '';
+    const proxMsg = n.prox ? ` · falta ${n.prox - n.total} p/ subir` : ' · máximo!';
+    return `<span style="display:inline-block;background:${n.cor}22;border:1px solid ${n.cor}55;color:${n.cor};border-radius:20px;padding:1px 8px;font-size:.68rem;font-weight:700;vertical-align:middle;">${n.label}${proxMsg}</span>`;
+};
+
+// ── Banner VIP ao clicar no (i) do Bookip ──
+window._mostrarVipBanner = function() {
+    const info = window._vipInfoAtual;
+    if (!info) return;
+    const { cliente, nivel } = info;
+    if (!nivel || !nivel.total) return;
+    const cor = nivel.cor || '#ffd700';
+    const label = nivel.label || `${nivel.total} compra(s)`;
+    const prox = nivel.prox ? `Falta <strong>${nivel.prox - nivel.total}</strong> compra(s) para o próximo nível.` : '🎉 Nível máximo!';
+    document.getElementById('vipBannerOverlay')?.remove();
+    const ov = document.createElement('div');
+    ov.id = 'vipBannerOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:10003;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.innerHTML = `<div style="background:var(--card-bg,#1a1a2e);border-radius:20px;width:100%;max-width:340px;padding:28px 22px;border:1px solid ${cor}44;box-shadow:0 0 30px ${cor}22;text-align:center;">
+        <div style="font-size:2.8rem;">${nivel.label?.split(' ')[0]||'⭐'}</div>
+        <div style="font-size:.72rem;color:${cor};font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:6px 0 10px;">${label}</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text-color);margin-bottom:6px;">${cliente.nome}</div>
+        <div style="background:${cor}15;border:1px solid ${cor}33;border-radius:12px;padding:12px;margin:14px 0;font-size:.85rem;color:var(--text-color);">
+            Já comprou <strong style="color:${cor};font-size:1.2rem;">${nivel.total}x</strong> com você!<br>
+            <span style="font-size:.75rem;color:var(--text-secondary);">${prox}</span>
+        </div>
+        <button onclick="document.getElementById('vipBannerOverlay').remove()" style="width:100%;padding:10px;border:none;border-radius:12px;background:var(--primary-color);color:#000;font-weight:700;cursor:pointer;">Fechar</button>
+    </div>`;
+    ov.addEventListener('click', e => { if(e.target===ov) ov.remove(); });
+    document.body.appendChild(ov);
+};
+
+// ── Ranking top 10 ──
+window._renderRankingEstrelas = function() {
+    const el = document.getElementById('rankingClientesBody');
+    if (!el) return;
+    const cache = window._bookipsCache || [];
+    const clientes = window.dbClientsCache || [];
+    if (!cache.length) { el.innerHTML = '<p class="text-secondary small text-center mb-0">Nenhuma compra ainda.</p>'; return; }
+    const contagem = {};
+    cache.forEach(b => { const cpf = (b.cpf||'').replace(/\D/g,''); if(cpf) contagem[cpf]=(contagem[cpf]||0)+1; });
+    const top = Object.entries(contagem).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([cpf,qtd])=>{
+        const c = clientes.find(x=>(x.cpf||'').replace(/\D/g,'')===cpf);
+        return { nome: c?.nome||'Cliente', cpf, qtd, id: c?.id||'', nivel: window._getNivelVip(cpf) };
+    });
+    if (!top.length) { el.innerHTML = '<p class="text-secondary small text-center mb-0">Nenhum dado ainda.</p>'; return; }
+    const medalhas = ['🥇','🥈','🥉'];
+    el.innerHTML = top.map((t,i) => {
+        const badge = t.nivel?.label ? `<span style="background:${t.nivel.cor}22;border:1px solid ${t.nivel.cor}55;color:${t.nivel.cor};border-radius:20px;padding:1px 7px;font-size:.65rem;font-weight:700;">${t.nivel.label}</span>` : '';
+        const click = t.id ? `onclick="window.abrirEstrelaCliente('${t.id}',${i})"` : '';
+        return `<div ${click} style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--glass-border);cursor:${t.id?'pointer':'default'};">
+            <span style="font-size:1.2rem;width:28px;text-align:center;">${medalhas[i]||(i+1)+'.'}</span>
+            <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.nome} ${badge}</div><div style="font-size:.72rem;color:var(--text-secondary);">${t.qtd} compra(s)</div></div>
+            ${t.id?'<i class="bi bi-chevron-right" style="color:var(--text-secondary);font-size:.7rem;"></i>':''}
+        </div>`;
+    }).join('');
+};
+
+// ── Banner estrela ao clicar no ranking ──
+window.abrirEstrelaCliente = async function(id, posicao) {
+    const cliente = (window.dbClientsCache||[]).find(c=>c.id===id);
+    if (!cliente) return;
+    const bookips = (window._bookipsCache||[]).filter(b=>{
+        const cpfB=(b.cpf||'').replace(/\D/g,''), cpfC=(cliente.cpf||'').replace(/\D/g,'');
+        const nomeB=(b.nome||'').toLowerCase().trim(), nomeC=(cliente.nome||'').toLowerCase().trim();
+        return (cpfB&&cpfC&&cpfB===cpfC)||(nomeB&&nomeC&&nomeB===nomeC);
+    }).sort((a,b)=>((b.dataVenda||'')>(a.dataVenda||'')?1:-1));
+    const nivel = window._getNivelVip ? window._getNivelVip(cliente.cpf) : null;
+    const medalhas=['🥇','🥈','🥉'];
+    const medalha=medalhas[posicao]||'⭐';
+    const cor=nivel?.cor||'#ffd700';
+    const comprasHTML = bookips.slice(0,8).map(b=>{
+        const itens=(b.items||b.produtos||[]).map(i=>i.nome||i.name||'').filter(Boolean).join(', ')||'—';
+        const data=(b.dataVenda||'').split('-').reverse().join('/')||'---';
+        const vend=b.criadoPor?`<span style="background:rgba(var(--primary-color-rgb),.15);color:var(--primary-color);border-radius:6px;padding:1px 6px;font-size:.68rem;font-weight:600;">${b.criadoPor}</span>`:'';
+        return `<div onclick="window._abrirGarantiaDoBanner('${b.id}')" style="display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;" onmouseover="this.style.background='rgba(255,255,255,.04)'" onmouseout="this.style.background=''">
+            <div style="flex:1;"><div style="font-size:.82rem;font-weight:500;color:var(--text-color);">${itens}</div><div style="display:flex;gap:8px;align-items:center;margin-top:3px;">${vend}<span style="font-size:.72rem;color:var(--text-secondary);">${data}</span></div></div>
+            <i class="bi bi-file-earmark-text" style="color:var(--text-secondary);font-size:.85rem;"></i>
+        </div>`;
+    }).join('');
+    document.getElementById('estrelaOverlay')?.remove();
+    const ov=document.createElement('div');
+    ov.id='estrelaOverlay';
+    ov.style.cssText='position:fixed;inset:0;z-index:10002;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px;';
+    ov.innerHTML=`<div style="background:var(--card-bg,#1a1a2e);border-radius:24px;width:100%;max-width:460px;max-height:90vh;overflow-y:auto;padding:28px 22px;border:1px solid ${cor}44;box-shadow:0 0 40px ${cor}22;text-align:center;">
+        <div style="font-size:3.5rem;margin-bottom:4px;">${medalha}</div>
+        <div style="font-size:.75rem;color:${cor};font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;">${nivel?.label||'Cliente Fiel'}</div>
+        <div style="font-size:1.3rem;font-weight:800;color:var(--text-color);margin-bottom:4px;">${cliente.nome}</div>
+        <div style="font-size:.8rem;color:var(--text-secondary);margin-bottom:16px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap;">
+            ${cliente.cpf?`<span>📋 ${cliente.cpf}</span>`:''}${cliente.tel?`<span>📱 ${cliente.tel}</span>`:''}
+        </div>
+        <div style="background:${cor}15;border:1px solid ${cor}33;border-radius:14px;padding:12px;margin-bottom:18px;display:flex;justify-content:center;gap:24px;">
+            <div><div style="font-size:1.6rem;font-weight:800;color:${cor};">${bookips.length}</div><div style="font-size:.72rem;color:var(--text-secondary);">compras</div></div>
+            ${nivel?.prox?`<div><div style="font-size:1.6rem;font-weight:800;color:var(--text-secondary);">${nivel.prox-nivel.total}</div><div style="font-size:.72rem;color:var(--text-secondary);">p/ próx.</div></div>`:'<div><div style="font-size:1.6rem;">🎉</div><div style="font-size:.72rem;color:var(--text-secondary);">máximo</div></div>'}
+        </div>
+        <div style="text-align:left;"><div style="font-weight:700;font-size:.82rem;color:var(--text-color);margin-bottom:8px;">Histórico de Compras</div>${comprasHTML||'<p style="color:var(--text-secondary);font-size:.78rem;">Sem histórico.</p>'}</div>
+        <button onclick="document.getElementById('estrelaOverlay').remove()" style="margin-top:18px;width:100%;padding:12px;border:none;border-radius:14px;background:var(--primary-color);color:#000;font-weight:700;font-size:.9rem;cursor:pointer;">Fechar</button>
+    </div>`;
+    ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+    document.body.appendChild(ov);
+};
+
+// ── Resumo do cliente ──
+window.abrirResumoCliente = async function(id) {
+    const cliente=(window.dbClientsCache||[]).find(c=>c.id===id);
+    if (!cliente) return;
+    const bookips=(window._bookipsCache||[]).filter(b=>{
+        const cpfB=(b.cpf||'').replace(/\D/g,''),cpfC=(cliente.cpf||'').replace(/\D/g,'');
+        const nomeB=(b.nome||'').toLowerCase().trim(),nomeC=(cliente.nome||'').toLowerCase().trim();
+        return (cpfB&&cpfC&&cpfB===cpfC)||(nomeB&&nomeC&&nomeB===nomeC);
+    }).sort((a,b)=>((b.dataVenda||'')>(a.dataVenda||'')?1:-1));
+    const nivel=window._getNivelVip?window._getNivelVip(cliente.cpf):null;
+    const nivelHTML=nivel?.label?`<span style="background:${nivel.cor}22;border:1px solid ${nivel.cor}55;color:${nivel.cor};border-radius:20px;padding:2px 10px;font-size:.75rem;font-weight:700;">${nivel.label}</span>`:'';
+    const comprasHTML=bookips.length?bookips.slice(0,15).map(b=>{
+        const itens=(b.items||b.produtos||[]).map(i=>i.nome||i.name||'').filter(Boolean).join(', ')||'Sem detalhes';
+        const data=b.dataVenda||''; const dataFmt=data?data.split('-').reverse().join('/'):'---';
+        const tipo=b.type==='recibo'?'🧾':b.type==='situacao'?'📋':'📄';
+        const vend=b.criadoPor?`<span style="background:rgba(var(--primary-color-rgb),.15);color:var(--primary-color);border-radius:6px;padding:1px 6px;font-size:.67rem;font-weight:600;margin-left:4px;">${b.criadoPor}</span>`:'';
+        return `<div onclick="window._abrirGarantiaDoBanner('${b.id}')" style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;" onmouseover="this.style.background='rgba(255,255,255,.04)'" onmouseout="this.style.background=''">
+            <span style="font-size:1.1rem;">${tipo}</span>
+            <div style="flex:1;"><div style="font-size:.82rem;font-weight:600;">${itens}${vend}</div><div style="font-size:.72rem;color:var(--text-secondary);">${dataFmt}</div></div>
+            <i class="bi bi-chevron-right" style="color:var(--text-secondary);font-size:.7rem;align-self:center;"></i>
+        </div>`;
+    }).join(''):'<p style="color:var(--text-secondary);text-align:center;padding:12px;">Nenhuma compra registrada.</p>';
+    document.getElementById('resumoClienteOverlay')?.remove();
+    const ov=document.createElement('div');
+    ov.id='resumoClienteOverlay';
+    ov.style.cssText='position:fixed;inset:0;z-index:10002;background:rgba(0,0,0,.8);display:flex;align-items:flex-end;justify-content:center;';
+    ov.innerHTML=`<div style="background:var(--card-bg,#1a1a2e);border-radius:20px 20px 0 0;width:100%;max-width:600px;max-height:88vh;overflow-y:auto;padding:20px 18px 36px;border-top:2px solid var(--primary-color);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <span style="font-weight:700;font-size:1rem;color:var(--text-color);">👤 Perfil do Cliente</span>
+            <button onclick="document.getElementById('resumoClienteOverlay').remove()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;">✕</button>
+        </div>
+        <div style="margin-bottom:14px;">
+            <div style="font-size:1.1rem;font-weight:700;color:var(--text-color);">${cliente.nome||'?'} ${nivelHTML}</div>
+            <div style="font-size:.8rem;color:var(--text-secondary);margin-top:4px;display:flex;flex-wrap:wrap;gap:10px;">
+                ${cliente.cpf?`<span>📋 ${cliente.cpf}</span>`:''}${cliente.tel?`<span>📱 ${cliente.tel}</span>`:''}${cliente.end?`<span>📍 ${cliente.end}</span>`:''}
+            </div>
+            <div style="margin-top:8px;font-size:.8rem;color:var(--text-secondary);">${bookips.length} compra(s) registrada(s)</div>
+        </div>
+        <div style="font-weight:600;font-size:.85rem;margin-bottom:8px;color:var(--text-color);">Histórico de Compras</div>
+        <div>${comprasHTML}</div>
+    </div>`;
+    ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+    document.body.appendChild(ov);
+};
+
+// ============================================================
+// 🔍 ZELADOR — hash map O(n), sem travar
+// ============================================================
+window.abrirZelador = function() {
+    const clientes = window.dbClientsCache || [];
+    if (clientes.length < 2) { showCustomModal({ message: 'Poucos clientes.' }); return; }
+    function normCpf(s)  { return (s||'').replace(/\D/g,''); }
+    function normTel(s)  { return (s||'').replace(/\D/g,'').replace(/^0+/,''); }
+    function normNome(s) { return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z\s]/g,'').trim().split(/\s+/).sort().join(' '); }
+    const idParaGrupo = new Map();
+    const grupos = [];
+    function addGrupo(a, b, motivo) {
+        const ga=idParaGrupo.get(a.id), gb=idParaGrupo.get(b.id);
+        if (ga!==undefined && gb!==undefined && ga===gb) return;
+        if (ga!==undefined && gb!==undefined) {
+            const mn=Math.min(ga,gb),mx=Math.max(ga,gb);
+            grupos[mn].itens.push(...grupos[mx].itens);
+            grupos[mx].itens.forEach(c=>idParaGrupo.set(c.id,mn));
+            grupos[mn].motivos=[...new Set([...grupos[mn].motivos,...grupos[mx].motivos,motivo])];
+            grupos[mx]=null;
+        } else if (ga!==undefined) { grupos[ga].itens.push(b); grupos[ga].motivos=[...new Set([...grupos[ga].motivos,motivo])]; idParaGrupo.set(b.id,ga); }
+        else if (gb!==undefined) { grupos[gb].itens.push(a); grupos[gb].motivos=[...new Set([...grupos[gb].motivos,motivo])]; idParaGrupo.set(a.id,gb); }
+        else { const idx=grupos.length; grupos.push({itens:[a,b],motivos:[motivo]}); idParaGrupo.set(a.id,idx); idParaGrupo.set(b.id,idx); }
+    }
+    const porCpf={}, porNome={}, porTel={};
+    clientes.forEach(c=>{
+        const cpf=normCpf(c.cpf); if(cpf.length===11){if(!porCpf[cpf])porCpf[cpf]=[];porCpf[cpf].push(c);}
+        const nome=normNome(c.nome); if(nome.length>=6){if(!porNome[nome])porNome[nome]=[];porNome[nome].push(c);}
+        const tel=normTel(c.tel); if(tel.length>=10){if(!porTel[tel])porTel[tel]=[];porTel[tel].push(c);}
+    });
+    Object.values(porCpf).filter(g=>g.length>1).forEach(g=>{for(let i=1;i<g.length;i++)addGrupo(g[0],g[i],'mesmo CPF');});
+    Object.values(porNome).filter(g=>g.length>1).forEach(g=>{for(let i=1;i<g.length;i++)addGrupo(g[0],g[i],'mesmo nome');});
+    Object.values(porTel).filter(g=>g.length>1).forEach(g=>{for(let i=1;i<g.length;i++)addGrupo(g[0],g[i],'mesmo telefone');});
+    const gv = grupos.filter(g=>g!==null&&g.itens.length>1);
+
+    async function mesclarGrupo(grupo) {
+        const melhor=(campo)=>grupo.itens.map(c=>c[campo]||'').sort((a,b)=>b.length-a.length)[0]||'';
+        const mesclado={nome:melhor('nome'),cpf:melhor('cpf'),tel:melhor('tel'),end:melhor('end'),email:melhor('email'),dataNascimento:melhor('dataNascimento')};
+        const idManter=grupo.itens.map(c=>c.id).sort()[0];
+        const idsRem=grupo.itens.map(c=>c.id).filter(id=>id!==idManter);
+        try {
+            await set(ref(db,`clientes/${idManter}`),{...mesclado,id:idManter});
+            for(const id of idsRem) await remove(ref(db,`clientes/${id}`));
+            return true;
+        } catch(e){console.error('[Zelador]',e);return false;}
+    }
+
+    document.getElementById('zeladorOverlay')?.remove();
+    const ov=document.createElement('div');
+    ov.id='zeladorOverlay';
+    ov.style.cssText='position:fixed;inset:0;z-index:1050;background:rgba(0,0,0,.8);display:flex;align-items:flex-end;justify-content:center;';
+
+    function renderZ() {
+        let corpo='';
+        if (!gv.filter(Boolean).length) {
+            corpo='<div style="text-align:center;padding:28px;"><span style="font-size:2.5rem;">✅</span><p style="margin-top:10px;color:var(--text-secondary);">Base limpa!</p></div>';
+        } else {
+            corpo=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><p style="margin:0;color:var(--text-secondary);font-size:.83rem;"><strong style="color:var(--primary-color)">${gv.filter(Boolean).length}</strong> duplicata(s) em ${clientes.length} clientes.</p><button onclick="window._zelMesclarTodos()" style="padding:5px 12px;border:none;border-radius:8px;background:var(--primary-color);color:#000;font-weight:700;font-size:.75rem;cursor:pointer;">Mesclar Todos</button></div>`;
+            gv.forEach((g,gi)=>{
+                if(!g)return;
+                const campos=g.itens.map(c=>`<div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06);"><strong>${c.nome||'?'}</strong><div style="font-size:.72rem;color:var(--text-secondary);margin-top:2px;display:flex;flex-wrap:wrap;gap:8px;">${c.cpf?`<span>📋 ${c.cpf}</span>`:''} ${c.tel?`<span>📱 ${c.tel}</span>`:''}</div></div>`).join('');
+                corpo+=`<div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px;margin-bottom:10px;" id="zelGrupo_${gi}"><div style="font-size:.7rem;color:var(--primary-color);font-weight:700;margin-bottom:6px;">🔗 ${g.motivos.join(' · ')}</div>${campos}<button onclick="window._zelMesclar(${gi})" style="width:100%;margin-top:8px;padding:7px;border:1px solid var(--primary-color);border-radius:8px;background:rgba(var(--primary-color-rgb),.15);color:var(--primary-color);font-weight:700;font-size:.78rem;cursor:pointer;">✂️ Mesclar</button></div>`;
+            });
+        }
+        const p=ov.querySelector('#zelPanel');
+        if(p)p.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;"><span style="font-weight:700;font-size:1rem;color:var(--text-color);">🔍 Zelador de Dados</span><button onclick="document.getElementById('zeladorOverlay').remove()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;">✕</button></div><div style="font-size:.85rem;color:var(--text-color);">${corpo}</div>`;
+    }
+
+    ov.innerHTML='<div id="zelPanel" style="background:var(--card-bg,#1a1a2e);border-radius:20px 20px 0 0;width:100%;max-width:600px;max-height:88vh;overflow-y:auto;padding:20px 18px 36px;border-top:2px solid var(--primary-color);"></div>';
+    document.body.appendChild(ov);
+    renderZ();
+
+    window._zelMesclar=async function(gi){
+        const g=gv[gi]; if(!g)return;
+        const btn=document.querySelector(`#zelGrupo_${gi} button`); if(btn){btn.disabled=true;btn.textContent='Mesclando...';}
+        const ok=await mesclarGrupo(g);
+        if(ok){gv[gi]=null;showCustomModal({message:'✅ Mesclado!'});renderZ();}
+        else{showCustomModal({message:'❌ Erro.'});if(btn){btn.disabled=false;btn.textContent='✂️ Mesclar';}}
+    };
+    window._zelMesclarTodos=async function(){
+        showCustomModal({message:`Mesclar todos os ${gv.filter(Boolean).length} grupos?`,confirmText:'Sim, mesclar',
+            onConfirm:async()=>{
+                const results=await Promise.all(gv.map((g,i)=>g?mesclarGrupo(g).then(ok=>{if(ok)gv[i]=null;return ok;}):Promise.resolve(false)));
+                const ok=results.filter(Boolean).length;
+                showCustomModal({message:`✅ ${ok} grupo(s) mesclado(s)!`});
+                setTimeout(()=>document.getElementById('zeladorOverlay')?.remove(),300);
+            },onCancel:()=>{}});
+    };
+};
+
 window.renderClientsTable = function(filterText = '') {
     const tbody = document.getElementById('clientsTableBody');
     const countEl = document.getElementById('totalClientsCount');
@@ -7933,7 +8750,7 @@ window.renderClientsTable = function(filterText = '') {
     let html = listaVisivel.map(c => `
         <tr>
             <td class="ps-2">
-                <div style="font-weight: 600; font-size: 1rem;">${c.nome}</div>
+                <div style="font-weight: 600; font-size: 1rem;">${c.nome}${window._nivelVipBadgeHTML ? " " + window._nivelVipBadgeHTML(c.cpf) : ""}</div>
                 <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 3px; display: flex; align-items: center; gap: 8px;">
                     <span><i class="bi bi-card-heading"></i> ${c.cpf || '---'}</span>
                     <span style="opacity: 0.3;">|</span>
@@ -7942,6 +8759,8 @@ window.renderClientsTable = function(filterText = '') {
             </td>
             <td class="text-end pe-2" style="white-space: nowrap; width: 1px;">
                 <div class="d-flex justify-content-end gap-2">
+                    <button class="client-action-btn" onclick="window.abrirResumoCliente('${c.id}')" title="Ver Resumo" style="background:rgba(var(--primary-color-rgb),.15);color:var(--primary-color);border:1px solid rgba(var(--primary-color-rgb),.3);border-radius:8px;padding:5px 8px;"><i class="bi bi-person-lines-fill"></i></button>
+                    <button class="client-action-btn" onclick="window.abrirResumoCliente('${c.id}')" title="Resumo" style="background:rgba(var(--primary-color-rgb),.15);color:var(--primary-color);border:1px solid rgba(var(--primary-color-rgb),.3);border-radius:8px;padding:5px 8px;"><i class="bi bi-person-lines-fill"></i></button>
                     <button class="client-action-btn btn-edit-theme" onclick="editarCliente('${c.id}')" title="Editar"><i class="bi bi-pencil-fill"></i></button>
                     <button class="client-action-btn btn-delete-theme" onclick="excluirCliente('${c.id}')" title="Excluir"><i class="bi bi-trash-fill"></i></button>
                 </div>

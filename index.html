@@ -849,15 +849,7 @@ class="dropdown-menu-custom">
         </div>
 
         <div id="adminRatesContent" class="hidden">
-            <div class="admin-section">
-                <h4 class="text-start"><i class="bi bi-robot"></i> IA para Scan de Estoque</h4>
-                <p class="text-start text-secondary small">Cole sua chave da API Groq para usar o Scan em Lote. Gratuito em <a href="https://console.groq.com" target="_blank" class="text-primary">console.groq.com</a></p>
-                <div class="input-group mb-2">
-                    <input type="password" class="form-control" id="groqApiKeyInput" placeholder="gsk_...">
-                    <button class="btn btn-outline-secondary" type="button" id="groqApiKeyToggle"><i class="bi bi-eye"></i></button>
-                </div>
-                <button class="btn btn-primary w-100 mb-2" id="groqApiKeySaveBtn"><i class="bi bi-save-fill"></i> Salvar Chave</button>
-            </div>
+
             <div class="admin-section">
                 <h4 class="text-start"><i class="bi bi-eye-fill"></i> Maquininhas Visíveis</h4>
                 <p class="text-start text-secondary">Desative as maquininhas que você não utiliza para simplificar as telas de cálculo.</p>
@@ -908,6 +900,15 @@ class="dropdown-menu-custom">
         <div id="adminTagsContent" class="hidden"></div>
 
         <div id="adminSettingsContent" class="hidden">
+            <div class="admin-section w-100">
+                <h4 class="mb-3 text-start"><i class="bi bi-robot"></i> Chave Groq — Scan de Estoque</h4>
+                <p class="text-secondary small">Cole sua chave da API Groq para usar o Scan de Cores no Estoque. Gratuito em <a href="https://console.groq.com" target="_blank" class="text-primary">console.groq.com</a></p>
+                <div class="input-group mb-2">
+                    <input type="password" class="form-control" id="groqApiKeyInput" placeholder="gsk_...">
+                    <button class="btn btn-outline-secondary" type="button" id="groqApiKeyToggle"><i class="bi bi-eye"></i></button>
+                </div>
+                <button class="btn btn-primary w-100" id="groqApiKeySaveBtn"><i class="bi bi-save-fill"></i> Salvar Chave</button>
+            </div>
             <div class="admin-section w-100">
                 <h4 class="mb-3 text-start"><i class="bi bi-pencil-square"></i> Cabeçalho do Recibo</h4>
                 <p class="text-secondary small">Edite os dados da empresa que aparecem no topo do Bookip (Nome, CNPJ, Endereço, etc).</p>
@@ -967,7 +968,6 @@ class="dropdown-menu-custom">
     </div>
 
         
-        <div id="adminTagsContent" class="hidden"></div>
     </div>
     
 
@@ -1448,7 +1448,10 @@ do que você precisa??</h2>
         </div>
         <div class="content-card w-100">
             <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-2">
-                <input class="form-control" id="stockSearchInput" placeholder="Filtrar produtos..." style="flex: 1; min-width: 180px;" type="text">
+                <div style="display:flex;align-items:center;flex:1;min-width:180px;position:relative;">
+                    <input class="form-control pe-4" id="stockSearchInput" placeholder="Filtrar produtos..." style="flex:1;" type="text">
+                    <button id="stockSearchClear" onclick="document.getElementById('stockSearchInput').value='';document.getElementById('stockSearchInput').dispatchEvent(new Event('input'));this.style.display='none';" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-secondary);font-size:.85rem;cursor:pointer;padding:0;line-height:1;" title="Limpar">✕</button>
+                </div>
                 <div class="btn-group">
                     <button class="btn btn-outline-secondary btn-sm" id="toggleIgnoredBtn" title="Mostrar produtos ignorados"><i class="bi bi-eye-slash-fill"></i></button>
                     <button class="btn btn-outline-danger btn-sm" id="resetCountBtn" title="Resetar Contagem"><i class="bi bi-arrow-counterclockwise"></i></button>
@@ -1476,6 +1479,17 @@ do que você precisa??</h2>
         <div class="section-header">
             <h3>Base de Clientes</h3>
             <button aria-label="Voltar" class="btn-back" id="backFromClients"><i class="bi bi-arrow-left"></i></button>
+        </div>
+
+        <!-- 🏆 CLIENTES ESTRELAS -->
+        <div class="content-card w-100 mb-3">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <h6 style="margin:0;font-weight:700;"><i class="bi bi-trophy-fill" style="color:#ffd700;"></i> Clientes Estrelas</h6>
+                <button onclick="window.abrirZelador()" class="btn btn-sm btn-outline-secondary" style="font-size:.72rem;">
+                    <i class="bi bi-search"></i> Zelador
+                </button>
+            </div>
+            <div id="rankingClientesBody"><p class="text-secondary small text-center mb-0">Carregando...</p></div>
         </div>
         
         <div class="content-card w-100">
@@ -1864,7 +1878,14 @@ do que você precisa??</h2>
 
 
 <script src="app.js?v=1001" type="module" defer></script>
-<script src="stockCount.js" defer></script>
+<script>
+window.addEventListener('load', function() {
+    var s = document.createElement('script');
+    s.src = 'StockCount.js?v=3';
+    document.head.appendChild(s);
+});
+</script>
+
     <!-- Módulos independentes — carregam em paralelo após app.js -->
     <script type="module" defer>
         // Carrega módulos após o app estar pronto

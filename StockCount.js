@@ -197,6 +197,13 @@
         if (!body) { setTimeout(_observarEstoque, 600); return; }
         _adicionarBotoes(body);
         new MutationObserver(() => _adicionarBotoes(body)).observe(body, { childList: true });
+        // Poll extra: re-injeta a cada 2s por 20s para garantir que o badge "hoje"
+        // aparece mesmo quando os cards já estavam renderizados ao carregar
+        let polls = 0;
+        const poller = setInterval(() => {
+            _adicionarBotoes(body);
+            if (++polls >= 10) clearInterval(poller);
+        }, 2000);
     }
 
     function _adicionarBotoes(body) {
@@ -274,25 +281,24 @@
         _processing = true;
         const job = _queue[0];
         try {
-            // Analisa todas as fotos e une as cores
+            // Analisa todas as fotos e une cores + soma quantidades
             const todasCores = [];
+            let totalQtd = 0;
             for (const foto of job.fotos) {
-                const cores = await _detectarCores(foto.b64, foto.mime, job.nome);
-                if (cores) cores.forEach(c => {
-                    if (!todasCores.some(x => x.hex.toLowerCase() === c.hex.toLowerCase())) todasCores.push(c);
-                });
+                const res = await _detectarCores(foto.b64, foto.mime, job.nome);
+                if (res && res.cores) {
+                    res.cores.forEach(c => {
+                        if (!todasCores.some(x => x.hex.toLowerCase() === c.hex.toLowerCase())) todasCores.push(c);
+                    });
+                    totalQtd += (res.quantidade || 0);
+                }
             }
 
             _queue.shift();
 
-            if (todasCores.length > 0) {
-                if (typeof window.updateProductInDB === 'function') {
-                    await window.updateProductInDB(job.id, { cores: todasCores });
-                }
-                _marcarComoConferido(job.id);
-                _marcarFotografadoHoje(job.id);
-                _erros = _erros.filter(e => e.id !== job.id);
-                _resetarBtn(job.btn, true);
+            if (todasCores.length > 0 || totalQtd > 0) {
+                // Mostra card de confirmação antes de salvar
+                _mostrarCardConfirmacao(job, todasCores, totalQtd);
             } else {
                 _registrarErro(job.id, job.nome, 'IA não identificou cores');
                 _resetarBtn(job.btn, false);
@@ -305,34 +311,153 @@
         }
         _atualizarBadge();
         _atualizarPainelErros();
-        if (typeof window.filterStockProducts === 'function') window.filterStockProducts();
+        // NÃO chama filterStockProducts aqui — destruiria o card de confirmação
+        // filterStockProducts é chamado dentro de _salvarResultado, após o usuário confirmar
         await new Promise(r => setTimeout(r, 500));
         _processarFila();
     }
 
+    // ── CARD DE CONFIRMAÇÃO ──
+    // Aparece no card do produto no estoque para o usuário confirmar antes de salvar
+    function _mostrarCardConfirmacao(job, cores, quantidade) {
+        // Reseta o botão para estado "aguardando confirmação"
+        if (job.btn) {
+            job.btn.classList.remove('sc-busy');
+            const badge = job.btn.querySelector('.sc-foto-count');
+            if (badge) badge.remove();
+            job.btn.innerHTML = '<i class="bi bi-check2-circle" style="color:#facc15"></i>';
+            job.btn.title = 'Aguardando confirmação...';
+        }
+
+        // Remove card anterior do mesmo produto se existir
+        const existente = document.getElementById(`scConfirm_${job.id}`);
+        if (existente) existente.remove();
+
+        // Encontra o card do produto no estoque
+        const prodCard = document.querySelector(`.stock-item-card[data-id="${job.id}"]`);
+        if (!prodCard) {
+            // Card não visível — salva direto
+            _salvarResultado(job.id, cores, quantidade, job.btn);
+            return;
+        }
+
+        const coresHtml = cores.map(c =>
+            `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.08);border-radius:6px;padding:2px 7px;font-size:.75rem;">
+                <span style="width:10px;height:10px;border-radius:50%;background:${c.hex};border:1px solid rgba(255,255,255,.2);flex-shrink:0;"></span>
+                ${c.nome}
+            </span>`
+        ).join('');
+
+        const confirmaEl = document.createElement('div');
+        confirmaEl.id = `scConfirm_${job.id}`;
+        confirmaEl.style.cssText = 'background:rgba(250,204,21,.08);border:1px solid rgba(250,204,21,.35);border-radius:10px;padding:10px 12px;margin-top:8px;';
+        confirmaEl.innerHTML = `
+            <div style="font-size:.78rem;font-weight:700;color:#facc15;margin-bottom:6px;">
+                <i class="bi bi-cpu-fill"></i> IA detectou — confirme antes de salvar
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                <span style="font-size:.75rem;color:var(--text-secondary);">Qtd:</span>
+                <div style="display:flex;align-items:center;gap:4px;">
+                    <button id="scQDec_${job.id}" style="width:24px;height:24px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.07);color:#fff;cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;">−</button>
+                    <input id="scQInput_${job.id}" type="number" value="${quantidade}" min="0" style="width:55px;text-align:center;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;font-size:.85rem;padding:2px 4px;">
+                    <button id="scQInc_${job.id}" style="width:24px;height:24px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.07);color:#fff;cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;">+</button>
+                </div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">${coresHtml || '<span style="font-size:.75rem;color:var(--text-secondary)">Nenhuma cor detectada</span>'}</div>
+            <div style="display:flex;gap:8px;">
+                <button id="scConfirmOk_${job.id}" style="flex:1;background:#4ade80;color:#000;border:none;border-radius:8px;padding:6px;font-size:.8rem;font-weight:700;cursor:pointer;">
+                    <i class="bi bi-check-lg"></i> Confirmar
+                </button>
+                <button id="scConfirmX_${job.id}" style="background:rgba(248,113,113,.15);color:#f87171;border:1px solid rgba(248,113,113,.3);border-radius:8px;padding:6px 10px;font-size:.8rem;cursor:pointer;">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>`;
+
+        prodCard.appendChild(confirmaEl);
+
+        // Eventos dos botões +/-
+        document.getElementById(`scQDec_${job.id}`)?.addEventListener('click', () => {
+            const inp = document.getElementById(`scQInput_${job.id}`);
+            if (inp) inp.value = Math.max(0, (parseInt(inp.value) || 0) - 1);
+        });
+        document.getElementById(`scQInc_${job.id}`)?.addEventListener('click', () => {
+            const inp = document.getElementById(`scQInput_${job.id}`);
+            if (inp) inp.value = (parseInt(inp.value) || 0) + 1;
+        });
+
+        // Confirmar
+        document.getElementById(`scConfirmOk_${job.id}`)?.addEventListener('click', () => {
+            const qtdFinal = parseInt(document.getElementById(`scQInput_${job.id}`)?.value) || quantidade;
+            confirmaEl.remove();
+            _salvarResultado(job.id, cores, qtdFinal, job.btn);
+        });
+
+        // Cancelar
+        document.getElementById(`scConfirmX_${job.id}`)?.addEventListener('click', () => {
+            confirmaEl.remove();
+            _resetarBtn(job.btn, false);
+            if (job.btn) {
+                job.btn.innerHTML = '<i class="bi bi-camera-fill"></i>';
+                job.btn.title = 'Detectar cores por foto';
+                job.btn.classList.remove('sc-busy');
+            }
+        });
+    }
+
+    async function _salvarResultado(id, cores, quantidade, btn) {
+        try {
+            console.log('[StockCount] Salvando:', id, 'cores:', cores.length, 'qtd:', quantidade);
+            // Garante que a função está disponível (pode não estar se app.js ainda não executou)
+            const updateFn = window.updateProductInDB;
+            if (typeof updateFn === 'function') {
+                // Sempre substitui cores E quantidade no Firebase (nunca soma)
+                const updates = {};
+                if (cores && cores.length > 0) updates.cores = cores;
+                updates.quantidade = quantidade; // substitui mesmo se for 0
+                await updateFn(id, updates);
+                console.log('[StockCount] Firebase atualizado:', updates);
+            } else {
+                console.error('[StockCount] window.updateProductInDB não disponível!');
+            }
+            _marcarComoConferido(id);
+            _marcarFotografadoHoje(id);
+            _erros = _erros.filter(e => e.id !== id);
+            _resetarBtn(btn, true);
+            if (typeof window.filterStockProducts === 'function') window.filterStockProducts();
+        } catch(e) {
+            console.error('[StockCount] Erro ao salvar:', e);
+            _registrarErro(id, '?', e.message);
+        }
+    }
+
     function _resetarBtn(btn, sucesso) {
-        if (!btn) return;
-        btn.classList.remove('sc-busy');
-        // Remove badge de contagem
-        const badge = btn.querySelector('.sc-foto-count');
+        // Re-busca o botão no DOM caso ele tenha sido re-renderizado
+        let b = btn;
+        if (b && !document.body.contains(b)) {
+            // btn foi destruído pela re-renderização — não faz nada
+            // o _adicionarBotoes vai re-criar com o estado correto via _foiFotografadoHoje
+            return;
+        }
+        if (!b) return;
+
+        b.classList.remove('sc-busy');
+        const badge = b.querySelector('.sc-foto-count');
         if (badge) badge.remove();
 
         if (sucesso === true) {
-            btn.classList.add('sc-done-today');
-            btn.innerHTML = '<i class="bi bi-camera-fill"></i>';
-            btn.title = 'Cores atualizadas e produto conferido! Toque para fotografar novamente.';
-            // Readiciona o ✓ verde
+            b.classList.add('sc-done-today');
+            b.innerHTML = '<i class="bi bi-camera-fill"></i>';
+            b.title = 'Cores atualizadas! Toque para fotografar novamente.';
             const dot = document.createElement('span');
             dot.className = 'sc-foto-count';
             dot.style.background = '#4ade80';
             dot.textContent = '✓';
-            btn.appendChild(dot);
+            b.appendChild(dot);
         } else {
-            btn.innerHTML = '<i class="bi bi-exclamation-circle-fill" style="color:#f87171"></i>';
-            btn.title = 'Falhou — toque para tentar de novo';
+            b.innerHTML = '<i class="bi bi-exclamation-circle-fill" style="color:#f87171"></i>';
+            b.title = 'Falhou — toque para tentar de novo';
         }
-        // Reseta o job atual se era deste produto
-        if (_jobAtual && btn === _jobAtual.btn) _jobAtual = null;
+        if (_jobAtual && b === _jobAtual.btn) _jobAtual = null;
     }
 
     // ── GROQ ──
@@ -345,20 +470,21 @@
 Foque APENAS nas caixas do produto: "${nomeProduto}"
 Ignore qualquer outro modelo/marca visível.
 
-Leia a COR escrita na etiqueta de cada caixa desse produto.
-Exemplos: "Midnight Black", "Lavender Purple", "Coral Green", "Glacier Blue", "Blue", "Black", "Yellow", "White"
+Para CADA caixa do "${nomeProduto}" que você encontrar:
+- Leia a COR escrita na etiqueta (ex: "Midnight Black", "Coral Green", "Glacier Blue", "Lavender Purple")
+- Conte 1 unidade por caixa física
 
 Responda SOMENTE com JSON:
-{"cores":["Midnight Black","Lavender Purple"]}
+{"cores":["Midnight Black","Coral Green"],"quantidade":3}
 
-Se não encontrar esse produto: {"cores":[]}`;
+Se não encontrar esse produto: {"cores":[],"quantidade":0}`;
 
         const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
             body: JSON.stringify({
                 model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-                max_completion_tokens: 150,
+                max_completion_tokens: 200,
                 temperature: 0.05,
                 response_format: { type: 'json_object' },
                 messages: [{ role: 'user', content: [
@@ -378,8 +504,10 @@ Se não encontrar esse produto: {"cores":[]}`;
         console.log(`StockCount [${nomeProduto}]:`, texto);
         const parsed = JSON.parse(texto.replace(/```json|```/gi, '').trim());
         const coresRaw = Array.isArray(parsed?.cores) ? parsed.cores : [];
-        return coresRaw.map(c => _mapearCor(c)).filter(Boolean)
+        const cores = coresRaw.map(c => _mapearCor(c)).filter(Boolean)
             .filter((c, i, arr) => arr.findIndex(x => x.hex.toLowerCase() === c.hex.toLowerCase()) === i);
+        const quantidade = parseInt(parsed?.quantidade) || 0;
+        return { cores, quantidade };
     }
 
     // ── AUTOCOMPLETE ──
@@ -515,10 +643,62 @@ Se não encontrar esse produto: {"cores":[]}`;
     function _mapearCor(c) {
         if (!c) return null;
         const p = window.colorPalette || [], l = c.toLowerCase().trim();
-        const ex = p.find(x => x.nome.toLowerCase() === l); if (ex) return ex;
-        for (const x of p) { if (l.includes(x.nome.toLowerCase()) || x.nome.toLowerCase().includes(l)) return x; }
-        const kw = { 'preto':'Preto','black':'Preto','branco':'Branco','white':'Branco','cinza':'Grafite','gray':'Grafite','grey':'Grafite','prata':'Prata','silver':'Prata','azul':'Azul','blue':'Azul','verde':'Verde','green':'Verde','roxo':'Roxo','purple':'Roxo','rosa':'Rosa','pink':'Rosa','dourado':'Dourado','gold':'Dourado','amarelo':'Amarelo','yellow':'Amarelo','laranja':'Laranja','orange':'Laranja','vermelho':'Vermelho','red':'Vermelho','titanio':'Titanio Natural','titanium':'Titanio Natural','lavender':'Lilas','coral':'Coral','midnight':'Preto','glacier':'Azul' };
-        for (const [k, nome] of Object.entries(kw)) { if (l.includes(k)) { const f = p.find(x => x.nome === nome); if (f) return f; } }
+
+        // 1. Correspondência exata com a paleta
+        const ex = p.find(x => x.nome.toLowerCase() === l);
+        if (ex) return ex;
+
+        // 2. Paleta contém o nome completo (substring bidirecional)
+        for (const x of p) {
+            if (l.includes(x.nome.toLowerCase()) || x.nome.toLowerCase().includes(l)) return x;
+        }
+
+        // 3. Multi-palavra: verifica a palavra de cor DOMINANTE
+        // "Coral Green" → green domina → Verde
+        // "Midnight Black" → black domina → Preto
+        // "Glacier Blue" → blue domina → Azul
+        // "Lavender Purple" → purple domina → Roxo
+        const multiWord = [
+            // Verdes — qualquer combinação com green/verde ganha
+            { test: /\bgreen\b|\bverde\b/i,    nome: 'Verde' },
+            { test: /\bblue\b|\bazul\b/i,     nome: 'Azul' },
+            { test: /\bblack\b|\bpreto\b/i,   nome: 'Preto' },
+            { test: /\bwhite\b|\bbranco\b/i,  nome: 'Branco' },
+            { test: /\bgold\b|\bdourado\b/i,  nome: 'Dourado' },
+            { test: /\byellow\b|\bamarelo\b/i,nome: 'Amarelo' },
+            { test: /\bpurple\b|\broxo\b/i,   nome: 'Roxo' },
+            { test: /\bpink\b|\brosa\b/i,     nome: 'Rosa' },
+            { test: /\bgray\b|\bgrey\b|\bcinza\b/i, nome: 'Grafite' },
+            { test: /\bsilver\b|\bprata\b/i,  nome: 'Prata' },
+            { test: /\bred\b|\bvermelho\b/i,  nome: 'Vermelho' },
+            { test: /\borange\b|\blaranja\b/i,nome: 'Laranja' },
+        ];
+        // Só aplica multi-palavra se a string tiver pelo menos 2 palavras
+        if (l.includes(' ')) {
+            for (const rule of multiWord) {
+                if (rule.test.test(l)) {
+                    const found = p.find(x => x.nome === rule.nome);
+                    if (found) return found;
+                }
+            }
+        }
+
+        // 4. Keyword único (fallback para cores de uma palavra)
+        const kw = {
+            'preto':'Preto','black':'Preto','branco':'Branco','white':'Branco',
+            'cinza':'Grafite','gray':'Grafite','grey':'Grafite','prata':'Prata','silver':'Prata',
+            'azul':'Azul','blue':'Azul','verde':'Verde','green':'Verde',
+            'roxo':'Roxo','purple':'Roxo','rosa':'Rosa','pink':'Rosa',
+            'dourado':'Dourado','gold':'Dourado','amarelo':'Amarelo','yellow':'Amarelo',
+            'laranja':'Laranja','orange':'Laranja','vermelho':'Vermelho','red':'Vermelho',
+            'titanio':'Titanio Natural','titanium':'Titanio Natural',
+            'lavender':'Lilas','midnight':'Preto','glacier':'Azul',
+            'coral':'Coral', // só entra aqui se for palavra única "coral"
+        };
+        for (const [k, nome] of Object.entries(kw)) {
+            if (l.includes(k)) { const f = p.find(x => x.nome === nome); if (f) return f; }
+        }
+
         return { nome: c, hex: '#888888' };
     }
 
