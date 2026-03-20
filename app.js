@@ -606,6 +606,8 @@ function showMainSection(sectionId) {
     if (clientsContainer) clientsContainer.classList.add('hidden');
     const repairsContainer = document.getElementById('repairsContainer');
     if (repairsContainer) { repairsContainer.classList.add('hidden'); repairsContainer.style.display = 'none'; }
+    const reposicaoContainer = document.getElementById('reposicaoContainer');
+    if (reposicaoContainer) { reposicaoContainer.classList.add('hidden'); reposicaoContainer.style.display = 'none'; }
 
     mainMenu.style.display = 'none';
     calculatorContainer.style.display = 'none';
@@ -700,6 +702,20 @@ function showMainSection(sectionId) {
                 });
             }
         }
+    }
+
+    else if (sectionId === 'reposicao') {
+        const _rc = document.getElementById('reposicaoContainer');
+        if (_rc) { _rc.classList.remove('hidden'); _rc.style.display = 'flex'; }
+        // Reinicia o listener (igual ao repairs) — garante que dados aparecem sempre
+        function _tryInitRepo(attempts) {
+            if (window._reposicaoModule) {
+                window._reposicaoModule.startListener();
+            } else if (attempts > 0) {
+                setTimeout(() => _tryInitRepo(attempts - 1), 300);
+            }
+        }
+        _tryInitRepo(10);
     }
 
     currentMainSectionId = sectionId;
@@ -4218,12 +4234,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('goToAdmin').addEventListener('click', () => showMainSection('administracao'));
     document.getElementById('goToRepairs')?.addEventListener('click', () => showMainSection('repairs'));
+    document.getElementById('goToReposicao')?.addEventListener('click', () => showMainSection('reposicao'));
+    document.getElementById('goToReposicao2')?.addEventListener('click', () => showMainSection('reposicao'));
     // v2 cards
     document.getElementById('goToRepairs2')?.addEventListener('click', () => showMainSection('repairs'));
 
     document.getElementById('backFromStock').addEventListener('click', () => showMainSection('main'));
     document.getElementById('backFromAdmin').addEventListener('click', () => showMainSection('main'));
     document.getElementById('backFromRepairs')?.addEventListener('click', () => showMainSection('main'));
+    document.getElementById('backFromReposicao')?.addEventListener('click', () => showMainSection('main'));
 
    
 

@@ -101,6 +101,8 @@ const FAV_OPTIONS = [
         }
     } },
     { id: 'admin',        emoji: '⚙️', label: 'Abrindo Administração...',     action: () => window.showMainSection?.('administracao') },
+    { id: 'consertos',    emoji: '🔧', label: 'Abrindo Consertos...',          action: () => window.showMainSection?.('repairs') },
+    { id: 'reposicao',    emoji: '🛒', label: 'Abrindo Reposição...',          action: () => window.showMainSection?.('reposicao') },
 ];
 
 const MAX_FAVS = 5;

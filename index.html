@@ -335,6 +335,10 @@ class="dropdown-menu-custom">
             <button class="btn-menu" id="goToStock"><i class="bi bi-box-seam"></i> Controle de Estoque</button>
             <button class="btn-menu" id="goToAdmin"><i class="bi bi-gear"></i> Administração</button>
             <button class="btn-menu" id="goToRepairs"><i class="bi bi-wrench-adjustable-circle-fill"></i> Gerenc. de Consertos</button>
+            <button class="btn-menu" id="goToReposicao" style="position:relative;">
+                <i class="bi bi-cart-fill"></i> Lista de Reposição
+                <span id="repoBadge" class="repo-badge hidden">0</span>
+            </button>
         </div>
 
         <!-- ESTILO 2.0 (grid de cards) — oculto por padrão -->
@@ -359,10 +363,16 @@ class="dropdown-menu-custom">
                 <span class="ctw-card-title">Administração</span>
                 <span class="ctw-card-sub">& equipe</span>
             </button>
-            <button class="ctw-card c-teal ctw-card-full" id="goToRepairs2">
+            <button class="ctw-card c-teal" id="goToRepairs2">
                 <div class="ctw-card-icon"><i class="bi bi-wrench-adjustable-circle-fill"></i></div>
                 <span class="ctw-card-title">Consertos</span>
                 <span class="ctw-card-sub">Gerenciamento</span>
+            </button>
+            <button class="ctw-card c-green" id="goToReposicao2" style="position:relative;">
+                <div class="ctw-card-icon"><i class="bi bi-cart-fill"></i></div>
+                <span class="ctw-card-title">Reposição</span>
+                <span class="ctw-card-sub">Lista de compras</span>
+                <span id="repoBadge2" class="repo-badge-card hidden">0</span>
             </button>
         </div>
     </div>
@@ -1896,6 +1906,7 @@ window.addEventListener('load', function() {
                 import('./Favorites.js'),
                 import('./repairs.js?v=2').then(m => { window._repairsModule = m; }),
                 import('./Bookip.js'),
+                import('./Reposicao.js'),
             ]);
         }
         // Módulos carregam assim que o DOM está pronto
@@ -3063,5 +3074,107 @@ window.addEventListener('load', function() {
     </div>
 </div>
 <!-- ===================================== -->
+
+<!-- ═══════════════════════════════════════════════
+     SEÇÃO: REPOSIÇÃO — Lista de Compras
+     ═══════════════════════════════════════════════ -->
+<div id="reposicaoContainer" class="hidden" style="display:none;">
+
+    <!-- Header -->
+    <div class="repo-header">
+        <button class="btn-back btn-back-large" id="backFromReposicao">
+            <i class="bi bi-arrow-left"></i>
+        </button>
+        <div class="repo-header-title">
+            <i class="bi bi-cart-fill"></i>
+            <span>Lista de Reposição</span>
+        </div>
+        <button class="repo-btn-add" id="repoBtnNovo" title="Adicionar item">
+            <i class="bi bi-plus-lg"></i>
+        </button>
+    </div>
+
+    <!-- Filtros -->
+    <div class="repo-filters">
+        <button class="repo-filter-btn active" id="repoFilterAll">Todos</button>
+        <button class="repo-filter-btn" id="repoFilterPending">
+            <i class="bi bi-circle"></i> Pendentes
+        </button>
+        <button class="repo-filter-btn" id="repoFilterDone">
+            <i class="bi bi-check-circle-fill"></i> Comprados
+        </button>
+        <button class="repo-filter-btn repo-filter-clear" id="repoBtnLimpar" title="Apagar comprados">
+            <i class="bi bi-trash3"></i>
+        </button>
+    </div>
+
+    <!-- Lista de itens -->
+    <div class="repo-list" id="repoList">
+        <div class="repo-empty">
+            <i class="bi bi-cart-x"></i>
+            <p>Lista vazia! Toque em + para adicionar.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Overlay do formulário de novo/editar item -->
+<div id="repoFormOverlay" class="repo-form-overlay hidden">
+    <div class="repo-form-panel">
+
+        <div class="repo-form-header">
+            <div class="repo-form-header-left">
+                <div class="repo-form-icon"><i class="bi bi-cart-plus-fill"></i></div>
+                <div>
+                    <span id="repoFormTitle" class="repo-form-title">Novo Item</span>
+                    <div class="repo-form-subtitle">Lista de reposição</div>
+                </div>
+            </div>
+            <button class="repo-form-close" id="repoFormClose"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="repo-form-divider"></div>
+
+        <!-- Campos no topo — teclado sobe por baixo, não cobre -->
+        <div class="repo-form-fields">
+            <div class="repo-form-field">
+                <label class="repo-form-label"><i class="bi bi-tag-fill"></i> Produto <span style="color:var(--primary-color)">*</span></label>
+                <input type="text" id="repoInputNome" class="repo-form-input"
+                       placeholder="Ex: Cabo Tipo C, Capinha X7 Pro..." maxlength="80">
+            </div>
+            <div class="repo-form-row">
+                <div class="repo-form-field" style="flex:0 0 86px;">
+                    <label class="repo-form-label"><i class="bi bi-hash"></i> Qtd</label>
+                    <input type="number" id="repoInputQtd" class="repo-form-input repo-input-center" min="1" max="999" value="1">
+                </div>
+                <div class="repo-form-field" style="flex:1;">
+                    <label class="repo-form-label"><i class="bi bi-palette-fill"></i> Cor / Variação</label>
+                    <input type="text" id="repoInputVariacao" class="repo-form-input" placeholder="Preto, Azul, 1m...">
+                </div>
+            </div>
+        </div>
+
+        <button class="repo-btn-salvar" id="repoBtnSalvar">
+            <i class="bi bi-check-circle-fill"></i> Salvar Item
+        </button>
+
+        <!-- Foto embaixo do salvar — teclado pode cobrir à vontade -->
+        <div class="repo-form-field">
+            <label class="repo-foto-section-label"><i class="bi bi-image-fill"></i> Foto de exemplo (opcional)</label>
+            <div class="repo-foto-btns" id="repoFotoBtnsWrap">
+                <button type="button" class="repo-foto-btn" id="repoBtnCamera"><i class="bi bi-camera-fill"></i> Câmera</button>
+                <button type="button" class="repo-foto-btn" id="repoBtnGaleria"><i class="bi bi-image-fill"></i> Galeria</button>
+            </div>
+            <div id="repoFotoPreview" class="repo-foto-preview hidden">
+                <img id="repoFotoImg" src="" alt="prévia">
+                <button type="button" class="repo-foto-remove" id="repoBtnRemoverFoto"><i class="bi bi-x-circle-fill"></i></button>
+            </div>
+        </div>
+
+        <!-- Indicador visual de que há conteúdo abaixo (arraste) -->
+        <span class="repo-form-drag"></span>
+
+    </div>
+</div>
+
 </body>
 </html>
