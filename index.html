@@ -511,78 +511,7 @@ class="dropdown-menu-custom">
 
 
 
-<div class="container" id="fecharVenda" style="display: none;">
-
-            <div class="section-header">
-                <h3>Fechar Venda</h3>
-                <button aria-label="Voltar" class="btn-back" id="backFromFecharVenda"><i class="bi bi-arrow-left"></i></button>
-            </div>
-            <div class="content-card w-100">
-                <div class="row mb-3 w-100 justify-content-center">
-                    <div class="col-12 col-md-4 mb-3"><label class="form-label">Maquininha</label>
-
-
-<select class="form-select" id="machine1">
-    <option value="pagbank">PagBank</option>
-    <option value="infinity">InfinityPay</option>
-    <option value="valorante">Valorante</option>
-    <option value="nubank">Nubank Link</option>
-</select>
-
-
-
-</div>
-                    <div class="col-12 col-md-4 mb-3" id="flagDisplayContainer1" class="hidden"><label class="form-label">Bandeira</label><button class="btn-flag-display" id="flagDisplayButton1"></button></div>
-                    <div class="col-12 col-md-4 mb-3">
-                        <label for="installments1" class="form-label d-flex justify-content-between">
-                            <span>Parcelas</span>
-                            <span id="installments1Value" class="fw-bold">Débito</span>
-                        </label>
-                        <div id="quickInstallmentsContainer" class="quick-installments"></div>
-                        <input type="range" class="form-range" id="installments1" min="0" max="18" step="1" value="0">
-                    </div>
-                </div>
-                <div id="brand1Container" class="hidden"><select id="brand1"><option value="visa">Visa</option><option value="mastercard">Mastercard</option><option value="hiper">Hiper</option><option value="hipercard">Hipercard</option><option value="elo">Elo</option><option value="amex">Amex</option></select></div>
-                <div class="toggle-switch">
-                    <input type="checkbox" id="vendaModeToggle">
-                    <label for="vendaModeToggle">
-                        <span><i class="bi bi-pencil-alt"></i> Entrada Manual</span>
-                        <span><i class="bi bi-box-seam"></i> Venda por Produto</span>
-                    </label>
-                </div>
-                <div class="mb-3 d-flex justify-content-center flex-wrap" id="manualModeContainer">
-                    <label class="me-3"><input checked="" name="manualMode" type="radio" value="total"/> Valor Total</label>
-                    <label><input name="manualMode" type="radio" value="parcela"/> Valor da Parcela</label>
-                </div>
-                <div class="w-100 hidden max-width-400-margin-auto" id="vendaPorProdutoContainer">
-                    <div class="mb-3 search-wrapper">
-                        <label class="form-label" for="vendaProdutoSearch"><i class="bi bi-search"></i> Pesquisar Produto</label>
-                        <input autocomplete="off" class="form-control" id="vendaProdutoSearch" placeholder="Carregando..." type="text"/>
-                        <div class="search-results-container list-group" id="vendaSearchResultsContainer"></div>
-                    </div>
-                    <div class="mb-3"><label class="form-label" for="fecharVendaPrecoBase"><i class="bi bi-tag"></i> Preço Base (R$)</label><input class="form-control" id="fecharVendaPrecoBase" readonly="" type="text"/></div>
-                    <div class="form-check form-switch my-3 hidden" id="entradaAVistaToggleContainer">
-                        <input class="form-check-input" type="checkbox" role="switch" id="entradaAVistaCheckbox">
-                        <label class="form-check-label" for="entradaAVistaCheckbox">Entrada à vista?</label>
-                    </div>
-                    <div id="entradaAVistaContainer" class="hidden">
-                        <div class="mb-3">
-                            <label class="form-label" for="valorEntradaAVista"><i class="bi bi-cash"></i> Valor da entrada (à vista, sem taxa)</label>
-                            <input class="form-control" id="valorEntradaAVista" type="number" step="0.01" min="0" placeholder="Ex: 500,00">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label" for="valorPassadoNoCartao"><i class="bi bi-credit-card"></i> Valor passado no cartão (com taxa)</label>
-                            <input class="form-control" id="valorPassadoNoCartao" type="number" step="0.01" min="0" placeholder="Ex: 1849,00">
-                        </div>
-                    </div>
-                </div>
-                <div class="w-100 d-flex justify-content-center" id="fecharVendaInputs">
-                    <div class="mb-3 width-100-max-width-400"><label class="form-label" for="fecharVendaValue" id="fecharVendaValueLabel"><i class="bi bi-currency-dollar"></i> Valor Total da Venda (R$)</label><input class="form-control form-control-lg" id="fecharVendaValue" placeholder="R$ 0,00" type="tel"/>
-</div>
-                </div>
-                <div class="w-100 d-flex flex-column justify-content-center mt-3" id="resultFecharVenda"></div>
-            </div>
-        </div>
+<div id="fecharVenda" style="display:none;"></div>
         <div class="container" id="repassarValores" class="hidden">
             <div class="section-header">
                 <h3>Repassar Valores</h3>
@@ -1907,6 +1836,7 @@ window.addEventListener('load', function() {
                 import('./repairs.js?v=2').then(m => { window._repairsModule = m; }),
                 import('./Bookip.js'),
                 import('./Reposicao.js'),
+                import('./fecharVenda.js'),
             ]);
         }
         // Módulos carregam assim que o DOM está pronto
@@ -2205,13 +2135,13 @@ window.addEventListener('load', function() {
 
     <!-- Filters -->
     <div class="rep-filters">
-        <button class="rep-filter-btn rep-filter-active" data-rep-filter="all">Todos</button>
-        <button class="rep-filter-btn" data-rep-filter="levar_tecnico">Levar Técnico</button>
+        <button class="rep-filter-btn" data-rep-filter="all">Ativos</button>
+        <button class="rep-filter-btn rep-filter-active" data-rep-filter="levar_tecnico">Levar Técnico</button>
         <button class="rep-filter-btn" data-rep-filter="em_reparo">Em Reparo</button>
-        <button class="rep-filter-btn" data-rep-filter="finalizados_loja">Finalizados Loja</button>
-        <button class="rep-filter-btn" data-rep-filter="proximo">Prox. Prazo</button>
-        <button class="rep-filter-btn" data-rep-filter="tempo_esgotado">Tempo Esgotado</button>
-        <button class="rep-filter-btn" data-rep-filter="entregue">Finalizado/Entregue!</button>
+        <button class="rep-filter-btn" data-rep-filter="finalizados_loja">Fin. Loja</button>
+        <button class="rep-filter-btn" data-rep-filter="proximo">⏰ Prazo</button>
+        <button class="rep-filter-btn" data-rep-filter="tempo_esgotado">⚠️ Atrasado</button>
+        <button class="rep-filter-btn" data-rep-filter="entregue">✅ Entregue</button>
     </div>
 
     <!-- List -->

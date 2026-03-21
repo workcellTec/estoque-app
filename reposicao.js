@@ -30,9 +30,16 @@ function getDb() {
 }
 
 // ── Boot ─────────────────────────────────────────────────────────
-function waitForDB(cb, attempts = 20) {
+function waitForDB(cb, attempts = 60) {
     if (window._firebaseDB) { db = window._firebaseDB; cb(db); return; }
     if (attempts <= 0) { console.error('[Reposicao] DB não disponível'); return; }
+    if (attempts === 60) {
+        // Responde imediatamente quando app.js sinalizar que o DB está pronto
+        document.addEventListener('ctwDBReady', function _onDB() {
+            document.removeEventListener('ctwDBReady', _onDB);
+            if (window._firebaseDB) { db = window._firebaseDB; cb(db); }
+        }, { once: true });
+    }
     setTimeout(() => waitForDB(cb, attempts - 1), 300);
 }
 

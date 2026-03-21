@@ -53,7 +53,7 @@ const PREV_TL_KEY = {
 let db;
 let repairsListener = null;
 let allRepairs = [];
-let activeFilter = 'all';
+let activeFilter = 'levar_tecnico';
 let repairPhotoBlob = null;
 let repairPhotoUrl  = '';
 let stepPhotoBlob   = null;
@@ -254,7 +254,8 @@ function getFiltered(filter) {
         case 'proximo':           return allRepairs.filter(r => prazoStatus(r) === 'proximo');
         case 'tempo_esgotado':    return allRepairs.filter(r => prazoStatus(r) === 'vencido');
         case 'entregue':          return allRepairs.filter(r => r.status === STATUS.FINALIZADO);
-        default:                  return [...allRepairs];
+        // Ativos = todos EXCETO finalizados/entregues
+        default:                  return allRepairs.filter(r => r.status !== STATUS.FINALIZADO);
     }
 }
 
@@ -469,79 +470,98 @@ function renderList(items) {
 }
 
 function buildCard(r) {
-    const ps        = prazoStatus(r);
-    const horas     = horasAte(r.dataMaxima, r.horaMaxima);
-    const vencido   = ps === 'vencido';
-    const proximo   = ps === 'proximo';
-    const finaliz   = r.status === STATUS.FINALIZADO;
+    const ps      = prazoStatus(r);
+    const horas   = horasAte(r.dataMaxima, r.horaMaxima);
+    const vencido = ps === 'vencido';
+    const proximo = ps === 'proximo';
+    const finaliz = r.status === STATUS.FINALIZADO;
 
+    // ── Status dot color ─────────────────────────────────────────
+    const dotColor = STATUS_COLOR[r.status];
+
+    // ── Prazo badge ───────────────────────────────────────────────
     let prazoLabel = '';
     if (!finaliz && r.dataMaxima) {
         if (vencido) {
             const h = Math.abs(Math.round(horas));
-            prazoLabel = `<span class="rep-badge rep-badge-danger">⚠️ ${h}h em atraso</span>`;
+            prazoLabel = `<span class="rep-badge rep-badge-danger">⚠️ ${h}h atraso</span>`;
         } else if (proximo) {
             const h = Math.ceil(horas);
-            prazoLabel = `<span class="rep-badge rep-badge-warn">⏰ ${h}h restantes</span>`;
-        } else if (horas !== null) {
-            const d = Math.floor(horas / 24);
-            prazoLabel = `<span class="rep-badge rep-badge-ok">📅 ${d}d restantes</span>`;
+            prazoLabel = `<span class="rep-badge rep-badge-warn">⏰ ${h}h</span>`;
         }
     }
 
+    // ── Dias com técnico badge ────────────────────────────────────
     let diasNoStatus = '';
     if (r.status === STATUS.EM_REPARO && r.timeline?.em_reparo?.ts) {
         const d = diasDesde(r.timeline.em_reparo.ts);
-        diasNoStatus = `<span class="rep-badge rep-badge-info">🕒 ${d}d com técnico</span>`;
+        diasNoStatus = `<span class="rep-badge rep-badge-info">🕒 ${d}d</span>`;
     }
 
-    const nextBtn   = buildNextBtn(r);
-    const thumb     = r.fotoUrl
-        ? `<img src="${r.fotoUrl}" class="rep-thumb" alt="foto" onclick="window._repAbrirFoto('${r.fotoUrl}')">`
+    // ── Thumb ─────────────────────────────────────────────────────
+    const thumb = r.fotoUrl
+        ? `<img src="${r.fotoUrl}" class="rep-thumb" alt="foto" onclick="event.stopPropagation();window._repAbrirFoto('${r.fotoUrl}')">`
         : `<div class="rep-thumb-placeholder"><i class="bi bi-phone"></i></div>`;
-    const timelineHtml = buildTimeline(r);
 
-    // Horário de entrega formatado
+    // ── Body: detalhes completos ──────────────────────────────────
+    const timelineHtml = buildTimeline(r);
+    const nextBtn      = buildNextBtn(r);
     const prazoFormatado = r.dataMaxima
         ? formatDate(r.dataMaxima) + (r.horaMaxima ? ' às ' + r.horaMaxima : '')
         : null;
 
     return `
     <div class="rep-card ${vencido ? 'rep-card-vencido' : proximo ? 'rep-card-proximo' : finaliz ? 'rep-card-finalizado' : ''}">
+
+        <!-- ── HEADER compacto (sempre visível) ── -->
         <div class="rep-card-header">
             <div class="rep-card-header-left">
                 ${thumb}
                 <div class="rep-card-info">
                     <div class="rep-card-name">${escHtml(r.nomeCliente)}</div>
-                    ${r.modeloAparelho ? `<div class="rep-card-model"><i class="bi bi-phone-fill" style="font-size:.65rem;opacity:.6;"></i> ${escHtml(r.modeloAparelho)}</div>` : ''}
-                    <div class="rep-card-defect">${escHtml(r.descricaoDefeito)}</div>
-                    <div class="rep-card-badges">
-                        <span class="rep-status-pill" style="background:${STATUS_COLOR[r.status]}22;color:${STATUS_COLOR[r.status]};border:1px solid ${STATUS_COLOR[r.status]}44;">${STATUS_LABEL[r.status]}</span>
-                        ${prazoLabel}
-                        ${diasNoStatus}
+                    ${r.modeloAparelho ? `<div class="rep-card-model"><i class="bi bi-phone-fill" style="font-size:.6rem;opacity:.5;"></i> ${escHtml(r.modeloAparelho)}</div>` : ''}
+                    <div class="rep-header-badges">
+                        <span class="rep-status-dot" style="background:${dotColor};"></span>
+                        ${prazoLabel}${diasNoStatus}
                     </div>
                 </div>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-                ${r.numeroCliente ? `<button class="rep-icon-btn rep-wpp" data-rep-whatsapp="${escHtml(r.numeroCliente)}" title="WhatsApp"><i class="bi bi-whatsapp"></i></button>` : ''}
-                <i class="bi bi-chevron-down rep-chevron"></i>
-            </div>
+            <i class="bi bi-chevron-down rep-chevron"></i>
         </div>
+
+        <!-- ── BODY expandível ── -->
         <div class="rep-card-body rep-collapsed">
+
+            <!-- Defeto + status pill -->
+            <div class="rep-body-top">
+                <div class="rep-card-defect-full">${escHtml(r.descricaoDefeito)}</div>
+                <span class="rep-status-pill" style="background:${dotColor}22;color:${dotColor};border:1px solid ${dotColor}44;">${STATUS_LABEL[r.status]}</span>
+            </div>
+
+            <!-- Meta -->
             <div class="rep-card-meta">
-                <span><i class="bi bi-calendar3"></i> Cadastro: ${formatDate(r.tsCadastro)}</span>
+                <span><i class="bi bi-calendar3"></i> ${formatDate(r.tsCadastro)}</span>
                 ${prazoFormatado ? `<span><i class="bi bi-flag-fill"></i> Entrega: ${prazoFormatado}</span>` : ''}
                 ${r.valorCobrado ? `<span><i class="bi bi-cash-coin"></i> R$ ${Number(r.valorCobrado).toFixed(2).replace('.',',')}</span>` : ''}
-                <span><i class="bi bi-person-fill"></i> Criado por: ${escHtml(r.criadoPor || '—')}</span>
-                ${r.responsavel ? `<span style="color:var(--rep-blue);font-weight:600;"><i class="bi bi-person-badge-fill"></i> Responsável: ${escHtml(r.responsavel)}</span>` : ''}
+                ${r.responsavel ? `<span style="color:var(--rep-blue);font-weight:600;"><i class="bi bi-person-badge-fill"></i> ${escHtml(r.responsavel)}</span>` : ''}
+                <span><i class="bi bi-person-fill"></i> ${escHtml(r.criadoPor || '—')}</span>
+                ${r.numeroCliente ? `<span><i class="bi bi-whatsapp" style="color:#25d366;"></i> ${escHtml(r.numeroCliente)}</span>` : ''}
             </div>
+
+            <!-- Timeline -->
             ${timelineHtml}
+
+            <!-- Ações -->
             <div class="rep-card-actions">
                 ${nextBtn}
                 ${buildUndoBtn(r)}
-                <button class="rep-btn rep-btn-ghost rep-btn-sm" data-rep-action="edit" data-rep-id="${r.id}"><i class="bi bi-pencil-fill"></i> Editar</button>
-                <button class="rep-btn rep-btn-danger rep-btn-sm" data-rep-action="delete" data-rep-id="${r.id}"><i class="bi bi-trash-fill"></i></button>
+                <div class="rep-card-actions-secondary">
+                    ${r.numeroCliente ? `<button class="rep-btn rep-btn-ghost rep-btn-sm rep-wpp" data-rep-whatsapp="${escHtml(r.numeroCliente)}" title="WhatsApp"><i class="bi bi-whatsapp"></i></button>` : ''}
+                    <button class="rep-btn rep-btn-ghost rep-btn-sm" data-rep-action="edit" data-rep-id="${r.id}"><i class="bi bi-pencil-fill"></i></button>
+                    <button class="rep-btn rep-btn-danger rep-btn-sm" data-rep-action="delete" data-rep-id="${r.id}"><i class="bi bi-trash-fill"></i></button>
+                </div>
             </div>
+
         </div>
     </div>`;
 }
@@ -961,7 +981,9 @@ function wireUndoEvents() {
 }
 
 function wireFilterBtns() {
+    // Ao iniciar, ativa visualmente o botao levar_tecnico
     document.querySelectorAll('[data-rep-filter]').forEach(btn => {
+        btn.classList.toggle('rep-filter-active', btn.dataset.repFilter === activeFilter);
         btn.addEventListener('click', () => {
             activeFilter = btn.dataset.repFilter;
             document.querySelectorAll('[data-rep-filter]').forEach(b => b.classList.remove('rep-filter-active'));

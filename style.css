@@ -4816,6 +4816,50 @@ body.ctw-v2-active #documentsHome {
     margin-top: 6px;
 }
 
+/* ── Header badges (compacto) ── */
+.rep-header-badges {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+/* Status dot — bolinha colorida minimalista */
+.rep-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+}
+
+/* Body top: defeito + status pill lado a lado */
+.rep-body-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding-top: 4px;
+    margin-bottom: 10px;
+    border-top: 1px solid var(--glass-border);
+}
+.rep-card-defect-full {
+    font-size: .78rem;
+    color: var(--text-secondary);
+    flex: 1;
+    min-width: 0;
+    line-height: 1.4;
+}
+
+/* Ações secundárias (ícones pequenos) */
+.rep-card-actions-secondary {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+    align-items: center;
+}
+
 /* Status pill */
 .rep-status-pill {
     font-size: .6rem;
@@ -6095,3 +6139,262 @@ body.ctw-v2-active #documentsHome {
     display:flex; align-items:center; justify-content:center;
     cursor:pointer; backdrop-filter:blur(4px);
 }
+
+/* ============================================================
+   FECHAR VENDA — Módulo keyboard-aware
+   ============================================================ */
+#fecharVenda {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 550px;
+    margin: 0 auto;
+    /* Altura total da viewport — o scroll interno cuida do resto */
+    height: 100%;
+    overflow: hidden;
+    padding: 0;
+}
+
+.fv-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 16px 10px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--glass-border);
+}
+.fv-title {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin: 0;
+    color: var(--text-color);
+}
+
+/* Esta é a área que ROLA quando o teclado sobe */
+.fv-scroll-area {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 14px 14px 40px;
+    /* max-height é setado dinamicamente pelo JS via visualViewport */
+}
+
+.fv-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--border-radius, 16px);
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Campos */
+.fv-field { display: flex; flex-direction: column; gap: 6px; }
+.fv-label {
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: .4px;
+}
+.fv-label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.fv-installments-value {
+    font-size: .9rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.fv-input {
+    background: var(--input-bg, rgba(255,255,255,0.07));
+    border: 1.5px solid var(--input-border, rgba(255,255,255,0.12));
+    border-radius: 12px;
+    padding: 12px 14px;
+    color: var(--text-color);
+    font-size: .95rem;
+    width: 100%;
+    outline: none;
+    transition: border-color .2s;
+}
+.fv-input:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(var(--primary-color-rgb, 41,121,255), .18);
+}
+.fv-input-lg {
+    font-size: 1.3rem;
+    font-weight: 700;
+    text-align: center;
+    padding: 16px;
+    letter-spacing: .5px;
+}
+
+.fv-select {
+    background: var(--input-bg, rgba(255,255,255,0.07));
+    border: 1.5px solid var(--input-border, rgba(255,255,255,0.12));
+    border-radius: 12px;
+    padding: 12px 14px;
+    color: var(--text-color);
+    font-size: .95rem;
+    width: 100%;
+}
+
+/* Slider parcelas */
+.fv-slider { width: 100%; accent-color: var(--primary-color); cursor: pointer; }
+
+/* Botões rápidos parcelas */
+.fv-quick-btns {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+.fv-quick-btn {
+    background: rgba(var(--primary-color-rgb, 41,121,255), .12);
+    border: 1px solid rgba(var(--primary-color-rgb, 41,121,255), .25);
+    border-radius: 8px;
+    color: var(--primary-color);
+    font-size: .8rem;
+    font-weight: 700;
+    padding: 4px 12px;
+    cursor: pointer;
+    transition: all .15s;
+}
+.fv-quick-btn.active,
+.fv-quick-btn:active {
+    background: var(--primary-color);
+    color: #fff;
+}
+
+/* Toggle modo */
+.fv-toggle-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: rgba(255,255,255,.04);
+    border-radius: 12px;
+    padding: 10px 16px;
+}
+.fv-toggle-label {
+    font-size: .85rem;
+    color: var(--text-secondary);
+    transition: color .2s;
+}
+.fv-toggle-label.active { color: var(--primary-color); font-weight: 600; }
+
+.fv-toggle-switch { position: relative; display: inline-block; width: 48px; height: 26px; }
+.fv-toggle-switch input { opacity: 0; width: 0; height: 0; }
+.fv-toggle-knob {
+    position: absolute; inset: 0;
+    background: rgba(255,255,255,.15);
+    border-radius: 26px;
+    cursor: pointer;
+    transition: background .2s;
+}
+.fv-toggle-knob::before {
+    content: '';
+    position: absolute;
+    width: 20px; height: 20px;
+    left: 3px; top: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform .2s;
+}
+.fv-toggle-switch input:checked ~ .fv-toggle-knob { background: var(--primary-color); }
+.fv-toggle-switch input:checked ~ .fv-toggle-knob::before { transform: translateX(22px); }
+
+/* Radio */
+.fv-radio-group { display: flex; gap: 20px; }
+.fv-radio { display: flex; align-items: center; gap: 6px; font-size: .88rem; cursor: pointer; }
+
+/* Switch entrada à vista */
+.fv-switch-label {
+    display: flex; align-items: center; gap: 10px;
+    font-size: .88rem; cursor: pointer; color: var(--text-color);
+}
+.fv-switch-label input[type="checkbox"] { accent-color: var(--primary-color); width: 18px; height: 18px; }
+
+/* Highlight do campo valor */
+.fv-value-highlight {
+    background: rgba(var(--primary-color-rgb, 41,121,255), .07);
+    border-radius: 14px;
+    padding: 14px;
+    border: 1px solid rgba(var(--primary-color-rgb, 41,121,255), .2);
+}
+
+/* Resultados busca */
+.fv-results {
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--glass-border);
+    background: var(--secondary-color);
+    max-height: 220px;
+    overflow-y: auto;
+}
+.fv-result-item {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    border: none;
+    background: none;
+    color: var(--text-color);
+    font-size: .88rem;
+    cursor: pointer;
+    border-bottom: 1px solid var(--glass-border);
+    text-align: left;
+    transition: background .15s;
+}
+.fv-result-item:last-child { border-bottom: none; }
+.fv-result-item:active { background: rgba(var(--primary-color-rgb, 41,121,255), .1); }
+.fv-result-nome { font-weight: 500; flex: 1; }
+.fv-result-preco { color: var(--primary-color); font-weight: 700; font-size: .82rem; margin-left: 8px; }
+.fv-no-result { padding: 14px; text-align: center; color: var(--text-secondary); font-size: .85rem; }
+
+/* Cards resultado */
+.fv-result-card {
+    border-radius: 14px;
+    padding: 16px;
+    margin-top: 4px;
+}
+.fv-result-success {
+    background: rgba(34,197,94,.1);
+    border: 1px solid rgba(34,197,94,.3);
+}
+.fv-result-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+.fv-result-icon { font-size: 1.6rem; line-height: 1; }
+.fv-result-title { font-size: .78rem; color: var(--text-secondary); margin-bottom: 2px; }
+.fv-result-value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: #22c55e;
+    line-height: 1.1;
+}
+.fv-result-sub { font-size: .75rem; color: var(--text-secondary); margin-top: 4px; }
+.fv-result-lucro {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,.1);
+    font-size: .88rem;
+    font-weight: 700;
+    text-align: center;
+}
+.fv-result-lucro.positivo { color: #22c55e; }
+.fv-result-lucro.negativo { color: #f87171; }
+
+/* Alertas */
+.fv-alert {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px; border-radius: 12px; font-size: .88rem;
+}
+.fv-alert-warning { background: rgba(251,191,36,.12); color: #fbbf24; border: 1px solid rgba(251,191,36,.3); }
+.fv-alert-info    { background: rgba(96,165,250,.12); color: #60a5fa; border: 1px solid rgba(96,165,250,.3); }
