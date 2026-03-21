@@ -1835,7 +1835,7 @@ window.addEventListener('load', function() {
                 import('./Favorites.js'),
                 import('./repairs.js?v=2').then(m => { window._repairsModule = m; }),
                 import('./Bookip.js'),
-                import('./Reposicao.js'),
+                import('./reposicao.js').then(m => { window._reposicaoModule = m; }),
                 import('./fecharVenda.js'),
             ]);
         }
