@@ -855,13 +855,21 @@ select.cs-in{appearance:none;-webkit-appearance:none;cursor:pointer}
             b.innerHTML='<i class="bi bi-cpu-fill"></i> CreditoScan — Análise IA';
             b.addEventListener('click',openOverlay);mc.appendChild(b);
         }
-        var mg=el('menuCards');
-        if(mg&&!el('goCS2')){
-            var b2=document.createElement('button');b2.className='ctw-card c-rose';b2.id='goCS2';
-            b2.innerHTML='<div class="ctw-card-icon"><i class="bi bi-cpu-fill"></i></div>'+
-                '<span class="ctw-card-title">CreditoScan</span>'+
-                '<span class="ctw-card-sub">Análise de crédito IA</span>';
-            b2.addEventListener('click',openOverlay);mg.appendChild(b2);
+
+        // ✅ CORREÇÃO: se o botão já existe no HTML, apenas adiciona o listener
+        var goCS2=el('goCS2');
+        if(goCS2&&!goCS2._csListenerOk){
+            goCS2.addEventListener('click',openOverlay);
+            goCS2._csListenerOk=true;
+        } else if(!goCS2){
+            var mg=el('menuCards');
+            if(mg){
+                var b2=document.createElement('button');b2.className='ctw-card c-rose';b2.id='goCS2';
+                b2.innerHTML='<div class="ctw-card-icon"><i class="bi bi-cpu-fill"></i></div>'+
+                    '<span class="ctw-card-title">CreditoScan</span>'+
+                    '<span class="ctw-card-sub">Análise de crédito IA</span>';
+                b2.addEventListener('click',openOverlay);mg.appendChild(b2);
+            }
         }
     }
 
