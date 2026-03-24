@@ -142,6 +142,7 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
 #stockContainer, 
 #administracao, 
 #clientsContainer,
+#reposicaoContainer,
 #top-right-controls {
     /* Força o uso da GPU para evitar engasgos */
     transform: translate3d(0, 0, 0); 
@@ -167,7 +168,8 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
 #contractContainer:not(.hidden), 
 #stockContainer:not(.hidden), 
 #administracao:not(.hidden), 
-#clientsContainer:not(.hidden) {
+#clientsContainer:not(.hidden),
+#reposicaoContainer:not(.hidden) {
     animation: fadeInSlide 0.3s forwards;
 }
 
@@ -4182,6 +4184,14 @@ body::after {
 .ctw-card.c-green .ctw-card-sub   { color: #6ee7b7; }
 .ctw-card.c-green:hover { background: rgba(16,185,129,.14); border-color: rgba(16,185,129,.38); transform: translateY(-3px); }
 
+.ctw-card.c-rose {
+    background: rgba(225,29,72,.09); border-color: rgba(225,29,72,.22);
+}
+.ctw-card.c-rose .ctw-card-icon { background: rgba(225,29,72,.16); color: #fb7185; }
+.ctw-card.c-rose .ctw-card-title { color: #fca5a5; }
+.ctw-card.c-rose .ctw-card-sub   { color: #fca5a5; }
+.ctw-card.c-rose:hover { background: rgba(225,29,72,.16); border-color: rgba(225,29,72,.42); transform: translateY(-3px); }
+
 .ctw-card.c-disabled {
     background: rgba(255,255,255,.03);
     border-color: rgba(255,255,255,.07);
@@ -4453,6 +4463,7 @@ body.ctw-v2-active #contractContainer {
 .ctw-sheet-item-icon.bg-info    { background: rgba(14,165,233,.15); color: #38bdf8; }
 .ctw-sheet-item-icon.bg-primary { background: rgba(var(--primary-color-rgb),.15); color: var(--primary-color); }
 .ctw-sheet-item-icon.bg-stars   { background: rgba(255,193,7,.13); color: #fbbf24; }
+.ctw-sheet-item-icon.bg-purple  { background: rgba(139,92,246,.15); color: #a78bfa; }
 
 
 /* ============================================================
@@ -5761,11 +5772,25 @@ body.ctw-v2-active #documentsHome {
 
 /* ── Container principal ──────────────────────────────────────── */
 #reposicaoContainer {
+    position: fixed;        /* igual ao contractContainer — solta da trava do body */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;           /* ocupa tela toda */
+    display: flex;          /* ativa o flex para header+filtros+lista empilhados */
     flex-direction: column;
     align-items: stretch;
-    min-height: 100vh;
+    overflow-y: auto;       /* SCROLL AQUI — é o container que rola, não o body */
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
     background: var(--bg-color, #0b1325);
-    padding-bottom: 80px;
+    padding-bottom: 100px;
+    z-index: 50;
+}
+
+/* Garante que o hidden funcione normalmente */
+#reposicaoContainer.hidden {
+    display: none !important;
 }
 
 /* ── Header ─────────────────────────────────────────────────── */
@@ -5777,6 +5802,7 @@ body.ctw-v2-active #documentsHome {
     position: sticky;
     top: 0;
     z-index: 10;
+    flex-shrink: 0;          /* não deixa o header encolher */
     background: var(--bg-color, #0b1325);
     border-bottom: 1px solid var(--glass-border, rgba(255,255,255,.08));
 }
@@ -5813,6 +5839,7 @@ body.ctw-v2-active #documentsHome {
     padding: 10px 16px;
     overflow-x: auto;
     scrollbar-width: none;
+    flex-shrink: 0;          /* não deixa a barra de filtros ser esmagada */
 }
 .repo-filters::-webkit-scrollbar { display: none; }
 

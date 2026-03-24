@@ -358,11 +358,12 @@ class="dropdown-menu-custom">
                 <span class="ctw-card-title">Estoque</span>
                 <span class="ctw-card-sub">de produtos</span>
             </button>
-            <button class="ctw-card c-purple" id="goToAdmin2">
-                <div class="ctw-card-icon"><i class="bi bi-gear"></i></div>
-                <span class="ctw-card-title">Administração</span>
-                <span class="ctw-card-sub">& equipe</span>
+            <button class="ctw-card c-rose" id="goCS2">
+                <div class="ctw-card-icon"><i class="bi bi-cpu-fill"></i></div>
+                <span class="ctw-card-title">CreditoScan</span>
+                <span class="ctw-card-sub">Análise de crédito IA</span>
             </button>
+
             <button class="ctw-card c-teal" id="goToRepairs2">
                 <div class="ctw-card-icon"><i class="bi bi-wrench-adjustable-circle-fill"></i></div>
                 <span class="ctw-card-title">Consertos</span>
@@ -1837,6 +1838,7 @@ window.addEventListener('load', function() {
                 import('./Bookip.js'),
                 import('./reposicao.js').then(m => { window._reposicaoModule = m; }),
                 import('./fecharVenda.js'),
+                import('./creditoscan.js'),
             ]);
         }
         // Módulos carregam assim que o DOM está pronto
@@ -2067,6 +2069,15 @@ window.addEventListener('load', function() {
                 <div style="display:flex;flex-direction:column;gap:1px;text-align:left;">
                     <span id="ctwSheetStyleLabel">Voltar ao estilo clássico</span>
                     <small style="font-size:.6rem;opacity:.6;" id="ctwSheetStyleSub">Layout em lista original</small>
+                </div>
+            </button>
+
+            <!-- Administração -->
+            <button class="ctw-sheet-item" onclick="window.showMainSection('administracao'); window.closeCtwSheet();">
+                <div class="ctw-sheet-item-icon bg-purple"><i class="bi bi-gear-wide-connected"></i></div>
+                <div style="display:flex;flex-direction:column;gap:1px;text-align:left;">
+                    <span>Administração</span>
+                    <small style="font-size:.6rem;opacity:.6;">&amp; equipe</small>
                 </div>
             </button>
 
