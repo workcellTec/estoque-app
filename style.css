@@ -4631,10 +4631,11 @@ body.ctw-v2-active #documentsHome {
     flex-direction: column;
     padding: 16px;
     padding-bottom: 100px;
-    max-width: 640px;
-    margin: 0 auto;
+    max-width: 100% !important;
+    margin: 0 !important;
     width: 100%;
     overflow-x: hidden; /* previne vazamento lateral */
+    align-items: stretch !important;
 }
 
 /* Filters: wrap to avoid overflow-x:hidden conflict with parent */
@@ -6425,3 +6426,175 @@ body.ctw-v2-active #documentsHome {
 }
 .fv-alert-warning { background: rgba(251,191,36,.12); color: #fbbf24; border: 1px solid rgba(251,191,36,.3); }
 .fv-alert-info    { background: rgba(96,165,250,.12); color: #60a5fa; border: 1px solid rgba(96,165,250,.3); }
+
+/* ============================================================
+   REPOSIÇÃO v2 — Banners · Busca · Avatars
+   ============================================================ */
+
+/* ── Busca Rápida ─────────────────────────────────────────────── */
+.repo-search-wrap {
+    position: relative;
+    padding: 0 14px 10px;
+}
+.repo-search-icon {
+    position: absolute;
+    left: 26px;
+    top: 50%;
+    transform: translateY(-60%);
+    color: rgba(255,255,255,.25);
+    font-size: .9rem;
+    pointer-events: none;
+}
+.repo-search-input {
+    width: 100%;
+    background: rgba(255,255,255,.06);
+    border: 1.5px solid rgba(255,255,255,.08);
+    border-radius: 13px;
+    padding: 10px 14px 10px 36px;
+    color: #eef0f6;
+    font-size: .88rem;
+    outline: none;
+    -webkit-appearance: none;
+    transition: border-color .2s, background .2s;
+}
+.repo-search-input::placeholder { color: rgba(255,255,255,.2); }
+.repo-search-input:focus {
+    border-color: var(--primary-color, #e53e3e);
+    background: rgba(255,255,255,.09);
+}
+
+/* ── Banners por Categoria ──────────────────────────────────────── */
+.repo-banner {
+    margin-bottom: 10px;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1.5px solid rgba(255,255,255,.07);
+    background: rgba(255,255,255,.025);
+}
+.repo-banner-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: background .15s;
+}
+.repo-banner-header:active { background: rgba(255,255,255,.04); }
+.repo-banner-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.repo-banner-icon {
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+.repo-banner-label {
+    font-size: .9rem;
+    font-weight: 700;
+    color: #eef0f6;
+    letter-spacing: .2px;
+}
+.repo-banner-badge {
+    background: rgba(229,62,62,.15);
+    color: var(--primary-color, #e53e3e);
+    font-size: .63rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 20px;
+    border: 1px solid rgba(229,62,62,.18);
+    letter-spacing: .3px;
+}
+.repo-banner-chevron {
+    color: rgba(255,255,255,.25);
+    font-size: .8rem;
+    transition: transform .25s cubic-bezier(.4,0,.2,1);
+}
+.repo-banner--collapsed .repo-banner-chevron { transform: rotate(-90deg); }
+.repo-banner-items {
+    max-height: 2000px;
+    overflow: hidden;
+    transition: max-height .3s cubic-bezier(.4,0,.2,1), opacity .25s;
+    opacity: 1;
+}
+.repo-banner--collapsed .repo-banner-items { max-height: 0; opacity: 0; }
+.repo-banner .repo-item {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    border-top: 1px solid rgba(255,255,255,.045);
+    margin: 0;
+}
+
+/* ── Select Categoria no Formulário ─────────────────────────────── */
+.repo-form-select {
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.3)' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 36px;
+}
+.repo-form-select option { background: #1a1a2e; color: #eef0f6; }
+
+/* Flash quando categoria é detectada automaticamente */
+@keyframes repoSelectFlash {
+    0%   { border-color: rgba(255,255,255,.08); }
+    40%  { border-color: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.15); }
+    100% { border-color: rgba(255,255,255,.08); box-shadow: none; }
+}
+.repo-select-auto-flash {
+    animation: repoSelectFlash .6s ease forwards;
+}
+
+/* ── Avatar Suggestions ─────────────────────────────────────────── */
+.repo-avatar-suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 5px;
+    background: rgba(18,18,30,.98);
+    border: 1.5px solid rgba(255,255,255,.1);
+    border-radius: 13px;
+    overflow: hidden;
+    padding: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+}
+.repo-avatar-suggestions.hidden { display: none; }
+.repo-avatar-suggestion {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 9px;
+    border-radius: 9px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    transition: background .15s;
+    width: 100%;
+    color: #eef0f6;
+    -webkit-tap-highlight-color: transparent;
+}
+.repo-avatar-suggestion:active { background: rgba(255,255,255,.07); }
+.repo-avatar-suggestion img {
+    width: 34px; height: 34px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 1.5px solid rgba(255,255,255,.08);
+}
+.repo-avatar-suggestion span {
+    font-size: .85rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

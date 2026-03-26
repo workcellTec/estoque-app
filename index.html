@@ -3037,16 +3037,23 @@ window.addEventListener('load', function() {
 
     <!-- Filtros -->
     <div class="repo-filters">
-        <button class="repo-filter-btn active" id="repoFilterAll">Todos</button>
-        <button class="repo-filter-btn" id="repoFilterPending">
+        <button class="repo-filter-btn active" id="repoFilterPending">
             <i class="bi bi-circle"></i> Pendentes
         </button>
         <button class="repo-filter-btn" id="repoFilterDone">
             <i class="bi bi-check-circle-fill"></i> Comprados
         </button>
+        <button class="repo-filter-btn" id="repoFilterAll">Todos</button>
         <button class="repo-filter-btn repo-filter-clear" id="repoBtnLimpar" title="Apagar comprados">
             <i class="bi bi-trash3"></i>
         </button>
+    </div>
+
+    <!-- Busca rápida -->
+    <div class="repo-search-wrap">
+        <i class="bi bi-search repo-search-icon"></i>
+        <input type="search" id="repoSearchInput" class="repo-search-input"
+               placeholder="Buscar produto..." autocomplete="off">
     </div>
 
     <!-- Lista de itens -->
@@ -3080,7 +3087,17 @@ window.addEventListener('load', function() {
             <div class="repo-form-field">
                 <label class="repo-form-label"><i class="bi bi-tag-fill"></i> Produto <span style="color:var(--primary-color)">*</span></label>
                 <input type="text" id="repoInputNome" class="repo-form-input"
-                       placeholder="Ex: Cabo Tipo C, Capinha X7 Pro..." maxlength="80">
+                       placeholder="Ex: Cabo Tipo C, Capinha X7 Pro..." maxlength="80"
+                       autocomplete="off">
+                <div id="repoAvatarSuggestions" class="repo-avatar-suggestions hidden"></div>
+            </div>
+            <div class="repo-form-field">
+                <label class="repo-form-label"><i class="bi bi-grid-fill"></i> Categoria</label>
+                <select id="repoInputCategoria" class="repo-form-input repo-form-select">
+                    <option value="peliculas">🎬 Péliculas</option>
+                    <option value="capinhas">🛡️ Capinhas</option>
+                    <option value="outros" selected>📦 Outros</option>
+                </select>
             </div>
             <div class="repo-form-row">
                 <div class="repo-form-field" style="flex:0 0 86px;">
