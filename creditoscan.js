@@ -228,6 +228,156 @@
 '   - Sem documento pessoal: nomesBatem: null (analise continua normalmente)\n'+
 '   - Se nomes NAO baterem: decisao="REPROVADO", nota=0\n\n'+
 '=== PASSO 1 - EXTRAIR A RENDA REAL ===\n'+
+'- EXTRATO BANCARIO: Some entradas reais de terceiros. NAO some transferencias da propria pessoa para si mesma.\n'+
+'- AUTOTRANSFERENCIA (CRITICO): Identifique o CPF do titular no cabecalho do extrato.\n'+
+'  Se um Pix recebido vier de um remetente com o MESMO CPF do titular (ex: titular CPF 037.933.101-24\n'+
+'  recebendo de "00003793310124" ou "03793310124" ou "PAULO RICARDO SILVA SANTOS"), e AUTOTRANSFERENCIA.\n'+
+'  IGNORE completamente. Valor = R$ 0,00. Nao e renda.\n'+
+'- HOLERITE (1 doc): Renda = VALOR LIQUIDO exato. Jamais some bruto ou descontos.\n'+
+'- HOLERITE (multiplos): Use o mes mais recente. Se o mais antigo for mes parcial de admissao (valor bem menor), IGNORE-O.\n'+
+'- RESUMO FISCAL UBER/99/IFOOD: Use o campo "Valor liquido do repasse de ganhos". NAO use ganhos brutos.\n\n'+
+
+'=== PASSO 2 - CALCULAR A NOTA (0 a 100) ===\n'+
+
+'REGRA 1 - TETO POR FAIXA DE RENDA (obrigatoria, sobrepoe tudo):\n'+
+'  Renda < R$ 1.000           : nota maxima 45 (FRACO obrigatorio)\n'+
+'  Renda R$ 1.000 a R$ 1.499  : nota maxima 55 (FRACO teto)\n'+
+'  Renda R$ 1.500 a R$ 2.999  : nota maxima 79 (MEDIO teto)\n'+
+'  Renda >= R$ 3.000           : sem teto de renda, comportamento decide\n\n'+
+
+'REGRA 2 - AJUSTES DE NOTA PELO COMPORTAMENTO (parta de 70 e ajuste):\n'+
+'  +15: CLT formal com holerite, vinculo estavel\n'+
+'  +10: Renda crescente mes a mes (comprovavel nos docs)\n'+
+'  +10: Saldo positivo e crescente no periodo\n'+
+'  +5:  Sem nenhuma divida ou emprestimo identificado\n'+
+'  -15: Autonomo/MEI sem vinculo formal (NAO e FRACO automatico, so perde pontos)\n'+
+'  -15: Motorista de app com apenas 1 mes de comprovante\n'+
+'  -5:  Motorista de app com 2 meses consistentes\n'+
+'  0:   Motorista de app com 3+ meses de renda estavel ou crescente (sem penalidade)\n'+
+'  -20: Emprestimo/consignado descontado no holerite\n'+
+'  -15: Menos de 3 meses no emprego atual\n'+
+'  -25: Saldo cronicamente zerado (gasta tudo, sem reserva)\n'+
+'  -30: Apostas/jogos frequentes no extrato\n'+
+'  -20: Saldo negativo em algum momento do periodo\n\n'+
+'REGRA APOSTAS CRITICA (sobrepoe tudo, verificar ANTES de calcular nota):\n'+
+'  Classifique como transacao de aposta qualquer Pix enviado para:\n'+
+'  PHOENIX GAMING, PIXBET, BLAZE, APOSTARAIZ, ROYAL CREST, BANKS TECH, ATM PUBLICIDADE,\n'+
+'  SMART CLUSTER SERVICOS, M V D S M TECHNOLOGY, LOTTOPAY, GM INTERMEDIACAO, WIINPAY,\n'+
+'  AJC GATEWAY, NEXUMPAY, UNIVEBET, VAIDEBET, BETNACIONAL, ou qualquer destinatario\n'+
+'  contendo "BET", "GAMING", "APOSTAS", "CASSINO", "ESPORTIV".\n\n'+
+'  PASSO A - Some o total apostado por mes e conte os dias com aposta por mes.\n'+
+'  PASSO B - Verifique os gatilhos abaixo. Se QUALQUER UM for verdadeiro: REPROVADO imediato.\n\n'+
+'  GATILHOS DE REPROVACAO IMEDIATA (nota=0, decisao=REPROVADO, sem excecao):\n'+
+'  1. APOSTADOR DIARIO: apostas em 20 ou mais dias distintos em qualquer mes individual.\n'+
+'  2. VOLUME MENSAL ALTO: soma de apostas superior a R$ 1.000,00 em qualquer mes.\n'+
+'  3. HABITO CRONICO: apostas presentes em TODOS os meses do extrato (ex: jan+fev+mar = cronico).\n'+
+'  4. VOLUME TOTAL: 10 ou mais transacoes de apostas no periodo total.\n\n'+
+'  Se nenhum gatilho acima, mas houver 5 a 9 ocorrencias: aplica -30 na nota normalmente.\n'+
+'  Em motivosReprovacao: informe o gatilho ativado, total apostado por mes e numero de dias.\n\n'+
+
+'REGRA 3 - PERFIS FINAIS (aplica teto de renda antes de classificar):\n'+
+'  FORTE (85-100): Renda alta e consistente, comportamento organizado. Pode ser CLT, autonomo estavel ou motorista de app com historico solido.\n'+
+'  MEDIO (60-84):  Renda razoavel, alguma oscilacao toleravel.\n'+
+'  FRACO (40-59):  Renda baixa, OU renda ok mas comportamento de risco (apostas, dividas, saldo zerado).\n'+
+'  REPROVADO (0-39): Fraude, saldo negativo cronico, desorganizacao extrema.\n\n'+
+'=== PASSO 3 - BALANCA DE RISCO ===\n'+
+'FORTE (nota 85-100): 20% = R$ '+e20+' | MEDIO (nota 60-84): 35% = R$ '+e35+' | FRACO (nota 40-59): 60% = R$ '+e60+'\n\n'+
+'=== PASSO 4 - TESTE DE FOGO ===\n'+
+'Teto: FORTE (30% renda) | MEDIO (20%) | FRACO (10%).\n'+
+'Parcela base = (Valor - Entrada Minima) / 12 + juros 6%am.\n'+
+'Se parcela > Teto: decisao=SUGESTAO_ENTRADA_ALTA. EntradaTurbinada = Valor - (Teto x 8,4).\n'+
+'Se EntradaTurbinada > 80% do Valor: decisao=SUGESTAO_DOWNGRADE.\n\n'+
+'=== JSON OBRIGATORIO ===\n'+
+'{\n'+
+'  "nomeDocumentoPessoal": "Nome visual do RG/CNH (ignorar filiacao)",\n'+
+'  "nomeComprovanteRenda": "Nome do extrato ou holerite",\n'+
+'  "nomesBatem": true,\n'+
+'  "confiancaLeitura": "ALTA",\n'+
+'  "perfilCliente": "DETALHADO: Tipo de vinculo (CLT, autonomo, funcao publica), cargo se visivel, empresa se visivel, tempo de emprego (mencione a data de admissao se encontrada), tipo de renda (salario fixo, pixs de clientes, comissoes). Explique POR QUE o perfil e FORTE/MEDIO/FRACO com exemplos concretos dos documentos.",\n'+
+'  "analiseFinanceira": "DETALHADO: Renda mensal estimada em R$. Principais fontes de entrada. Maiores despesas identificadas (cite nomes: Academia, apostas, 99 Tecnologia etc). Se houver apostas/jogos: cite quantas ocorrencias e valores totais. Saldo medio do periodo. Comprometimento de renda em %. Diz se o cliente guarda dinheiro ou gasta tudo. Aponte comportamentos de risco especificos encontrados nos documentos.",\n'+
+'  "rascunhoCalculos": "Renda estimada: R$ X. Teto de parcela (perfil%): R$ X. Parcela base calculada: (R$ valor - R$ entrada) / 12 + juros 6%am = R$ X. Resultado: DENTRO ou ACIMA do teto. Se ACIMA: Entrada Turbinada = Valor - (Teto x 8,4) = R$ X.",\n'+
+'  "rendaEstimada": 1500.00,\n'+
+'  "nota": 70,\n'+
+'  "nivel": "MEDIO",\n'+
+'  "decisao": "VENDER",\n'+
+'  "entradaTurbinadaCalculada": 0.00,\n'+
+'  "motivosReprovacao": "Preencha APENAS se reprovado."\n'+
+'}\n'
+        );
+    }
+
+    function extrair(texto) {
+        var jsonStr = texto;
+        try {
+            var i1 = texto.indexOf('{'), i2 = texto.lastIndexOf('}');
+            if (i1 !== -1 && i2 !== -1 && i2 > i1) jsonStr = texto.substring(i1, i2 + 1);
+            var obj = JSON.parse(jsonStr);
+
+            var nomesBatem = obj.nomesBatem !== false;
+            var dec = (obj.decisao || '').toUpperCase();
+            var nota = typeof obj.nota === 'number' ? obj.nota : parseInt(obj.nota || 0);
+
+            if (!nomesBatem) {
+                dec = 'REPROVADO'; nota = 0; obj.nivel = 'REPROVADO';
+                obj.motivosReprovacao = 'Alerta de Fraude: Divergencia de Titularidade.\nDocumento Pessoal: ' +
+                    (obj.nomeDocumentoPessoal||'Nao encontrado') + '\nComprovante de Renda: ' +
+                    (obj.nomeComprovanteRenda||'Nao encontrado');
+            }
+
+            var downgrade   = dec.includes('DOWNGRADE');
+            var entradaAlta = dec.includes('ENTRADA_ALTA');
+            var aprov = dec.includes('VENDER') || downgrade || entradaAlta;
+            if (dec === 'REPROVADO') aprov = false;
+
+            var renda       = typeof obj.rendaEstimada === 'number' ? obj.rendaEstimada : parseFloat(obj.rendaEstimada || 0);
+            var entAltaCalc = typeof obj.entradaTurbinadaCalculada === 'number' ? obj.entradaTurbinadaCalculada : parseFloat(obj.entradaTurbinadaCalculada || 0);
+            var nomeCompleto   = obj.nomeComprovanteRenda || obj.nomeDocumentoPessoal || 'Amigo(a)';
+            var primeiroNome   = nomeCompleto.split(' ')[0];
+            var confianca      = (obj.confiancaLeitura || 'ALTA').toUpperCase();
+
+            var risco = 'REPROVADO', entradaPct = 0.60;
+            if (nota >= 85) { risco = 'FORTE';      entradaPct = 0.20; }
+            else if (nota >= 60) { risco = 'MEDIO'; entradaPct = 0.35; }
+            else if (nota >= 40) { risco = 'FRACO'; entradaPct = 0.60; }
+            else { risco = 'REPROVADO'; aprov = false; }
+
+            if (downgrade)   risco += ' · DOWNGRADE';
+            if (entradaAlta) risco += ' · ENTRADA TURBINADA';
+
+            return {
+                aprov: aprov, downgrade: downgrade, entradaAlta: entradaAlta, reprovado: !aprov,
+                nota: nota, risco: risco, entradaPct: entradaPct, rendaEstimada: renda,
+                taxa: 6, parcelas: 12, entrada: entAltaCalc || null,
+                nomeCliente: primeiroNome, nomeCompleto: nomeCompleto,
+            & d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '').trim();
+    }
+
+    function buildPrompt(produto, valor) {
+        var vf = Number(valor).toLocaleString('pt-BR',{minimumFractionDigits:2});
+        var vn = Number(valor);
+        var e20 = (vn*0.20).toLocaleString('pt-BR',{minimumFractionDigits:2});
+        var e30 = (vn*0.30).toLocaleString('pt-BR',{minimumFractionDigits:2});
+        var e35 = (vn*0.35).toLocaleString('pt-BR',{minimumFractionDigits:2});
+        var e60 = (vn*0.60).toLocaleString('pt-BR',{minimumFractionDigits:2});
+        return (
+'Voce e um analista de credito senior da Workcell.\n'+
+'Sua resposta DEVE ser estritamente um objeto JSON valido, sem texto adicional.\n\n'+
+'PRODUTO PEDIDO: '+produto+'\n'+
+'VALOR BASE: R$ '+vf+'\n\n'+
+'=== PASSO 0 - TITULARIDADE E ANTI-FRAUDE ===\n'+
+'Voce recebera IMAGEM(NS) do documento pessoal E TEXTO do comprovante de renda.\n\n'+
+'1) OLHE VISUALMENTE as imagens do documento (RG/CNH):\n'+
+'   - Extraia o nome do campo NOME do titular.\n'+
+'   - IGNORE completamente os campos FILIACAO, MAE, PAI.\n'+
+'   - Avalie a qualidade: ALTA (nitida), MEDIA (aceitavel), BAIXA (borrada/cortada).\n'+
+'   - Sem imagem de documento: nomeDocumentoPessoal="" e confiancaLeitura="SEM_DOCUMENTO".\n\n'+
+'2) LEIA O TEXTO do comprovante de renda e extraia o nome do titular.\n\n'+
+'3) COMPARE OS DOIS NOMES:\n'+
+'   - "Eduardo Ferreira" e "Eduardo F." -> mesma pessoa (nomesBatem: true)\n'+
+'   - "Eduardo Ferreira" e "Maria Ferreira" -> fraude (nomesBatem: false)\n'+
+'   - Sem documento pessoal: nomesBatem: null (analise continua normalmente)\n'+
+'   - Se nomes NAO baterem: decisao="REPROVADO", nota=0\n\n'+
+'=== PASSO 1 - EXTRAIR A RENDA REAL ===\n'+
 '- EXTRATO: Some entradas reais. NAO some transferencias da propria pessoa.\n'+
 '- HOLERITE: Renda Real = VALOR LIQUIDO exato. Jamais some descontos/adiantamentos.\n\n'+
 '=== REGRAS DE REBAIXAMENTO ===\n'+
