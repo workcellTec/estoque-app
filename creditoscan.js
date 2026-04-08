@@ -1,16 +1,17 @@
 // ================================================================
-// creditoscan.js — CréditoScan v14 (Arquitetura Híbrida Anti-Fraude)
+// creditoscan.js — CréditoScan v15 (Puter.js + Qwen-VL Vision)
 // ================================================================
 (function () {
     'use strict';
 
+    var PUTER_MODEL  = 'qwen/qwen3-vl-235b-a22b-instruct';
     var GROQ_KEY_LS  = 'ctwGroqApiKey';
-    var GROQ_MODEL   = 'meta-llama/llama-4-scout-17b-16e-instruct';
     var SAVE_PATH    = 'creditoscan';
     var MAX_IMG_PX   = 1280;
     var MAX_DOCS_ID  = 3;
-    var MAX_DOCS_RND = 30;
+    var MAX_DOCS_RND = 100;
     var MAX_PDF_PGS  = 50;
+    var MAX_IMGS_AI  = 25;
     var HIST_DAYS    = 30;
 
     var el      = function(id){ return document.getElementById(id); };
@@ -68,26 +69,28 @@
             var pdf = await window.pdfjsLib.getDocument({data:ab}).promise;
             var limit = Math.min(pdf.numPages, MAX_PDF_PGS);
             var out = [];
+            var OCR_MAX = 1280;
             for (var i=1;i<=limit;i++) {
                 var pg=await pdf.getPage(i), vp=pg.getViewport({scale:1.5});
                 var cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height;
                 await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
                 var fc=cv;
-                if (vp.width>MAX_IMG_PX||vp.height>MAX_IMG_PX){
-                    var sc=Math.min(MAX_IMG_PX/vp.width,MAX_IMG_PX/vp.height);
+                if (vp.width>OCR_MAX||vp.height>OCR_MAX){
+                    var sc=Math.min(OCR_MAX/vp.width,OCR_MAX/vp.height);
                     fc=document.createElement('canvas'); fc.width=Math.round(vp.width*sc); fc.height=Math.round(vp.height*sc);
                     fc.getContext('2d').drawImage(cv,0,0,fc.width,fc.height);
                 }
                 var b64=await new Promise(function(res){
-                    fc.toBlob(function(bl){var r=new FileReader();r.onload=function(){res(r.result.split(',')[1]);};r.readAsDataURL(bl);},'image/jpeg',0.88);
+                    fc.toBlob(function(bl){var r=new FileReader();r.onload=function(){res(r.result.split(',')[1]);};r.readAsDataURL(bl);},'image/jpeg',0.85);
                 });
-                out.push({base64:b64,dataUrl:fc.toDataURL('image/jpeg',0.6)});
+                out.push({base64:b64,dataUrl:fc.toDataURL('image/jpeg',0.5)});
             }
             return out;
         } catch(e){return [];}
     }
 
     // Extrai texto de PDF digital (extratos do app do banco — zero OCR)
+    // Reconstroi quebras de linha baseado na posicao Y dos itens
     async function extrairTextoPdfDigital(file) {
         try {
             if (!window.pdfjsLib) {
@@ -105,7 +108,19 @@
             for (var i=1;i<=limit;i++) {
                 var pg = await pdf.getPage(i);
                 var content = await pg.getTextContent();
-                var pageText = content.items.map(function(item){ return item.str; }).join(' ');
+                // Agrupa itens por posicao Y para reconstruir linhas
+                var lastY = null, lines = [], curLine = [];
+                content.items.forEach(function(item) {
+                    var y = item.transform ? Math.round(item.transform[5]) : 0;
+                    if (lastY !== null && Math.abs(y - lastY) > 3) {
+                        if (curLine.length) lines.push(curLine.join(' '));
+                        curLine = [];
+                    }
+                    curLine.push(item.str);
+                    lastY = y;
+                });
+                if (curLine.length) lines.push(curLine.join(' '));
+                var pageText = lines.join('\n');
                 textos.push(pageText);
                 totalChars += pageText.length;
             }
@@ -114,7 +129,7 @@
         } catch(e) { return { textos: [], ehDigital: false }; }
     }
 
-    // Tesseract paralelo — lotes de 4 workers simultaneos
+    // Tesseract paralelo — lotes de 6 workers simultaneos
     async function carregarTesseract() {
         if (window.Tesseract) return;
         await new Promise(function(ok, fail) {
@@ -127,7 +142,7 @@
 
     async function tesseractOCR(docs) {
         await carregarTesseract();
-        var LOTE = 4;
+        var LOTE = 6;
         var textos = new Array(docs.length).fill('');
         var totalLotes = Math.ceil(docs.length / LOTE);
         for (var lote = 0; lote < totalLotes; lote++) {
@@ -136,7 +151,7 @@
             var tarefas = [];
             for (var j = inicio; j < fim; j++) {
                 tarefas.push((function(idx) {
-                    return Tesseract.createWorker('por+eng', 1, { logger: function(){} })
+                    return Tesseract.createWorker('eng', 1, { logger: function(){} })
                         .then(function(w) {
                             return w.recognize('data:image/jpeg;base64,' + docs[idx].base64)
                                 .then(function(r) { textos[idx] = r.data.text || ''; return w.terminate(); })
@@ -156,7 +171,7 @@
             /saldo|extrato|lan.amento|lancamento|credito|d.bito|debito/i,
             /pix|ted|doc|boleto|parcela|empr.stimo|emprestimo|financiamento/i,
             /entrada|sa.da|saida|transfer.ncia|transferencia|dep.sito|deposito|saque/i,
-            /bet|esportiv|pixbet|blaze|vaidebet|betnacional|apostas?/i,
+            /bet|esportiv|pixbet|blaze|vaidebet|betnacional|apostas?|gaming|phoenix|banks tech|smart cluster|m v d s m|lottopay|apostaraiz|royal crest|atm publicidade|univebet|r torres|norbe|gold now|wiinpay|nexumpay|luxtak/i,
             /admiss.o|admissao|cargo|empresa|compet.ncia|competencia|holerite|contracheque/i,
             /janeiro|fevereiro|mar.o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro/i,
             /\d{2}\/\d{2}\/\d{4}|\d{2}\/\d{2}\/\d{2}/
@@ -177,29 +192,44 @@
         return linhasFiltradas.join('\n');
     }
 
-    // Motor hibrido: imagens ID + texto renda = 1 unica chamada
-    async function groqCallHibrido(docsId, textoRenda, prompt, key) {
-        var parts = [];
-        if (docsId.length > 0) {
-            docsId.forEach(function(d) {
-                parts.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + d.base64 } });
-            });
-        }
-        if (textoRenda && textoRenda.trim()) {
-            parts.push({ type: 'text', text: '=== COMPROVANTE DE RENDA (extraido localmente) ===\n' + textoRenda });
-        }
-        parts.push({ type: 'text', text: prompt });
-        var resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
-            body: JSON.stringify({
-                model: GROQ_MODEL, max_tokens: 4096, temperature: 0.0,
-                messages: [{ role: 'user', content: parts }]
-            })
+    // Puter.js — carrega o SDK
+    async function carregarPuter() {
+        if (window.puter) return;
+        await new Promise(function(ok, fail) {
+            var s = document.createElement('script');
+            s.src = 'https://js.puter.com/v2/';
+            s.onload = ok; s.onerror = fail;
+            document.head.appendChild(s);
         });
-        if (!resp.ok) { var e = await resp.json().catch(function(){return{};}); throw new Error((e.error && e.error.message) || 'HTTP ' + resp.status); }
-        var d = await resp.json();
-        return ((d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '').trim();
+    }
+
+    // Motor Vision: manda imagens + texto pro Qwen-VL via Puter.js
+    async function puterCallVision(imagens, textoExtra, prompt) {
+        await carregarPuter();
+        var content = [];
+        // Imagens primeiro (doc pessoal, PDFs escaneados)
+        imagens.forEach(function(img) {
+            content.push({
+                type: 'image_url',
+                image_url: { url: 'data:image/jpeg;base64,' + img.base64 }
+            });
+        });
+        // Texto dos PDFs digitais (mais preciso que imagem)
+        if (textoExtra && textoExtra.trim()) {
+            content.push({ type: 'text', text: textoExtra });
+        }
+        // Prompt no final
+        content.push({ type: 'text', text: prompt });
+
+        var resp = await puter.ai.chat(
+            [{ role: 'user', content: content }],
+            { model: PUTER_MODEL, temperature: 0 }
+        );
+        if (typeof resp === 'string') return resp.trim();
+        if (resp && resp.message) return (typeof resp.message === 'string' ? resp.message : (resp.message.content || '')).trim();
+        if (resp && resp.text) return resp.text.trim();
+        if (resp && resp.toString) return resp.toString().trim();
+        return '';
     }
 
     function buildPrompt(produto, valor) {
@@ -215,29 +245,57 @@
 'PRODUTO PEDIDO: '+produto+'\n'+
 'VALOR BASE: R$ '+vf+'\n\n'+
 '=== PASSO 0 - TITULARIDADE E ANTI-FRAUDE ===\n'+
-'Voce recebera IMAGEM(NS) do documento pessoal E TEXTO do comprovante de renda.\n\n'+
+'Voce recebera uma combinacao de:\n'+
+'- IMAGENS do documento pessoal (RG/CNH) — leia visualmente.\n'+
+'- TEXTO DIGITAL extraido de PDFs bancarios — dados estruturados com colunas (data, tipo, favorecido, CPF, valor, saldo).\n'+
+'- IMAGENS de documentos escaneados (holerites, comprovantes em foto) — leia visualmente.\n'+
+'ANALISE TUDO com atencao. O texto digital e a fonte MAIS CONFIAVEL de dados financeiros.\n\n'+
 '1) OLHE VISUALMENTE as imagens do documento (RG/CNH):\n'+
 '   - Extraia o nome do campo NOME do titular.\n'+
 '   - IGNORE completamente os campos FILIACAO, MAE, PAI.\n'+
 '   - Avalie a qualidade: ALTA (nitida), MEDIA (aceitavel), BAIXA (borrada/cortada).\n'+
 '   - Sem imagem de documento: nomeDocumentoPessoal="" e confiancaLeitura="SEM_DOCUMENTO".\n\n'+
-'2) LEIA O TEXTO do comprovante de renda e extraia o nome do titular.\n\n'+
+'2) LEIA o texto digital e/ou imagens dos comprovantes de renda e extraia o nome do titular.\n\n'+
 '3) COMPARE OS DOIS NOMES:\n'+
 '   - "Eduardo Ferreira" e "Eduardo F." -> mesma pessoa (nomesBatem: true)\n'+
 '   - "Eduardo Ferreira" e "Maria Ferreira" -> fraude (nomesBatem: false)\n'+
 '   - Sem documento pessoal: nomesBatem: null (analise continua normalmente)\n'+
 '   - Se nomes NAO baterem: decisao="REPROVADO", nota=0\n\n'+
-'=== PASSO 1 - EXTRAIR A RENDA REAL ===\n'+
-'- EXTRATO BANCARIO: Some entradas reais de terceiros. NAO some transferencias da propria pessoa para si mesma.\n'+
-'- AUTOTRANSFERENCIA (CRITICO): Identifique o CPF do titular no cabecalho do extrato.\n'+
-'  Se um Pix recebido vier de um remetente com o MESMO CPF do titular (ex: titular CPF 037.933.101-24\n'+
-'  recebendo de "00003793310124" ou "03793310124" ou "PAULO RICARDO SILVA SANTOS"), e AUTOTRANSFERENCIA.\n'+
-'  IGNORE completamente. Valor = R$ 0,00. Nao e renda.\n'+
-'- HOLERITE (1 doc): Renda = VALOR LIQUIDO exato. Jamais some bruto ou descontos.\n'+
-'- HOLERITE (multiplos): Use o mes mais recente. Se o mais antigo for mes parcial de admissao (valor bem menor), IGNORE-O.\n'+
-'- RESUMO FISCAL UBER/99/IFOOD: Use o campo "Valor liquido do repasse de ganhos". NAO use ganhos brutos.\n\n'+
 
-'=== PASSO 2 - CALCULAR A NOTA (0 a 100) ===\n'+
+'=== PASSO 1 - EXTRAIR A RENDA REAL ===\n'+
+'AUTOTRANSFERENCIA (CRITICO — fazer ANTES de somar renda):\n'+
+'- Identifique o CPF e o NOME COMPLETO do titular no CABECALHO do extrato.\n'+
+'- Para CADA "Pix - Recebido", verifique se o remetente contem o CPF do titular\n'+
+'  (com ou sem pontuacao, com ou sem zeros a esquerda) OU se o nome e igual/similar ao titular.\n'+
+'  TODAS essas entradas = R$ 0,00. NAO sao renda. IGNORE 100%.\n\n'+
+'EXTRATO BANCARIO DE CONTA CORRENTE:\n'+
+'- Some APENAS entradas de TERCEIROS reais (CPF/nome diferente do titular).\n'+
+'- "Proventos TED" do mesmo CPF vindo de outro banco SAO renda (salario entre contas).\n'+
+'- Pix recebido do proprio CPF NAO e renda.\n\n'+
+'HOLERITE:\n'+
+'- Renda = VALOR LIQUIDO exato. Jamais some bruto ou descontos.\n'+
+'- Se multiplos holerites: use o mes mais recente.\n'+
+'- Se o mais antigo for mes parcial de admissao (valor bem menor), IGNORE-O.\n\n'+
+'RESUMO FISCAL UBER/99/IFOOD (MOTORISTAS DE APP):\n'+
+'- Deduza automaticamente 35% do valor total como custo operacional (combustivel/manutencao).\n'+
+'- A Renda Real = APENAS os 65% restantes do repasse liquido.\n'+
+'- Exemplo: repasse R$ 3.000 -> Renda Real = R$ 1.950.\n\n'+
+
+'=== PASSO 2 - CALCULAR A NOTA (0 a 100) ===\n\n'+
+
+'REGRA 0 - RASTREABILIDADE (verificar ANTES de tudo, sobrepoe regras abaixo):\n'+
+'  Se o cliente enviou APENAS holerite (sem extrato bancario),\n'+
+'  OU APENAS extratos de contas poupanca/beneficio sem detalhamento de despesas\n'+
+'  (ex: Caixa Tem, contas onde so aparece "Pix Enviado" generico sem destinatario),\n'+
+'  OU qualquer documento que NAO permita ver pra onde o dinheiro vai:\n'+
+'  -> Nota travada em maximo 55 (FRACO automatico).\n'+
+'  -> decisao = "REPROVADO".\n'+
+'  -> Em analiseFinanceira e motivosReprovacao escreva EXATAMENTE:\n'+
+'     "Extrato bancario / Holerite sem movimentacao de saida e despesas detalhadas.\n'+
+'      Impossivel analisar rastreabilidade de risco financeiro.\n'+
+'      Solicitar extrato em PDF da conta corrente principal onde o cliente\n'+
+'      realiza seus pagamentos mensais para reanalise."\n'+
+'  -> Se cair nessa regra, NAO continue calculando. Retorne o JSON direto.\n\n'+
 
 'REGRA 1 - TETO POR FAIXA DE RENDA (obrigatoria, sobrepoe tudo):\n'+
 '  Renda < R$ 1.000           : nota maxima 45 (FRACO obrigatorio)\n'+
@@ -245,41 +303,44 @@
 '  Renda R$ 1.500 a R$ 2.999  : nota maxima 79 (MEDIO teto)\n'+
 '  Renda >= R$ 3.000           : sem teto de renda, comportamento decide\n\n'+
 
-'REGRA 2 - AJUSTES DE NOTA PELO COMPORTAMENTO (parta de 70 e ajuste):\n'+
-'  +15: CLT formal com holerite, vinculo estavel\n'+
-'  +10: Renda crescente mes a mes (comprovavel nos docs)\n'+
-'  +10: Saldo positivo e crescente no periodo\n'+
-'  +5:  Sem nenhuma divida ou emprestimo identificado\n'+
-'  -15: Autonomo/MEI sem vinculo formal (NAO e FRACO automatico, so perde pontos)\n'+
-'  -15: Motorista de app com apenas 1 mes de comprovante\n'+
-'  -5:  Motorista de app com 2 meses consistentes\n'+
-'  0:   Motorista de app com 3+ meses de renda estavel ou crescente (sem penalidade)\n'+
-'  -20: Emprestimo/consignado descontado no holerite\n'+
-'  -15: Menos de 3 meses no emprego atual\n'+
-'  -25: Saldo cronicamente zerado (gasta tudo, sem reserva)\n'+
-'  -30: Apostas/jogos frequentes no extrato\n'+
-'  -20: Saldo negativo em algum momento do periodo\n\n'+
-'REGRA APOSTAS CRITICA (sobrepoe tudo, verificar ANTES de calcular nota):\n'+
+'REGRA 2 - DESCONTOS DE NOTA (parta de 100 e APENAS desconte — ZERO bonus ou pontos positivos):\n'+
+'  -10: Autonomo/MEI sem vinculo CLT formal (qualquer renda informal, bico, app, MEI).\n'+
+'  -10: Saldo cronicamente baixo — termina o mes com menos de R$ 100 em 2 ou mais meses.\n'+
+'  -10: Superendividado — mais de 80% da renda comprometida com faturas, crediarios,\n'+
+'        boletos, parcelas ou financiamentos.\n'+
+'  -10: Emprestimo ou consignado descontado diretamente no holerite.\n'+
+'  -35: Apostas esporadicas (1 a 4 ocorrencias no extrato) — aplica APENAS se o pre-filtro\n'+
+'        local ja nao reprovou o cliente por volume/frequencia alta de apostas.\n\n'+
+'  IMPORTANTE: Nao existe ajuste positivo. Cliente sem nenhum dos problemas acima = 100 pontos.\n'+
+'  Cada criterio acima so pode ser descontado UMA vez. Nao acumule o mesmo desconto duas vezes.\n\n'+
+
+'REGRA APOSTAS CRITICA (sobrepoe TUDO — verificar ANTES de calcular nota):\n'+
 '  Classifique como transacao de aposta qualquer Pix enviado para:\n'+
 '  PHOENIX GAMING, PIXBET, BLAZE, APOSTARAIZ, ROYAL CREST, BANKS TECH, ATM PUBLICIDADE,\n'+
 '  SMART CLUSTER SERVICOS, M V D S M TECHNOLOGY, LOTTOPAY, GM INTERMEDIACAO, WIINPAY,\n'+
-'  AJC GATEWAY, NEXUMPAY, UNIVEBET, VAIDEBET, BETNACIONAL, ou qualquer destinatario\n'+
-'  contendo "BET", "GAMING", "APOSTAS", "CASSINO", "ESPORTIV".\n\n'+
-'  PASSO A - Some o total apostado por mes e conte os dias com aposta por mes.\n'+
-'  PASSO B - Verifique os gatilhos abaixo. Se QUALQUER UM for verdadeiro: REPROVADO imediato.\n\n'+
-'  GATILHOS DE REPROVACAO IMEDIATA (nota=0, decisao=REPROVADO, sem excecao):\n'+
-'  1. APOSTADOR DIARIO: apostas em 20 ou mais dias distintos em qualquer mes individual.\n'+
-'  2. VOLUME MENSAL ALTO: soma de apostas superior a R$ 1.000,00 em qualquer mes.\n'+
-'  3. HABITO CRONICO: apostas presentes em TODOS os meses do extrato (ex: jan+fev+mar = cronico).\n'+
-'  4. VOLUME TOTAL: 10 ou mais transacoes de apostas no periodo total.\n\n'+
-'  Se nenhum gatilho acima, mas houver 5 a 9 ocorrencias: aplica -30 na nota normalmente.\n'+
-'  Em motivosReprovacao: informe o gatilho ativado, total apostado por mes e numero de dias.\n\n'+
+'  AJC GATEWAY, NEXUMPAY, UNIVEBET, VAIDEBET, BETNACIONAL, R TORRES, NORBE FINTECH,\n'+
+'  GOLD NOW, LUXTAK, ou qualquer destinatario contendo "BET", "GAMING", "APOSTAS",\n'+
+'  "CASSINO", "ESPORTIV", "APOSTA", "RAIZ".\n\n'+
+'  PASSO A - Some o total apostado por mes, conte os dias DISTINTOS com aposta por mes,\n'+
+'            e conte o total de transacoes de apostas no periodo inteiro.\n'+
+'  PASSO B - Verifique os gatilhos abaixo. Se QUALQUER UM for verdadeiro:\n'+
+'            nota = 0, decisao = REPROVADO, sem excecao, sem compensacao por renda alta.\n\n'+
+'  GATILHOS DE REPROVACAO IMEDIATA:\n'+
+'  1. APOSTADOR COMPULSIVO DIARIO: apostas em 15 ou mais dias distintos em qualquer mes.\n'+
+'  2. VOLUME MENSAL ALTO: soma de apostas >= R$ 800,00 em qualquer mes.\n'+
+'  3. HABITO CRONICO: apostas presentes em TODOS os meses do extrato quando ha 2+ meses.\n'+
+'  4. FREQUENCIA TOTAL ALTA: 10 ou mais transacoes de apostas no periodo total.\n'+
+'  5. APOSTADOR DIARIO CURTO: apostas em 7+ dias consecutivos ou quase consecutivos.\n\n'+
+'  Se nenhum gatilho acima, mas houver 5 a 9 ocorrencias: nota travada em maximo 35, REPROVADO.\n'+
+'  Se houver 1 a 4 ocorrencias esporadicas: aplica -30 na nota normalmente.\n\n'+
+'  Em motivosReprovacao: SEMPRE informe o gatilho ativado, total apostado por mes,\n'+
+'  numero de dias com aposta por mes, e lista dos destinatarios de aposta encontrados.\n\n'+
 
 'REGRA 3 - PERFIS FINAIS (aplica teto de renda antes de classificar):\n'+
-'  FORTE (85-100): Renda alta e consistente, comportamento organizado. Pode ser CLT, autonomo estavel ou motorista de app com historico solido.\n'+
+'  FORTE (85-100): Renda alta e consistente, comportamento organizado.\n'+
 '  MEDIO (60-84):  Renda razoavel, alguma oscilacao toleravel.\n'+
-'  FRACO (40-59):  Renda baixa, OU renda ok mas comportamento de risco (apostas, dividas, saldo zerado).\n'+
-'  REPROVADO (0-39): Fraude, saldo negativo cronico, desorganizacao extrema.\n\n'+
+'  FRACO (40-59):  Renda baixa, OU renda ok mas comportamento de risco.\n'+
+'  REPROVADO (0-39): Fraude, saldo negativo cronico, apostador, sem rastreabilidade.\n\n'+
 '=== PASSO 3 - BALANCA DE RISCO ===\n'+
 'FORTE (nota 85-100): 20% = R$ '+e20+' | MEDIO (nota 60-84): 35% = R$ '+e35+' | FRACO (nota 40-59): 60% = R$ '+e60+'\n\n'+
 '=== PASSO 4 - TESTE DE FOGO ===\n'+
@@ -293,117 +354,10 @@
 '  "nomeComprovanteRenda": "Nome do extrato ou holerite",\n'+
 '  "nomesBatem": true,\n'+
 '  "confiancaLeitura": "ALTA",\n'+
-'  "perfilCliente": "DETALHADO: Tipo de vinculo (CLT, autonomo, funcao publica), cargo se visivel, empresa se visivel, tempo de emprego (mencione a data de admissao se encontrada), tipo de renda (salario fixo, pixs de clientes, comissoes). Explique POR QUE o perfil e FORTE/MEDIO/FRACO com exemplos concretos dos documentos.",\n'+
-'  "analiseFinanceira": "DETALHADO: Renda mensal estimada em R$. Principais fontes de entrada. Maiores despesas identificadas (cite nomes: Academia, apostas, 99 Tecnologia etc). Se houver apostas/jogos: cite quantas ocorrencias e valores totais. Saldo medio do periodo. Comprometimento de renda em %. Diz se o cliente guarda dinheiro ou gasta tudo. Aponte comportamentos de risco especificos encontrados nos documentos.",\n'+
-'  "rascunhoCalculos": "Renda estimada: R$ X. Teto de parcela (perfil%): R$ X. Parcela base calculada: (R$ valor - R$ entrada) / 12 + juros 6%am = R$ X. Resultado: DENTRO ou ACIMA do teto. Se ACIMA: Entrada Turbinada = Valor - (Teto x 8,4) = R$ X.",\n'+
-'  "rendaEstimada": 1500.00,\n'+
-'  "nota": 70,\n'+
-'  "nivel": "MEDIO",\n'+
-'  "decisao": "VENDER",\n'+
-'  "entradaTurbinadaCalculada": 0.00,\n'+
-'  "motivosReprovacao": "Preencha APENAS se reprovado."\n'+
-'}\n'
-        );
-    }
-
-    function extrair(texto) {
-        var jsonStr = texto;
-        try {
-            var i1 = texto.indexOf('{'), i2 = texto.lastIndexOf('}');
-            if (i1 !== -1 && i2 !== -1 && i2 > i1) jsonStr = texto.substring(i1, i2 + 1);
-            var obj = JSON.parse(jsonStr);
-
-            var nomesBatem = obj.nomesBatem !== false;
-            var dec = (obj.decisao || '').toUpperCase();
-            var nota = typeof obj.nota === 'number' ? obj.nota : parseInt(obj.nota || 0);
-
-            if (!nomesBatem) {
-                dec = 'REPROVADO'; nota = 0; obj.nivel = 'REPROVADO';
-                obj.motivosReprovacao = 'Alerta de Fraude: Divergencia de Titularidade.\nDocumento Pessoal: ' +
-                    (obj.nomeDocumentoPessoal||'Nao encontrado') + '\nComprovante de Renda: ' +
-                    (obj.nomeComprovanteRenda||'Nao encontrado');
-            }
-
-            var downgrade   = dec.includes('DOWNGRADE');
-            var entradaAlta = dec.includes('ENTRADA_ALTA');
-            var aprov = dec.includes('VENDER') || downgrade || entradaAlta;
-            if (dec === 'REPROVADO') aprov = false;
-
-            var renda       = typeof obj.rendaEstimada === 'number' ? obj.rendaEstimada : parseFloat(obj.rendaEstimada || 0);
-            var entAltaCalc = typeof obj.entradaTurbinadaCalculada === 'number' ? obj.entradaTurbinadaCalculada : parseFloat(obj.entradaTurbinadaCalculada || 0);
-            var nomeCompleto   = obj.nomeComprovanteRenda || obj.nomeDocumentoPessoal || 'Amigo(a)';
-            var primeiroNome   = nomeCompleto.split(' ')[0];
-            var confianca      = (obj.confiancaLeitura || 'ALTA').toUpperCase();
-
-            var risco = 'REPROVADO', entradaPct = 0.60;
-            if (nota >= 85) { risco = 'FORTE';      entradaPct = 0.20; }
-            else if (nota >= 60) { risco = 'MEDIO'; entradaPct = 0.35; }
-            else if (nota >= 40) { risco = 'FRACO'; entradaPct = 0.60; }
-            else { risco = 'REPROVADO'; aprov = false; }
-
-            if (downgrade)   risco += ' · DOWNGRADE';
-            if (entradaAlta) risco += ' · ENTRADA TURBINADA';
-
-            return {
-                aprov: aprov, downgrade: downgrade, entradaAlta: entradaAlta, reprovado: !aprov,
-                nota: nota, risco: risco, entradaPct: entradaPct, rendaEstimada: renda,
-                taxa: 6, parcelas: 12, entrada: entAltaCalc || null,
-                nomeCliente: primeiroNome, nomeCompleto: nomeCompleto,
-            & d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '').trim();
-    }
-
-    function buildPrompt(produto, valor) {
-        var vf = Number(valor).toLocaleString('pt-BR',{minimumFractionDigits:2});
-        var vn = Number(valor);
-        var e20 = (vn*0.20).toLocaleString('pt-BR',{minimumFractionDigits:2});
-        var e30 = (vn*0.30).toLocaleString('pt-BR',{minimumFractionDigits:2});
-        var e35 = (vn*0.35).toLocaleString('pt-BR',{minimumFractionDigits:2});
-        var e60 = (vn*0.60).toLocaleString('pt-BR',{minimumFractionDigits:2});
-        return (
-'Voce e um analista de credito senior da Workcell.\n'+
-'Sua resposta DEVE ser estritamente um objeto JSON valido, sem texto adicional.\n\n'+
-'PRODUTO PEDIDO: '+produto+'\n'+
-'VALOR BASE: R$ '+vf+'\n\n'+
-'=== PASSO 0 - TITULARIDADE E ANTI-FRAUDE ===\n'+
-'Voce recebera IMAGEM(NS) do documento pessoal E TEXTO do comprovante de renda.\n\n'+
-'1) OLHE VISUALMENTE as imagens do documento (RG/CNH):\n'+
-'   - Extraia o nome do campo NOME do titular.\n'+
-'   - IGNORE completamente os campos FILIACAO, MAE, PAI.\n'+
-'   - Avalie a qualidade: ALTA (nitida), MEDIA (aceitavel), BAIXA (borrada/cortada).\n'+
-'   - Sem imagem de documento: nomeDocumentoPessoal="" e confiancaLeitura="SEM_DOCUMENTO".\n\n'+
-'2) LEIA O TEXTO do comprovante de renda e extraia o nome do titular.\n\n'+
-'3) COMPARE OS DOIS NOMES:\n'+
-'   - "Eduardo Ferreira" e "Eduardo F." -> mesma pessoa (nomesBatem: true)\n'+
-'   - "Eduardo Ferreira" e "Maria Ferreira" -> fraude (nomesBatem: false)\n'+
-'   - Sem documento pessoal: nomesBatem: null (analise continua normalmente)\n'+
-'   - Se nomes NAO baterem: decisao="REPROVADO", nota=0\n\n'+
-'=== PASSO 1 - EXTRAIR A RENDA REAL ===\n'+
-'- EXTRATO: Some entradas reais. NAO some transferencias da propria pessoa.\n'+
-'- HOLERITE: Renda Real = VALOR LIQUIDO exato. Jamais some descontos/adiantamentos.\n\n'+
-'=== REGRAS DE REBAIXAMENTO ===\n'+
-'- Desconto de Emprestimo/Consignado no holerite: perfil maximo FRACO (nota max 59).\n'+
-'- Menos de 3 meses no emprego: perfil maximo FRACO.\n\n'+
-'=== PASSO 2 - PERFIL ===\n'+
-'- FORTE (80-100): Salario fixo/formal, regular, saldo positivo.\n'+
-'- MEDIO (60-79): Entradas frequentes mas oscilam.\n'+
-'- FRACO (40-59): Autonomo, gasta tudo, tem emprestimos.\n'+
-'- REPROVADO (0-39): Fraude, saldo negativo cronico.\n\n'+
-'=== PASSO 3 - BALANCA DE RISCO ===\n'+
-'FORTE (nota 85-100): 20% = R$ '+e20+' | MEDIO (nota 60-84): 35% = R$ '+e35+' | FRACO (nota 40-59): 60% = R$ '+e60+'\n\n'+
-'=== PASSO 4 - TESTE DE FOGO ===\n'+
-'Teto: FORTE (30% renda) | MEDIO (20%) | FRACO (10%).\n'+
-'Parcela base = (Valor - Entrada Minima) / 12 + juros 6%am.\n'+
-'Se parcela > Teto: decisao=SUGESTAO_ENTRADA_ALTA. EntradaTurbinada = Valor - (Teto x 8,4).\n'+
-'Se EntradaTurbinada > 80% do Valor: decisao=SUGESTAO_DOWNGRADE.\n\n'+
-'=== JSON OBRIGATORIO ===\n'+
-'{\n'+
-'  "nomeDocumentoPessoal": "Nome visual do RG/CNH (ignorar filiacao)",\n'+
-'  "nomeComprovanteRenda": "Nome do extrato ou holerite",\n'+
-'  "nomesBatem": true,\n'+
-'  "confiancaLeitura": "ALTA",\n'+
-'  "perfilCliente": "DETALHADO: Tipo de vinculo (CLT, autonomo, funcao publica), cargo se visivel, empresa se visivel, tempo de emprego (mencione a data de admissao se encontrada), tipo de renda (salario fixo, pixs de clientes, comissoes). Explique POR QUE o perfil e FORTE/MEDIO/FRACO com exemplos concretos dos documentos.",\n'+
-'  "analiseFinanceira": "DETALHADO: Renda mensal estimada em R$. Principais fontes de entrada. Maiores despesas identificadas (cite nomes: Academia, apostas, 99 Tecnologia etc). Se houver apostas/jogos: cite quantas ocorrencias e valores totais. Saldo medio do periodo. Comprometimento de renda em %. Diz se o cliente guarda dinheiro ou gasta tudo. Aponte comportamentos de risco especificos encontrados nos documentos.",\n'+
-'  "rascunhoCalculos": "Renda estimada: R$ X. Teto de parcela (perfil%): R$ X. Parcela base calculada: (R$ valor - R$ entrada) / 12 + juros 6%am = R$ X. Resultado: DENTRO ou ACIMA do teto. Se ACIMA: Entrada Turbinada = Valor - (Teto x 8,4) = R$ X.",\n'+
+'  "perfilCliente": "DETALHADO: Tipo de vinculo, cargo, empresa, tempo de emprego, tipo de renda. Explique POR QUE o perfil e FORTE/MEDIO/FRACO com exemplos concretos.",\n'+
+'  "analiseFinanceira": "DETALHADO: Renda mensal em R$. Fontes de entrada. Maiores despesas (cite nomes). Apostas: quantas e valor total. Saldo medio. Comprometimento de renda em %. Guarda dinheiro ou gasta tudo. Comportamentos de risco.",\n'+
+'  "calculoPontuacao": "Escreva o calculo linha por linha assim:\\nBase: 100\\nAutonomo/MEI: -10\\nSaldo cronicamente baixo: -10\\nTeto renda (R$ X): teto YY\\nRESULTADO FINAL: ZZ pontos\\nListe APENAS os descontos que SE APLICAM a este cliente. Nao liste descontos que nao se aplicam. Nao invente ajustes positivos.",\n'+
+'  "rascunhoCalculos": "Renda: R$ X. Teto parcela (perfil%): R$ X. Parcela base: (R$ valor - R$ entrada) / 12 + juros 6%am = R$ X. DENTRO ou ACIMA do teto.",\n'+
 '  "rendaEstimada": 1500.00,\n'+
 '  "nota": 70,\n'+
 '  "nivel": "MEDIO",\n'+
@@ -461,6 +415,7 @@
                 nomeRenda: obj.nomeComprovanteRenda || '',
                 nomesBatem: obj.nomesBatem, confianca: confianca,
                 perfil: obj.perfilCliente || '', analise: obj.analiseFinanceira || '',
+                calculo: obj.calculoPontuacao || '',
                 rascunho: obj.rascunhoCalculos || '', motivos: obj.motivosReprovacao || '',
                 rawJson: obj
             };
@@ -512,6 +467,7 @@
     function formatResult(texto, d, valorBase) {
         var nc = d.nota !== null ? (d.nota>=80 ? '#16a34a' : d.nota>=60 ? '#d97706' : d.nota>=40 ? '#f59e0b' : '#dc2626') : '#888';
         var html = '<h4 class="cs-rt">Perfil do Cliente: '+esc(d.nomeCompleto)+'</h4><p class="cs-rp">'+esc(d.perfil)+'</p><h4 class="cs-rt">Analise Financeira</h4><p class="cs-rp">'+esc(d.analise)+'</p>';
+        if (d.calculo) html += '<h4 class="cs-rt" style="color:#a78bfa">📊 Calculo da Pontuacao</h4><p class="cs-rp" style="font-family:monospace;font-size:0.82em;line-height:1.6;background:rgba(139,92,246,.08);padding:10px 12px;border-radius:8px;border-left:3px solid #a78bfa;">'+esc(d.calculo).replace(/\n/g,'<br>').replace(/(\+\d+)/g,'<span style="color:#4ade80;font-weight:700">$1</span>').replace(/([\-]\d+)/g,'<span style="color:#f87171;font-weight:700">$1</span>')+'</p>';
         if (d.reprovado && d.motivos) html += '<h4 class="cs-rt" style="color:#ef4444">Motivos da Reprovacao</h4><p class="cs-rp" style="color:#fca5a5">'+esc(d.motivos).replace(/\n/g,'<br>')+'</p>';
         if (d.rascunho) html += '<h4 class="cs-rt">Rascunho de Calculos</h4><p class="cs-rp" style="opacity:0.7;font-size:0.8em;">'+esc(d.rascunho).replace(/\n/g,'<br>')+'</p>';
 
@@ -734,33 +690,367 @@
     }
 
     async function handleFilesRend(files){
+        var loadEl = document.getElementById('cs_upload_loading');
+        if (!loadEl) {
+            loadEl = document.createElement('div');
+            loadEl.id = 'cs_upload_loading';
+            loadEl.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#fff;font-family:sans-serif;';
+            loadEl.innerHTML = '<div style="font-size:2.5rem">⏳</div><div id="cs_upload_lbl" style="font-size:1rem;font-weight:700;">Processando documentos...</div><div id="cs_upload_sub" style="font-size:.75rem;opacity:.6">Convertendo paginas em imagens</div>';
+            document.body.appendChild(loadEl);
+        }
+        loadEl.style.display = 'flex';
+        var lblEl = document.getElementById('cs_upload_lbl');
+        var subEl = document.getElementById('cs_upload_sub');
+
+        var totalFiles = files.length, processados = 0;
         for(var i=0;i<files.length;i++){
             var f=files[i];
-            if(_docsRend.length>=MAX_DOCS_RND){window.showCustomModal&&window.showCustomModal({message:'Maximo atingido.'});break;}
-            if(f.type.startsWith('image/')){var b=await resizeToBase64(f);if(b)_docsRend.push({dataUrl:URL.createObjectURL(f),base64:b,tipo:'imagem'});}
+            if(_docsRend.length>=MAX_DOCS_RND){window.showCustomModal&&window.showCustomModal({message:'Maximo de '+MAX_DOCS_RND+' paginas atingido.'});break;}
+            processados++;
+            if(f.type.startsWith('image/')){
+                if(lblEl) lblEl.textContent = 'Processando foto ' + processados + '/' + totalFiles + '...';
+                var b=await resizeToBase64(f);
+                if(b)_docsRend.push({dataUrl:URL.createObjectURL(f),base64:b,tipo:'imagem',textos:[],ehDigital:false});
+            }
             else if(f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf')){
-                var resultado=await extrairTextoPdfDigital(f);
-                if(resultado.ehDigital&&resultado.textos.join('').trim().length>100){
+                if(lblEl) lblEl.textContent = 'Processando PDF ' + processados + '/' + totalFiles + '...';
+                if(subEl) subEl.textContent = f.name;
+                // Extrai texto com posicao Y
+                var txtResult=await extrairTextoPdfDigital(f);
+                var textos=txtResult.textos||[];
+                var digital=txtResult.ehDigital;
+                var numPags = textos.length || '?';
+                if(subEl) subEl.textContent = f.name + ' — ' + numPags + 'p' + (digital?' (digital)':' (escaneado)');
+                // Renderiza imagens pra preview (e pra IA se escaneado)
+                var imgs=await pdfToImages(f);
+                imgs.forEach(function(im, idx){
                     if(_docsRend.length<MAX_DOCS_RND)
-                        _docsRend.push({dataUrl:null,base64:null,tipo:'texto_digital',textos:resultado.textos,paginas:resultado.textos.length,nome:f.name});
-                } else {
-                    var imgs=await pdfToImages(f);
-                    imgs.forEach(function(im){if(_docsRend.length<MAX_DOCS_RND)_docsRend.push({dataUrl:im.dataUrl,base64:im.base64,tipo:'imagem'});});
-                }
+                        _docsRend.push({
+                            dataUrl:im.dataUrl,base64:im.base64,tipo:'imagem',
+                            textos:textos[idx]?[textos[idx]]:[],
+                            ehDigital:digital
+                        });
+                });
             }
         }
+        loadEl.style.display = 'none';
         _last=null;resetUIState();renderDocsRend();setBtnState();
     }
 
     function uploadId(capture,mode){var inp=document.createElement('input');inp.type='file';inp.accept=(mode==='pdf')?'application/pdf,.pdf':'image/*,application/pdf';inp.multiple=true;if(capture&&capture!==false)inp.capture='environment';inp.onchange=function(e){handleFilesId(e.target.files);};inp.click();}
     function uploadRend(accept,capture){var inp=document.createElement('input');inp.type='file';inp.accept=accept||'image/*,application/pdf';inp.multiple=true;if(capture)inp.capture='environment';inp.onchange=function(e){handleFilesRend(e.target.files);};inp.click();}
 
+    // ── Detector local de apostas — roda ANTES da IA, sem gastar token ──
+    var APOSTAS_KEYWORDS = [
+        'phoenix gaming','m v d s m technology','atm publicidade','smart cluster',
+        'banks tech','apostaraiz','royal crest','lottopay','gm intermediacao',
+        'wiinpay','ajc gateway','nexumpay','univebet','vaidebet','betnacional',
+        'pixbet','blaze','betano','esportes da sorte','superbet',
+        'r torres','norbe fintech','norbe','gold now','luxtak','phoenix gaming ltda',
+        'futbol bet','betgaming','bet gaming','betfair','sportingbet','betway',
+        'bet365','pinnacle','1xbet','stake','f12 bet','galera bet','kto'
+    ];
+    var APOSTAS_REGEX = /\b(bet|gaming|apostas?|cassino|esportiv|pixbet|blaze|apostaraiz)\b/i;
+
+    function detectarApostas(texto) {
+        var textoLower = texto.toLowerCase();
+        var porDia = {}, porMes = {}, totalOcorr = 0, totalValor = 0;
+        var destinatarios = {};
+
+        // === ESTRATEGIA 1: Busca global por keyword (funciona mesmo sem \n) ===
+        APOSTAS_KEYWORDS.forEach(function(keyword) {
+            var idx = 0;
+            while (true) {
+                var pos = textoLower.indexOf(keyword, idx);
+                if (pos === -1) break;
+                idx = pos + keyword.length;
+                // Evita double-count de substrings (ex: "phoenix gaming ltda" contendo "phoenix gaming")
+                var contexto = textoLower.substring(Math.max(0,pos-5), Math.min(textoLower.length, pos+keyword.length+10));
+                var jaContado = false;
+                APOSTAS_KEYWORDS.forEach(function(k2){
+                    if (k2.length > keyword.length && contexto.indexOf(k2) !== -1) jaContado = true;
+                });
+                if (jaContado) continue;
+
+                destinatarios[keyword] = (destinatarios[keyword] || 0) + 1;
+                totalOcorr++;
+                // Busca valor proximo — procura tanto ANTES quanto DEPOIS da keyword
+                // Formato tipico extrato: "20,00 (-) Pix - Enviado ... PHOENIX GAMING"
+                var searchBefore = texto.substring(Math.max(0, pos - 120), pos);
+                var searchAfter = texto.substring(pos, Math.min(texto.length, pos + 120));
+                // Regex conservador: 1-4 digitos + virgula + 2 decimais (max R$9999,99 por aposta)
+                var mVal = searchBefore.match(/(\d{1,4}),(\d{2})(?:\s*\(-\))?(?:\s|$)/g) ||
+                           searchAfter.match(/(\d{1,4}),(\d{2})(?:\s*\(-\))?/g);
+                var valor = 0;
+                if (mVal) {
+                    // Pega o ultimo match (mais proximo da keyword)
+                    var lastMatch = mVal[mVal.length - 1].match(/(\d{1,4}),(\d{2})/);
+                    if (lastMatch) valor = parseFloat(lastMatch[1] + '.' + lastMatch[2]);
+                    if (valor > 5000) valor = 0; // sanity check: aposta individual > R$5000 improvavel
+                }
+                totalValor += valor;
+                // Busca data proxima (ate 250 chars antes)
+                var before = texto.substring(Math.max(0, pos - 250), pos + 30);
+                var datasEncontradas = before.match(/(\d{2})\/(\d{2})\/(\d{2,4})/g) || [];
+                var mData = datasEncontradas.length > 0 ? datasEncontradas[datasEncontradas.length-1].match(/(\d{2})\/(\d{2})\/(\d{2,4})/) : null;
+                if (!mData) {
+                    var mShort = before.match(/(\d{2})\/(\d{2})\s/g);
+                    if (mShort && mShort.length) {
+                        var last = mShort[mShort.length-1].match(/(\d{2})\/(\d{2})/);
+                        if (last) mData = [null, last[1], last[2], '2026'];
+                    }
+                }
+                if (mData) {
+                    var dia = mData[1], mes = mData[2], ano = mData[3] || '2026';
+                    if (ano.length === 2) ano = '20' + ano;
+                    var chaveDia = dia + '/' + mes + '/' + ano;
+                    var chaveMes = mes + '/' + ano;
+                    porDia[chaveDia] = (porDia[chaveDia] || 0) + 1;
+                    if (!porMes[chaveMes]) porMes[chaveMes] = { ocorr: 0, total: 0, dias: {} };
+                    porMes[chaveMes].ocorr++;
+                    porMes[chaveMes].total += valor;
+                    porMes[chaveMes].dias[chaveDia] = true;
+                }
+            }
+        });
+
+        // === ESTRATEGIA 2: Regex generico para pegar nomes nao listados ===
+        var regexHits = [];
+        var reGen = /\b(bet\w*|gaming\w*|apostas?\w*|cassino\w*|esportiv\w*)\b/gi;
+        var rm;
+        while ((rm = reGen.exec(textoLower)) !== null) {
+            // Verifica se ja nao foi contado por keywords
+            var jaKeyword = APOSTAS_KEYWORDS.some(function(k){
+                var start = Math.max(0, rm.index - 50);
+                var trecho = textoLower.substring(start, rm.index + rm[0].length + 50);
+                return trecho.indexOf(k) !== -1;
+            });
+            if (!jaKeyword) {
+                regexHits.push(rm[0]);
+                totalOcorr++;
+                destinatarios[rm[0]] = (destinatarios[rm[0]] || 0) + 1;
+            }
+        }
+
+        var diasComAposta = Object.keys(porDia).length;
+        var mesesComAposta = Object.keys(porMes).length;
+        var destStr = Object.keys(destinatarios).map(function(k){return k+' ('+destinatarios[k]+'x)';}).join(', ');
+
+        // === GATILHOS ===
+        var gatilho = null, detalhe = '';
+        // G1: 15+ dias com apostas em qualquer mes
+        Object.keys(porMes).forEach(function(m){
+            var diasNesteMes = Object.keys(porMes[m].dias || {}).length;
+            if(!gatilho && diasNesteMes >= 15){
+                gatilho = 'APOSTADOR_DIARIO';
+                detalhe = diasNesteMes + ' dias com apostas no mes ' + m;
+            }
+        });
+        // G2: volume mensal >= R$ 800
+        if (!gatilho) {
+            Object.keys(porMes).forEach(function(m){
+                if (!gatilho && porMes[m].total >= 800) {
+                    gatilho = 'VOLUME_MENSAL';
+                    detalhe = 'R$ '+porMes[m].total.toFixed(2)+' apostados em '+m;
+                }
+            });
+        }
+        // G3: habito cronico (3+ meses)
+        if (!gatilho && mesesComAposta >= 3) {
+            gatilho = 'HABITO_CRONICO';
+            detalhe = 'apostas em '+mesesComAposta+' meses distintos (compulsivo)';
+        }
+        // G4: 10+ ocorrencias totais
+        if (!gatilho && totalOcorr >= 10) {
+            gatilho = 'VOLUME_TOTAL';
+            detalhe = totalOcorr+' transacoes de apostas no periodo';
+        }
+        // G5: 5-9 ocorrencias = nota trava em 35 (reprovado)
+        if (!gatilho && totalOcorr >= 5) {
+            gatilho = 'APOSTADOR_FREQUENTE';
+            detalhe = totalOcorr+' transacoes de apostas — nota travada em 35';
+        }
+        if (detalhe) detalhe += '\nTotal apostado: R$ '+totalValor.toFixed(2)+' | Casas: '+destStr;
+
+        return { gatilho: gatilho, detalhe: detalhe, totalOcorr: totalOcorr, totalValor: totalValor, diasComAposta: diasComAposta, mesesComAposta: mesesComAposta, porMes: porMes };
+    }
+
+    function resultadoApostasReprovado(prod, nomeCliente, apostas) {
+        var motivo = 'REPROVADO AUTOMATICO — Apostador Compulsivo\nGatilho: '+apostas.gatilho+'\nDetalhe: '+apostas.detalhe+'\n\nTransacoes de apostas detectadas localmente: '+apostas.totalOcorr+' | Total: R$ '+apostas.totalValor.toFixed(2)+'\nDias com apostas: '+apostas.diasComAposta+' | Meses: '+apostas.mesesComAposta;
+        return {
+            aprov: false, downgrade: false, entradaAlta: false, reprovado: true,
+            nota: 0, risco: 'REPROVADO', entradaPct: 0.60, rendaEstimada: 0,
+            nomeCliente: nomeCliente || 'Cliente', nomeCompleto: nomeCliente || 'Cliente',
+            confianca: 'ALTA', nomeDocPessoal: '', nomeRenda: '', nomesBatem: null,
+            perfil: 'Apostador compulsivo identificado automaticamente pela analise local do extrato.',
+            analise: motivo, calculo: '', rascunho: '', motivos: motivo, _produto: prod
+        };
+    }
+
+    // ── Detector local de extrato cego (Caixa Tem, poupança, só holerite) ──
+    function detectarExtratoCego(texto) {
+        // Normaliza acentos pra comparacao
+        var tl = texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        var nome = '';
+        var mNome = texto.match(/(?:Nome|Cliente)[:\s]+([A-Z][A-Za-z\s]+)/);
+        if (mNome) nome = mNome[1].trim();
+
+        var ehContaCega = ['caixa tem','conta poupanca caixa','poupanca caixa',
+            'conta poupanca digital','agencia digital'].some(function(i){ return tl.indexOf(i) !== -1; });
+
+        // Conta saidas detalhadas (Pix com destinatario, compras, boletos)
+        var saidasDetalhadas = 0;
+        var linhas = texto.split('\n');
+        linhas.forEach(function(l) {
+            var ll = l.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            if (/pix\s*(enviado|-\s*enviado)/.test(ll)) saidasDetalhadas++;
+            if (/compra com cart/i.test(ll)) saidasDetalhadas++;
+            if (/boleto/i.test(ll)) saidasDetalhadas++;
+            if (/debito auto/i.test(ll)) saidasDetalhadas++;
+        });
+
+        // Detecta se maioria das operacoes sao passivas
+        var opsPassivasKw = ['saldo dia','credito juros','correcao monetaria','cred remuneracao',
+            'programa pe de meia','credito juros mp','inc conclusao'];
+        var totalOps = 0, opsPassivas = 0;
+        linhas.forEach(function(l) {
+            var ll = l.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+            if (ll.length < 5) return;
+            if (/tipo de opera|pix|saldo|credito|debito|compra|boleto|transfer|correcao|programa/i.test(ll)) {
+                totalOps++;
+                if (opsPassivasKw.some(function(op){ return ll.indexOf(op) !== -1; })) opsPassivas++;
+            }
+        });
+
+        var tipo = '';
+        if (tl.indexOf('caixa tem') !== -1) tipo = 'Conta poupanca CAIXA Tem';
+        else if (tl.indexOf('conta poupanca') !== -1) tipo = 'Conta poupanca';
+        else if (tl.indexOf('agencia digital') !== -1 && tl.indexOf('poupanca') !== -1) tipo = 'Conta poupanca digital';
+        else if (tl.indexOf('poupanca') !== -1) tipo = 'Conta poupanca';
+
+        var cego = false;
+        if (ehContaCega && saidasDetalhadas <= 3) {
+            cego = true;
+            if (!tipo) tipo = 'Conta beneficio/poupanca';
+        }
+        if (totalOps > 4 && opsPassivas / totalOps > 0.65 && saidasDetalhadas <= 3) {
+            cego = true;
+            if (!tipo) tipo = 'Extrato sem despesas detalhadas';
+        }
+
+        return { cego: cego, tipo: tipo, nome: nome, saidasDetalhadas: saidasDetalhadas };
+    }
+
+    // ── VALIDADOR POS-IA: corrige nota se o calculo da IA nao bate com a nota retornada ──
+    function validarNotaVsCalculo(d) {
+        if (!d.calculo || d.reprovado) return;
+        var texto = d.calculo;
+        var mBase = texto.match(/Base:\s*(\d+)/i);
+        if (!mBase) return;
+        var soma = parseInt(mBase[1]);
+        var teto = null;
+        texto.split('\n').forEach(function(linha) {
+            var l = linha.trim();
+            if (!l || /^Base:/i.test(l) || /RESULTADO FINAL/i.test(l)) return;
+            var mTeto = l.match(/teto\s+(\d+)/i);
+            if (mTeto) { teto = parseInt(mTeto[1]); return; }
+            var mAdj = l.match(/([+\-])\s*(\d+)\s*$/);
+            if (mAdj) soma += (mAdj[1] === '+' ? 1 : -1) * parseInt(mAdj[2]);
+        });
+        var notaCalc = Math.max(0, Math.min(100, teto !== null ? Math.min(soma, teto) : soma));
+        if (notaCalc === d.nota) return;
+        var notaOriginal = d.nota;
+        d.nota = notaCalc;
+        d.calculo += '\n\n⚠️ CORRECAO SISTEMA: IA retornou ' + notaOriginal +
+            ' pts mas soma do proprio calculo = ' + notaCalc + ' pts — nota corrigida automaticamente.';
+        if (notaCalc >= 85) { d.entradaPct = 0.20; }
+        else if (notaCalc >= 60) { d.entradaPct = 0.35; }
+        else if (notaCalc >= 40) { d.entradaPct = 0.60; }
+        else {
+            d.aprov = false; d.reprovado = true; d.risco = 'REPROVADO'; d.entradaPct = 0.60;
+            d.motivos = (d.motivos ? d.motivos + '\n' : '') +
+                'Nota corrigida para ' + notaCalc + ' (abaixo de 40) — REPROVADO automatico pelo validador.';
+        }
+    }
+
+    // ── VALIDADOR POS-IA: força -10 se IA detectou comprometimento alto mas nao descontou ──
+    function validarComprometimento(d) {
+        if (d.reprovado) return;
+
+        // Se o calculo ja tem a linha de comprometimento, nao duplica
+        var calc = (d.calculo || '').toLowerCase();
+        if (/comprometimento|>80%/.test(calc)) return;
+
+        // Procura no texto da IA sinais de comprometimento alto
+        var textoIA = [d.analise || '', d.perfil || ''].join(' ').toLowerCase();
+        var detectado = [
+            /comprometimento.*(?:100|9\d|8[0-9])\s*%/,
+            /gast(?:a|ou|ando).*(?:tudo|toda|integralmente)/,
+            /gasto\s+total\s+da\s+renda/,
+            /saldo\s+(?:médio|medio|final|fim).*(?:r\$\s*0|zero|zerado)/,
+            /(?:fim|final)\s+d[eo]\s+m[eê]s.*(?:zero|zerado|r\$\s*0)/,
+            /sem\s+reserva.*sem\s+sobra/,
+            /toda(?:s)?\s+as\s+entradas.*despendidas/
+        ].some(function(re){ return re.test(textoIA); });
+
+        if (!detectado) return;
+
+        d.nota = Math.max(0, d.nota - 10);
+        d.calculo = (d.calculo || '') +
+            '\nComprometimento >80% da renda: -10' +
+            '\n\n⚠️ CORRECAO JS: comprometimento alto detectado na analise — desconto aplicado automaticamente.';
+
+        // Reclassifica entradaPct conforme nova nota
+        if (d.nota < 40) {
+            d.aprov = false; d.reprovado = true; d.risco = 'REPROVADO'; d.entradaPct = 0.60;
+            d.motivos = (d.motivos ? d.motivos + '\n' : '') +
+                'Comprometimento de renda >80% — nota caiu abaixo de 40, REPROVADO automatico.';
+        } else if (d.nota < 60) {
+            d.entradaPct = 0.60;
+        } else if (d.nota < 85) {
+            d.entradaPct = 0.35;
+        }
+    }
+
+    // ── VALIDADOR POS-IA: se a IA viu apostas mas nao reprovou, JS forca ──
+    function validarApostasNaResposta(d) {
+        if (d.reprovado) return;
+        var textoIA = [d.analise||'', d.perfil||'', d.calculo||'', d.motivos||'', d.rascunho||''].join(' ').toLowerCase();
+        var casas = [];
+        ['phoenix gaming','m v d s m','atm publicidade','smart cluster',
+         'banks tech','apostaraiz','royal crest','lottopay','gm intermediacao',
+         'wiinpay','ajc gateway','nexumpay','univebet','vaidebet','betnacional',
+         'pixbet','blaze','betano','esportes da sorte','superbet',
+         'r torres','norbe','gold now','luxtak','betgaming','futbol bet'
+        ].forEach(function(c){ if(textoIA.indexOf(c)!==-1) casas.push(c); });
+        var mencoesAposta = (textoIA.match(/aposta/gi)||[]).length;
+
+        if (casas.length >= 3 || mencoesAposta >= 5) {
+            var notaOriginal = d.nota;
+            d.aprov=false; d.reprovado=true; d.nota=0;
+            d.risco='REPROVADO'; d.entradaPct=0.60;
+            d.motivos = 'CORRECAO AUTOMATICA — Apostador identificado pela IA.\n'+
+                'A IA encontrou '+casas.length+' casas de apostas: '+casas.join(', ')+'.\n'+
+                'Porem atribuiu nota '+notaOriginal+' (erro). Sistema corrigiu para 0 = REPROVADO.';
+            d.calculo = 'CORRIGIDO PELO SISTEMA\nIA original: '+notaOriginal+' pontos\n'+
+                'Casas de aposta na analise: '+casas.length+'\nRegra: 3+ casas = REPROVADO\nNota final: 0';
+        } else if (casas.length >= 1 && d.nota > 39) {
+            var notaOrig2 = d.nota;
+            d.nota = Math.min(d.nota, 35);
+            d.aprov=false; d.reprovado=true;
+            d.risco='REPROVADO'; d.entradaPct=0.60;
+            d.motivos = (d.motivos?d.motivos+'\n':'') +
+                'CORRECAO: Apostas detectadas ('+casas.join(', ')+'). Nota de '+notaOrig2+' travada em '+d.nota+'.';
+            d.calculo = (d.calculo||'')+'\nCORRECAO SISTEMA: aposta detectada → nota travada em 35';
+        }
+    }
+
     function openOverlay(){var ov=el('cs_ov');if(!ov)return;ov.classList.add('active');_docsId=[];_docsRend=[];_busy=false;_last=null;if(el('cs_produto'))el('cs_produto').value='';if(el('cs_valor'))el('cs_valor').value='';el('cs_res').classList.add('cs-h');el('cs_prog').classList.add('cs-h');resetUIState();renderDocsId();renderDocsRend();setBtnState();}
+    function novaAnalise(){_docsId=[];_docsRend=[];_busy=false;_last=null;el('cs_res').classList.add('cs-h');el('cs_prog').classList.add('cs-h');resetUIState();renderDocsId();renderDocsRend();setBtnState();if(el('cs_produto'))el('cs_produto').value='';if(el('cs_valor'))el('cs_valor').value='';el('cs_docs_id')&&(el('cs_docs_id').innerHTML='');el('cs_docs_rend')&&(el('cs_docs_rend').innerHTML='');}
     function closeOverlay(){el('cs_ov')&&el('cs_ov').classList.remove('active');}
 
     async function executar(){
         if(_busy)return;
-        var key=await getGroqKey();if(!key){alert('Chave nao configurada.');return;}
         var prod=el('cs_produto').value.trim(),val=parseFloat((el('cs_valor').value||'0').replace(',','.'))||0;
         if(!prod||!val){alert('Preencha produto e valor.');return;}
         if(_docsRend.length===0){window.showCustomModal&&window.showCustomModal({message:'Adicione ao menos um comprovante de renda.'});return;}
@@ -769,35 +1059,142 @@
         _busy=true;setBtnState();el('cs_prog').classList.remove('cs-h');el('cs_res').classList.add('cs-h');
 
         try {
-            // Rota A: PDFs digitais (extratos do app bancario) — texto limpo, SEM filtro OCR
-            var textosDigitaisRaw=[];
-            _docsRend.filter(function(d){return d.tipo==='texto_digital';}).forEach(function(d){
-                var combinado=(d.textos||[d.texto||'']).join('\n').substring(0,6000);
-                textosDigitaisRaw.push('=== '+(d.nome||'Extrato')+' ('+(d.paginas||1)+'p) ===\n'+combinado);
+            // ── PASSO 1: Coleta texto local pra detector de apostas ──
+            setProg('Analisando documentos...',10);
+            var textosLocais=[];
+            _docsRend.forEach(function(d){
+                if(d.textos&&d.textos.length) textosLocais=textosLocais.concat(d.textos);
             });
+            var textoParaApostas=textosLocais.join('\n');
 
-            // Rota B: imagens e PDFs escaneados — OCR paralelo + filtro de linhas relevantes
-            var docsParaOCR=_docsRend.filter(function(d){return d.tipo==='imagem'&&d.base64;});
-            var textosOCR=[];
-            if(docsParaOCR.length>0){
-                setProg('OCR nos comprovantes...',10);
-                var ocrBrutos=await tesseractOCR(docsParaOCR);
-                var filtrado=filtrarLinhasRelevantes(ocrBrutos);
-                textosOCR.push(filtrado||ocrBrutos.join('\n\n').substring(0,6000));
+            // ── PASSO 2: Pre-filtro local de apostas ──
+            setProg('Verificando perfil de risco...',25);
+            var apostas = detectarApostas(textoParaApostas);
+            if (apostas.gatilho) {
+                setProg('Reprovado automaticamente.',100);
+                var dAposta = resultadoApostasReprovado(prod, '', apostas);
+                dAposta._produto = prod;
+                _last = {nome:'Cliente',produto:prod,valor:val,dados:dAposta,entradaMin:0,docsHash:_docsRend.length};
+                await salvarFB('Cliente',prod,apostas.detalhe,dAposta);
+                el('cs_prog').classList.add('cs-h');
+                el('cs_res').innerHTML = formatResult(apostas.detalhe, dAposta, val);
+                el('cs_res').classList.remove('cs-h');
+                el('cs_res').scrollIntoView({behavior:'smooth',block:'start'});
+                el('cs_btn_analisar').classList.add('cs-h');
+                el('cs_btn_duo').classList.remove('cs-h');
+                wireRes();
+                return;
             }
 
-            setProg('Preparando analise...',58);
-            var partes=[];
-            if(textosDigitaisRaw.length)partes.push('=== EXTRATOS DIGITAIS ===\n'+textosDigitaisRaw.join('\n\n'));
-            if(textosOCR.length)partes.push('=== EXTRATOS OCR ===\n'+textosOCR.join('\n\n'));
-            var textoRendaFiltrado=partes.join('\n\n').substring(0,12000);
+            // ── PASSO 3: Monta payload HIBRIDO pra IA ──
+            // PDFs digitais → TEXTO (preciso, rapido, a IA le perfeitamente)
+            // PDFs escaneados/fotos → IMAGEM (unica opcao)
+            // Doc pessoal → IMAGEM (sempre)
+            setProg('Preparando dados para IA...',40);
+            var imagensParaIA = [];
+            var textosDigitais = [];
 
-            setProg('IA analisando (visao + texto)...',65);
-            var resp=await groqCallHibrido(_docsId,textoRendaFiltrado,buildPrompt(prod,val),key);
+            // Doc pessoal: sempre como imagem
+            _docsId.forEach(function(d){ if(d.base64) imagensParaIA.push(d); });
+
+            // Docs de renda: separa digitais (texto) de escaneados (imagem)
+            _docsRend.forEach(function(d){
+                if (d.ehDigital && d.textos && d.textos.length) {
+                    // PDF digital: usa texto (preciso, a IA entende melhor tabelas em texto)
+                    textosDigitais = textosDigitais.concat(d.textos);
+                } else if (d.base64) {
+                    // Escaneado/foto: usa imagem
+                    imagensParaIA.push(d);
+                }
+            });
+
+            // Limita imagens escaneadas ao max
+            if (imagensParaIA.length > MAX_IMGS_AI) {
+                var step = imagensParaIA.length / MAX_IMGS_AI;
+                var sampled = [];
+                for (var si = 0; si < MAX_IMGS_AI; si++) {
+                    sampled.push(imagensParaIA[Math.min(Math.floor(si * step), imagensParaIA.length - 1)]);
+                }
+                imagensParaIA = sampled;
+            }
+
+            // Monta texto digital formatado
+            var textoDigitalStr = '';
+            if (textosDigitais.length) {
+                textoDigitalStr = '=== EXTRATO BANCARIO DIGITAL (texto extraido do PDF) ===\n' +
+                    textosDigitais.join('\n--- PROXIMA PAGINA ---\n').substring(0, 30000);
+            }
+
+            if (imagensParaIA.length === 0 && !textoDigitalStr) {
+                setProg('Nenhum documento legivel.',100);
+                var dVazio = {
+                    aprov: false, downgrade: false, entradaAlta: false, reprovado: true,
+                    nota: 0, risco: 'REPROVADO', entradaPct: 0.60, rendaEstimada: 0,
+                    nomeCliente: 'Cliente', nomeCompleto: 'Cliente', confianca: 'BAIXA',
+                    nomeDocPessoal: '', nomeRenda: '', nomesBatem: null,
+                    perfil: 'Nenhum dado legivel encontrado.',
+                    analise: 'Os documentos nao puderam ser processados.',
+                    rascunho: '', motivos: 'Documentos ilegiveis. Impossivel analisar.', _produto: prod
+                };
+                _last = {nome:'Cliente',produto:prod,valor:val,dados:dVazio,entradaMin:0,docsHash:_docsRend.length};
+                el('cs_prog').classList.add('cs-h');
+                el('cs_res').innerHTML = formatResult('{}', dVazio, val);
+                el('cs_res').classList.remove('cs-h');
+                el('cs_res').scrollIntoView({behavior:'smooth',block:'start'});
+                el('cs_btn_analisar').classList.add('cs-h');
+                el('cs_btn_duo').classList.remove('cs-h');
+                wireRes();
+                return;
+            }
+
+            // ── PASSO 4: Chama IA via Puter.js ──
+            var modoDesc = imagensParaIA.length + ' imgs';
+            if (textoDigitalStr) modoDesc += ' + texto digital';
+            setProg('IA analisando (' + modoDesc + ')...',55);
+            var resp;
+            try {
+                resp = await puterCallVision(imagensParaIA, textoDigitalStr, buildPrompt(prod, val));
+            } catch(eAI) {
+                // Se Puter falhar, tenta auto-deny
+                setProg('Erro na IA.',100);
+                var dErro = {
+                    aprov: false, downgrade: false, entradaAlta: false, reprovado: true,
+                    nota: 0, risco: 'REPROVADO', entradaPct: 0.60, rendaEstimada: 0,
+                    nomeCliente: 'Cliente', nomeCompleto: 'Cliente', confianca: 'BAIXA',
+                    nomeDocPessoal: '', nomeRenda: '', nomesBatem: null,
+                    perfil: 'Erro ao processar documentos.', analise: 'Erro: ' + eAI.message,
+                    rascunho: '', motivos: 'Falha na analise da IA: ' + eAI.message + '. Nao foi possivel determinar renda — NEGADO por seguranca.', _produto: prod
+                };
+                _last = {nome:'Cliente',produto:prod,valor:val,dados:dErro,entradaMin:0,docsHash:_docsRend.length};
+                el('cs_prog').classList.add('cs-h');
+                el('cs_res').innerHTML = formatResult('{}', dErro, val);
+                el('cs_res').classList.remove('cs-h');
+                el('cs_res').scrollIntoView({behavior:'smooth',block:'start'});
+                el('cs_btn_analisar').classList.add('cs-h');
+                el('cs_btn_duo').classList.remove('cs-h');
+                wireRes();
+                return;
+            }
 
             setProg('Finalizando...',90);
             var d=extrair(resp);d._produto=prod;
-            // Reavalia com a matemática local ANTES de salvar e renderizar
+
+            // ── VALIDADOR POS-IA: se a IA VIU apostas mas nao reprovou, forca reprovacao ──
+            validarApostasNaResposta(d);
+
+            // ── VALIDADOR MATEMATICO: corrige nota se calculo da IA nao bate ──
+            validarNotaVsCalculo(d);
+
+            // ── VALIDADOR COMPROMETIMENTO: forca -10 se IA reconheceu mas nao descontou ──
+            validarComprometimento(d);
+
+            // AUTO-DENY: IA nao encontrou renda
+            if (!(d.rendaEstimada > 0) && !d.reprovado) {
+                d.aprov = false; d.reprovado = true; d.nota = 0;
+                d.risco = 'REPROVADO'; d.entradaPct = 0.60;
+                d.motivos = (d.motivos ? d.motivos + '\n' : '') + 'Renda estimada = R$ 0,00. Impossivel aprovar sem comprovacao de renda.';
+            }
+
             reavaliarDecisao(d, val);
             var nomeExtraido=d.nomeCompleto;
             _last={nome:nomeExtraido,produto:prod,valor:val,dados:d,entradaMin:Math.ceil(val*d.entradaPct/10)*10,docsHash:_docsRend.length};
@@ -999,10 +1396,11 @@
         el('cs_rend_pdf')   &&el('cs_rend_pdf').addEventListener('click',function(){uploadRend('application/pdf,.pdf');});
         el('cs_btn_analisar')&&el('cs_btn_analisar').addEventListener('click',executar);
         el('cs_btn_recalc') &&el('cs_btn_recalc').addEventListener('click',recalcularLocal);
-        el('cs_btn_nova')   &&el('cs_btn_nova').addEventListener('click',executar);
+        el('cs_btn_nova')   &&el('cs_btn_nova').addEventListener('click',novaAnalise);
     }
 
     function init(){injectCSS();injectHTML();injectMenuBtns();wireEvents();}
     if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}else{init();}
     window._creditoScanOpen=openOverlay;
 })();
+
