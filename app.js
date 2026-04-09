@@ -9877,141 +9877,334 @@ async function executarVarreduraReal() {
 // ============================================================
 
 // 1. Função de Abrir a Janela
+// ============================================================
+// COLAR DO ZAP IA v2.0 — Modal verde + imagem OCR + IA texto
+// ============================================================
+var _zapImagens = [];
+
+// Busca chave Groq: localStorage → Firebase (igual ao CreditoScan)
+async function _zapGetGroqKey() {
+    try { var local = localStorage.getItem('ctwGroqApiKey'); if (local) return local; } catch(e) {}
+    try {
+        var fb = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
+        var db = window._firebaseDB; if (!db) return '';
+        var snap = await fb.get(fb.ref(db, 'settings/groqKey'));
+        var key = snap.val() || '';
+        if (key) try { localStorage.setItem('ctwGroqApiKey', key); } catch(e) {}
+        return key;
+    } catch(e) { return ''; }
+}
+
+function _zapResizeImg(file) {
+    return new Promise(function(resolve) {
+        var img = new Image(), url = URL.createObjectURL(file);
+        img.onload = function() {
+            URL.revokeObjectURL(url);
+            var w = img.width, h = img.height, M = 1280;
+            if (w > M || h > M) {
+                if (w > h) { h = Math.round(h*M/w); w = M; }
+                else { w = Math.round(w*M/h); h = M; }
+            }
+            var c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            c.getContext('2d').drawImage(img, 0, 0, w, h);
+            c.toBlob(function(bl) {
+                var r = new FileReader();
+                r.onload = function() { resolve(r.result.split(',')[1]); };
+                r.readAsDataURL(bl);
+            }, 'image/jpeg', 0.88);
+        };
+        img.onerror = function() { URL.revokeObjectURL(url); resolve(null); };
+        img.src = url;
+    });
+}
+
+async function _zapOCR(base64) {
+    if (!window.Tesseract) {
+        await new Promise(function(ok, fail) {
+            var s = document.createElement('script');
+            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js';
+            s.onload = ok; s.onerror = fail; document.head.appendChild(s);
+        });
+    }
+    try {
+        var worker = await Tesseract.createWorker('por', 1, { logger: function(){} });
+        var result = await worker.recognize('data:image/jpeg;base64,' + base64);
+        await worker.terminate();
+        return result.data.text || '';
+    } catch(e) { return ''; }
+}
+
+function _zapRenderThumbs() {
+    var cont = document.getElementById('zapImgThumbs');
+    if (!cont) return;
+    cont.innerHTML = '';
+    _zapImagens.forEach(function(img, idx) {
+        var d = document.createElement('div');
+        d.style.cssText = 'position:relative;width:58px;height:58px;border-radius:8px;overflow:hidden;border:1.5px solid rgba(255,255,255,.15);flex-shrink:0;';
+        d.innerHTML = '<img src="' + img.dataUrl + '" style="width:100%;height:100%;object-fit:cover;">' +
+            '<button onclick="window._zapRemoveImg(' + idx + ')" style="position:absolute;top:1px;right:1px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.82);border:none;color:#fff;font-size:.58rem;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>';
+        cont.appendChild(d);
+    });
+}
+
+window._zapRemoveImg = function(idx) {
+    _zapImagens.splice(idx, 1);
+    _zapRenderThumbs();
+};
+
 window.abrirModalColarZap = function() {
-    console.log("Abrindo janela do Zap..."); // Aviso no console pra gente saber que funcionou
-
-    const modalHtml = `
-    <div class="custom-modal-overlay active" id="modalZapOverlay" style="z-index: 10000;">
-        <div class="custom-modal-content" style="max-width: 90%; width: 400px;">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0 text-success"><i class="bi bi-whatsapp"></i> Colar Dados</h5>
-                <button class="btn-back" id="btnFecharZap"><i class="bi bi-x-lg"></i></button>
-            </div>
-            <p class="text-secondary small text-start">Copie a mensagem inteira do cliente e cole abaixo:</p>
-            <textarea id="textoZapInput" class="form-control mb-3" rows="8" placeholder="Ex: *Nome*: João..."></textarea>
-            <button class="btn btn-success w-100" id="btnProcessarZap">
-                <i class="bi bi-magic"></i> Preencher Automático
-            </button>
-        </div>
-    </div>`;
-
-    // Remove anterior se existir
+    _zapImagens = [];
     const existente = document.getElementById('containerModalZap');
     if (existente) existente.remove();
 
     const div = document.createElement('div');
     div.id = 'containerModalZap';
-    div.innerHTML = modalHtml;
+    div.innerHTML = `
+    <style>@keyframes zap-spin{to{transform:rotate(360deg)}}</style>
+    <div class="custom-modal-overlay active" id="modalZapOverlay" style="z-index:10000;">
+        <div class="custom-modal-content" style="max-width:92%;width:430px;max-height:88vh;overflow-y:auto;">
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0 text-success"><i class="bi bi-whatsapp"></i> Colar do Zap IA</h5>
+                <button class="btn-back" id="btnFecharZap"><i class="bi bi-x-lg"></i></button>
+            </div>
+
+            <p class="text-secondary small text-start mb-2">Cole a conversa e/ou adicione prints — IA preenche tudo:</p>
+
+            <textarea id="textoZapInput" class="form-control mb-3" rows="5"
+                placeholder="Ex: Amigo, faz 12x de 290 o Poco X8 Pro 512GB branco&#10;Paulo Silva CPF 027.478.001-13 cel 62 9353-3796"></textarea>
+
+            <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px;margin-bottom:12px;">
+                <div style="font-size:.63rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.4);margin-bottom:8px;">
+                    <i class="bi bi-images"></i> Prints / Fotos (opcional — OCR local)
+                </div>
+                <div style="display:flex;gap:8px;margin-bottom:8px;">
+                    <button id="zapBtnCam" class="btn btn-sm btn-outline-secondary flex-fill" style="border-radius:8px;">
+                        <i class="bi bi-camera-fill"></i> Câmera
+                    </button>
+                    <button id="zapBtnGal" class="btn btn-sm btn-outline-secondary flex-fill" style="border-radius:8px;">
+                        <i class="bi bi-image-fill"></i> Galeria
+                    </button>
+                </div>
+                <div id="zapImgThumbs" style="display:flex;flex-wrap:wrap;gap:6px;min-height:4px;"></div>
+                <input type="file" id="zapInputCam" accept="image/*" capture="environment" style="display:none" multiple>
+                <input type="file" id="zapInputGal" accept="image/*" style="display:none" multiple>
+            </div>
+
+            <button class="btn btn-success w-100" id="btnProcessarZap" style="border-radius:10px;padding:12px;font-weight:700;font-size:.92rem;">
+                <i class="bi bi-stars"></i> Processar com IA
+            </button>
+
+            <div id="zapProgresso" style="display:none;margin-top:10px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:8px;border:1px solid rgba(255,255,255,.08);">
+                <div style="font-size:.78rem;color:rgba(255,255,255,.6);display:flex;align-items:center;gap:8px;">
+                    <span style="display:inline-block;width:11px;height:11px;border-radius:50%;border:2px solid #4ade80;border-top-color:transparent;animation:zap-spin .7s linear infinite;flex-shrink:0;"></span>
+                    <span id="zapProgrLabel">Processando...</span>
+                </div>
+            </div>
+
+        </div>
+    </div>`;
     document.body.appendChild(div);
 
-    // Ativa os botões de dentro da janela (Fechar e Processar)
-    setTimeout(() => {
-        document.getElementById('textoZapInput').focus();
-        document.getElementById('btnFecharZap').onclick = function() { 
-            document.getElementById('containerModalZap').remove(); 
-        };
-        document.getElementById('btnProcessarZap').onclick = window.processarTextoZap;
-    }, 100);
-};
-
-// 2. O Robô Inteligente (Que acha o nome mesmo sem rótulo)
-window.processarTextoZap = function() {
-    const texto = document.getElementById('textoZapInput').value;
-    if (!texto.trim()) { alert("Cole o texto primeiro!"); return; }
-
-    const linhas = texto.split('\n').map(l => l.trim()).filter(l => l !== '');
-    const extrair = (chave) => {
-        const regex = new RegExp(`${chave}[\\s\\*\\:]+([^\n]+)`, 'i');
-        const match = texto.match(regex);
-        return match ? match[1].trim() : '';
+    document.getElementById('btnFecharZap').onclick = function() {
+        document.getElementById('containerModalZap').remove();
     };
 
-    // --- LÓGICA DE DETECÇÃO ---
-    let nome = extrair('Nome completo') || extrair('Nome') || extrair('Comprador') || extrair('Cliente');
+    var inCam = document.getElementById('zapInputCam');
+    var inGal = document.getElementById('zapInputGal');
+    document.getElementById('zapBtnCam').onclick = function() { inCam.click(); };
+    document.getElementById('zapBtnGal').onclick = function() { inGal.click(); };
 
-    // Se não achou nome, tenta pegar a primeira linha válida (pulando CPF/Tel/Email)
-    if (!nome && linhas.length > 0) {
-        for (let i = 0; i < Math.min(linhas.length, 5); i++) {
-            let linha = linhas[i];
-            const soNumeros = linha.replace(/\D/g, '');
-            const ehCPF = soNumeros.length >= 11;
-            const ehTel = linha.includes('(') || (soNumeros.length >= 8 && soNumeros.length <= 13);
-            const ehEmail = linha.includes('@');
-            const ehLixo = linha.includes('Dados') || linha.includes('👇') || linha.includes(':');
-
-            if (!ehCPF && !ehTel && !ehEmail && !ehLixo && linha.length > 2) {
-                nome = linha.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2580-\u27BF]|\uD83E[\uDD10-\uDDFF]/g, '').trim();
-                break;
+    async function handleImgs(files) {
+        for (var f of Array.from(files)) {
+            if (_zapImagens.length >= 5) break;
+            var b64 = await _zapResizeImg(f);
+            if (b64) {
+                _zapImagens.push({ base64: b64, dataUrl: 'data:image/jpeg;base64,' + b64 });
+                _zapRenderThumbs();
             }
         }
     }
+    inCam.addEventListener('change', function() { handleImgs(inCam.files); inCam.value = ''; });
+    inGal.addEventListener('change', function() { handleImgs(inGal.files); inGal.value = ''; });
 
-    // CPF, Tel, Email
-    let cpf = extrair('CPF').replace(/\D/g, ''); 
-    if (!cpf) { const m = texto.match(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/); if(m) cpf = m[0].replace(/\D/g, ''); }
-    if(cpf.length > 3) cpf = cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+    document.getElementById('btnProcessarZap').onclick = window.processarTextoZap;
+    setTimeout(() => { var t = document.getElementById('textoZapInput'); if(t) t.focus(); }, 100);
+};
 
-    let tel = extrair('Whatsapp') || extrair('Telefone') || extrair('Celular');
-    if (!tel) { const m = texto.match(/\(?\d{2}\)?\s?9?\d{4}-?\d{4}/); if(m) tel = m[0]; }
-    tel = tel ? tel.replace(/\D/g, '') : '';
-
-    const mEmail = texto.match(/[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/);
-    let email = mEmail ? mEmail[0] : '';
-
-    // Endereço e CEP
-    const mCep = texto.match(/\b\d{5}[-.]?\d{3}\b/);
-    let cepEncontrado = mCep ? mCep[0] : '';
-    
-    let endereco = '';
-    const camposEnd = [extrair('Rua'), extrair('Número'), extrair('Setor'), extrair('Bairro'), extrair('Cidade')];
-    endereco = camposEnd.filter(c => c).join(', ');
-    
-    if (cepEncontrado) {
-        if (!endereco) endereco = `CEP: ${cepEncontrado}`;
-        else if (!endereco.includes(cepEncontrado)) endereco += ` (${cepEncontrado})`;
+// 2. PROCESSADOR IA — OCR local + texto → IA → preenche form
+window.processarTextoZap = async function() {
+    var texto = (document.getElementById('textoZapInput') || {}).value || '';
+    texto = texto.trim();
+    if (!texto && _zapImagens.length === 0) {
+        showCustomModal({ message: 'Cole algum texto ou adicione uma imagem.' });
+        return;
     }
 
-    // Data de Nascimento
-    // Tenta extrair via rótulo
-    let dataNasc = extrair('Data de Nascimento') || extrair('Nascimento') || extrair('Nasc') || extrair('Data Nasc') || extrair('Dt Nasc') || extrair('Aniversário');
-    
-    // Se não achou por rótulo, procura padrão de data no texto (DD/MM/AAAA ou DD-MM-AAAA)
-    if (!dataNasc) {
-        const mData = texto.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})\b/);
-        if (mData) dataNasc = mData[0];
-    }
-    
-    // Converte para formato YYYY-MM-DD que o input type="date" exige
-    let dataNascISO = '';
-    if (dataNasc) {
-        // Limpa e tenta parse
-        const partes = dataNasc.replace(/[\/-]/g, '/').split('/');
-        if (partes.length === 3) {
-            const [d, m, a] = partes.map(p => p.trim().replace(/\D/g,''));
-            if (d && m && a && a.length === 4) {
-                dataNascISO = a + '-' + m.padStart(2,'0') + '-' + d.padStart(2,'0');
+    var btn  = document.getElementById('btnProcessarZap');
+    var prog = document.getElementById('zapProgresso');
+    var lbl  = document.getElementById('zapProgrLabel');
+    if (btn)  btn.disabled = true;
+    if (prog) prog.style.display = 'block';
+
+    try {
+        // PASSO 1: OCR local nas imagens (rápido, não usa tokens de visão)
+        var textoFinal = texto;
+        if (_zapImagens.length > 0) {
+            if (lbl) lbl.textContent = 'Lendo imagens (OCR local)...';
+            var partes = [];
+            for (var img of _zapImagens) {
+                var t = await _zapOCR(img.base64);
+                if (t.trim()) partes.push(t.trim());
+            }
+            if (partes.length > 0) {
+                textoFinal = (texto ? texto + '\n\n' : '') + '=== TEXTO DAS IMAGENS ===\n' + partes.join('\n---\n');
             }
         }
-    }
 
-    // Preenche
-    if (nome) document.getElementById('bookipNome').value = nome;
-    if (cpf) document.getElementById('bookipCpf').value = cpf;
-    if (tel) document.getElementById('bookipTelefone').value = tel;
-    if (email) document.getElementById('bookipEmail').value = email;
-    if (endereco.length > 5) document.getElementById('bookipEndereco').value = endereco;
-    if (dataNascISO) {
-        const nascEl = document.getElementById('bookipNascimento');
-        if (nascEl) nascEl.value = dataNascISO;
-        if (typeof window._bdSetValor === 'function')
-            window._bdSetValor('bookipNascimento','bookipNascimentoBtn','bookipNascimentoLabel', dataNascISO);
-    }
+        // PASSO 2: Chama IA só com texto (Groq = instantâneo, Puter = fallback)
+        if (lbl) lbl.textContent = 'IA analisando...';
 
-    // Fecha janela
-    document.getElementById('containerModalZap').remove();
-    
-    if (typeof showCustomModal === 'function') showCustomModal({ message: "Dados Processados! ✅" });
-    else alert("Dados Processados!");
+        var prompt =
+            'Voce e um assistente de vendas da Workcell. Analise o texto e extraia os dados.\n\n' +
+            '=== TEXTO ===\n' + textoFinal + '\n\n' +
+            'Retorne APENAS JSON valido, sem texto extra:\n' +
+            '{\n' +
+            '  "nome":"","cpf":"","telefone":"","email":"","endereco":"","cep":"","dataNascimento":"",\n' +
+            '  "produtos":[{"nome":"","qtd":1,"valor":0.00,"cor":"","obs":""}],\n' +
+            '  "pagamento":"","parcelas":0,"valorParcela":0.00,"valorEntrada":0.00,"garantia":""\n' +
+            '}\n\n' +
+            'REGRAS GERAIS:\n' +
+            '- CPF: 000.000.000-00 | telefone: (XX) 9XXXX-XXXX\n' +
+            '- dataNascimento: DD/MM/YYYY (datas que nao sejam de venda)\n' +
+            '- cep: 8 digitos viram "00000-000". Ex: "75383411" → "75383-411"\n' +
+            '- garantia: 365=1ano, 180=6meses, 90=90dias, 30=30dias\n' +
+            '- pagamento: credito|debito|pix|boleto. Se misto: "credito+pix"\n\n' +
+            'REGRAS DE VALOR (CRITICO — LER COM ATENCAO):\n' +
+            '- Pagamento simples: "10x de R$ 290" → parcelas=10, valorParcela=290, valor produto=2900\n' +
+            '- Pagamento MISTO (cartao + entrada): "5x R$ 434,34 + R$ 1.229 no pix"\n' +
+            '  → parcelas=5, valorParcela=434.34, valorEntrada=1229.00\n' +
+            '  → valor do produto = (5 x 434,34) + 1229,00 = 3400,70 ← SOMAR TUDO\n' +
+            '  → pagamento = "credito+pix"\n' +
+            '- NUNCA usar so o total do cartao como valor do produto se houver entrada/pix separado\n\n' +
+            'REGRAS DO PRODUTO:\n' +
+            '- nome: modelo + specs + condicao. Ex: "iPhone 14 Pro 128GB - Seminovo"\n' +
+            '  Se mencionar seminovo/usado → " - Seminovo". Senao → " - Novo / Lacrado"\n' +
+            '- cor: apenas a cor. obs: sempre vazio ""\n' +
+            '- Nao colocar brindes/acessorios no nome ou obs';
+
+        // Tenta Groq primeiro (super rápido, ~1-2s)
+        // Fallback para Puter se não tiver chave Groq
+        var raw = '';
+        if (lbl) lbl.textContent = 'Buscando chave IA...';
+        var groqKey = await _zapGetGroqKey();
+
+        if (groqKey) {
+            // GROQ — llama-3.1-8b-instant: resposta em ~1s
+            var groqResp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + groqKey },
+                body: JSON.stringify({
+                    model: 'llama-3.1-8b-instant',
+                    temperature: 0,
+                    max_tokens: 800,
+                    messages: [{ role: 'user', content: prompt }]
+                })
+            });
+            var groqData = await groqResp.json();
+            raw = (groqData.choices && groqData.choices[0] && groqData.choices[0].message && groqData.choices[0].message.content) || '';
+        } else {
+            // FALLBACK: Puter com modelo pequeno e rápido
+            if (!window.puter) {
+                await new Promise(function(ok, fail) {
+                    var s = document.createElement('script');
+                    s.src = 'https://js.puter.com/v2/';
+                    s.onload = ok; s.onerror = fail; document.head.appendChild(s);
+                });
+            }
+            var puterResp = await puter.ai.chat(
+                [{ role: 'user', content: prompt }],
+                { model: 'meta-llama/llama-3.1-8b-instruct', temperature: 0 }
+            );
+            raw = typeof puterResp === 'string' ? puterResp : (puterResp && puterResp.message ? (typeof puterResp.message === 'string' ? puterResp.message : puterResp.message.content) : '') || '';
+        }
+        var i1 = raw.indexOf('{'), i2 = raw.lastIndexOf('}');
+        if (i1 !== -1 && i2 > i1) raw = raw.substring(i1, i2 + 1);
+        var dados = JSON.parse(raw);
+
+        // PASSO 3: Preenche formulário
+        if (lbl) lbl.textContent = 'Preenchendo...';
+        var setV = function(id, v) { var el = document.getElementById(id); if (el && v) el.value = v; };
+        setV('bookipNome',     dados.nome);
+        setV('bookipCpf',      dados.cpf);
+        setV('bookipTelefone', dados.telefone);
+        setV('bookipEmail',    dados.email);
+        setV('bookipEndereco', dados.endereco);
+
+        // CEP
+        if (dados.cep && !dados.endereco) setV('bookipEndereco', dados.cep);
+
+        // Data de nascimento
+        if (dados.dataNascimento) {
+            var partesData = dados.dataNascimento.replace(/[\/\-]/g, '/').split('/');
+            if (partesData.length === 3) {
+                var dd = partesData[0].trim(), mm = partesData[1].trim(), aaaa = partesData[2].trim();
+                if (aaaa.length === 4) {
+                    var isoData = aaaa + '-' + mm.padStart(2,'0') + '-' + dd.padStart(2,'0');
+                    var nascEl = document.getElementById('bookipNascimento');
+                    if (nascEl) nascEl.value = isoData;
+                    if (typeof window._bdSetValor === 'function')
+                        window._bdSetValor('bookipNascimento','bookipNascimentoBtn','bookipNascimentoLabel', isoData);
+                }
+            }
+        }
+
+        // Garantia
+        if (dados.garantia) {
+            var sel = document.getElementById('bookipGarantiaSelect');
+            if (sel && ['365','180','90','30'].indexOf(String(dados.garantia)) !== -1) {
+                sel.value = String(dados.garantia);
+                sel.dispatchEvent(new Event('change'));
+            }
+        }
+
+        // Pagamento — suporte a misto (ex: "credito+pix")
+        if (dados.pagamento) {
+            var mapa = { credito:'pagCredito', debito:'pagDebito', pix:'pagPix', dinheiro:'pagPix', boleto:'pagBoleto', troca:'pagTroca' };
+            document.querySelectorAll('.check-pagamento').forEach(function(cb){ cb.checked = false; });
+            dados.pagamento.toLowerCase().split(/[+,&\/]/).forEach(function(parte) {
+                var cbId = mapa[parte.trim()];
+                if (cbId) { var cbEl = document.getElementById(cbId); if (cbEl) cbEl.checked = true; }
+            });
+        }
+
+        // Produtos — valor = parcelas*valorParcela + entrada (pagamento misto)
+        if (dados.produtos && dados.produtos.length > 0) {
+            dados.produtos.forEach(function(p) {
+                if (!p.nome) return;
+                var valorUnit = parseFloat(p.valor) || 0;
+                if (valorUnit === 0) {
+                    var parcelaTotal = (dados.parcelas > 0 && dados.valorParcela > 0) ? dados.parcelas * parseFloat(dados.valorParcela) : 0;
+                    var entrada = parseFloat(dados.valorEntrada) || 0;
+                    valorUnit = parcelaTotal + entrada;
+                }
+                bookipCartList.push({
+                    nome: p.nome, qtd: parseInt(p.qtd) || 1,
+                    valor: valorUnit, cor: p.cor || '', obs: p.obs || '', isSituation: false
+                });
+            });
+            if (typeof atualizarListaVisualBookip === 'function') atualizarListaVisualBookip();
+        }
+
+        document.getElementById('containerModalZap').remove();
+        showCustomModal({ message: '✅ Formulário preenchido com sucesso! Confira os dados antes de salvar.' });
+
+    } catch(e) {
+        if (prog) prog.style.display = 'none';
+        if (btn)  btn.disabled = false;
+        showCustomModal({ message: 'Erro ao processar: ' + e.message });
+    }
 };
 
 // 3. ATIVADOR DO BOTÃO (O SEGREDO!)
