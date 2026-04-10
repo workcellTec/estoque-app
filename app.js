@@ -9983,6 +9983,50 @@ async function _zapInjetarFotoProduto(base64) {
 }
 
 // ── Modal ────────────────────────────────────────────────────
+var ZAP_MODO_KEY = 'ctwZapModo'; // 'js' | 'ia'
+
+function _zapGetModo() {
+    try { return localStorage.getItem(ZAP_MODO_KEY) || 'ia'; } catch(e) { return 'ia'; }
+}
+function _zapSetModo(m) {
+    try { localStorage.setItem(ZAP_MODO_KEY, m); } catch(e) {}
+}
+
+function _zapAtualizarToggle() {
+    var modo = _zapGetModo();
+    var temImg = _zapImagens.length > 0;
+    var btnJs  = document.getElementById('zapToggleJs');
+    var btnIa  = document.getElementById('zapToggleIa');
+    var aviso  = document.getElementById('zapAvisoForcaIA');
+    var secImg = document.getElementById('zapSecaoImagens');
+    var btnProc = document.getElementById('btnProcessarZap');
+    if (!btnJs || !btnIa) return;
+
+    // Se tem imagem → força IA sempre
+    if (temImg) {
+        btnJs.style.opacity = '0.4'; btnJs.style.pointerEvents = 'none';
+        btnIa.style.opacity = '1';   btnIa.style.pointerEvents = 'auto';
+        if (aviso) aviso.style.display = 'block';
+        if (btnProc) { btnProc.innerHTML = '<i class="bi bi-stars"></i> Processar com IA'; }
+        return;
+    }
+    if (aviso) aviso.style.display = 'none';
+    btnJs.style.opacity = '1'; btnJs.style.pointerEvents = 'auto';
+    btnIa.style.opacity = '1'; btnIa.style.pointerEvents = 'auto';
+
+    var ativo = 'background:#4ade80;color:#000;font-weight:800;border-radius:20px;padding:5px 14px;border:none;font-size:.78rem;transition:all .2s;';
+    var inativo = 'background:transparent;color:rgba(255,255,255,.4);font-weight:600;border-radius:20px;padding:5px 14px;border:none;font-size:.78rem;transition:all .2s;';
+    if (modo === 'js') {
+        btnJs.style.cssText = ativo; btnIa.style.cssText = inativo;
+        if (btnProc) btnProc.innerHTML = '<i class="bi bi-lightning-charge-fill"></i> Preencher Rápido';
+        if (secImg) secImg.style.display = 'none';
+    } else {
+        btnIa.style.cssText = ativo; btnJs.style.cssText = inativo;
+        if (btnProc) btnProc.innerHTML = '<i class="bi bi-stars"></i> Processar com IA';
+        if (secImg) secImg.style.display = 'block';
+    }
+}
+
 window.abrirModalColarZap = function() {
     _zapImagens = [];
     var existente = document.getElementById('containerModalZap');
@@ -9996,16 +10040,28 @@ window.abrirModalColarZap = function() {
             '<div class="custom-modal-content" style="max-width:92%;width:430px;max-height:88vh;overflow-y:auto;">' +
 
                 '<div class="d-flex justify-content-between align-items-center mb-3">' +
-                    '<h5 class="mb-0 text-success"><i class="bi bi-stars"></i> Colar do Zap IA</h5>' +
+                    '<h5 class="mb-0 text-success"><i class="bi bi-whatsapp"></i> Colar do Zap</h5>' +
                     '<button class="btn-back" id="btnFecharZap"><i class="bi bi-x-lg"></i></button>' +
                 '</div>' +
 
-                '<p class="text-secondary small text-start mb-2">Cola texto, prints ou foto do produto — IA preenche tudo:</p>' +
+                // ── Toggle JS / IA ──
+                '<div style="display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.05);border-radius:25px;padding:4px;margin-bottom:14px;">' +
+                    '<button id="zapToggleJs" onclick="window._zapToggle(&apos;js&apos;)" style="background:transparent;color:rgba(255,255,255,.4);font-weight:600;border-radius:20px;padding:5px 14px;border:none;font-size:.78rem;transition:all .2s;">' +
+                        '⚡ Rápido (JS)' +
+                    '</button>' +
+                    '<button id="zapToggleIa" onclick="window._zapToggle(&apos;ia&apos;)" style="background:#4ade80;color:#000;font-weight:800;border-radius:20px;padding:5px 14px;border:none;font-size:.78rem;transition:all .2s;">' +
+                        '✨ IA Completa' +
+                    '</button>' +
+                '</div>' +
+
+                '<div id="zapAvisoForcaIA" style="display:none;font-size:.65rem;color:#fbbf24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:6px 10px;margin-bottom:10px;">' +
+                    '⚡ Imagem detectada — usando IA automaticamente' +
+                '</div>' +
 
                 '<textarea id="textoZapInput" class="form-control mb-3" rows="5"' +
                     ' placeholder="Cole a conversa do WhatsApp, dados do cliente, condições da venda..."></textarea>' +
 
-                '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px;margin-bottom:12px;">' +
+                '<div id="zapSecaoImagens" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px;margin-bottom:12px;">' +
                     '<div style="font-size:.63rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.4);margin-bottom:8px;">' +
                         '<i class="bi bi-images"></i> Imagens — print do zap, comprovante, foto da caixa do produto' +
                     '</div>' +
@@ -10016,7 +10072,7 @@ window.abrirModalColarZap = function() {
                     '<div id="zapImgThumbs" style="display:flex;flex-wrap:wrap;gap:6px;min-height:4px;"></div>' +
                     '<input type="file" id="zapInputCam" accept="image/*" capture="environment" style="display:none" multiple>' +
                     '<input type="file" id="zapInputGal" accept="image/*" style="display:none" multiple>' +
-                    '<div style="font-size:.58rem;color:rgba(255,255,255,.3);margin-top:6px;">Foto da caixa/etiqueta do produto → IA pega nome, IMEI e cor automaticamente</div>' +
+                    '<div style="font-size:.58rem;color:rgba(255,255,255,.3);margin-top:6px;">Foto da caixa do produto → IA extrai nome, IMEI e cor</div>' +
                 '</div>' +
 
                 '<button class="btn btn-success w-100" id="btnProcessarZap" style="border-radius:10px;padding:12px;font-weight:700;font-size:.92rem;">' +
@@ -10052,12 +10108,19 @@ window.abrirModalColarZap = function() {
                 _zapRenderThumbs();
             }
         }
+        _zapAtualizarToggle(); // re-avalia ao adicionar imagem
     }
     inCam.addEventListener('change', function() { handleImgs(inCam.files); inCam.value = ''; });
     inGal.addEventListener('change', function() { handleImgs(inGal.files); inGal.value = ''; });
 
     document.getElementById('btnProcessarZap').onclick = window.processarTextoZap;
+    _zapAtualizarToggle(); // aplica modo salvo
     setTimeout(function() { var t = document.getElementById('textoZapInput'); if(t) t.focus(); }, 100);
+};
+
+window._zapToggle = function(modo) {
+    _zapSetModo(modo);
+    _zapAtualizarToggle();
 };
 
 // ── Processador principal ────────────────────────────────────
@@ -10075,6 +10138,80 @@ window.processarTextoZap = async function() {
     if (btn)  btn.disabled = true;
     if (prog) prog.style.display = 'block';
 
+    // ── MODO JS RÁPIDO (sem IA, só lógica local) ─────────────
+    var modoAtual = (_zapImagens.length > 0) ? 'ia' : _zapGetModo();
+    if (modoAtual === 'js') {
+        try {
+            var linhas = texto.split('\n').map(function(l){ return l.trim(); }).filter(function(l){ return l; });
+            var extrair = function(chave) {
+                var re = new RegExp(chave + '[\\s\\*\\:]+([^\n]+)', 'i');
+                var m = texto.match(re); return m ? m[1].trim() : '';
+            };
+            // Nome
+            var nome = extrair('Nome completo') || extrair('Nome') || extrair('Comprador') || extrair('Cliente');
+            if (!nome) {
+                for (var i = 0; i < Math.min(linhas.length, 5); i++) {
+                    var ln = linhas[i], sn = ln.replace(/\D/g,'');
+                    if (sn.length < 8 && !ln.includes('@') && !ln.includes(':') && ln.length > 2) {
+                        nome = ln.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]/g,'').trim();
+                        break;
+                    }
+                }
+            }
+            // Tenta formato WhatsApp copiado: "+5562xxx : Nome"
+            if (!nome) {
+                var mWpp = texto.match(/\+?\d{10,13}\s*:\s*([A-Za-zÀ-ú\s]{4,})/);
+                if (mWpp) { nome = mWpp[1].trim(); }
+            }
+            // CPF
+            var cpf = extrair('CPF').replace(/\D/g,'');
+            if (!cpf) { var mc = texto.match(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/); if(mc) cpf = mc[0].replace(/\D/g,''); }
+            if (cpf.length === 11) cpf = cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+            // Telefone
+            var tel = extrair('Whatsapp') || extrair('Telefone') || extrair('Celular');
+            if (!tel) { var mt = texto.match(/\(?\d{2}\)?\s?9?\d{4}-?\d{4}/); if(mt) tel = mt[0]; }
+            if (!tel) { var mwn = texto.match(/\+?\d{2}(\d{10,11})/); if(mwn) tel = mwn[1]; }
+            tel = tel ? tel.replace(/\D/g,'') : '';
+            if (tel.length === 11) tel = tel.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+            else if (tel.length === 10) tel = tel.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+            // Email
+            var mEmail = texto.match(/[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/);
+            var email = mEmail ? mEmail[0] : '';
+            // Endereço
+            var mCep = texto.match(/\b\d{5}-?\d{3}\b/);
+            var cep = mCep ? mCep[0].replace(/\D/g,'').replace(/(\d{5})(\d{3})/, '$1-$2') : '';
+            var campos = [extrair('Rua'), extrair('Número'), extrair('Setor'), extrair('Bairro'), extrair('Cidade')];
+            var end = campos.filter(function(c){ return c; }).join(', ') || cep || '';
+            // Data nascimento
+            var dataNasc = extrair('Data de Nascimento') || extrair('Nascimento') || extrair('Nasc');
+            if (!dataNasc) { var md = texto.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})\b/); if(md) dataNasc = md[0]; }
+            var isoData = '';
+            if (dataNasc) {
+                var pts = dataNasc.replace(/[\/-]/g,'/').split('/');
+                if (pts.length === 3 && pts[2].length === 4)
+                    isoData = pts[2] + '-' + pts[1].padStart(2,'0') + '-' + pts[0].padStart(2,'0');
+            }
+            // Preenche
+            var sv = function(id,v){ var el=document.getElementById(id); if(el&&v) el.value=v; };
+            sv('bookipNome', nome); sv('bookipCpf', cpf); sv('bookipTelefone', tel);
+            sv('bookipEmail', email); sv('bookipEndereco', end);
+            if (isoData) {
+                var ne = document.getElementById('bookipNascimento');
+                if (ne) ne.value = isoData;
+                if (typeof window._bdSetValor === 'function')
+                    window._bdSetValor('bookipNascimento','bookipNascimentoBtn','bookipNascimentoLabel', isoData);
+            }
+            document.getElementById('containerModalZap').remove();
+            showCustomModal({ message: '✅ Dados do cliente preenchidos!' });
+        } catch(eJs) {
+            if (prog) prog.style.display = 'none';
+            if (btn)  btn.disabled = false;
+            showCustomModal({ message: 'Erro: ' + eJs.message });
+        }
+        return;
+    }
+    // ─────────────────────────────────────────────────────────
+
     try {
         await _zapCarregarPuter();
 
@@ -10090,7 +10227,7 @@ window.processarTextoZap = async function() {
             'Retorne APENAS JSON puro, sem markdown, sem explicacao:\n' +
             '{"nome":"","cpf":"","telefone":"","email":"","endereco":"","cep":"","dataNascimento":"",' +
             '"produtos":[{"nome":"","qtd":1,"valor":0.00,"cor":"","obs":""}],' +
-            '"pagamento":"","parcelas":0,"valorParcela":0.00,"valorEntrada":0.00,"garantia":""}\n\n' +
+            '"pagamento":"","parcelas":0,"valorParcela":0.00,"valorEntrada":0.00,"garantia":"","fotoProdutoIndex":-1}\n\n' +
 
             '=== DADOS DO CLIENTE ===\n' +
             'nome: Nome proprio da pessoa. Ignorar palavras como "completo","nome","obrigatorio","comprador".\n' +
@@ -10127,7 +10264,13 @@ window.processarTextoZap = async function() {
             'Se houver imagem de caixa ou etiqueta de celular:\n' +
             '- Extraia o modelo completo, cor e IMEI (15 digitos) da etiqueta\n' +
             '- IMEI vai em obs. Cor vai em cor. Modelo formatado vai em nome.\n\n' +
-            'Campos nao encontrados = string vazia ou 0. NUNCA inventar dados.';
+            'Campos nao encontrados = string vazia ou 0. NUNCA inventar dados.\n\n' +
+            '=== IDENTIFICACAO DA FOTO DO PRODUTO ===\n' +
+            'fotoProdutoIndex: indice (0, 1, 2...) da imagem que e foto de produto (caixa/etiqueta/aparelho).\n' +
+            'Foto de produto = imagem mostrando a caixa, etiqueta ou o proprio aparelho.\n' +
+            'Print de conversa do WhatsApp, comprovante de pagamento → NAO e foto de produto.\n' +
+            'Se nenhuma imagem for foto de produto → fotoProdutoIndex=-1.\n' +
+            'Se so ha uma imagem e ela for a caixa/produto → fotoProdutoIndex=0.';
 
         if (temImagem) {
             // ── COM IMAGEM: Qwen-VL via Puter (visão completa) ──
@@ -10228,10 +10371,10 @@ window.processarTextoZap = async function() {
             if (typeof atualizarListaVisualBookip === 'function') atualizarListaVisualBookip();
         }
 
-        // Injeta foto do produto se veio imagem com IMEI identificado
-        if (temImagem && dados.produtos && dados.produtos[0] && dados.produtos[0].obs) {
-            // Se a IA encontrou IMEI, a primeira imagem provavelmente é do produto
-            await _zapInjetarFotoProduto(_zapImagens[0].base64);
+        // Injeta foto do produto — usa o indice que a IA identificou
+        var fotoIdx = typeof dados.fotoProdutoIndex === 'number' ? dados.fotoProdutoIndex : -1;
+        if (temImagem && fotoIdx >= 0 && _zapImagens[fotoIdx]) {
+            await _zapInjetarFotoProduto(_zapImagens[fotoIdx].base64);
         }
 
         document.getElementById('containerModalZap').remove();
