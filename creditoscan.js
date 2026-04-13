@@ -303,28 +303,19 @@
 '  Renda R$ 1.500 a R$ 2.999  : nota maxima 79 (MEDIO teto)\n'+
 '  Renda >= R$ 3.000           : sem teto de renda, comportamento decide\n\n'+
 
-'REGRA 2 - AJUSTES DE NOTA PELO COMPORTAMENTO (parta de 70 e ajuste):\n'+
-'  +15: CLT formal com holerite E vinculo estavel (minimo 6 meses no emprego).\n'+
-'        Se menos de 6 meses: +0 (nao ganha bonus, e aplica -15 de admissao recente).\n'+
-'  +10: Renda crescente mes a mes (comprovavel com pelo menos 2 meses de docs).\n'+
-'  +10: Saldo RELEVANTE no fim do mes: sobra de pelo menos 10% da renda.\n'+
-'        Exemplo: renda R$ 2.000, saldo fim de mes R$ 200+ = +10.\n'+
-'        Se sobra apenas centavos, R$ 5, R$ 40 = NAO e saldo positivo. +0 pontos.\n'+
-'  +5:  Sem nenhuma divida ou emprestimo identificado.\n'+
-'        POREM: so conceda esses +5 se houver extrato de conta corrente transacional\n'+
-'        completo anexado. Se for so holerite ou conta poupanca/beneficio (Caixa Tem),\n'+
-'        conceda 0 pontos neste criterio (voce nao tem como saber se ha dividas).\n'+
-'  -15: Autonomo/MEI sem vinculo formal.\n'+
-'  -15: Motorista de app com apenas 1 mes de comprovante.\n'+
-'  -5:  Motorista de app com 2 meses consistentes.\n'+
-'  0:   Motorista de app com 3+ meses de renda estavel ou crescente.\n'+
-'  -20: Emprestimo/consignado descontado no holerite.\n'+
-'  -15: Menos de 3 meses no emprego atual (admissao recente).\n'+
-'  -25: Saldo cronicamente baixo (termina o mes com menos de R$ 100 em 2+ meses).\n'+
-'  -30: Apostas/jogos frequentes no extrato (QUALQUER ocorrencia de casa de aposta).\n'+
-'  -20: Saldo negativo em algum momento do periodo.\n'+
-'  -20: Superendividado — mais de 80% da renda comprometida com faturas de cartao,\n'+
-'        crediarios, boletos, parcelas ou financiamentos.\n\n'+
+'REGRA 2 - DESCONTOS DE NOTA (parta de 100 e APENAS desconte — ZERO bonus ou pontos positivos):\n'+
+'  -10: Autonomo/MEI sem vinculo CLT formal (qualquer renda informal, bico, app, MEI).\n'+
+'  -10: Saldo cronicamente baixo — termina o mes com menos de R$ 100 em 2 ou mais meses.\n'+
+'  -10: Comprometimento alto — mais de 80% da renda consumida por qualquer tipo de saida\n'+
+'        (faturas, boletos, compras, transferencias, saques, etc).\n'+
+'  -20: Comprometimento critico — mais de 95% da renda consumida. ACUMULA com o -10 acima.\n'+
+'        Total = -30 se >95%. Saldo zerado ou negativo ao fim do mes = 100% = -30 direto.\n'+
+'        Comprometimento entre 80% e 95% = apenas -10. Os dois descontos SIM podem somar.\n'+
+'  -10: Emprestimo ou consignado descontado diretamente no holerite.\n'+
+'  -35: Apostas esporadicas (1 a 4 ocorrencias no extrato) — aplica APENAS se o pre-filtro\n'+
+'        local ja nao reprovou o cliente por volume/frequencia alta de apostas.\n\n'+
+'  IMPORTANTE: Nao existe ajuste positivo. Cliente sem nenhum dos problemas acima = 100 pontos.\n'+
+'  Cada criterio so pode ser descontado UMA vez (exceto comprometimento que acumula os 2 niveis).\n\n'+
 
 'REGRA APOSTAS CRITICA (sobrepoe TUDO — verificar ANTES de calcular nota):\n'+
 '  Classifique como transacao de aposta qualquer Pix enviado para:\n'+
@@ -370,7 +361,7 @@
 '  "confiancaLeitura": "ALTA",\n'+
 '  "perfilCliente": "DETALHADO: Tipo de vinculo, cargo, empresa, tempo de emprego, tipo de renda. Explique POR QUE o perfil e FORTE/MEDIO/FRACO com exemplos concretos.",\n'+
 '  "analiseFinanceira": "DETALHADO: Renda mensal em R$. Fontes de entrada. Maiores despesas (cite nomes). Apostas: quantas e valor total. Saldo medio. Comprometimento de renda em %. Guarda dinheiro ou gasta tudo. Comportamentos de risco.",\n'+
-'  "calculoPontuacao": "Escreva o calculo linha por linha assim:\\nBase: 70\\nCLT formal (6+ meses): +15\\nRenda crescente: +0\\nSaldo relevante (>10% renda): +0\\nSem dividas (extrato completo): +5\\nAdmissao recente (<3 meses): -15\\nApostas frequentes: -30\\nSaldo cronicamente baixo: -25\\nSuperendividado (>80% comprometido): -20\\nTeto renda (R$ X): teto YY\\nRESULTADO FINAL: ZZ pontos\\nListe APENAS os ajustes que SE APLICAM a este cliente. Nao liste ajustes que nao se aplicam.",\n'+
+'  "calculoPontuacao": "Escreva o calculo linha por linha assim:\\nBase: 100\\nAutonomo/MEI: -10\\nSaldo cronicamente baixo: -10\\nComprometimento >80%: -10\\nComprometimento critico >95%: -20\\nEmprestimo/consignado: -10\\nApostas esporadicas: -35\\nTeto renda (R$ X): teto YY\\nRESULTADO FINAL: ZZ pontos\\nListe APENAS os descontos que SE APLICAM. Nao invente ajustes positivos.",\n'+
 '  "rascunhoCalculos": "Renda: R$ X. Teto parcela (perfil%): R$ X. Parcela base: (R$ valor - R$ entrada) / 12 + juros 6%am = R$ X. DENTRO ou ACIMA do teto.",\n'+
 '  "rendaEstimada": 0.00,\n'+
 '  "nota": 0,\n'+
@@ -955,6 +946,99 @@
         return { cego: cego, tipo: tipo, nome: nome, saidasDetalhadas: saidasDetalhadas };
     }
 
+    // ── VALIDADOR POS-IA: corrige nota se calculo da IA nao bate ──────────────
+    function validarNotaVsCalculo(d) {
+        if (!d.calculo || d.reprovado) return;
+        var texto = d.calculo;
+        var mBase = texto.match(/Base:\s*(\d+)/i);
+        if (!mBase) return;
+        var soma = parseInt(mBase[1]);
+        var teto = null;
+        texto.split('\n').forEach(function(linha) {
+            var l = linha.trim();
+            if (!l || /^Base:/i.test(l) || /RESULTADO FINAL/i.test(l)) return;
+            var mTeto = l.match(/teto\s+(\d+)/i);
+            if (mTeto) { teto = parseInt(mTeto[1]); return; }
+            var mAdj = l.match(/([+\-])\s*(\d+)\s*$/);
+            if (mAdj) soma += (mAdj[1] === '+' ? 1 : -1) * parseInt(mAdj[2]);
+        });
+        var notaCalc = Math.max(0, Math.min(100, teto !== null ? Math.min(soma, teto) : soma));
+        if (notaCalc === d.nota) return;
+        var notaOriginal = d.nota;
+        d.nota = notaCalc;
+        d.calculo += '\n\n⚠️ CORRECAO SISTEMA: IA retornou ' + notaOriginal +
+            ' pts mas soma do proprio calculo = ' + notaCalc + ' pts — nota corrigida automaticamente.';
+        if (notaCalc >= 85) { d.entradaPct = 0.20; }
+        else if (notaCalc >= 60) { d.entradaPct = 0.35; }
+        else if (notaCalc >= 40) { d.entradaPct = 0.60; }
+        else {
+            d.aprov = false; d.reprovado = true; d.risco = 'REPROVADO'; d.entradaPct = 0.60;
+            d.motivos = (d.motivos ? d.motivos + '\n' : '') +
+                'Nota corrigida para ' + notaCalc + ' (abaixo de 40) — REPROVADO automatico pelo validador.';
+        }
+    }
+
+    // ── VALIDADOR POS-IA: comprometimento em 2 niveis (-10 >80%, -20 >95%) ──
+    function validarComprometimento(d) {
+        if (d.reprovado) return;
+        var textoIA = [d.analise || '', d.perfil || ''].join(' ').toLowerCase();
+        var critico = [
+            /comprometimento.*(100|9[5-9])\s*%/,
+            /gasto\s+total\s+da\s+renda/,
+            /toda[s]?\s+as\s+entradas.*despendidas/,
+            /saldo\s+(final|fim).*(r\$\s*0|zero|zerado)/,
+            /(fim|final)\s+d[eo]\s+m[eê]s.*(zero|zerado|r\$\s*0)/
+        ].some(function(re){ return re.test(textoIA); });
+        var alto = critico || [
+            /comprometimento.*(100|9\d|8[0-9])\s*%/,
+            /gast(a|ou|ando).*(tudo|toda|integralmente)/,
+            /(100|9\d|8[0-9])\s*%.*renda/
+        ].some(function(re){ return re.test(textoIA); });
+        if (!alto && !critico) return;
+        var jaAlto    = /comprometimento.*>80%|comprometimento alto/i.test(d.calculo || '');
+        var jaCritico = /comprometimento.*>95%|comprometimento critico/i.test(d.calculo || '');
+        var desconto = 0, linhas = '';
+        if (critico && !jaCritico) {
+            if (!jaAlto) { desconto += 10; linhas += '\nComprometimento >80% da renda: -10'; }
+            desconto += 20; linhas += '\nComprometimento critico >95% da renda: -20';
+        } else if (alto && !jaAlto) {
+            desconto += 10; linhas += '\nComprometimento >80% da renda: -10';
+        }
+        if (desconto === 0) return;
+        d.nota = Math.max(0, d.nota - desconto);
+        d.calculo = (d.calculo || '') + linhas +
+            '\n\n⚠️ CORRECAO JS: comprometimento detectado — ' + desconto + ' pts descontados automaticamente.';
+        if (d.nota < 40) {
+            d.aprov = false; d.reprovado = true; d.risco = 'REPROVADO'; d.entradaPct = 0.60;
+            d.motivos = (d.motivos ? d.motivos + '\n' : '') + 'Comprometimento elevado — nota abaixo de 40, REPROVADO automatico.';
+        } else if (d.nota < 60) { d.entradaPct = 0.60; }
+        else if (d.nota < 85)   { d.entradaPct = 0.35; }
+    }
+
+    // ── VALIDADOR POS-IA: emprestimo/financiamento no texto do PDF ──────────
+    function validarEmprestimo(d, textoLocal) {
+        if (d.reprovado) return;
+        var calc = (d.calculo || '').toLowerCase();
+        if (/empr[eé]stimo|consignado|financiamento/.test(calc)) return;
+        var texto = ((textoLocal || '') + ' ' + (d.analise || '') + ' ' + (d.perfil || '')).toLowerCase();
+        var detectado = [
+            /resgate\s+de\s+empr[eé]stimo/, /banco\s+pan/, /will\s+financeira/,
+            /cred\s+system/, /gonn\s+fundo/, /auto\s+pan/, /consignado/,
+            /parcela.*financiamento/, /financiamento.*ve[ií]culo/,
+            /aprovec\s+vendas/, /redemob\s+cons[oó]rcio/
+        ].some(function(re){ return re.test(texto); });
+        if (!detectado) return;
+        d.nota = Math.max(0, d.nota - 10);
+        d.calculo = (d.calculo || '') +
+            '\nEmprestimo/financiamento identificado no extrato: -10' +
+            '\n\n⚠️ CORRECAO JS: divida ativa detectada localmente — desconto aplicado automaticamente.';
+        if (d.nota < 40) {
+            d.aprov = false; d.reprovado = true; d.risco = 'REPROVADO'; d.entradaPct = 0.60;
+            d.motivos = (d.motivos ? d.motivos + '\n' : '') + 'Emprestimo/financiamento ativo — nota abaixo de 40, REPROVADO automatico.';
+        } else if (d.nota < 60) { d.entradaPct = 0.60; }
+        else if (d.nota < 85)   { d.entradaPct = 0.35; }
+    }
+
     // ── VALIDADOR POS-IA: se a IA viu apostas mas nao reprovou, JS forca ──
     function validarApostasNaResposta(d) {
         if (d.reprovado) return;
@@ -1122,8 +1206,17 @@
             setProg('Finalizando...',90);
             var d=extrair(resp);d._produto=prod;
 
-            // ── VALIDADOR POS-IA: se a IA VIU apostas mas nao reprovou, forca reprovacao ──
+            // ── VALIDADOR POS-IA: apostas ──
             validarApostasNaResposta(d);
+
+            // ── VALIDADOR MATEMATICO: corrige nota se calculo da IA nao bate ──
+            validarNotaVsCalculo(d);
+
+            // ── VALIDADOR COMPROMETIMENTO: 2 niveis (-10 >80%, -20 >95% acumulam) ──
+            validarComprometimento(d);
+
+            // ── VALIDADOR EMPRESTIMO: detecta divida ativa no texto local do PDF ──
+            validarEmprestimo(d, textoParaApostas);
 
             // AUTO-DENY: IA nao encontrou renda
             if (!(d.rendaEstimada > 0) && !d.reprovado) {
