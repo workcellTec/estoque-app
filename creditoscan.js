@@ -299,22 +299,24 @@
 
 'REGRA 1 - TETO POR FAIXA DE RENDA (obrigatoria, sobrepoe tudo):\n'+
 '  Renda < R$ 1.000           : nota maxima 45 (FRACO obrigatorio)\n'+
-'  Renda R$ 1.000 a R$ 1.499  : nota maxima 55 (FRACO teto)\n'+
-'  Renda R$ 1.500 a R$ 2.999  : nota maxima 79 (MEDIO teto)\n'+
+'  Renda R$ 1.000 a R$ 1.499  : nota maxima 59 (FRACO teto)\n'+
+'  Renda R$ 1.500 a R$ 2.999  : nota maxima 84 (MEDIO/FORTE possivel)\n'+
 '  Renda >= R$ 3.000           : sem teto de renda, comportamento decide\n\n'+
 
 'REGRA 2 - DESCONTOS DE NOTA (parta de 100 e APENAS desconte — ZERO bonus ou pontos positivos):\n'+
-'  -10: Autonomo/MEI sem vinculo CLT formal (qualquer renda informal, bico, app, MEI).\n'+
-'  -10: Saldo cronicamente baixo — termina o mes com menos de R$ 100 em 2 ou mais meses.\n'+
-'  -10: Comprometimento alto — mais de 80% da renda consumida por qualquer tipo de saida\n'+
-'        (faturas, boletos, compras, transferencias, saques, etc).\n'+
+'  RISCO DE RENDA:\n'+
+'  -15: Autonomo/MEI com renda irregular nos 3 meses do extrato (valores muito oscilantes ou inconsistentes).\n'+
+'  -8:  Autonomo/MEI com renda estavel e consistente nos 3 meses apresentados.\n'+
+'       Use -15 ou -8, NUNCA os dois. Renda estavel = variacao menor que 30% entre os meses.\n\n'+
+'  RISCO FINANCEIRO:\n'+
+'  -15: Saldo cronicamente baixo — termina o mes com menos de R$ 100 em 2 ou mais meses.\n'+
+'  -10: Comprometimento alto — mais de 80% da renda consumida por qualquer tipo de saida.\n'+
 '  -20: Comprometimento critico — mais de 95% da renda consumida. ACUMULA com o -10 acima.\n'+
 '        Total = -30 se >95%. Saldo zerado ou negativo ao fim do mes = 100% = -30 direto.\n'+
-'        Comprometimento entre 80% e 95% = apenas -10. Os dois descontos SIM podem somar.\n'+
-'  -10: Emprestimo ou consignado descontado diretamente no holerite.\n'+
-'  -35: Apostas esporadicas (1 a 4 ocorrencias no extrato) — aplica APENAS se o pre-filtro\n'+
-'        local ja nao reprovou o cliente por volume/frequencia alta de apostas.\n\n'+
-'  IMPORTANTE: Nao existe ajuste positivo. Cliente sem nenhum dos problemas acima = 100 pontos.\n'+
+'  -15: Emprestimo ou consignado descontado diretamente no holerite ou identificado no extrato.\n\n'+
+'  APOSTAS:\n'+
+'  -35: Apostas esporadicas (1 a 4 ocorrencias) — so se o pre-filtro local nao reprovou ja.\n\n'+
+'  IMPORTANTE: Nao existe ajuste positivo. Cliente sem nenhum problema = 100 pontos.\n'+
 '  Cada criterio so pode ser descontado UMA vez (exceto comprometimento que acumula os 2 niveis).\n\n'+
 
 'REGRA APOSTAS CRITICA (sobrepoe TUDO — verificar ANTES de calcular nota):\n'+
@@ -361,12 +363,12 @@
 '  "confiancaLeitura": "ALTA",\n'+
 '  "perfilCliente": "DETALHADO: Tipo de vinculo, cargo, empresa, tempo de emprego, tipo de renda. Explique POR QUE o perfil e FORTE/MEDIO/FRACO com exemplos concretos.",\n'+
 '  "analiseFinanceira": "DETALHADO: Renda mensal em R$. Fontes de entrada. Maiores despesas (cite nomes). Apostas: quantas e valor total. Saldo medio. Comprometimento de renda em %. Guarda dinheiro ou gasta tudo. Comportamentos de risco.",\n'+
-'  "calculoPontuacao": "Escreva o calculo linha por linha assim:\\nBase: 100\\nAutonomo/MEI: -10\\nSaldo cronicamente baixo: -10\\nComprometimento >80%: -10\\nComprometimento critico >95%: -20\\nEmprestimo/consignado: -10\\nApostas esporadicas: -35\\nTeto renda (R$ X): teto YY\\nRESULTADO FINAL: ZZ pontos\\nListe APENAS os descontos que SE APLICAM. Nao invente ajustes positivos.",\n'+
+'  "calculoPontuacao": "Escreva o calculo linha por linha assim:\\nBase: 100\\nAutonomo/MEI sem historico: -15\\n  OU Autonomo com 6+ meses estavel: -8\\nSaldo cronicamente baixo: -15\\nComprometimento >80%: -10\\nComprometimento critico >95%: -20\\nEmprestimo/consignado: -15\\nApostas esporadicas: -35\\nTeto renda (R$ X): teto YY\\nRESULTADO FINAL: ZZ pontos\\nListe APENAS os descontos que SE APLICAM. Nao invente ajustes positivos.",\n'+
 '  "rascunhoCalculos": "Renda: R$ X. Teto parcela (perfil%): R$ X. Parcela base: (R$ valor - R$ entrada) / 12 + juros 6%am = R$ X. DENTRO ou ACIMA do teto.",\n'+
 '  "rendaEstimada": 0.00,\n'+
 '  "nota": 0,\n'+
-'  "nivel": "CALCULAR",\n'+
-'  "decisao": "CALCULAR",\n'+
+'  "nivel": "FORTE ou MEDIO ou FRACO ou REPROVADO",\n'+
+'  "decisao": "VENDER ou REPROVADO ou SUGESTAO_DOWNGRADE ou SUGESTAO_ENTRADA_ALTA",\n'+
 '  "entradaTurbinadaCalculada": 0.00,\n'+
 '  "motivosReprovacao": "Preencha APENAS se reprovado."\n'+
 '}\n'
@@ -393,7 +395,13 @@
 
             var downgrade   = dec.includes('DOWNGRADE');
             var entradaAlta = dec.includes('ENTRADA_ALTA');
-            var aprov = dec.includes('VENDER') || downgrade || entradaAlta;
+            // Se decisao = CALCULAR (novo sistema), deriva aprovacao pela nota
+            var aprov;
+            if (dec === 'CALCULAR' || dec === '') {
+                aprov = nota >= 40;
+            } else {
+                aprov = dec.includes('VENDER') || downgrade || entradaAlta;
+            }
             if (dec === 'REPROVADO') aprov = false;
 
             var renda       = typeof obj.rendaEstimada === 'number' ? obj.rendaEstimada : parseFloat(obj.rendaEstimada || 0);
@@ -1028,9 +1036,9 @@
             /aprovec\s+vendas/, /redemob\s+cons[oó]rcio/
         ].some(function(re){ return re.test(texto); });
         if (!detectado) return;
-        d.nota = Math.max(0, d.nota - 10);
+        d.nota = Math.max(0, d.nota - 15);
         d.calculo = (d.calculo || '') +
-            '\nEmprestimo/financiamento identificado no extrato: -10' +
+            '\nEmprestimo/financiamento identificado no extrato: -15' +
             '\n\n⚠️ CORRECAO JS: divida ativa detectada localmente — desconto aplicado automaticamente.';
         if (d.nota < 40) {
             d.aprov = false; d.reprovado = true; d.risco = 'REPROVADO'; d.entradaPct = 0.60;
