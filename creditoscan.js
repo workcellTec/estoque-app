@@ -395,14 +395,18 @@
 
             var downgrade   = dec.includes('DOWNGRADE');
             var entradaAlta = dec.includes('ENTRADA_ALTA');
-            // Se decisao = CALCULAR (novo sistema), deriva aprovacao pela nota
+            // Aprovacao SEMPRE derivada da nota — nunca confia no REPROVADO da IA se nota >= 40
+            // A IA erra a decisao mas acerta a nota. O reavaliarDecisao() cuida do resto.
             var aprov;
-            if (dec === 'CALCULAR' || dec === '') {
-                aprov = nota >= 40;
+            if (nota >= 40) {
+                // Nota ok — aprova (reavaliarDecisao vai calcular entrada turbinada/downgrade se precisar)
+                aprov = true;
+                // Mas respeita REPROVADO por fraude (nomesBatem=false já setou nota=0) ou apostas
             } else {
-                aprov = dec.includes('VENDER') || downgrade || entradaAlta;
+                aprov = false;
             }
-            if (dec === 'REPROVADO') aprov = false;
+            // Casos especiais que a IA identifica corretamente
+            if (!nomesBatem) aprov = false;
 
             var renda       = typeof obj.rendaEstimada === 'number' ? obj.rendaEstimada : parseFloat(obj.rendaEstimada || 0);
             var entAltaCalc = typeof obj.entradaTurbinadaCalculada === 'number' ? obj.entradaTurbinadaCalculada : parseFloat(obj.entradaTurbinadaCalculada || 0);
