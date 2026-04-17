@@ -335,8 +335,8 @@
 
 'REGRA 1 - TETO POR FAIXA DE RENDA (obrigatoria, sobrepoe tudo):\n'+
 '  Renda < R$ 1.000           : nota maxima 45 (FRACO obrigatorio)\n'+
-'  Renda R$ 1.000 a R$ 1.499  : nota maxima 59 (FRACO teto)\n'+
-'  Renda R$ 1.500 a R$ 2.999  : nota maxima 84 (MEDIO/FORTE possivel)\n'+
+'  Renda R$ 1.000 a R$ 1.199  : nota maxima 59 (FRACO teto)\n'+
+'  Renda R$ 1.200 a R$ 2.999  : nota maxima 88 (MEDIO/FORTE possivel)\n'+
 '  Renda >= R$ 3.000           : sem teto de renda, comportamento decide\n\n'+
 
 'REGRA 2 - DESCONTOS DE NOTA:\n'+
@@ -344,11 +344,10 @@
 'Parta de 100 e APENAS subtraia. Se nao houver nenhum problema = 100 pontos. Simples assim.\n'+
 '  ⛔ NAO DESCONTAR por ser autonomo, MEI, informal ou sem vinculo CLT. Isso NAO e penalidade.\n'+
 '  RISCO FINANCEIRO:\n'+
-'  -20: Saldo cronicamente baixo — termina o mes com menos de R$ 100 em 2 ou mais meses.\n'+
 '  -15: Comprometimento alto — mais de 80% da renda consumida por qualquer tipo de saida.\n'+
 '  -20: Comprometimento critico — mais de 95% da renda consumida. ACUMULA com o -15 acima.\n'+
 '        Total = -35 se >95%. Saldo zerado ou negativo ao fim do mes = 100% = -35 direto.\n'+
-'  -15: Emprestimo ou consignado descontado diretamente no holerite ou identificado no extrato.\n\n'+
+'  -10: Emprestimo ou consignado descontado diretamente no holerite ou identificado no extrato.\n\n'+
 '  APOSTAS:\n'+
 '  -35: Apostas esporadicas (1 a 4 ocorrencias) — so se o pre-filtro local nao reprovou ja.\n\n'+
 '  IMPORTANTE: Nao existe ajuste positivo. Cliente sem nenhum problema = 100 pontos.\n'+
@@ -398,7 +397,7 @@
 '  "confiancaLeitura": "ALTA",\n'+
 '  "perfilCliente": "DETALHADO: Tipo de vinculo, cargo, empresa, tempo de emprego, tipo de renda. Explique POR QUE o perfil e FORTE/MEDIO/FRACO com exemplos concretos.",\n'+
 '  "analiseFinanceira": "DETALHADO: Renda mensal em R$. Fontes de entrada. Maiores despesas (cite nomes). Apostas: quantas e valor total. Saldo medio. Comprometimento de renda em %. Guarda dinheiro ou gasta tudo. Comportamentos de risco.",\n'+
-'  "calculoPontuacao": "OBRIGATORIO comecar com Base: 100. NUNCA Base: 70. NUNCA pontos positivos.\nFormato obrigatorio:\nBase: 100\n[desconto aplicavel]: -XX\nTeto renda (R$ X): teto YY\nRESULTADO FINAL: ZZ pontos\nExemplo real: Base: 100 / Saldo baixo: -20 / Comprometimento >80%: -15 / Teto renda (R$ 2.000): teto 84 / RESULTADO FINAL: 65\nListe APENAS os descontos que SE APLICAM. Zero pontos positivos. NAO desconte por ser autonomo/MEI/informal.",\n'+
+'  "calculoPontuacao": "OBRIGATORIO comecar com Base: 100. NUNCA Base: 70. NUNCA pontos positivos.\nFormato obrigatorio:\nBase: 100\n[desconto aplicavel]: -XX\nTeto renda (R$ X): teto YY\nRESULTADO FINAL: ZZ pontos\nExemplo real: Base: 100 / Comprometimento >80%: -15 / Emprestimo: -10 / Teto renda (R$ 2.000): teto 88 / RESULTADO FINAL: 75\nListe APENAS os descontos que SE APLICAM. Zero pontos positivos. NAO desconte por ser autonomo/MEI/informal.",\n'+
 '  "rascunhoCalculos": "Renda: R$ X. Teto parcela (perfil%): R$ X. Parcela base: (R$ valor - R$ entrada) / 12 + juros 6%am = R$ X. DENTRO ou ACIMA do teto.",\n'+
 '  "rendaEstimada": 0.00,\n'+
 '  "nota": 0,\n'+
