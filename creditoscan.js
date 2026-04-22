@@ -1,11 +1,13 @@
 // ================================================================
-// creditoscan.js — CréditoScan v15 (Puter.js + Qwen-VL Vision)
+// creditoscan.js — CréditoScan v16 (OpenRouter + Qwen-VL-235B)
 // ================================================================
 (function () {
     'use strict';
 
-    var PUTER_MODEL  = 'qwen/qwen3-vl-235b-a22b-instruct';
-    var GROQ_KEY_LS  = 'ctwGroqApiKey';
+    var OR_MODEL_VL  = 'qwen/qwen3-vl-235b-a22b-instruct';
+    var OR_MODEL_TXT = 'qwen/qwen3-235b-a22b-2507';
+    var OR_URL       = 'https://openrouter.ai/api/v1/chat/completions';
+    var OR_KEY_LS    = 'ctwOpenRouterKey';
     var SAVE_PATH    = 'creditoscan';
     var MAX_IMG_PX   = 1280;
     var MAX_DOCS_ID  = 3;
@@ -24,15 +26,15 @@
     var _busy  = false;
     var _last  = null;
 
-    async function getGroqKey() {
-        var local = safeGet(GROQ_KEY_LS);
+    async function getApiKey() {
+        var local = safeGet(OR_KEY_LS);
         if (local) return local;
         try {
             var fb = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
             var db = window._firebaseDB; if (!db) return '';
-            var snap = await fb.get(fb.ref(db, 'settings/groqKey'));
+            var snap = await fb.get(fb.ref(db, 'settings/openrouterKey'));
             var key = snap.val() || '';
-            if (key) try { localStorage.setItem(GROQ_KEY_LS, key); } catch(e){}
+            if (key) try { localStorage.setItem(OR_KEY_LS, key); } catch(e){}
             return key;
         } catch(e) { return ''; }
     }
@@ -192,58 +194,51 @@
         return linhasFiltradas.join('\n');
     }
 
-    // Puter.js — carrega o SDK
-    async function carregarPuter() {
-        if (window.puter) return;
-        await new Promise(function(ok, fail) {
-            var s = document.createElement('script');
-            s.src = 'https://js.puter.com/v2/';
-            s.onload = ok; s.onerror = fail;
-            document.head.appendChild(s);
+    // OpenRouter API
+    // ── OpenRouter API: chamada genérica ──
+    async function openRouterCall(model, messages) {
+        var key = await getApiKey();
+        if (!key) throw new Error('Chave OpenRouter nao configurada. Salve em Firebase > settings/openrouterKey');
+        var resp = await fetch(OR_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + key
+            },
+            body: JSON.stringify({
+                model: model,
+                max_tokens: 4096,
+                temperature: 0,
+                messages: messages
+            })
         });
+        if (!resp.ok) {
+            var e = await resp.json().catch(function(){ return {}; });
+            throw new Error((e.error && e.error.message) || 'HTTP ' + resp.status);
+        }
+        var d = await resp.json();
+        return ((d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '').trim();
     }
 
-    // Motor Vision: manda imagens + texto pro Qwen-VL via Puter.js
-    async function puterCallVision(imagens, textoExtra, prompt) {
-        await carregarPuter();
+    // Motor Vision: manda imagens + texto pro Qwen-VL via OpenRouter
+    async function aiCallVision(imagens, textoExtra, prompt) {
         var content = [];
-        // Imagens primeiro (doc pessoal, PDFs escaneados)
         imagens.forEach(function(img) {
             content.push({
                 type: 'image_url',
                 image_url: { url: 'data:image/jpeg;base64,' + img.base64 }
             });
         });
-        // Texto dos PDFs digitais (mais preciso que imagem)
         if (textoExtra && textoExtra.trim()) {
             content.push({ type: 'text', text: textoExtra });
         }
-        // Prompt no final
         content.push({ type: 'text', text: prompt });
-
-        var resp = await puter.ai.chat(
-            [{ role: 'user', content: content }],
-            { model: PUTER_MODEL, temperature: 0 }
-        );
-        if (typeof resp === 'string') return resp.trim();
-        if (resp && resp.message) return (typeof resp.message === 'string' ? resp.message : (resp.message.content || '')).trim();
-        if (resp && resp.text) return resp.text.trim();
-        if (resp && resp.toString) return resp.toString().trim();
-        return '';
+        return openRouterCall(OR_MODEL_VL, [{ role: 'user', content: content }]);
     }
 
     // ── Qwen3-235B texto — análise financeira consistente ──
-    async function puterCallTexto(prompt) {
-        await carregarPuter();
-        var resp = await puter.ai.chat(
-            [{ role: 'user', content: prompt }],
-            { model: 'qwen/qwen3-235b-a22b', temperature: 0 }
-        );
-        if (typeof resp === 'string') return resp.trim();
-        if (resp && resp.message) return (typeof resp.message === 'string' ? resp.message : (resp.message.content || '')).trim();
-        if (resp && resp.text) return resp.text.trim();
-        if (resp && resp.toString) return resp.toString().trim();
-        return '';
+    async function aiCallTexto(prompt) {
+        return openRouterCall(OR_MODEL_TXT, [{ role: 'user', content: prompt }]);
     }
 
     // ── Prompt Etapa 1: só extração de renda ─────────────────
@@ -1250,7 +1245,7 @@
                 // Etapa 1: Qwen3-235B extrai renda com foco total
                 setProg('Calculando renda (Etapa 1/2)...',50);
                 try {
-                    var respRenda = await puterCallTexto(buildPromptRenda(textoDigitalStr));
+                    var respRenda = await aiCallTexto(buildPromptRenda(textoDigitalStr));
                     var ir1 = respRenda.indexOf('{'), ir2 = respRenda.lastIndexOf('}');
                     if (ir1 !== -1 && ir2 > ir1) {
                         var objRenda = JSON.parse(respRenda.substring(ir1, ir2 + 1));
@@ -1270,13 +1265,13 @@
                 if (temSoTexto) {
                     // Etapa 2: Qwen3-235B analisa com renda já fixada
                     var textoParaAnalise = '=== EXTRATO ===\n' + textoDigitalStr.substring(0, 25000) + '\n\n';
-                    resp = await puterCallTexto(textoParaAnalise + buildPrompt(prod, val, rendaPreCalculada));
+                    resp = await aiCallTexto(textoParaAnalise + buildPrompt(prod, val, rendaPreCalculada));
                 } else {
                     // Imagens: Qwen-VL faz tudo (precisa ver o documento)
-                    resp = await puterCallVision(imagensParaIA, textoDigitalStr, buildPrompt(prod, val, null));
+                    resp = await aiCallVision(imagensParaIA, textoDigitalStr, buildPrompt(prod, val, null));
                 }
             } catch(eAI) {
-                // Se Puter falhar, tenta auto-deny
+                // Se OpenRouter falhar, tenta auto-deny
                 setProg('Erro na IA.',100);
                 var dErro = {
                     aprov: false, downgrade: false, entradaAlta: false, reprovado: true,
@@ -1464,6 +1459,7 @@
             '<div class="cs-hdr-ico">\ud83e\udde0</div>'+
             '<div style="flex:1"><div class="cs-hdr-ttl">CreditoScan</div><div class="cs-hdr-sub">Analise de credito via IA</div></div>'+
             '<button class="cs-btn-hist" id="cs_hist_open"><i class="bi bi-clock-history"></i> Historico</button>'+
+            '<button class="cs-btn-hist" id="cs_cfg_open" style="padding:10px 10px;min-width:0"><i class="bi bi-gear-fill"></i></button>'+
         '</div>'+
         '<div class="cs-body">'+
             '<div class="cs-sec">'+
@@ -1499,6 +1495,25 @@
         var o2=document.createElement('div');o2.id='cs_hist_ov';
         o2.innerHTML='<div class="cs-hhdr"><button class="btn-back" id="cs_hist_close" style="flex-shrink:0"><i class="bi bi-arrow-left"></i></button><span class="cs-hhdr-ttl">Historico de Consultas</span><span class="cs-hhdr-sub">ultimos 30 dias</span></div><div class="cs-hbody" id="cs_hist_list"></div>';
         document.body.appendChild(o2);
+        // Config overlay
+        var o3=document.createElement('div');o3.id='cs_cfg_ov';
+        o3.style.cssText='display:none;position:fixed;inset:0;z-index:3200;background:var(--bg-color,#0b1325);flex-direction:column;overflow:hidden';
+        o3.innerHTML='<div class="cs-hhdr"><button class="btn-back" id="cs_cfg_close" style="flex-shrink:0"><i class="bi bi-arrow-left"></i></button><span class="cs-hhdr-ttl">Configuracoes</span><span class="cs-hhdr-sub">API Key</span></div>'+
+            '<div class="cs-hbody" style="padding:20px 16px;gap:16px;">'+
+                '<div class="cs-sec"><div class="cs-sec-ttl"><i class="bi bi-key-fill"></i> Chave OpenRouter</div>'+
+                    '<p style="font-size:.72rem;color:rgba(255,255,255,.5);margin:0 0 10px">Cole sua API Key do <a href="https://openrouter.ai/settings/keys" target="_blank" style="color:#a78bfa">openrouter.ai</a></p>'+
+                    '<input type="text" class="cs-in" id="cs_cfg_key" placeholder="sk-or-v1-..." style="font-size:.75rem">'+
+                    '<div style="margin-top:10px;display:flex;gap:8px">'+
+                        '<button id="cs_cfg_save" style="flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;font-family:Poppins,sans-serif;font-size:.8rem;font-weight:700;cursor:pointer">Salvar</button>'+
+                    '</div>'+
+                    '<div id="cs_cfg_status" style="margin-top:8px;font-size:.7rem;color:#4ade80;text-align:center;min-height:20px"></div>'+
+                    '<div style="margin-top:16px;padding:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px">'+
+                        '<div style="font-size:.65rem;color:rgba(255,255,255,.4);margin-bottom:6px">Status da Key</div>'+
+                        '<div id="cs_cfg_info" style="font-size:.73rem;color:rgba(255,255,255,.6)">Verificando...</div>'+
+                    '</div>'+
+                '</div>'+
+            '</div>';
+        document.body.appendChild(o3);
     }
 
     function injectMenuBtns(){
@@ -1524,6 +1539,53 @@
         el('cs_btn_analisar')&&el('cs_btn_analisar').addEventListener('click',executar);
         el('cs_btn_recalc') &&el('cs_btn_recalc').addEventListener('click',recalcularLocal);
         el('cs_btn_nova')   &&el('cs_btn_nova').addEventListener('click',novaAnalise);
+        // Config
+        el('cs_cfg_open')   &&el('cs_cfg_open').addEventListener('click',abrirConfig);
+        el('cs_cfg_close')  &&el('cs_cfg_close').addEventListener('click',function(){el('cs_cfg_ov')&&(el('cs_cfg_ov').style.display='none');});
+        el('cs_cfg_save')   &&el('cs_cfg_save').addEventListener('click',salvarConfig);
+    }
+
+    function abrirConfig(){
+        var ov=el('cs_cfg_ov');if(!ov)return;
+        ov.style.display='flex';
+        var inp=el('cs_cfg_key');
+        var info=el('cs_cfg_info');
+        var status=el('cs_cfg_status');
+        if(status) status.textContent='';
+        // Mostra key atual mascarada
+        var currentKey=safeGet(OR_KEY_LS)||'';
+        if(inp) inp.value=currentKey;
+        if(info){
+            if(currentKey){
+                var masked=currentKey.substring(0,12)+'...' +currentKey.substring(currentKey.length-4);
+                info.innerHTML='<span style="color:#4ade80">✅ Key configurada:</span> '+masked;
+            } else {
+                info.innerHTML='<span style="color:#f87171">❌ Nenhuma key configurada</span>';
+            }
+        }
+    }
+
+    function salvarConfig(){
+        var inp=el('cs_cfg_key');
+        var status=el('cs_cfg_status');
+        var info=el('cs_cfg_info');
+        if(!inp)return;
+        var key=inp.value.trim();
+        if(!key){if(status) status.innerHTML='<span style="color:#f87171">Cole a key primeiro</span>';return;}
+        if(!key.startsWith('sk-')){if(status) status.innerHTML='<span style="color:#f87171">Key invalida. Deve comecar com sk-</span>';return;}
+        try{localStorage.setItem(OR_KEY_LS,key);}catch(e){}
+        // Tenta salvar no Firebase tambem
+        try{
+            import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js').then(function(fb){
+                var db=window._firebaseDB;if(!db)return;
+                fb.set(fb.ref(db,'settings/openrouterKey'),key);
+            }).catch(function(){});
+        }catch(e){}
+        if(status) status.innerHTML='<span style="color:#4ade80">✅ Key salva com sucesso!</span>';
+        if(info){
+            var masked=key.substring(0,12)+'...'+key.substring(key.length-4);
+            info.innerHTML='<span style="color:#4ade80">✅ Key configurada:</span> '+masked;
+        }
     }
 
     function init(){injectCSS();injectHTML();injectMenuBtns();wireEvents();}
