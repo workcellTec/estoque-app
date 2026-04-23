@@ -263,143 +263,73 @@
         var vf = Number(valor).toLocaleString('pt-BR',{minimumFractionDigits:2});
         var vn = Number(valor);
         var e20 = (vn*0.20).toLocaleString('pt-BR',{minimumFractionDigits:2});
-        var e30 = (vn*0.30).toLocaleString('pt-BR',{minimumFractionDigits:2});
         var e35 = (vn*0.35).toLocaleString('pt-BR',{minimumFractionDigits:2});
         var e60 = (vn*0.60).toLocaleString('pt-BR',{minimumFractionDigits:2});
         return (
-'Voce e um analista de credito senior da Workcell.\n'+
-'Sua resposta DEVE ser estritamente um objeto JSON valido, sem texto adicional.\n\n'+
-'PRODUTO PEDIDO: '+produto+'\n'+
-'VALOR BASE: R$ '+vf+'\n\n'+
-'=== PASSO 0 - TITULARIDADE E ANTI-FRAUDE ===\n'+
-'Voce recebera uma combinacao de:\n'+
-'- IMAGENS do documento pessoal (RG/CNH) — leia visualmente.\n'+
-'- TEXTO DIGITAL extraido de PDFs bancarios — dados estruturados com colunas (data, tipo, favorecido, CPF, valor, saldo).\n'+
-'- IMAGENS de documentos escaneados (holerites, comprovantes em foto) — leia visualmente.\n'+
-'ANALISE TUDO com atencao. O texto digital e a fonte MAIS CONFIAVEL de dados financeiros.\n\n'+
-'1) OLHE VISUALMENTE as imagens do documento (RG/CNH):\n'+
-'   - Extraia o nome do campo NOME do titular.\n'+
-'   - IGNORE completamente os campos FILIACAO, MAE, PAI.\n'+
-'   - Avalie a qualidade: ALTA (nitida), MEDIA (aceitavel), BAIXA (borrada/cortada).\n'+
-'   - Sem imagem de documento: nomeDocumentoPessoal="" e confiancaLeitura="SEM_DOCUMENTO".\n\n'+
-'2) LEIA o texto digital e/ou imagens dos comprovantes de renda e extraia o nome do titular.\n\n'+
-'3) COMPARE OS DOIS NOMES:\n'+
-'   - "Eduardo Ferreira" e "Eduardo F." -> mesma pessoa (nomesBatem: true)\n'+
-'   - "Eduardo Ferreira" e "Maria Ferreira" -> fraude (nomesBatem: false)\n'+
-'   - Sem documento pessoal: nomesBatem: null (analise continua normalmente)\n'+
-'   - Se nomes NAO baterem: decisao="REPROVADO", nota=0\n\n'+
+'Voce e um analista de credito senior da Workcell, loja de celulares em Joinville-SC.\n'+
+'Analise os documentos do cliente e retorne APENAS um JSON valido, sem texto adicional.\n\n'+
+'PRODUTO: '+produto+' | VALOR: R$ '+vf+'\n\n'+
 
-'=== PASSO 1 - EXTRAIR A RENDA REAL ===\n'+
-'AUTOTRANSFERENCIA (CRITICO — fazer ANTES de somar renda):\n'+
-'- Identifique o CPF e o NOME COMPLETO do titular no CABECALHO do extrato.\n'+
-'- Para CADA "Pix - Recebido", verifique se o remetente contem o CPF do titular\n'+
-'  (com ou sem pontuacao, com ou sem zeros a esquerda) OU se o nome e igual/similar ao titular.\n'+
-'  TODAS essas entradas = R$ 0,00. NAO sao renda. IGNORE 100%.\n\n'+
-'EXTRATO BANCARIO DE CONTA CORRENTE:\n'+
-'- Some APENAS entradas de TERCEIROS reais (CPF/nome diferente do titular).\n'+
-'- "Proventos TED" do mesmo CPF vindo de outro banco SAO renda (salario entre contas).\n'+
-'- Pix recebido do proprio CPF NAO e renda.\n\n'+
-'HOLERITE:\n'+
-'- Renda = VALOR LIQUIDO exato. Jamais some bruto ou descontos.\n'+
-'- Se multiplos holerites: use o mes mais recente.\n'+
-'- Se o mais antigo for mes parcial de admissao (valor bem menor), IGNORE-O.\n\n'+
-'RESUMO FISCAL UBER/99/IFOOD (MOTORISTAS DE APP):\n'+
-'- Deduza automaticamente 35% do valor total como custo operacional (combustivel/manutencao).\n'+
-'- A Renda Real = APENAS os 65% restantes do repasse liquido.\n'+
-'- Exemplo: repasse R$ 3.000 -> Renda Real = R$ 1.950.\n\n'+
-(rendaPreCalculada ? '⚠️ RENDA JA CALCULADA PELO SISTEMA: R$ ' + rendaPreCalculada.toFixed(2) + '\n'+
-'Use EXATAMENTE esse valor como rendaEstimada. Nao recalcule. Nao questione.\n\n' : '')+
+'=== CONTEXTO ===\n'+
+'A Workcell vende celulares parcelados no boleto. Queremos VENDER — seu trabalho e encontrar\n'+
+'a melhor condicao pra cada cliente, nao barrar. So reprova quem realmente nao pode pagar.\n'+
+'Voce recebera imagens (RG/CNH, holerites) e/ou texto digital de extratos bancarios.\n\n'+
 
-'=== PASSO 2 - CALCULAR A NOTA (0 a 100) ===\n'+
-'ATENCAO CRITICA: A BASE E 100, NAO 70. NUNCA use base 70. NUNCA adicione pontos positivos.\n'+
-'Sistema de SO DESCONTO: comeca em 100 e subtrai. Cliente sem problemas = 100 pontos.\n\n'+
+'=== TITULARIDADE ===\n'+
+'Se houver RG/CNH: extraia o nome (IGNORE filiacao/mae/pai) e compare com o nome do extrato.\n'+
+'Nomes diferentes = fraude = nota 0 REPROVADO. Sem documento pessoal: nomesBatem null.\n\n'+
 
-'REGRA 0 - RASTREABILIDADE (verificar ANTES de tudo, sobrepoe regras abaixo):\n'+
-'  Se o cliente enviou APENAS holerite (sem extrato bancario),\n'+
-'  OU APENAS extratos de contas poupanca/beneficio sem detalhamento de despesas\n'+
-'  (ex: Caixa Tem, contas onde so aparece "Pix Enviado" generico sem destinatario),\n'+
-'  OU qualquer documento que NAO permita ver pra onde o dinheiro vai:\n'+
-'  -> Nota travada em maximo 55 (FRACO automatico).\n'+
-'  -> decisao = "REPROVADO".\n'+
-'  -> Em analiseFinanceira e motivosReprovacao escreva EXATAMENTE:\n'+
-'     "Extrato bancario / Holerite sem movimentacao de saida e despesas detalhadas.\n'+
-'      Impossivel analisar rastreabilidade de risco financeiro.\n'+
-'      Solicitar extrato em PDF da conta corrente principal onde o cliente\n'+
-'      realiza seus pagamentos mensais para reanalise."\n'+
-'  -> Se cair nessa regra, NAO continue calculando. Retorne o JSON direto.\n\n'+
+'=== RENDA ===\n'+
+'- Extrato: some APENAS entradas de terceiros. Pix do proprio CPF/nome = autotransferencia, ignore.\n'+
+'- Proventos TED do mesmo CPF de outro banco = salario (conta).\n'+
+'- Holerite: valor LIQUIDO.\n'+
+'- Motorista app: deduza 35% como custo operacional.\n'+
+(rendaPreCalculada ? '⚠️ RENDA PRE-CALCULADA: R$ '+rendaPreCalculada.toFixed(2)+'. Use este valor.\n\n' : '\n')+
 
-'REGRA 1 - TETO POR FAIXA DE RENDA (obrigatoria, sobrepoe tudo):\n'+
-'  Renda < R$ 1.000           : nota maxima 45 (FRACO obrigatorio)\n'+
-'  Renda R$ 1.000 a R$ 1.199  : nota maxima 59 (FRACO teto)\n'+
-'  Renda R$ 1.200 a R$ 2.999  : nota maxima 88 (MEDIO/FORTE possivel)\n'+
-'  Renda >= R$ 3.000           : sem teto de renda, comportamento decide\n\n'+
+'=== SUA ANALISE (livre — use sua inteligencia) ===\n'+
+'Analise o comportamento financeiro como um consultor experiente.\n'+
+'Observe tudo: perfil de gastos, comprometimento, disciplina, dividas, apostas, padroes.\n'+
+'De uma nota de 0 a 100 baseada no seu julgamento completo.\n'+
+'Voce e o especialista — nao precisa de regras rigidas.\n\n'+
 
-'REGRA 2 - DESCONTOS DE NOTA:\n'+
-'⚠️ BASE = 100. NAO 70. PROIBIDO usar base 70. PROIBIDO adicionar +pontos de qualquer tipo.\n'+
-'Parta de 100 e APENAS subtraia. Se nao houver nenhum problema = 100 pontos. Simples assim.\n'+
-'  ⛔ NAO DESCONTAR por ser autonomo, MEI, informal ou sem vinculo CLT. Isso NAO e penalidade.\n'+
-'  RISCO FINANCEIRO:\n'+
-'  -15: Comprometimento alto — mais de 80% da renda consumida por qualquer tipo de saida.\n'+
-'  -20: Comprometimento critico — mais de 95% da renda consumida. ACUMULA com o -15 acima.\n'+
-'        Total = -35 se >95%. Saldo zerado ou negativo ao fim do mes = 100% = -35 direto.\n'+
-'  -10: Emprestimo ou consignado descontado diretamente no holerite ou identificado no extrato.\n\n'+
-'  APOSTAS:\n'+
-'  -35: Apostas esporadicas (1 a 4 ocorrencias) — so se o pre-filtro local nao reprovou ja.\n\n'+
-'  IMPORTANTE: Nao existe ajuste positivo. Cliente sem nenhum problema = 100 pontos.\n'+
-'  Cada criterio so pode ser descontado UMA vez (exceto comprometimento que acumula os 2 niveis).\n\n'+
+'=== APENAS 2 REPROVACOES OBRIGATORIAS ===\n'+
+'1. Renda real < R$ 1.000/mes = REPROVADO (nao tem como pagar)\n'+
+'2. Apostador compulsivo = REPROVADO\n'+
+'   Casas: PHOENIX GAMING, PIXBET, BLAZE, APOSTARAIZ, BANKS TECH, ATM PUBLICIDADE,\n'+
+'   SMART CLUSTER, M V D S M TECHNOLOGY, LOTTOPAY, GM INTERMEDIACAO, WIINPAY,\n'+
+'   AJC GATEWAY, NEXUMPAY, UNIVEBET, VAIDEBET, BETNACIONAL, R TORRES, NORBE FINTECH,\n'+
+'   GOLD NOW, LUXTAK, ou nome contendo BET/GAMING/APOSTAS/CASSINO.\n'+
+'   "SAQUE DIN LOTERICO" NAO e aposta — e operacao bancaria.\n'+
+'   10+ transacoes OU R$800+/mes OU 3+ meses = REPROVADO.\n'+
+'   1-4 esporadicas = penaliza nota mas nao reprova.\n\n'+
 
-'REGRA APOSTAS CRITICA (sobrepoe TUDO — verificar ANTES de calcular nota):\n'+
-'  Classifique como transacao de aposta qualquer Pix enviado para:\n'+
-'  PHOENIX GAMING, PIXBET, BLAZE, APOSTARAIZ, ROYAL CREST, BANKS TECH, ATM PUBLICIDADE,\n'+
-'  SMART CLUSTER SERVICOS, M V D S M TECHNOLOGY, LOTTOPAY, GM INTERMEDIACAO, WIINPAY,\n'+
-'  AJC GATEWAY, NEXUMPAY, UNIVEBET, VAIDEBET, BETNACIONAL, R TORRES, NORBE FINTECH,\n'+
-'  GOLD NOW, LUXTAK, ou qualquer destinatario contendo "BET", "GAMING", "APOSTAS",\n'+
-'  "CASSINO", "ESPORTIV", "APOSTA", "RAIZ".\n\n'+
-'  PASSO A - Some o total apostado por mes, conte os dias DISTINTOS com aposta por mes,\n'+
-'            e conte o total de transacoes de apostas no periodo inteiro.\n'+
-'  PASSO B - Verifique os gatilhos abaixo. Se QUALQUER UM for verdadeiro:\n'+
-'            nota = 0, decisao = REPROVADO, sem excecao, sem compensacao por renda alta.\n\n'+
-'  GATILHOS DE REPROVACAO IMEDIATA:\n'+
-'  1. APOSTADOR COMPULSIVO DIARIO: apostas em 15 ou mais dias distintos em qualquer mes.\n'+
-'  2. VOLUME MENSAL ALTO: soma de apostas >= R$ 800,00 em qualquer mes.\n'+
-'  3. HABITO CRONICO: apostas presentes em TODOS os meses do extrato quando ha 2+ meses.\n'+
-'  4. FREQUENCIA TOTAL ALTA: 10 ou mais transacoes de apostas no periodo total.\n'+
-'  5. APOSTADOR DIARIO CURTO: apostas em 7+ dias consecutivos ou quase consecutivos.\n\n'+
-'  Se nenhum gatilho acima, mas houver 5 a 9 ocorrencias: nota travada em maximo 35, REPROVADO.\n'+
-'  Se houver 1 a 4 ocorrencias esporadicas: aplica -30 na nota normalmente.\n\n'+
-'  Em motivosReprovacao: SEMPRE informe o gatilho ativado, total apostado por mes,\n'+
-'  numero de dias com aposta por mes, e lista dos destinatarios de aposta encontrados.\n\n'+
+'Todo o resto APROVA com condicoes:\n'+
+'  FORTE (85-100): entrada 20% = R$ '+e20+' | teto parcela 30% renda\n'+
+'  MEDIO (60-84):  entrada 35% = R$ '+e35+' | teto parcela 20% renda\n'+
+'  FRACO (40-59):  entrada 60% = R$ '+e60+' | teto parcela 10% renda\n\n'+
 
-'REGRA 3 - PERFIS FINAIS (aplica teto de renda antes de classificar):\n'+
-'  FORTE (85-100): Renda alta e consistente, comportamento organizado.\n'+
-'  MEDIO (60-84):  Renda razoavel, alguma oscilacao toleravel.\n'+
-'  FRACO (40-59):  Renda baixa, OU renda ok mas comportamento de risco.\n'+
-'  REPROVADO (0-39): Fraude, saldo negativo cronico, apostador, sem rastreabilidade.\n\n'+
-'=== PASSO 3 - BALANCA DE RISCO ===\n'+
-'FORTE (nota 85-100): 20% = R$ '+e20+' | MEDIO (nota 60-84): 35% = R$ '+e35+' | FRACO (nota 40-59): 60% = R$ '+e60+'\n\n'+
-'=== PASSO 4 - TESTE DE FOGO ===\n'+
-'Teto: FORTE (30% renda) | MEDIO (20%) | FRACO (10%).\n'+
-'Parcela base = (Valor - Entrada Minima) / 12 + juros 6%am.\n'+
-'Se parcela > Teto: decisao=SUGESTAO_ENTRADA_ALTA. EntradaTurbinada = Valor - (Teto x 8,4).\n'+
-'Se EntradaTurbinada > 80% do Valor: decisao=SUGESTAO_DOWNGRADE.\n\n'+
-'=== JSON OBRIGATORIO ===\n'+
-'ATENCAO: Os campos rendaEstimada, nota, nivel e decisao abaixo estao zerados.\n'+
-'Voce DEVE calcular os valores reais com base nos documentos. NAO copie os zeros.\n'+
+'Parcela = (Valor - Entrada) / 12 + juros 6%am.\n'+
+'Se parcela > teto: SUGESTAO_ENTRADA_ALTA (entrada turbinada = Valor - teto*8.4).\n'+
+'Se entrada turbinada > 80% valor: SUGESTAO_DOWNGRADE.\n\n'+
+
+'=== JSON ===\n'+
 '{\n'+
-'  "nomeDocumentoPessoal": "Nome visual do RG/CNH (ignorar filiacao)",\n'+
-'  "nomeComprovanteRenda": "Nome do extrato ou holerite",\n'+
+'  "nomeDocumentoPessoal": "",\n'+
+'  "nomeComprovanteRenda": "",\n'+
 '  "nomesBatem": true,\n'+
 '  "confiancaLeitura": "ALTA",\n'+
-'  "perfilCliente": "DETALHADO: Tipo de vinculo, cargo, empresa, tempo de emprego, tipo de renda. Explique POR QUE o perfil e FORTE/MEDIO/FRACO com exemplos concretos.",\n'+
-'  "analiseFinanceira": "DETALHADO: Renda mensal em R$. Fontes de entrada. Maiores despesas (cite nomes). Apostas: quantas e valor total. Saldo medio. Comprometimento de renda em %. Guarda dinheiro ou gasta tudo. Comportamentos de risco.",\n'+
-'  "calculoPontuacao": "OBRIGATORIO comecar com Base: 100. NUNCA Base: 70. NUNCA pontos positivos.\nFormato obrigatorio:\nBase: 100\n[desconto aplicavel]: -XX\nTeto renda (R$ X): teto YY\nRESULTADO FINAL: ZZ pontos\nExemplo real: Base: 100 / Comprometimento >80%: -15 / Emprestimo: -10 / Teto renda (R$ 2.000): teto 88 / RESULTADO FINAL: 75\nListe APENAS os descontos que SE APLICAM. Zero pontos positivos. NAO desconte por ser autonomo/MEI/informal.",\n'+
-'  "rascunhoCalculos": "Renda: R$ X. Teto parcela (perfil%): R$ X. Parcela base: (R$ valor - R$ entrada) / 12 + juros 6%am = R$ X. DENTRO ou ACIMA do teto.",\n'+
+'  "resumoExecutivo": "Frase curta pro vendedor. Ex: Autonomo agro, renda R$8k, folga R$2.5k, bom pagador.",\n'+
+'  "perfilCliente": "Tipo de renda, estabilidade, perfil comportamental.",\n'+
+'  "analiseFinanceira": "Renda, despesas, saldo, comprometimento %, riscos.",\n'+
+'  "calculoPontuacao": "Explique seu raciocinio pra nota em 2-3 linhas.",\n'+
+'  "conselho": "Dica pratica pro vendedor.",\n'+
+'  "rascunhoCalculos": "Renda R$ X. Teto parcela R$ X. Parcela base R$ X. DENTRO ou ACIMA.",\n'+
 '  "rendaEstimada": 0.00,\n'+
 '  "nota": 0,\n'+
 '  "nivel": "FORTE ou MEDIO ou FRACO ou REPROVADO",\n'+
 '  "decisao": "VENDER ou REPROVADO ou SUGESTAO_DOWNGRADE ou SUGESTAO_ENTRADA_ALTA",\n'+
 '  "entradaTurbinadaCalculada": 0.00,\n'+
-'  "motivosReprovacao": "Preencha APENAS se reprovado."\n'+
+'  "motivosReprovacao": "Apenas se reprovado"\n'+
 '}\n'
         );
     }
@@ -461,7 +391,8 @@
                 nomeRenda: obj.nomeComprovanteRenda || '',
                 nomesBatem: obj.nomesBatem, confianca: confianca,
                 perfil: obj.perfilCliente || '', analise: obj.analiseFinanceira || '',
-                calculo: obj.calculoPontuacao || '',
+                calculo: obj.calculoPontuacao || '', conselho: obj.conselho || '',
+                resumoExec: obj.resumoExecutivo || '',
                 rascunho: obj.rascunhoCalculos || '', motivos: obj.motivosReprovacao || '',
                 rawJson: obj
             };
@@ -512,8 +443,11 @@
 
     function formatResult(texto, d, valorBase) {
         var nc = d.nota !== null ? (d.nota>=80 ? '#16a34a' : d.nota>=60 ? '#d97706' : d.nota>=40 ? '#f59e0b' : '#dc2626') : '#888';
-        var html = '<h4 class="cs-rt">Perfil do Cliente: '+esc(d.nomeCompleto)+'</h4><p class="cs-rp">'+esc(d.perfil)+'</p><h4 class="cs-rt">Analise Financeira</h4><p class="cs-rp">'+esc(d.analise)+'</p>';
-        if (d.calculo) html += '<h4 class="cs-rt" style="color:#a78bfa">📊 Calculo da Pontuacao</h4><p class="cs-rp" style="font-family:monospace;font-size:0.82em;line-height:1.6;background:rgba(139,92,246,.08);padding:10px 12px;border-radius:8px;border-left:3px solid #a78bfa;">'+esc(d.calculo).replace(/\n/g,'<br>').replace(/(\+\d+)/g,'<span style="color:#4ade80;font-weight:700">$1</span>').replace(/([\-]\d+)/g,'<span style="color:#f87171;font-weight:700">$1</span>')+'</p>';
+        var html = '';
+        if (d.resumoExec) html += '<div style="background:rgba(59,130,246,.08);border:1.5px solid rgba(59,130,246,.25);border-radius:12px;padding:12px 14px;margin-bottom:12px"><div style="font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#60a5fa;margin-bottom:5px">\ud83d\udca1 Resumo Executivo</div><p style="margin:0;font-size:.85rem;line-height:1.6;color:#e0e7ff;font-weight:500">'+esc(d.resumoExec)+'</p></div>';
+        html += '<h4 class="cs-rt">Perfil do Cliente: '+esc(d.nomeCompleto)+'</h4><p class="cs-rp">'+esc(d.perfil)+'</p><h4 class="cs-rt">Analise Financeira</h4><p class="cs-rp">'+esc(d.analise)+'</p>';
+        if (d.calculo) html += '<h4 class="cs-rt" style="color:#a78bfa">\ud83d\udcca Raciocinio da Nota</h4><p class="cs-rp" style="font-size:0.82em;line-height:1.6;background:rgba(139,92,246,.08);padding:10px 12px;border-radius:8px;border-left:3px solid #a78bfa;">'+esc(d.calculo).replace(/\n/g,'<br>')+'</p>';
+        if (d.conselho) html += '<div style="background:rgba(74,222,128,.06);border:1.5px solid rgba(74,222,128,.2);border-radius:12px;padding:12px 14px;margin-top:8px"><div style="font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#4ade80;margin-bottom:5px">\ud83c\udfaf Conselho pro Vendedor</div><p style="margin:0;font-size:.82rem;line-height:1.6;color:#bbf7d0">'+esc(d.conselho)+'</p></div>';
         if (d.reprovado && d.motivos) html += '<h4 class="cs-rt" style="color:#ef4444">Motivos da Reprovacao</h4><p class="cs-rp" style="color:#fca5a5">'+esc(d.motivos).replace(/\n/g,'<br>')+'</p>';
         if (d.rascunho) html += '<h4 class="cs-rt">Rascunho de Calculos</h4><p class="cs-rp" style="opacity:0.7;font-size:0.8em;">'+esc(d.rascunho).replace(/\n/g,'<br>')+'</p>';
 
@@ -1295,20 +1229,16 @@
             setProg('Finalizando...',90);
             var d=extrair(resp);d._produto=prod;
 
-            // ── VALIDADOR POS-IA: apostas ──
+            // ── VALIDADOR POS-IA: apostas (unico validador hardcoded) ──
             validarApostasNaResposta(d);
 
-            // ── VALIDADOR MATEMATICO: corrige nota se calculo da IA nao bate ──
-            validarNotaVsCalculo(d);
-
-            // ── VALIDADOR COMPROMETIMENTO: 2 niveis (-10 >80%, -20 >95% acumulam) ──
-            validarComprometimento(d);
-
-            // ── VALIDADOR EMPRESTIMO: detecta divida ativa no texto local do PDF ──
-            validarEmprestimo(d, textoParaApostas);
-
-            // ── VALIDADOR MOVIMENTACAO ALTA: +5 se giro > R$6k/mes ──
-            validarMovimentacaoAlta(d, movimentacaoMensal);
+            // ── TRAVA HARDCODED: renda < R$1000 = REPROVADO ──
+            if (d.rendaEstimada > 0 && d.rendaEstimada < 1000 && !d.reprovado) {
+                d.aprov = false; d.reprovado = true; d.nota = Math.min(d.nota, 30);
+                d.risco = 'REPROVADO'; d.entradaPct = 0.60;
+                d.motivos = (d.motivos ? d.motivos + '\n' : '') +
+                    'Renda de ' + R$(d.rendaEstimada) + ' abaixo do minimo de R$ 1.000. Impossivel parcelar.';
+            }
 
             // AUTO-DENY: IA nao encontrou renda
             if (!(d.rendaEstimada > 0) && !d.reprovado) {
