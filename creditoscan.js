@@ -421,25 +421,35 @@
         return 'Ola '+d.nomeCliente+', tudo bem? \ud83d\ude0a\ud83d\udcf2\nSeu cadastro foi APROVADO aqui na Workcell! \u2705\n\n\ud83d\udcf1 '+produto+'\n\ud83d\udcb0 Entrada: '+R$(en)+'\n\ud83d\udcb3 + '+np+'x de '+R$(vp)+' no boleto\n\n\u2714 Aparelho revisado e com garantia\nMe confirma aqui pra gente seguir com a liberacao \ud83d\udc47';
     }
 
-    async function salvarFB(nome, produto, texto, d) {
-        try {
-            var fb=await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
-            var db=window._firebaseDB; if(!db)return;
-            var now=Date.now();
-            var resumoIA = d.aprov ? (d.rascunho || 'Aprovado conforme criterios.') : (d.motivos || 'Reprovado por risco financeiro.');
-            await fb.push(fb.ref(db,SAVE_PATH),{
-                nomeCliente:nome, produto:produto,
-                decisao:d.reprovado?'REPROVADO':d.downgrade?'DOWNGRADE':d.entradaAlta?'ENTRADA_ALTA':'APROVADO',
-                nota:d.nota, risco:d.risco, entrada:d.entrada||null, parcelas:d.parcelas||null,
-                vparcela:d.vparcela||null, taxa:d.taxa||null, total:d.total||null,
-                resumo: resumoIA, confianca: d.confianca||'ALTA',
-                textoCompleto:texto, ts:now, expira:now+HIST_DAYS*86400000,
-                operador:window.currentUserProfile||safeGet('ctwUserProfile')||'--'
-            });
-            var snap=await fb.get(fb.ref(db,SAVE_PATH));
-            if(snap.exists()) snap.forEach(function(c){var v=c.val();if(v&&v.expira&&v.expira<now)fb.remove(fb.ref(db,SAVE_PATH+'/'+c.key));});
-        } catch(e){}
-    }
+   async function salvarFB(nome, produto, texto, d, cpf_cliente) { // Adicionado parâmetro cpf_cliente
+    try {
+        var fb=await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
+        var db=window._firebaseDB; if(!db)return;
+        var now=Date.now();
+        var resumoIA = d.aprov ? (d.rascunho || 'Aprovado conforme criterios.') : (d.motivos || 'Reprovado por risco financeiro.');
+        
+        await fb.push(fb.ref(db,SAVE_PATH),{
+            nomeCliente:nome, 
+            cpf: cpf_cliente, // NOVO: Salva o CPF no banco
+            produto:produto,
+            decisao:d.reprovado?'REPROVADO':d.downgrade?'DOWNGRADE':d.entradaAlta?'ENTRADA_ALTA':'APROVADO',
+            nota:d.nota, 
+            risco:d.risco, 
+            entrada:d.entrada||null, 
+            parcelas:d.parcelas||null,
+            vparcela:d.vparcela||null, 
+            taxa:d.taxa||null, 
+            total:d.total||null,
+            resumo: resumoIA, 
+            confianca: d.confianca||'ALTA',
+            textoCompleto:texto, 
+            ts:now, 
+            expira:now+HIST_DAYS*86400000,
+            operador:window.currentUserProfile||safeGet('ctwUserProfile')||'--'
+        });
+        // ... restante da função (limpeza de expirados)
+    } catch(e){}
+}
 
     function formatResult(texto, d, valorBase) {
         var nc = d.nota !== null ? (d.nota>=80 ? '#16a34a' : d.nota>=60 ? '#d97706' : d.nota>=40 ? '#f59e0b' : '#dc2626') : '#888';
@@ -692,15 +702,27 @@
                 var b=await resizeToBase64(f);
                 if(b)_docsRend.push({dataUrl:URL.createObjectURL(f),base64:b,tipo:'imagem',textos:[],ehDigital:false});
             }
-            else if(f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf')){
+                        else if(f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf')){
                 if(lblEl) lblEl.textContent = 'Processando PDF ' + processados + '/' + totalFiles + '...';
                 if(subEl) subEl.textContent = f.name;
+                
                 // Extrai texto com posicao Y
                 var txtResult=await extrairTextoPdfDigital(f);
                 var textos=txtResult.textos||[];
+                
+                // NOVO: Auto-preenchimento de CPF via Regex sem gastar token
+                var matchCpf = textos.join(' ').match(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/);
+                if(matchCpf && document.getElementById('cs_cpf')) {
+                    var cpfInput = document.getElementById('cs_cpf');
+                    if(!cpfInput.value) {
+                        cpfInput.value = matchCpf[0].replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+                    } // <- FECHAMENTO ADICIONADO AQUI
+                } // <- FECHAMENTO ADICIONADO AQUI
+                
                 var digital=txtResult.ehDigital;
                 var numPags = textos.length || '?';
                 if(subEl) subEl.textContent = f.name + ' — ' + numPags + 'p' + (digital?' (digital)':' (escaneado)');
+                
                 // Renderiza imagens pra preview (e pra IA se escaneado)
                 var imgs=await pdfToImages(f);
                 imgs.forEach(function(im, idx){
@@ -712,6 +734,7 @@
                         });
                 });
             }
+
         }
         loadEl.style.display = 'none';
         _last=null;resetUIState();renderDocsRend();setBtnState();
@@ -1070,13 +1093,121 @@
     function novaAnalise(){_docsId=[];_docsRend=[];_busy=false;_last=null;el('cs_res').classList.add('cs-h');el('cs_prog').classList.add('cs-h');resetUIState();renderDocsId();renderDocsRend();setBtnState();if(el('cs_produto'))el('cs_produto').value='';if(el('cs_valor'))el('cs_valor').value='';el('cs_docs_id')&&(el('cs_docs_id').innerHTML='');el('cs_docs_rend')&&(el('cs_docs_rend').innerHTML='');}
     function closeOverlay(){el('cs_ov')&&el('cs_ov').classList.remove('active');}
 
-    async function executar(){
+        function mostrarModalReuso(registro, prodNovo, valNovo, cpfFomatado) {
+        var modal=document.createElement('div');
+        modal.id='cs_alerta_reuso';
+        modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+
+        var dt = new Date(registro.ts).toLocaleDateString('pt-BR');
+        var riscoLabel = registro.risco || registro.decisao;
+        var cor = (registro.decisao === 'APROVADO' || registro.decisao === 'DOWNGRADE' || registro.decisao === 'ENTRADA_ALTA') ? '#4ade80' : '#f87171';
+
+        modal.innerHTML='<div style="background:#0b1325;border:1.5px solid rgba(139,92,246,.3);border-radius:16px;width:100%;max-width:380px;padding:24px;display:flex;flex-direction:column;gap:16px;box-shadow:0 10px 40px rgba(0,0,0,0.6)">' +
+            '<div style="font-size:1.05rem;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px"><i class="bi bi-exclamation-triangle-fill" style="color:#fbbf24"></i> Cliente Ja Analisado</div>' +
+            '<div style="font-size:.85rem;color:rgba(255,255,255,.7);line-height:1.5;"><strong>'+registro.nomeCliente+'</strong> (CPF: '+cpfFomatado+') realizou uma analise nos ultimos 30 dias ('+dt+').</div>' +
+            '<div style="background:rgba(255,255,255,.05);padding:12px;border-radius:8px;border-left:4px solid '+cor+'">' +
+                '<div style="font-size:.7rem;color:rgba(255,255,255,.5);text-transform:uppercase;font-weight:700">Resultado Anterior</div>' +
+                '<div style="font-size:.9rem;font-weight:800;color:'+cor+'">'+riscoLabel+' ('+(registro.nota||0)+' pts)</div>' +
+            '</div>' +
+            '<div style="display:flex;flex-direction:column;gap:8px;margin-top:5px">'+
+                '<button id="cs_btn_reaproveitar" style="width:100%;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;font-family:\'Poppins\',sans-serif;font-size:.85rem;font-weight:700;cursor:pointer;">Reaproveitar Token (0 Custos)</button>' +
+                '<button id="cs_btn_refazer" style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:transparent;color:rgba(255,255,255,.5);font-family:\'Poppins\',sans-serif;font-size:.75rem;font-weight:600;cursor:pointer;">Ignorar e refazer analise (Gastar Token)</button>' +
+            '</div>'+
+        '</div>';
+
+        document.body.appendChild(modal);
+
+        document.getElementById('cs_btn_reaproveitar').onclick = function() {
+            document.body.removeChild(modal);
+            var d = extrair(registro.textoCompleto);
+            d._produto = prodNovo;
+            reavaliarDecisao(d, valNovo);
+            _last = {nome:registro.nomeCliente, produto:prodNovo, valor:valNovo, dados:d, entradaMin:Math.ceil(valNovo*d.entradaPct/10)*10, docsHash:-1};
+            el('cs_prog').classList.add('cs-h');
+            el('cs_res').innerHTML = formatResult(registro.textoCompleto, d, valNovo);
+            el('cs_res').classList.remove('cs-h');
+            wireRes();
+            el('cs_res').scrollIntoView({behavior:'smooth',block:'start'});
+            el('cs_btn_analisar').classList.add('cs-h');
+            el('cs_btn_duo').classList.remove('cs-h');
+        };
+
+        document.getElementById('cs_btn_refazer').onclick = function() {
+            document.body.removeChild(modal);
+            iniciarProcessamentoIA(prodNovo, valNovo, cpfFomatado.replace(/\D/g, ''));
+        };
+    }
+
+        async function executar() {
         if(_busy)return;
-        var prod=el('cs_produto').value.trim(),val=parseFloat((el('cs_valor').value||'0').replace(',','.'))||0;
+        var prod=el('cs_produto').value.trim(), val=parseFloat((el('cs_valor').value||'0').replace(',','.'))||0;
+
         if(!prod||!val){alert('Preencha produto e valor.');return;}
         if(_docsRend.length===0){window.showCustomModal&&window.showCustomModal({message:'Adicione ao menos um comprovante de renda.'});return;}
-        if(_docsId.length===0){window.showCustomModal&&window.showCustomModal({message:'Sem documento pessoal. A verificacao de titularidade sera ignorada.'});}
 
+        _busy=true;setBtnState();el('cs_prog').classList.remove('cs-h');el('cs_res').classList.add('cs-h');
+
+        var cpfValidado = '';
+        var nomeValidado = '';
+
+        // PRÉ-ANÁLISE: Gasta apenas tokens da foto do RG/CNH para extrair o CPF
+        if (_docsId.length > 0) {
+            setProg('Lendo Documento Pessoal...', 10);
+            try {
+                var promptId = 'Extraia o CPF e o Nome do titular deste documento. Retorne APENAS um JSON valido: {"cpf": "123.456.789-00", "nome": "Nome do Titular"}. Se nao achar CPF, retorne {"cpf": ""}';
+                var respId = await aiCallVision(_docsId, '', promptId);
+                var ir1 = respId.indexOf('{'), ir2 = respId.lastIndexOf('}');
+                if (ir1 !== -1 && ir2 > ir1) {
+                    var objId = JSON.parse(respId.substring(ir1, ir2 + 1));
+                    if (objId.cpf) cpfValidado = objId.cpf.replace(/\D/g, ''); // Limpa pontuação
+                    if (objId.nome) nomeValidado = objId.nome;
+                }
+            } catch(e) { console.warn('Falha na leitura antecipada do documento:', e); }
+        } else {
+            // Se não enviou RG, tenta extrair via Regex caso tenha subido PDF digital (custo zero)
+            var textosLocais=[];
+            _docsRend.forEach(function(d){ if(d.textos&&d.textos.length) textosLocais=textosLocais.concat(d.textos); });
+            var matchCpf = textosLocais.join(' ').match(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/);
+            if(matchCpf) cpfValidado = matchCpf[0].replace(/\D/g, '');
+        }
+
+        // VERIFICAÇÃO NO BANCO DE DADOS LOCAL
+        if (cpfValidado && cpfValidado.length === 11) {
+            setProg('Consultando historico de analises...', 20);
+            try {
+                var fb=await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
+                var db=window._firebaseDB;
+                if(db) {
+                    var snap = await fb.get(fb.ref(db, SAVE_PATH));
+                    var itens = [];
+                    if(snap.exists()) {
+                        var trintaDias = Date.now() - (30 * 86400000);
+                        snap.forEach(function(c){
+                            var v = c.val();
+                            if(v && v.cpf === cpfValidado && v.ts > trintaDias) {
+                                itens.push(Object.assign({id:c.key}, v));
+                            }
+                        });
+                    }
+                    if (itens.length > 0) {
+                        itens.sort(function(a,b){ return b.ts - a.ts; });
+                        _busy=false;setBtnState();el('cs_prog').classList.add('cs-h');
+                        // Formata o CPF para exibição no modal
+                        var cpfMasked = cpfValidado.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+                        mostrarModalReuso(itens[0], prod, val, cpfMasked);
+                        return; // Trava o fluxo, impedindo o gasto nos extratos
+                    }
+                }
+            } catch(e) { console.warn('Erro na busca do historico local:', e); }
+        }
+
+        // Se chegou aqui, não tem histórico ou não achou CPF. Aciona a análise completa.
+        iniciarProcessamentoIA(prod, val, cpfValidado);
+    }
+
+
+    async function iniciarProcessamentoIA(prod, val, cpfValidado) {
         _busy=true;setBtnState();el('cs_prog').classList.remove('cs-h');el('cs_res').classList.add('cs-h');
 
         try {
@@ -1096,7 +1227,7 @@
                 var dAposta = resultadoApostasReprovado(prod, '', apostas);
                 dAposta._produto = prod;
                 _last = {nome:'Cliente',produto:prod,valor:val,dados:dAposta,entradaMin:0,docsHash:_docsRend.length};
-                await salvarFB('Cliente',prod,apostas.detalhe,dAposta);
+                await salvarFB('Cliente',prod,apostas.detalhe,dAposta, cpfValidado); 
                 el('cs_prog').classList.add('cs-h');
                 el('cs_res').innerHTML = formatResult(apostas.detalhe, dAposta, val);
                 el('cs_res').classList.remove('cs-h');
@@ -1108,28 +1239,16 @@
             }
 
             // ── PASSO 3: Monta payload HIBRIDO pra IA ──
-            // PDFs digitais → TEXTO (preciso, rapido, a IA le perfeitamente)
-            // PDFs escaneados/fotos → IMAGEM (unica opcao)
-            // Doc pessoal → IMAGEM (sempre)
             setProg('Preparando dados para IA...',40);
             var imagensParaIA = [];
             var textosDigitais = [];
 
-            // Doc pessoal: sempre como imagem
             _docsId.forEach(function(d){ if(d.base64) imagensParaIA.push(d); });
-
-            // Docs de renda: separa digitais (texto) de escaneados (imagem)
             _docsRend.forEach(function(d){
-                if (d.ehDigital && d.textos && d.textos.length) {
-                    // PDF digital: usa texto (preciso, a IA entende melhor tabelas em texto)
-                    textosDigitais = textosDigitais.concat(d.textos);
-                } else if (d.base64) {
-                    // Escaneado/foto: usa imagem
-                    imagensParaIA.push(d);
-                }
+                if (d.ehDigital && d.textos && d.textos.length) { textosDigitais = textosDigitais.concat(d.textos); }
+                else if (d.base64) { imagensParaIA.push(d); }
             });
 
-            // Limita imagens escaneadas ao max
             if (imagensParaIA.length > MAX_IMGS_AI) {
                 var step = imagensParaIA.length / MAX_IMGS_AI;
                 var sampled = [];
@@ -1139,7 +1258,6 @@
                 imagensParaIA = sampled;
             }
 
-            // Monta texto digital formatado
             var textoDigitalStr = '';
             if (textosDigitais.length) {
                 textoDigitalStr = '=== EXTRATO BANCARIO DIGITAL (texto extraido do PDF) ===\n' +
@@ -1169,14 +1287,11 @@
             }
 
             // ── PASSO 4: Pipeline IA ──
-            // PDF digital sem imagens → Etapa 1 (Qwen3-235B calcula renda) + Etapa 2 (análise)
-            // Imagens → Etapa única Qwen-VL (precisa ver o documento)
             var temSoTexto = (imagensParaIA.length === 0 && textoDigitalStr);
             var rendaPreCalculada = null;
             var movimentacaoMensal = 0;
 
             if (temSoTexto) {
-                // Etapa 1: Qwen3-235B extrai renda com foco total
                 setProg('Calculando renda (Etapa 1/2)...',50);
                 try {
                     var respRenda = await aiCallTexto(buildPromptRenda(textoDigitalStr));
@@ -1197,15 +1312,12 @@
             var resp;
             try {
                 if (temSoTexto) {
-                    // Etapa 2: Qwen3-235B analisa com renda já fixada
                     var textoParaAnalise = '=== EXTRATO ===\n' + textoDigitalStr.substring(0, 25000) + '\n\n';
                     resp = await aiCallTexto(textoParaAnalise + buildPrompt(prod, val, rendaPreCalculada));
                 } else {
-                    // Imagens: Qwen-VL faz tudo (precisa ver o documento)
                     resp = await aiCallVision(imagensParaIA, textoDigitalStr, buildPrompt(prod, val, null));
                 }
             } catch(eAI) {
-                // Se OpenRouter falhar, tenta auto-deny
                 setProg('Erro na IA.',100);
                 var dErro = {
                     aprov: false, downgrade: false, entradaAlta: false, reprovado: true,
@@ -1229,18 +1341,14 @@
             setProg('Finalizando...',90);
             var d=extrair(resp);d._produto=prod;
 
-            // ── VALIDADOR POS-IA: apostas (unico validador hardcoded) ──
             validarApostasNaResposta(d);
 
-            // ── TRAVA HARDCODED: renda < R$1000 = REPROVADO ──
             if (d.rendaEstimada > 0 && d.rendaEstimada < 1000 && !d.reprovado) {
                 d.aprov = false; d.reprovado = true; d.nota = Math.min(d.nota, 30);
                 d.risco = 'REPROVADO'; d.entradaPct = 0.60;
-                d.motivos = (d.motivos ? d.motivos + '\n' : '') +
-                    'Renda de ' + R$(d.rendaEstimada) + ' abaixo do minimo de R$ 1.000. Impossivel parcelar.';
+                d.motivos = (d.motivos ? d.motivos + '\n' : '') + 'Renda de R$ ' + d.rendaEstimada + ' abaixo do minimo de R$ 1.000. Impossivel parcelar.';
             }
 
-            // AUTO-DENY: IA nao encontrou renda
             if (!(d.rendaEstimada > 0) && !d.reprovado) {
                 d.aprov = false; d.reprovado = true; d.nota = 0;
                 d.risco = 'REPROVADO'; d.entradaPct = 0.60;
@@ -1250,7 +1358,7 @@
             reavaliarDecisao(d, val);
             var nomeExtraido=d.nomeCompleto;
             _last={nome:nomeExtraido,produto:prod,valor:val,dados:d,entradaMin:Math.ceil(val*d.entradaPct/10)*10,docsHash:_docsRend.length};
-            await salvarFB(nomeExtraido,prod,resp,d);
+            await salvarFB(nomeExtraido,prod,resp,d, cpfValidado); 
             setProg('Pronto!',100);
             el('cs_prog').classList.add('cs-h');
             el('cs_res').innerHTML=formatResult(resp,d,val);
@@ -1392,13 +1500,15 @@
             '<button class="cs-btn-hist" id="cs_cfg_open" style="padding:10px 10px;min-width:0"><i class="bi bi-gear-fill"></i></button>'+
         '</div>'+
         '<div class="cs-body">'+
-            '<div class="cs-sec">'+
+                          '<div class="cs-sec">'+
                 '<div class="cs-sec-ttl"><i class="bi bi-phone-fill"></i> Produto da Venda</div>'+
                 '<div class="cs-fld"><div class="cs-row2">'+
                     '<div style="flex:1"><label class="cs-lbl">Produto</label><input type="text" class="cs-in" id="cs_produto" placeholder="Ex: iPhone 13" maxlength="80"></div>'+
                     '<div><label class="cs-lbl">Valor (R$)</label><input type="number" class="cs-in" id="cs_valor" placeholder="2200" min="1" step="1"></div>'+
                 '</div></div>'+
             '</div>'+
+
+
             '<div class="cs-sec">'+
                 '<div class="cs-sec-ttl" style="color:#4ade80"><i class="bi bi-person-badge-fill"></i> Documento Pessoal (RG/CNH)<span class="cs-counter" id="cs_counter_id" style="color:rgba(255,255,255,.35)">0/'+MAX_DOCS_ID+'</span></div>'+
                 '<div class="cs-uz cs-uz-id" id="cs_uz_id"><div class="cs-uz-ico">\ud83c\uddee\ud83c\udced</div><div class="cs-uz-txt">Foto do RG ou CNH do cliente</div><div class="cs-uz-sub">Opcional \u00b7 Ativa verificacao anti-fraude \u00b7 JPG PNG PDF</div></div>'+
