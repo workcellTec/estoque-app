@@ -637,14 +637,12 @@
                 '<div style="font-size:.74rem;font-weight:800;color:'+mc+'">'+mi+' '+ml+'</div>'+
             '</div>';
         }
-        // Titularidade como bloco independente
-        var titularidade_html = tid ? '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 14px">'+tid+'</div>' : '';
-
         var perfil_html='';
-        if(d.perfil){
+        if(d.perfil||tid){
             perfil_html='<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-left:3px solid #60a5fa;border-radius:12px;padding:13px 14px;display:flex;flex-direction:column;gap:8px">'+
                 '<div style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#60a5fa">\ud83d\udc64 '+esc(d.nomeCompleto)+'</div>'+
-                '<div style="font-size:.81rem;line-height:1.65;color:#e2e8f0">'+esc(d.perfil).replace(/\n/g,'<br>')+'</div>'+
+                (d.perfil?'<div style="font-size:.81rem;line-height:1.65;color:#e2e8f0">'+esc(d.perfil).replace(/\n/g,'<br>')+'</div>':'')+
+                tid+
             '</div>';
         }
 
@@ -707,8 +705,8 @@
         '</div>';
 
         // ── CONSELHO ──
-        var conselho_html='';
-        if(d.conselho) conselho_html='<div style="background:rgba(74,222,128,.06);border:1.5px solid rgba(74,222,128,.2);border-radius:12px;padding:12px 14px">'+
+        var conselho_html=''; // removido
+        if(false && d.conselho) conselho_html='<div style="background:rgba(74,222,128,.06);border:1.5px solid rgba(74,222,128,.2);border-radius:12px;padding:12px 14px">'+
             '<div style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#4ade80;margin-bottom:5px">\ud83c\udfaf Conselho pro Vendedor</div>'+
             '<p style="margin:0;font-size:.82rem;line-height:1.6;color:#bbf7d0">'+esc(d.conselho)+'</p>'+
         '</div>';
@@ -757,12 +755,11 @@
         // ── REPROVADO ──
         if(!d.aprov){
             return '<div class="cs-ri">'+
-                banner+confianca_html+nota_html+
-                apostas_html+
+                banner+confianca_html+nota_html+resumo_html+
+                perfil_html+apostas_html+
+                renda_html+comp_html+saude_html+fixos_html+padroes_html+
+                calc_html+conselho_html+motivos_html+
                 mkWppBlock(gerarWppReprovado(d.nomeCliente))+
-                comp_html+titularidade_html+padroes_html+
-                perfil_html+renda_html+saude_html+fixos_html+
-                motivos_html+
             '</div>';
         }
 
@@ -777,11 +774,9 @@
 
         if(d.downgrade){
             return '<div class="cs-ri">'+
-                banner+confianca_html+nota_html+
-                sim+apostas_html+
-                mkWppBlock(gerarWpp(d._produto||'Aparelho',en,np,vp,d))+
-                comp_html+titularidade_html+padroes_html+
-                perfil_html+renda_html+
+                banner+confianca_html+nota_html+alvo_html+resumo_html+
+                perfil_html+apostas_html+renda_html+comp_html+
+                conselho_html+mkWppBlock(gerarWpp(d._produto||'Aparelho',en,np,vp,d))+
             '</div>';
         }
 
@@ -802,11 +797,11 @@
             '<div class="cs-sim"><div class="cs-sim-ttl"><i class="bi bi-sliders"></i> Simular condições</div><div class="cs-sim-aviso"><i class="bi bi-lock-fill"></i> Entrada mínima: '+Math.round(d.entradaPct*100)+'% = '+R$(enMin)+' | Perfil '+riscoLabel+'</div>'+sim_grid+'</div>';
 
         return '<div class="cs-ri">'+
-            banner+confianca_html+nota_html+
-            sim+apostas_html+
-            mkWppBlock(gerarWpp(d._produto||'Aparelho',en,np,vp,d))+
-            comp_html+titularidade_html+padroes_html+
-            perfil_html+renda_html+saude_html+fixos_html+
+            banner+confianca_html+nota_html+alvo_html+resumo_html+
+            perfil_html+apostas_html+
+            renda_html+comp_html+saude_html+fixos_html+padroes_html+
+            calc_html+conselho_html+
+            sim+mkWppBlock(gerarWpp(d._produto||'Aparelho',en,np,vp,d))+
         '</div>';
     }
 
@@ -997,31 +992,15 @@
 
     // ── Detector local de apostas — roda ANTES da IA, sem gastar token ──
     var APOSTAS_KEYWORDS = [
-        // Grandes marcas globais
-        'bet365','betano','superbet','betway','betfair',
-        'sportingbet','pinnacle','1xbet','stake','bodog',
-        'betsson','bwin','unibet','parimatch','dafabet',
-        '22bet','melbet','betmgm','betcris','betmotion',
-        // Marcas brasileiras licenciadas SPA/MF
-        'pixbet','blaze','vaidebet','betnacional',
-        'esportes da sorte','galera.bet','galera bet',
-        'br4bet','estrelabet','estrela bet','realsbet',
-        'onabet','brabet','betsul','rivalo','kto',
-        'novibet','vbet','betboom','bet7k','betwarrior',
-        'mrjackbet','mr jack bet','seubet','multibet',
-        'brazino777','betdasorte','bet da sorte',
-        'goldebet','gol de bet','energia.bet','playuzu',
-        'f12.bet','f12 bet','f12bet','apostoubet','apostou bet',
-        'betdafortuna','betninja','jogomix','betpix365',
-        // Gateways exclusivos de apostas (aparecem no extrato)
-        'phoenix gaming','phoenix gaming ltda','apostaraiz',
-        'smart cluster','lottopay','gm intermediacao','wiinpay',
-        'ajc gateway','nexumpay','univebet','m v d s m technology',
-        'atm publicidade','banks tech','royal crest','gold now',
-        'luxtak','r torres','norbe fintech','norbe','futbol bet',
-        'betgaming','bet gaming'
+        'phoenix gaming','m v d s m technology','atm publicidade','smart cluster',
+        'banks tech','apostaraiz','royal crest','lottopay','gm intermediacao',
+        'wiinpay','ajc gateway','nexumpay','univebet','vaidebet','betnacional',
+        'pixbet','blaze','betano','esportes da sorte','superbet',
+        'r torres','norbe fintech','norbe','gold now','luxtak','phoenix gaming ltda',
+        'futbol bet','betgaming','bet gaming','betfair','sportingbet','betway',
+        'bet365','pinnacle','1xbet','stake','f12 bet','galera bet','kto'
     ];
-    var APOSTAS_REGEX = /\b(pixbet|vaidebet|betnacional|betano|betboom|apostas?)\b/i;
+    var APOSTAS_REGEX = /\b(bet|gaming|apostas?|cassino|esportiv|pixbet|blaze|apostaraiz)\b/i;
 
     function detectarApostas(texto) {
         var textoLower = texto.toLowerCase();
@@ -1087,7 +1066,7 @@
 
         // === ESTRATEGIA 2: Regex generico para pegar nomes nao listados ===
         var regexHits = [];
-        var reGen = /\b(bet[a-z]{3,}|apostas?)\b/gi;
+        var reGen = /\b(bet\w*|gaming\w*|apostas?\w*|cassino\w*|esportiv\w*)\b/gi;
         var rm;
         while ((rm = reGen.exec(textoLower)) !== null) {
             // Verifica se ja nao foi contado por keywords
@@ -1143,7 +1122,7 @@
         }
         if (detalhe) detalhe += '\nTotal apostado: R$ '+totalValor.toFixed(2)+' | Casas: '+destStr;
 
-        return { gatilho: gatilho, detalhe: detalhe, totalOcorr: totalOcorr, totalValor: totalValor, diasComAposta: diasComAposta, mesesComAposta: mesesComAposta, porMes: porMes, casas: Object.keys(destinatarios) };
+        return { gatilho: gatilho, detalhe: detalhe, totalOcorr: totalOcorr, totalValor: totalValor, diasComAposta: diasComAposta, mesesComAposta: mesesComAposta, porMes: porMes };
     }
 
     function resultadoApostasReprovado(prod, nomeCliente, apostas) {
@@ -1324,12 +1303,12 @@
              'sportingbet','betfair','betsson','1xbet','bet365',
              'betway','mrjack','f12.bet','f12bet','realsbet',
              'onabet','brabet','betninja','jogomix','galera.bet','galera bet',
-             'estrela bet','br4bet','realsbet','onabet','brabet',
-             'betsul','rivalo','betmotion','pinnacle','betcris',
-             'betsson','betmgm','betwarrior','mrjackbet','seubet',
-             'brazino777','betdasorte','bet da sorte','goldebet',
-             'energia.bet','f12.bet','apostoubet','betpix365',
-             'pagbet','sportbetio','betcris','betninja','jogomix'
+             'estrela bet','ivi gateway','hornet pay','novus solutions',
+             'vcoin','gdsp technology','syncpay','sync pay',
+             'pagbet','betpix','sportbetio','sport bet','betcris',
+             'rivalo','betmotion','pinnacle','betsul','sportsbet.io',
+             'velozbet','veloz bet','paggue','double.bet','fortune tiger',
+             'cassino','casino online','slots','apostou'
             ].forEach(function(c){ if(textoIA.indexOf(c)!==-1) casas.push(c); });
         }
 
@@ -1808,17 +1787,6 @@
 
             setProg('Finalizando...',90);
             var d=extrair(resp);d._produto=prod;
-
-            // Merge casas detectadas localmente (pre-IA) no resultado
-            if (apostas.casas && apostas.casas.length > 0) {
-                var casasJaExist = (d.casasJogo||[]).map(function(c){ return String(c).toLowerCase(); });
-                apostas.casas.forEach(function(c) {
-                    if (casasJaExist.indexOf(c.toLowerCase()) === -1) {
-                        if (!d.casasJogo) d.casasJogo = [];
-                        d.casasJogo.push(c);
-                    }
-                });
-            }
 
             validarApostasNaResposta(d);
 
