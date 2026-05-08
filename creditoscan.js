@@ -207,7 +207,7 @@
             },
             body: JSON.stringify({
                 model: model,
-                max_tokens: 4096,
+                max_tokens: 6000,
                 temperature: 0,
                 messages: messages
             })
@@ -312,24 +312,42 @@
 'Se parcela > teto: SUGESTAO_ENTRADA_ALTA (entrada turbinada = Valor - teto*8.4).\n'+
 'Se entrada turbinada > 80% valor: SUGESTAO_DOWNGRADE.\n\n'+
 
+'=== INSTRUCOES DOS CAMPOS NARRATIVOS ===\n'+
+'Seja DETALHADO. Use \\n dentro das strings para separar topicos. O vendedor precisa entender tudo.\n\n'+
+'analiseFinanceira: Organize em secoes com estes cabecalhos EXATOS (so inclua se tiver dados):\n'+
+'  RENDA: mes a mes com empresa e valor. Ex: "ALL MOTORS: R$1.795 (jan) / R$1.675 (fev) — media R$1.686"\n'+
+'  CASAS DE JOGO: se encontradas, mes a mes, nome da casa, valor enviado e recebido\n'+
+'  COMPROMISSOS FIXOS: cada boleto/crediario/emprestimo com nome e valor mensal\n'+
+'  COMPROMETIMENTO: % da renda comprometida (ex: "Aproximadamente 70% da renda comprometida")\n'+
+'  SALDOS: saldo final de cada mes\n'+
+'  DIVIDAS ATIVAS: emprestimos identificados com nome da instituicao\n'+
+'  PADROES DE RISCO: comportamentos que chamaram atencao\n\n'+
+'calculoPontuacao: passo a passo. Ex: "Base 50 | Renda estavel +10 | Comprom >80% -15 | Total: 45"\n'+
+'conselho: dica especifica. Se reprovado: o que mudaria. Se aprovado: o que checar ao fechar.\n\n'+
+'casasDeJogoEncontradas: CAMPO CRITICO. Array OBRIGATORIO com nomes EXATOS de casas de jogos/apostas\n'+
+'encontradas no extrato. Se nenhuma: []. Exemplos de nomes a buscar:\n'+
+'R Torres, Royal Crest, Nexabet, Nexumpay, Smart Cluster, Ganha Sorte, Vendifootball,\n'+
+'GM Intermediacao, Norbe Fintech, Phoenix Gaming, Pixbet, Blaze, Vaidebet, Betnacional,\n'+
+'ou qualquer nome contendo BET, GAMING, APOSTAS, CASSINO, LOTERIA.\n\n'+
 '=== JSON ===\n'+
 '{\n'+
 '  "nomeDocumentoPessoal": "",\n'+
 '  "nomeComprovanteRenda": "",\n'+
 '  "nomesBatem": true,\n'+
 '  "confiancaLeitura": "ALTA",\n'+
-'  "resumoExecutivo": "Frase curta pro vendedor. Ex: Autonomo agro, renda R$8k, folga R$2.5k, bom pagador.",\n'+
-'  "perfilCliente": "Tipo de renda, estabilidade, perfil comportamental.",\n'+
-'  "analiseFinanceira": "Renda, despesas, saldo, comprometimento %, riscos.",\n'+
-'  "calculoPontuacao": "Explique seu raciocinio pra nota em 2-3 linhas.",\n'+
-'  "conselho": "Dica pratica pro vendedor.",\n'+
+'  "resumoExecutivo": "1 frase: nome, renda, veredicto.",\n'+
+'  "perfilCliente": "Perfil detalhado 4-6 linhas: fonte de renda, estabilidade, comportamento.",\n'+
+'  "analiseFinanceira": "Analise completa com cabecalhos RENDA:, COMPROMETIMENTO:, SALDOS:, etc.",\n'+
+'  "calculoPontuacao": "Raciocinio passo a passo da nota.",\n'+
+'  "conselho": "Dica pratica especifica pro vendedor.",\n'+
 '  "rascunhoCalculos": "Renda R$ X. Teto parcela R$ X. Parcela base R$ X. DENTRO ou ACIMA.",\n'+
+'  "casasDeJogoEncontradas": [],\n'+
 '  "rendaEstimada": 0.00,\n'+
 '  "nota": 0,\n'+
 '  "nivel": "FORTE ou MEDIO ou FRACO ou REPROVADO",\n'+
 '  "decisao": "VENDER ou REPROVADO ou SUGESTAO_DOWNGRADE ou SUGESTAO_ENTRADA_ALTA",\n'+
 '  "entradaTurbinadaCalculada": 0.00,\n'+
-'  "motivosReprovacao": "Apenas se reprovado"\n'+
+'  "motivosReprovacao": "Topicos detalhados se reprovado. Vazio se aprovado."\n'+
 '}\n'
         );
     }
@@ -394,6 +412,7 @@
                 calculo: obj.calculoPontuacao || '', conselho: obj.conselho || '',
                 resumoExec: obj.resumoExecutivo || '',
                 rascunho: obj.rascunhoCalculos || '', motivos: obj.motivosReprovacao || '',
+                casasJogo: Array.isArray(obj.casasDeJogoEncontradas) ? obj.casasDeJogoEncontradas.filter(Boolean) : [],
                 rawJson: obj
             };
         } catch(e) {
@@ -414,11 +433,42 @@
         return s*(t*Math.pow(1+t,n))/(Math.pow(1+t,n)-1);
     }
 
+    // ── Parser de seções da analise financeira ──
+    function parsearSecoes(texto) {
+        if (!texto) return {};
+        var KEYS = ['RENDA','CASAS DE JOGO','COMPROMISSOS FIXOS','COMPROMETIMENTO','SALDOS','DIVIDAS ATIVAS','PADROES DE RISCO'];
+        var res = {};
+        KEYS.forEach(function(k) {
+            var ix = texto.indexOf(k+':');
+            if (ix===-1) return;
+            var s = ix+k.length+1;
+            var e = texto.length;
+            KEYS.forEach(function(k2){ if(k2===k)return; var i2=texto.indexOf(k2+':',s); if(i2!==-1&&i2<e)e=i2; });
+            res[k] = texto.substring(s,e).trim().replace(/\n{3,}/g,'\n\n').replace(/^[\s\-]+/,'');
+        });
+        return res;
+    }
+
+    // ── Renderiza um card de seção ──
+    function renderSecaoCard(icone, titulo, conteudo, cor, extra) {
+        if (!conteudo) return '';
+        return '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-left:3px solid '+cor+';border-radius:12px;padding:13px 14px;display:flex;flex-direction:column;gap:8px">'+
+            '<div style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:'+cor+'">'+icone+' '+titulo+'</div>'+
+            '<div style="font-size:.81rem;line-height:1.65;color:#e2e8f0">'+esc(conteudo).replace(/\n/g,'<br>')+'</div>'+
+            (extra||'')+
+        '</div>';
+    }
+
+    // ── Mensagem WhatsApp REPROVADO ──
+    function gerarWppReprovado(nomeCliente) {
+        return 'Opa! \u263a\ufe0f\n\nEnt\u00e3o, infelizmente a financeira n\u00e3o aprovou essa tentativa no momento \ud83d\ude1e\nMas calma, isso \u00e9 normal e pode mudar com o tempo!\n\nUma sugest\u00e3o: se tiver algu\u00e9m pr\u00f3ximo (como m\u00e3e, pai, irm\u00e3o, esposa...) que possa fazer a an\u00e1lise no nome dela(e), talvez d\u00ea certo. \ud83d\ude09\n\u00c9 s\u00f3 me avisar que eu mando as informa\u00e7\u00f5es de novo rapidinho! \ud83d\udcc4\u2705\n\nE claro, seguimos com outras op\u00e7\u00f5es tamb\u00e9m: cart\u00e3o de cr\u00e9dito em at\u00e9 18x sem juros, ou modelos mais acess\u00edveis no boleto.\n\nT\u00f4 por aqui pra te ajudar no que for preciso! \ud83e\udd1d\ud83d\udcf2';
+    }
+
     function gerarWpp(produto, en, np, vp, d) {
-        if (!d.aprov) return '';
-        if (d.downgrade)   return 'Ola '+d.nomeCliente+'! Boas noticias, liberamos credito pra voce! \u2705\n\nO '+produto+' ultrapassou sua margem ideal, MAS temos um limite mais acessivel aprovado AGORA! \ud83d\ude80\nTemos otimas opcoes no estoque que cabem no seu bolso!\nMe fala qual modelo te interessa \ud83d\udc47';
-        if (d.entradaAlta) return 'Ola '+d.nomeCliente+', tudo bem? \ud83d\ude0a\ud83d\udcf2\nSeu cadastro foi avaliado na Workcell! \u2705\n\nPara liberar o aparelho e manter a parcela suave, o sistema calculou uma entrada de '+R$(en)+'.\nSua parcela fica em apenas '+np+'x de '+R$(vp)+'! \ud83d\udcc9\n\nVoce tem esse valor disponivel (FGTS, acerto, poupanca)? \ud83d\udc47';
-        return 'Ola '+d.nomeCliente+', tudo bem? \ud83d\ude0a\ud83d\udcf2\nSeu cadastro foi APROVADO aqui na Workcell! \u2705\n\n\ud83d\udcf1 '+produto+'\n\ud83d\udcb0 Entrada: '+R$(en)+'\n\ud83d\udcb3 + '+np+'x de '+R$(vp)+' no boleto\n\n\u2714 Aparelho revisado e com garantia\nMe confirma aqui pra gente seguir com a liberacao \ud83d\udc47';
+        if (!d.aprov) return gerarWppReprovado(d.nomeCliente);
+        if (d.downgrade) return 'Ol\u00e1 '+d.nomeCliente+'! Boas not\u00edcias, liberamos cr\u00e9dito pra voc\u00ea! \u2705\n\nO '+produto+' ultrapassou sua margem ideal, MAS temos um limite mais acess\u00edvel aprovado AGORA! \ud83d\ude80\nTemos \u00f3timas op\u00e7\u00f5es no estoque que cabem no seu bolso!\nMe fala qual modelo te interessa \ud83d\udc47';
+        if (d.entradaAlta) return 'Ol\u00e1 '+d.nomeCliente+', tudo bem? \ud83d\ude0a\ud83d\udcf2\nSeu cadastro foi avaliado na Workcell! \u2705\n\nPara liberar o aparelho e manter a parcela suave, o sistema calculou uma entrada de '+R$(en)+'.\nSua parcela fica em apenas '+np+'x de '+R$(vp)+' MENSAL no boleto! \ud83d\udcc9\n\nVoc\u00ea tem esse valor dispon\u00edvel (FGTS, acerto, poupan\u00e7a)? \ud83d\udc47';
+        return 'Ol\u00e1 '+d.nomeCliente+', tudo bem? \ud83d\ude0a\ud83d\udcf2\nSeu cadastro foi APROVADO aqui na Workcell! \u2705\n\n\ud83d\udcf1 '+produto+'\n\ud83d\udcb0 Entrada: '+R$(en)+'\n\ud83d\udcb3 + '+np+'x de '+R$(vp)+' MENSAL no boleto\n\n\u2714 Aparelho revisado e com garantia\nMe confirma aqui pra gente seguir com a libera\u00e7\u00e3o \ud83d\udc47';
     }
 
    async function salvarFB(nome, produto, texto, d, cpf_cliente) { // Adicionado parâmetro cpf_cliente
@@ -451,113 +501,315 @@
     } catch(e){}
 }
 
-    function formatResult(texto, d, valorBase) {
-        var nc = d.nota !== null ? (d.nota>=80 ? '#16a34a' : d.nota>=60 ? '#d97706' : d.nota>=40 ? '#f59e0b' : '#dc2626') : '#888';
+    // ── Parser de seções da analiseFinanceira ──────────────────────────────────
+    function parseSections(texto) {
+        var headers = ['RENDA','CASAS DE JOGO','COMPROMISSOS FIXOS','COMPROMETIMENTO','SALDOS','DIVIDAS ATIVAS','PADROES DE RISCO'];
+        var result = {}, remaining = texto || '';
+        headers.forEach(function(h) {
+            var re = new RegExp(h+'\\s*[:\\-]?\\s*', 'i');
+            var idx = remaining.search(re);
+            if (idx === -1) return;
+            var after = remaining.substring(idx).replace(re,'');
+            var nextIdx = after.length;
+            headers.forEach(function(h2){
+                if (h2===h) return;
+                var re2 = new RegExp(h2+'\\s*[:\\-]?\\s*','i');
+                var i2 = after.search(re2);
+                if (i2 !== -1 && i2 < nextIdx) nextIdx = i2;
+            });
+            result[h] = after.substring(0, nextIdx).trim().replace(/^[-–]\s*/,'');
+        });
+        return result;
+    }
+
+    function secCard(icone, titulo, conteudo, corBg, corBdr, corTitulo) {
+        if (!conteudo || !conteudo.trim()) return '';
+        var linhas = conteudo.split(/\n/).map(function(l){
+            l = l.trim();
+            if (!l) return '';
+            // Itens de lista com -
+            if (/^[-–•]/.test(l)) return '<div style="display:flex;gap:6px;margin:3px 0"><span style="color:'+corTitulo+';flex-shrink:0">›</span><span>'+esc(l.replace(/^[-–•]\s*/,''))+'</span></div>';
+            return '<p style="margin:3px 0">'+esc(l)+'</p>';
+        }).join('');
+        return '<div style="background:'+corBg+';border:1px solid '+corBdr+';border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px">'+
+            '<div style="font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:'+corTitulo+';display:flex;align-items:center;gap:5px">'+icone+' '+titulo+'</div>'+
+            '<div style="font-size:.79rem;line-height:1.55;color:rgba(255,255,255,.82)">'+linhas+'</div>'+
+        '</div>';
+    }
+
+    function renderAnaliseDetalhada(d) {
+        var sec = parseSections(d.analise || '');
         var html = '';
-        if (d.resumoExec) html += '<div style="background:rgba(59,130,246,.08);border:1.5px solid rgba(59,130,246,.25);border-radius:12px;padding:12px 14px;margin-bottom:12px"><div style="font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#60a5fa;margin-bottom:5px">\ud83d\udca1 Resumo Executivo</div><p style="margin:0;font-size:.85rem;line-height:1.6;color:#e0e7ff;font-weight:500">'+esc(d.resumoExec)+'</p></div>';
-        html += '<h4 class="cs-rt">Perfil do Cliente: '+esc(d.nomeCompleto)+'</h4><p class="cs-rp">'+esc(d.perfil)+'</p><h4 class="cs-rt">Analise Financeira</h4><p class="cs-rp">'+esc(d.analise)+'</p>';
-        if (d.calculo) html += '<h4 class="cs-rt" style="color:#a78bfa">\ud83d\udcca Raciocinio da Nota</h4><p class="cs-rp" style="font-size:0.82em;line-height:1.6;background:rgba(139,92,246,.08);padding:10px 12px;border-radius:8px;border-left:3px solid #a78bfa;">'+esc(d.calculo).replace(/\n/g,'<br>')+'</p>';
-        if (d.conselho) html += '<div style="background:rgba(74,222,128,.06);border:1.5px solid rgba(74,222,128,.2);border-radius:12px;padding:12px 14px;margin-top:8px"><div style="font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#4ade80;margin-bottom:5px">\ud83c\udfaf Conselho pro Vendedor</div><p style="margin:0;font-size:.82rem;line-height:1.6;color:#bbf7d0">'+esc(d.conselho)+'</p></div>';
-        if (d.reprovado && d.motivos) html += '<h4 class="cs-rt" style="color:#ef4444">Motivos da Reprovacao</h4><p class="cs-rp" style="color:#fca5a5">'+esc(d.motivos).replace(/\n/g,'<br>')+'</p>';
-        if (d.rascunho) html += '<h4 class="cs-rt">Rascunho de Calculos</h4><p class="cs-rp" style="opacity:0.7;font-size:0.8em;">'+esc(d.rascunho).replace(/\n/g,'<br>')+'</p>';
 
-        var riscoLabel = d.risco.split(' \u00b7 ')[0];
-        var nota_html = '<div class="cs-nota-row"><div class="cs-nota-c" style="border-color:'+nc+';color:'+nc+';background:'+nc+'18">'+d.nota+'</div><div><div class="cs-nota-lbl">Pontuacao &middot; <span style="color:'+nc+';font-weight:800">'+riscoLabel+'</span></div>'+(d.rendaEstimada>0?'<div class="cs-nota-renda">\ud83d\udcb5 Renda estimada: <strong>'+R$(d.rendaEstimada)+'</strong></div>':'')+'</div></div>';
+        // Resumo executivo
+        if (d.resumoExec) html += '<div style="background:rgba(59,130,246,.08);border:1.5px solid rgba(59,130,246,.25);border-radius:12px;padding:12px 14px">'+
+            '<div style="font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#60a5fa;margin-bottom:5px">💡 Resumo Executivo</div>'+
+            '<p style="margin:0;font-size:.84rem;line-height:1.55;color:#e0e7ff;font-weight:500">'+esc(d.resumoExec)+'</p>'+
+        '</div>';
 
-        // Alvo de Venda Ideal — menor entre teto de parcela e trava de renda
-        var alvo_html = '';
-        if (d.rendaEstimada > 0 && d.nota !== null && !d.reprovado) {
-            var alvoPct   = d.nota >= 85 ? 0.30 : d.nota >= 60 ? 0.20 : 0.10;
-            var alvoTeto  = d.rendaEstimada * alvoPct;
-            var alvoFinan = alvoTeto * 8.4;
-            var alvoMaxParcela = Math.floor((alvoFinan / (1 - d.entradaPct)) / 10) * 10;
-            // Trava de multiplicador de renda por perfil
-            var multRenda = d.nota >= 85 ? 3.0 : d.nota >= 60 ? 2.2 : 1.0;
-            var alvoMaxRenda = Math.floor((d.rendaEstimada * multRenda) / 10) * 10;
-            // Usa o menor dos dois limites
-            var alvoMax = Math.min(alvoMaxParcela, alvoMaxRenda);
-            // Identifica qual trava limitou
-            var travaAtiva = alvoMaxRenda < alvoMaxParcela ? 'renda' : 'parcela';
-            var alvoColor = d.nota >= 85 ? '#4ade80' : d.nota >= 60 ? '#fbbf24' : '#fb923c';
-            var alvoSub = travaAtiva === 'renda'
-                ? 'Limitado pela renda (' + multRenda + 'x = ' + R$(alvoMaxRenda) + ') &middot; entrada de ' + Math.round(d.entradaPct*100) + '%'
-                : 'Parcela caberia em ' + Math.round(alvoPct*100) + '% da renda &middot; entrada de ' + Math.round(d.entradaPct*100) + '%';
-            // Texto explicativo do tooltip
-            var alvoNomeCliente = d.nomeCliente || 'este cliente';
-            var alvoPerfilLabel = d.nota >= 85 ? 'FORTE' : d.nota >= 60 ? 'MEDIO' : 'FRACO';
-            var alvoExplicacao = 'Recomendamos aparelhos ate ' + R$(alvoMax) + ' para ' + alvoNomeCliente +
-                ', pois sua renda estimada e de ' + R$(d.rendaEstimada) + '. ' +
-                'Com perfil ' + alvoPerfilLabel + ', o limite e de ' + multRenda + 'x a renda' +
-                (travaAtiva === 'renda' ? ' — acima disso o risco de inadimplencia aumenta muito.' :
-                ' — a parcela comprometeria ' + Math.round(alvoPct*100) + '% da renda mensal.');
-            var alvoTooltipId = 'cs_alvo_tip_' + Date.now();
-            alvo_html = '<div id="'+alvoTooltipId+'_wrap" style="position:relative;cursor:pointer" onclick="(function(el,id){'+
-                'var tip=document.getElementById(id);'+
-                'if(tip){var show=tip.style.opacity!=\'1\';tip.style.opacity=show?\'1\':\'0\';tip.style.pointerEvents=show?\'auto\':\'none\';'+
-                'if(show)setTimeout(function(){tip.style.opacity=\'0\';tip.style.pointerEvents=\'none\';},4500);}'+
-                '})(this,\''+alvoTooltipId+'\')">' +
-                '<div style="display:flex;align-items:center;gap:10px;padding:9px 13px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">'+
-                    '<i class="bi bi-bullseye" style="color:'+alvoColor+';font-size:1rem;flex-shrink:0"></i>'+
-                    '<div style="flex:1">'+
-                        '<div style="font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:rgba(255,255,255,.4)">Alvo de Venda Ideal <i class="bi bi-info-circle" style="font-size:.6rem;opacity:.5"></i></div>'+
-                        '<div style="font-size:.88rem;font-weight:800;color:'+alvoColor+'">Aparelhos de ate '+R$(alvoMax)+'</div>'+
-                        '<div style="font-size:.62rem;color:rgba(255,255,255,.4)">'+alvoSub+'</div>'+
-                    '</div>'+
-                '</div>'+
-                '<div id="'+alvoTooltipId+'" style="opacity:0;pointer-events:none;transition:opacity .3s;position:absolute;top:0;left:0;right:0;z-index:10;background:rgba(15,20,40,.97);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:11px 13px;font-size:.76rem;line-height:1.6;color:#e2e8f0;">'+
-                    esc(alvoExplicacao)+
-                '</div>'+
+        // Perfil
+        if (d.perfil) html += secCard('👤','Perfil — '+esc(d.nomeCompleto), d.perfil,'rgba(255,255,255,.03)','rgba(255,255,255,.08)','#a78bfa');
+
+        // Apostas — só mostra se há casas OU se a seção tem conteúdo relevante
+        var jogosConteudo = sec['CASAS DE JOGO'] || '';
+        var casasArr = d.casasJogo || [];
+        var temJogo = casasArr.length > 0 || (jogosConteudo && !/nenhuma/i.test(jogosConteudo));
+        if (temJogo) {
+            var jogosHtml = '';
+            if (casasArr.length > 0) {
+                // Tabela por mês se disponível, senão lista
+                jogosHtml = casasArr.map(function(c){ return '- '+c; }).join('\n');
+                if (jogosConteudo && jogosConteudo.length > 10) jogosHtml = jogosConteudo;
+            } else {
+                jogosHtml = jogosConteudo;
+            }
+            html += secCard('🎰','Mapeamento de Jogos', jogosHtml,'rgba(239,68,68,.07)','rgba(239,68,68,.25)','#f87171');
+        }
+
+        // Renda
+        if (sec['RENDA']) html += secCard('💰','Análise de Renda Real', sec['RENDA'],'rgba(74,222,128,.05)','rgba(74,222,128,.2)','#4ade80');
+
+        // Comprometimento + Compromissos Fixos juntos
+        var compConteudo = [sec['COMPROMISSOS FIXOS'], sec['COMPROMETIMENTO']].filter(Boolean).join('\n\n');
+        if (compConteudo) html += secCard('📊','Comprometimento', compConteudo,'rgba(251,191,36,.05)','rgba(251,191,36,.2)','#fbbf24');
+
+        // Saúde Financeira: saldos + dívidas
+        var saudeConteudo = [sec['SALDOS'], sec['DIVIDAS ATIVAS']].filter(Boolean).join('\n\n');
+        if (saudeConteudo) html += secCard('🏦','Saúde Financeira', saudeConteudo,'rgba(96,165,250,.05)','rgba(96,165,250,.2)','#60a5fa');
+
+        // Padrões de risco
+        if (sec['PADROES DE RISCO']) html += secCard('🔍','Padrões de Risco', sec['PADROES DE RISCO'],'rgba(249,115,22,.05)','rgba(249,115,22,.2)','#fb923c');
+
+        // Raciocínio da nota
+        if (d.calculo) html += '<div style="background:rgba(139,92,246,.07);border:1px solid rgba(139,92,246,.25);border-radius:12px;padding:12px 14px">'+
+            '<div style="font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#a78bfa;margin-bottom:6px">📈 Raciocínio da Nota</div>'+
+            '<p style="margin:0;font-size:.78rem;line-height:1.6;color:rgba(255,255,255,.75);font-family:monospace;white-space:pre-wrap">'+esc(d.calculo)+'</p>'+
+        '</div>';
+
+        // Conselho pro vendedor
+        if (d.conselho) html += '<div style="background:rgba(74,222,128,.05);border:1.5px solid rgba(74,222,128,.2);border-radius:12px;padding:12px 14px">'+
+            '<div style="font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#4ade80;margin-bottom:5px">🎯 Conselho pro Vendedor</div>'+
+            '<p style="margin:0;font-size:.82rem;line-height:1.55;color:#bbf7d0">'+esc(d.conselho)+'</p>'+
+        '</div>';
+
+        // Motivos de reprovação
+        if (d.reprovado && d.motivos) html += '<div style="background:rgba(239,68,68,.08);border:1.5px solid rgba(239,68,68,.3);border-radius:12px;padding:12px 14px">'+
+            '<div style="font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#f87171;margin-bottom:5px">❌ Motivos da Reprovação</div>'+
+            '<p style="margin:0;font-size:.82rem;line-height:1.6;color:#fca5a5;white-space:pre-wrap">'+esc(d.motivos)+'</p>'+
+        '</div>';
+
+        return html;
+    }
+
+    function formatResult(texto, d, valorBase) {
+        var nc=d.nota!==null?(d.nota>=80?'#16a34a':d.nota>=60?'#d97706':d.nota>=40?'#f59e0b':'#dc2626'):'#888';
+        var riscoLabel=d.risco.split(' \u00b7 ')[0];
+        var secoes=parsearSecoes(d.analise||'');
+
+        // ── BANNER ──
+        var banner='';
+        if(d.entradaAlta) banner='<div class="cs-dec" style="background:rgba(245,158,11,.12);border:2px solid rgba(245,158,11,.4);color:#f59e0b"><i class="bi bi-exclamation-triangle-fill"></i> PLANO C \u2014 ENTRADA TURBINADA</div>';
+        else if(d.downgrade) banner='<div class="cs-dec" style="background:rgba(59,130,246,.12);border:2px solid rgba(59,130,246,.4);color:#60a5fa"><i class="bi bi-info-circle-fill"></i> PLANO B \u2014 LIMITE APROVADO</div>';
+        else if(d.aprov) banner='<div class="cs-dec cs-dec-yes"><i class="bi bi-check-circle-fill"></i> APROVADO \u2014 PODE VENDER</div>';
+        else banner='<div class="cs-dec cs-dec-no"><i class="bi bi-x-circle-fill"></i> REPROVADO \u2014 N\u00c3O VENDER</div>';
+
+        // ── CONFIANÇA ──
+        var confianca_html='';
+        if(d.confianca==='BAIXA') confianca_html='<div class="cs-alert" style="background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.3);color:#fbbf24"><i class="bi bi-exclamation-triangle-fill" style="color:#fbbf24"></i><span><strong>Atenção:</strong> Documento com qualidade baixa. Peça uma foto melhor.</span></div>';
+        else if(d.confianca==='MEDIA') confianca_html='<div class="cs-alert" style="background:rgba(251,191,36,.04);border-color:rgba(251,191,36,.15);color:rgba(251,191,36,.7)"><i class="bi bi-eye-fill"></i><span>Qualidade media — verifique o nome manualmente.</span></div>';
+
+        // ── NOTA ──
+        var nota_html='<div class="cs-nota-row"><div class="cs-nota-c" style="border-color:'+nc+';color:'+nc+';background:'+nc+'18">'+d.nota+'</div><div><div class="cs-nota-lbl">Pontuação · <span style="color:'+nc+';font-weight:800">'+riscoLabel+'</span></div>'+(d.rendaEstimada>0?'<div class="cs-nota-renda">\ud83d\udcb5 Renda estimada: <strong>'+R$(d.rendaEstimada)+'</strong></div>':'')+'</div></div>';
+
+        // ── RESUMO EXECUTIVO ──
+        var resumo_html='';
+        if(d.resumoExec) resumo_html='<div style="background:rgba(59,130,246,.08);border:1.5px solid rgba(59,130,246,.25);border-radius:12px;padding:12px 14px"><div style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#60a5fa;margin-bottom:5px">\ud83d\udca1 Resumo Executivo</div><p style="margin:0;font-size:.85rem;line-height:1.6;color:#e0e7ff;font-weight:500">'+esc(d.resumoExec)+'</p></div>';
+
+        // ── IDENTIFICAÇÃO ──
+        var tid='';
+        if(d.nomeDocPessoal||d.nomeRenda){
+            var mc=d.nomesBatem===true?'#4ade80':d.nomesBatem===false?'#f87171':'#fbbf24';
+            var mi=d.nomesBatem===true?'\u2705':d.nomesBatem===false?'\ud83d\udea8':'\u26a0\ufe0f';
+            var ml=d.nomesBatem===true?'Titularidade confirmada':d.nomesBatem===false?'FRAUDE \u2014 nomes divergem':'Sem documento pessoal';
+            tid='<div style="display:flex;flex-direction:column;gap:4px;padding:9px 11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:9px;margin-top:8px">'+
+                (d.nomeDocPessoal?'<div style="font-size:.74rem;color:#e2e8f0">\ud83c\uddee\ud83c\udced <strong>Doc:</strong> '+esc(d.nomeDocPessoal)+'</div>':'')+
+                (d.nomeRenda?'<div style="font-size:.74rem;color:#e2e8f0">\ud83d\udcc4 <strong>Renda:</strong> '+esc(d.nomeRenda)+'</div>':'')+
+                '<div style="font-size:.74rem;font-weight:800;color:'+mc+'">'+mi+' '+ml+'</div>'+
+            '</div>';
+        }
+        // Titularidade como bloco independente
+        var titularidade_html = tid ? '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 14px">'+tid+'</div>' : '';
+
+        var perfil_html='';
+        if(d.perfil){
+            perfil_html='<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-left:3px solid #60a5fa;border-radius:12px;padding:13px 14px;display:flex;flex-direction:column;gap:8px">'+
+                '<div style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#60a5fa">\ud83d\udc64 '+esc(d.nomeCompleto)+'</div>'+
+                '<div style="font-size:.81rem;line-height:1.65;color:#e2e8f0">'+esc(d.perfil).replace(/\n/g,'<br>')+'</div>'+
             '</div>';
         }
 
-
-        var titularidade_html = '';
-        if (d.nomeDocPessoal || d.nomeRenda) {
-            var matchColor = d.nomesBatem === true ? '#4ade80' : d.nomesBatem === false ? '#f87171' : '#fbbf24';
-            var matchIcon  = d.nomesBatem === true ? '\u2705' : d.nomesBatem === false ? '\ud83d\udea8' : '\u26a0\ufe0f';
-            var matchLabel = d.nomesBatem === true ? 'Titularidade confirmada' : d.nomesBatem === false ? 'FRAUDE - nomes divergem' : 'Sem documento pessoal';
-            titularidade_html =
-                '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:11px;padding:10px 13px;display:flex;flex-direction:column;gap:5px;">'+
-                    '<div style="font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.4)">Verificacao de Titularidade</div>'+
-                    (d.nomeDocPessoal ? '<div style="font-size:.78rem;color:#e2e8f0">\ud83c\uddee\ud83c\udced <strong>Doc:</strong> '+esc(d.nomeDocPessoal)+'</div>' : '')+
-                    (d.nomeRenda ? '<div style="font-size:.78rem;color:#e2e8f0">\ud83d\udcc4 <strong>Renda:</strong> '+esc(d.nomeRenda)+'</div>' : '')+
-                    '<div style="font-size:.78rem;font-weight:800;color:'+matchColor+'">'+matchIcon+' '+matchLabel+'</div>'+
+        // ── APOSTAS ──
+        var apostas_html='';
+        var casasJogo=d.casasJogo||[];
+        if(casasJogo.length>0){
+            var casasItems=casasJogo.map(function(c){
+                return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(239,68,68,.1)">'+
+                    '<i class="bi bi-x-circle-fill" style="color:#f87171;font-size:.75rem;flex-shrink:0"></i>'+
+                    '<span style="font-size:.8rem;color:#fca5a5;font-weight:600">'+esc(typeof c==='object'?c.casa||c:String(c))+'</span>'+
                 '</div>';
+            }).join('');
+            apostas_html='<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-left:3px solid #ef4444;border-radius:12px;padding:13px 14px;display:flex;flex-direction:column;gap:8px">'+
+                '<div style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#f87171">\ud83c\udfb0 Apostas Identificadas \u2014 '+casasJogo.length+' Casa'+(casasJogo.length>1?'s':'')+'</div>'+
+                '<div>'+casasItems+'</div>'+
+                (secoes['CASAS DE JOGO']?'<div style="font-size:.75rem;color:rgba(255,255,255,.5);line-height:1.5;margin-top:4px">'+esc(secoes['CASAS DE JOGO']).replace(/\n/g,'<br>')+'</div>':'')+
+            '</div>';
+        } else {
+            apostas_html='<div style="background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.15);border-left:3px solid #4ade80;border-radius:12px;padding:11px 13px;display:flex;align-items:center;gap:10px">'+
+                '<i class="bi bi-check-circle-fill" style="color:#4ade80;font-size:1.1rem;flex-shrink:0"></i>'+
+                '<div><div style="font-size:.72rem;font-weight:800;color:#4ade80">Sem Apostas Identificadas</div>'+
+                '<div style="font-size:.68rem;color:rgba(255,255,255,.4)">Nenhuma casa de apostas encontrada no extrato</div></div>'+
+            '</div>';
         }
 
-        var confianca_html = '';
-        if (d.confianca === 'BAIXA') {
-            confianca_html = '<div class="cs-alert" style="background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.3);color:#fbbf24"><i class="bi bi-exclamation-triangle-fill" style="color:#fbbf24"></i><span><strong>Atencao:</strong> Foto do documento com qualidade baixa. Resultado pode ser impreciso. Peca uma foto melhor.</span></div>';
-        } else if (d.confianca === 'MEDIA') {
-            confianca_html = '<div class="cs-alert" style="background:rgba(251,191,36,.04);border-color:rgba(251,191,36,.15);color:rgba(251,191,36,.7)"><i class="bi bi-eye-fill" style="color:rgba(251,191,36,.7)"></i><span>Documento lido com qualidade media. Verifique o nome manualmente.</span></div>';
+        // ── RENDA ──
+        var renda_html=renderSecaoCard('\ud83d\udcb0','Análise de Renda',secoes['RENDA'],'#4ade80');
+
+        // ── COMPROMETIMENTO com barra visual ──
+        var comp_html='';
+        if(secoes['COMPROMETIMENTO']){
+            var compT=secoes['COMPROMETIMENTO'];
+            var mPct=compT.match(/(\d+)\s*[\-\–]?\s*%/);
+            var pct=mPct?Math.min(parseInt(mPct[1]),100):0;
+            var barCor=pct>=90?'#ef4444':pct>=70?'#f59e0b':'#4ade80';
+            var barHtml=pct>0?'<div style="margin-top:8px"><div style="display:flex;justify-content:space-between;align-items:center;font-size:.65rem;color:rgba(255,255,255,.5);margin-bottom:5px"><span>Comprometimento de renda</span><span style="color:'+barCor+';font-weight:800;font-size:.78rem">'+pct+'%</span></div><div style="background:rgba(255,255,255,.08);border-radius:99px;height:8px;overflow:hidden"><div style="height:100%;background:'+barCor+';border-radius:99px;width:'+pct+'%"></div></div></div>':'';
+            comp_html=renderSecaoCard('\ud83d\udcca','Comprometimento de Renda',compT,'#fbbf24',barHtml);
         }
 
-        var banner = '';
-        if (d.entradaAlta) banner = '<div class="cs-dec" style="background:rgba(245,158,11,.12);border:2px solid rgba(245,158,11,.4);color:#f59e0b"><i class="bi bi-exclamation-triangle-fill"></i> PLANO C \u2014 ENTRADA TURBINADA</div>';
-        else if (d.downgrade) banner = '<div class="cs-dec" style="background:rgba(59,130,246,.12);border:2px solid rgba(59,130,246,.4);color:#60a5fa"><i class="bi bi-info-circle-fill"></i> PLANO B \u2014 LIMITE APROVADO</div>';
-        else if (d.aprov) banner = '<div class="cs-dec cs-dec-yes"><i class="bi bi-check-circle-fill"></i> APROVADO \u2014 PODE VENDER</div>';
-        else banner = '<div class="cs-dec cs-dec-no"><i class="bi bi-x-circle-fill"></i> REPROVADO \u2014 NAO VENDER</div>';
+        // ── SAÚDE FINANCEIRA ──
+        var saude_html='';
+        var saldoT=secoes['SALDOS']||''; var dividaT=secoes['DIVIDAS ATIVAS']||'';
+        if(saldoT||dividaT){
+            var saudeConteudo=(saldoT?'SALDOS:\n'+saldoT:'')+((saldoT&&dividaT)?'\n\n':'')+(dividaT?'DÍVIDAS ATIVAS:\n'+dividaT:'');
+            saude_html=renderSecaoCard('\ud83c\udfe6','Saúde Financeira',saudeConteudo.trim(),'#a78bfa');
+        }
 
-        if (!d.aprov) return '<div class="cs-ri">'+banner+confianca_html+titularidade_html+nota_html+alvo_html+'<div class="cs-rb">'+html+'</div></div>';
+        // ── COMPROMISSOS FIXOS ──
+        var fixos_html=renderSecaoCard('\ud83d\udccb','Compromissos Fixos',secoes['COMPROMISSOS FIXOS'],'#f59e0b');
 
-        var vn = valorBase || 0;
-        var enBaseMin = Math.ceil(vn * d.entradaPct / 10) * 10;
-        // Entrada turbinada: usa d.entrada (calculada pelo reavaliarDecisao), nao o % base
-        var enTurb = d.entradaAlta && d.entrada ? Math.ceil(parseFloat(d.entrada)/10)*10 : enBaseMin;
-        var enMin  = d.entradaAlta ? enTurb : enBaseMin;
-        var en = enMin;
-        var np = d.parcelas ? parseInt(d.parcelas) : 12, tx = d.taxa ? parseFloat(d.taxa) : 6;
-        var vp = price(vn, en, np, tx), tt = en + vp * np;
-        var initialWpp = gerarWpp(d._produto || 'Aparelho', en, np, vp, d);
-        var wpp_block = '<div class="cs-wpp"><div class="cs-wpp-lbl"><i class="bi bi-whatsapp"></i> Mensagem pronta \u2014 toque para copiar</div><div class="cs-wpp-txt" id="cs_wpp_txt" title="Toque para copiar">'+esc(initialWpp).replace(/\n/g,'<br>')+'</div><div class="cs-wpp-cp-hint" id="cs_wpp_hint"><i class="bi bi-clipboard-fill"></i> Toque no texto acima para copiar</div></div>';
-        if (d.downgrade) return '<div class="cs-ri">'+banner+confianca_html+titularidade_html+nota_html+alvo_html+wpp_block+'<div class="cs-rb">'+html+'</div></div>';
-        var parcOpts = ''; for (var px=1; px<=12; px++) parcOpts += '<option value="'+px+'"'+(px===np?' selected':'')+'>'+px+'x</option>';
-        var sim_grid = '<div class="cs-sim-grid"><div><label class="cs-lbl">Entrada (R$)</label><input class="cs-in" type="number" id="cs_en" value="'+en.toFixed(2)+'" step="10"></div><div><label class="cs-lbl">Parcelas</label><select class="cs-in" id="cs_np">'+parcOpts+'</select></div><div><label class="cs-lbl">Juros %am</label><input class="cs-in" type="number" id="cs_tx" value="'+tx.toFixed(1)+'" min="0" max="30" step="0.5"></div></div><div class="cs-pills" id="cs_pills"><div class="cs-pill'+(d.entradaAlta?' cs-pill-o':'')+'"> Entrada: <strong>'+R$(en)+'</strong></div><div class="cs-pill"> <strong>'+np+'x</strong> de <strong>'+R$(vp)+'</strong></div><div class="cs-pill cs-pill-j"> Juros: <strong>'+tx+'%am</strong></div><div class="cs-pill cs-pill-t"> Total: <strong>'+R$(tt)+'</strong></div></div>';
-        var sim = (d.entradaAlta)
-            ? '<div class="cs-sim cs-sim-orange"><div class="cs-sim-ttl"><i class="bi bi-lightning-charge-fill"></i> Entrada Turbinada</div><div class="cs-sim-aviso cs-sim-aviso-orange"><i class="bi bi-lock-fill"></i> Entrada minima travada em '+R$(enMin)+' ('+Math.round(enMin/vn*100)+'% do valor) — parcela cabe no orcamento</div>'+sim_grid+'</div>'
-            : '<div class="cs-sim"><div class="cs-sim-ttl"><i class="bi bi-sliders"></i> Simular condicoes</div><div class="cs-sim-aviso"><i class="bi bi-lock-fill"></i> Entrada minima: '+Math.round(d.entradaPct*100)+'% = '+R$(enMin)+' | Perfil '+riscoLabel+'</div>'+sim_grid+'</div>';
-        return '<div class="cs-ri">'+banner+confianca_html+titularidade_html+nota_html+alvo_html+sim+wpp_block+'<div class="cs-rb">'+html+'</div></div>';
+        // ── PADRÕES ──
+        var padroes_html=renderSecaoCard('\ud83d\udd0d','Padrões de Risco',secoes['PADROES DE RISCO'],'#fb923c');
+
+        // ── RACIOCÍNIO DA NOTA ──
+        var calc_html='';
+        if(d.calculo) calc_html='<div style="background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.2);border-left:3px solid #a78bfa;border-radius:12px;padding:13px 14px">'+
+            '<div style="font-size:.6rem;font-weight:800;text-transform:uppercase;color:#a78bfa;margin-bottom:6px">\ud83d\udcca Raciocínio da Nota</div>'+
+            '<div style="font-size:.79rem;line-height:1.6;color:#ddd6fe">'+esc(d.calculo).replace(/\n/g,'<br>')+'</div>'+
+        '</div>';
+
+        // ── CONSELHO ──
+        var conselho_html='';
+        if(d.conselho) conselho_html='<div style="background:rgba(74,222,128,.06);border:1.5px solid rgba(74,222,128,.2);border-radius:12px;padding:12px 14px">'+
+            '<div style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#4ade80;margin-bottom:5px">\ud83c\udfaf Conselho pro Vendedor</div>'+
+            '<p style="margin:0;font-size:.82rem;line-height:1.6;color:#bbf7d0">'+esc(d.conselho)+'</p>'+
+        '</div>';
+
+        // ── MOTIVOS ──
+        var motivos_html='';
+        if(d.reprovado&&d.motivos) motivos_html='<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-left:3px solid #ef4444;border-radius:12px;padding:13px 14px">'+
+            '<div style="font-size:.6rem;font-weight:800;text-transform:uppercase;color:#f87171;margin-bottom:6px">\u274c Motivos da Reprovação</div>'+
+            '<div style="font-size:.81rem;line-height:1.65;color:#fca5a5">'+esc(d.motivos).replace(/\n/g,'<br>')+'</div>'+
+        '</div>';
+
+        // ── ALVO DE VENDA ──
+        var alvo_html='';
+        if(d.rendaEstimada>0&&d.nota!==null&&!d.reprovado){
+            var alvoPct=d.nota>=85?0.30:d.nota>=60?0.20:0.10;
+            var alvoTeto=d.rendaEstimada*alvoPct;
+            var alvoFinan=alvoTeto*8.4;
+            var alvoMaxParcela=Math.floor((alvoFinan/(1-d.entradaPct))/10)*10;
+            var multRenda=d.nota>=85?3.0:d.nota>=60?2.2:1.0;
+            var alvoMaxRenda=Math.floor((d.rendaEstimada*multRenda)/10)*10;
+            var alvoMax=Math.min(alvoMaxParcela,alvoMaxRenda);
+            var travaAtiva=alvoMaxRenda<alvoMaxParcela?'renda':'parcela';
+            var alvoColor=d.nota>=85?'#4ade80':d.nota>=60?'#fbbf24':'#fb923c';
+            var alvoSub=travaAtiva==='renda'?'Limitado pela renda ('+multRenda+'x = '+R$(alvoMaxRenda)+') \u00b7 entrada '+Math.round(d.entradaPct*100)+'%':'Parcela em '+Math.round(alvoPct*100)+'% da renda \u00b7 entrada '+Math.round(d.entradaPct*100)+'%';
+            var alvoExpl='Aparelhos até '+R$(alvoMax)+' para '+esc(d.nomeCliente||'este cliente')+'. Renda '+R$(d.rendaEstimada)+', perfil '+(d.nota>=85?'FORTE':d.nota>=60?'MÉDIO':'FRACO')+', limite '+multRenda+'x a renda.';
+            var alvoTid='cs_alvo_tip_'+Date.now();
+            alvo_html='<div id="'+alvoTid+'_wrap" style="position:relative;cursor:pointer" onclick="(function(e,id){var t=document.getElementById(id);if(t){var s=t.style.opacity!=\'1\';t.style.opacity=s?\'1\':\'0\';t.style.pointerEvents=s?\'auto\':\'none\';if(s)setTimeout(function(){t.style.opacity=\'0\';t.style.pointerEvents=\'none\';},4500);}})(this,\''+alvoTid+'\')">'+
+                '<div style="display:flex;align-items:center;gap:10px;padding:9px 13px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">'+
+                    '<i class="bi bi-bullseye" style="color:'+alvoColor+';font-size:1rem;flex-shrink:0"></i>'+
+                    '<div style="flex:1"><div style="font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:rgba(255,255,255,.4)">Alvo de Venda Ideal <i class="bi bi-info-circle" style="font-size:.6rem;opacity:.5"></i></div>'+
+                    '<div style="font-size:.88rem;font-weight:800;color:'+alvoColor+'">Aparelhos de até '+R$(alvoMax)+'</div>'+
+                    '<div style="font-size:.62rem;color:rgba(255,255,255,.4)">'+alvoSub+'</div></div>'+
+                '</div>'+
+                '<div id="'+alvoTid+'" style="opacity:0;pointer-events:none;transition:opacity .3s;position:absolute;top:0;left:0;right:0;z-index:10;background:rgba(15,20,40,.97);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:11px 13px;font-size:.76rem;line-height:1.6;color:#e2e8f0;">'+esc(alvoExpl)+'</div>'+
+            '</div>';
+        }
+
+        // ── BLOCO WHATSAPP ──
+        function mkWppBlock(msgFn) {
+            var msg=typeof msgFn==='string'?msgFn:msgFn();
+            return '<div class="cs-wpp"><div class="cs-wpp-lbl"><i class="bi bi-whatsapp"></i> Mensagem para o cliente \u2014 toque para copiar</div>'+
+                '<div class="cs-wpp-txt" id="cs_wpp_txt" title="Toque para copiar">'+esc(msg).replace(/\n/g,'<br>')+'</div>'+
+                '<div class="cs-wpp-cp-hint" id="cs_wpp_hint"><i class="bi bi-clipboard-fill"></i> Toque para copiar</div></div>';
+        }
+
+        // ── REPROVADO ──
+        if(!d.aprov){
+            return '<div class="cs-ri">'+
+                banner+confianca_html+nota_html+
+                apostas_html+
+                mkWppBlock(gerarWppReprovado(d.nomeCliente))+
+                comp_html+titularidade_html+padroes_html+
+                perfil_html+renda_html+saude_html+fixos_html+
+                motivos_html+
+            '</div>';
+        }
+
+        // ── APROVADO ──
+        var vn=valorBase||0;
+        var enBaseMin=Math.ceil(vn*d.entradaPct/10)*10;
+        var enTurb=d.entradaAlta&&d.entrada?Math.ceil(parseFloat(d.entrada)/10)*10:enBaseMin;
+        var enMin=d.entradaAlta?enTurb:enBaseMin;
+        var en=enMin;
+        var np=d.parcelas?parseInt(d.parcelas):12, tx=d.taxa?parseFloat(d.taxa):6;
+        var vp=price(vn,en,np,tx), tt=en+vp*np;
+
+        if(d.downgrade){
+            return '<div class="cs-ri">'+
+                banner+confianca_html+nota_html+
+                sim+apostas_html+
+                mkWppBlock(gerarWpp(d._produto||'Aparelho',en,np,vp,d))+
+                comp_html+titularidade_html+padroes_html+
+                perfil_html+renda_html+
+            '</div>';
+        }
+
+        var parcOpts=''; for(var px=1;px<=12;px++) parcOpts+='<option value="'+px+'"'+(px===np?' selected':'')+'>'+px+'x</option>';
+        var sim_grid='<div class="cs-sim-grid">'+
+            '<div><label class="cs-lbl">Entrada (R$)</label><input class="cs-in" type="number" id="cs_en" value="'+en.toFixed(2)+'" step="10"></div>'+
+            '<div><label class="cs-lbl">Parcelas</label><select class="cs-in" id="cs_np">'+parcOpts+'</select></div>'+
+            '<div><label class="cs-lbl">Juros %am</label><input class="cs-in" type="number" id="cs_tx" value="'+tx.toFixed(1)+'" min="0" max="30" step="0.5"></div>'+
+            '</div>'+
+            '<div class="cs-pills" id="cs_pills">'+
+                '<div class="cs-pill'+(d.entradaAlta?' cs-pill-o':'')+'"> Entrada: <strong>'+R$(en)+'</strong></div>'+
+                '<div class="cs-pill"> <strong>'+np+'x</strong> de <strong>'+R$(vp)+'</strong> <span style="font-size:.65em;opacity:.65">MENSAL</span></div>'+
+                '<div class="cs-pill cs-pill-j"> Juros: <strong>'+tx+'%am</strong></div>'+
+                '<div class="cs-pill cs-pill-t"> Total: <strong>'+R$(tt)+'</strong></div>'+
+            '</div>';
+        var sim=d.entradaAlta?
+            '<div class="cs-sim cs-sim-orange"><div class="cs-sim-ttl"><i class="bi bi-lightning-charge-fill"></i> Entrada Turbinada</div><div class="cs-sim-aviso cs-sim-aviso-orange"><i class="bi bi-lock-fill"></i> Entrada mínima travada em '+R$(enMin)+' ('+Math.round(enMin/vn*100)+'% do valor)</div>'+sim_grid+'</div>':
+            '<div class="cs-sim"><div class="cs-sim-ttl"><i class="bi bi-sliders"></i> Simular condições</div><div class="cs-sim-aviso"><i class="bi bi-lock-fill"></i> Entrada mínima: '+Math.round(d.entradaPct*100)+'% = '+R$(enMin)+' | Perfil '+riscoLabel+'</div>'+sim_grid+'</div>';
+
+        return '<div class="cs-ri">'+
+            banner+confianca_html+nota_html+
+            sim+apostas_html+
+            mkWppBlock(gerarWpp(d._produto||'Aparelho',en,np,vp,d))+
+            comp_html+titularidade_html+padroes_html+
+            perfil_html+renda_html+saude_html+fixos_html+
+        '</div>';
     }
+
 
     async function abrirHist() {
         if(!document.getElementById('cs-reuso-css')){
@@ -745,15 +997,31 @@
 
     // ── Detector local de apostas — roda ANTES da IA, sem gastar token ──
     var APOSTAS_KEYWORDS = [
-        'phoenix gaming','m v d s m technology','atm publicidade','smart cluster',
-        'banks tech','apostaraiz','royal crest','lottopay','gm intermediacao',
-        'wiinpay','ajc gateway','nexumpay','univebet','vaidebet','betnacional',
-        'pixbet','blaze','betano','esportes da sorte','superbet',
-        'r torres','norbe fintech','norbe','gold now','luxtak','phoenix gaming ltda',
-        'futbol bet','betgaming','bet gaming','betfair','sportingbet','betway',
-        'bet365','pinnacle','1xbet','stake','f12 bet','galera bet','kto'
+        // Grandes marcas globais
+        'bet365','betano','superbet','betway','betfair',
+        'sportingbet','pinnacle','1xbet','stake','bodog',
+        'betsson','bwin','unibet','parimatch','dafabet',
+        '22bet','melbet','betmgm','betcris','betmotion',
+        // Marcas brasileiras licenciadas SPA/MF
+        'pixbet','blaze','vaidebet','betnacional',
+        'esportes da sorte','galera.bet','galera bet',
+        'br4bet','estrelabet','estrela bet','realsbet',
+        'onabet','brabet','betsul','rivalo','kto',
+        'novibet','vbet','betboom','bet7k','betwarrior',
+        'mrjackbet','mr jack bet','seubet','multibet',
+        'brazino777','betdasorte','bet da sorte',
+        'goldebet','gol de bet','energia.bet','playuzu',
+        'f12.bet','f12 bet','f12bet','apostoubet','apostou bet',
+        'betdafortuna','betninja','jogomix','betpix365',
+        // Gateways exclusivos de apostas (aparecem no extrato)
+        'phoenix gaming','phoenix gaming ltda','apostaraiz',
+        'smart cluster','lottopay','gm intermediacao','wiinpay',
+        'ajc gateway','nexumpay','univebet','m v d s m technology',
+        'atm publicidade','banks tech','royal crest','gold now',
+        'luxtak','r torres','norbe fintech','norbe','futbol bet',
+        'betgaming','bet gaming'
     ];
-    var APOSTAS_REGEX = /\b(bet|gaming|apostas?|cassino|esportiv|pixbet|blaze|apostaraiz)\b/i;
+    var APOSTAS_REGEX = /\b(pixbet|vaidebet|betnacional|betano|betboom|apostas?)\b/i;
 
     function detectarApostas(texto) {
         var textoLower = texto.toLowerCase();
@@ -819,7 +1087,7 @@
 
         // === ESTRATEGIA 2: Regex generico para pegar nomes nao listados ===
         var regexHits = [];
-        var reGen = /\b(bet\w*|gaming\w*|apostas?\w*|cassino\w*|esportiv\w*)\b/gi;
+        var reGen = /\b(bet[a-z]{3,}|apostas?)\b/gi;
         var rm;
         while ((rm = reGen.exec(textoLower)) !== null) {
             // Verifica se ja nao foi contado por keywords
@@ -875,7 +1143,7 @@
         }
         if (detalhe) detalhe += '\nTotal apostado: R$ '+totalValor.toFixed(2)+' | Casas: '+destStr;
 
-        return { gatilho: gatilho, detalhe: detalhe, totalOcorr: totalOcorr, totalValor: totalValor, diasComAposta: diasComAposta, mesesComAposta: mesesComAposta, porMes: porMes };
+        return { gatilho: gatilho, detalhe: detalhe, totalOcorr: totalOcorr, totalValor: totalValor, diasComAposta: diasComAposta, mesesComAposta: mesesComAposta, porMes: porMes, casas: Object.keys(destinatarios) };
     }
 
     function resultadoApostasReprovado(prod, nomeCliente, apostas) {
@@ -1040,33 +1308,53 @@
     // ── VALIDADOR POS-IA: se a IA viu apostas mas nao reprovou, JS forca ──
     function validarApostasNaResposta(d) {
         if (d.reprovado) return;
-        var textoIA = [d.analise||'', d.perfil||'', d.calculo||'', d.motivos||'', d.rascunho||''].join(' ').toLowerCase();
-        var casas = [];
-        ['phoenix gaming','m v d s m','atm publicidade','smart cluster',
-         'banks tech','apostaraiz','royal crest','lottopay','gm intermediacao',
-         'wiinpay','ajc gateway','nexumpay','univebet','vaidebet','betnacional',
-         'pixbet','blaze','betano','esportes da sorte','superbet',
-         'r torres','norbe','gold now','luxtak','betgaming','futbol bet'
-        ].forEach(function(c){ if(textoIA.indexOf(c)!==-1) casas.push(c); });
-        var mencoesAposta = (textoIA.match(/aposta/gi)||[]).length;
+        // Prioridade 1: usa casasJogo estruturado retornado pela IA
+        var casas = (d.casasJogo || []).filter(Boolean);
 
-        if (casas.length >= 3 || mencoesAposta >= 5) {
+        // Prioridade 2: fallback por busca de texto se IA nao preencheu o campo
+        if (casas.length === 0) {
+            var textoIA = [d.analise||'', d.perfil||'', d.motivos||''].join(' ').toLowerCase();
+            [
+             'phoenix gaming','vaidebet','betnacional','pixbet','blaze','betano',
+             'esportes da sorte','superbet','betboom','bet7k','estrelabet',
+             'apostaraiz','univebet','bodog','betnow','br4bet','futbol bet',
+             'ajc gateway','gm intermediacao','wiinpay','lottopay','nexumpay',
+             'banks tech','smart cluster','atm publicidade','m v d s m',
+             'royal crest','r torres','norbe','gold now','luxtak','betgaming',
+             'sportingbet','betfair','betsson','1xbet','bet365',
+             'betway','mrjack','f12.bet','f12bet','realsbet',
+             'onabet','brabet','betninja','jogomix','galera.bet','galera bet',
+             'estrela bet','br4bet','realsbet','onabet','brabet',
+             'betsul','rivalo','betmotion','pinnacle','betcris',
+             'betsson','betmgm','betwarrior','mrjackbet','seubet',
+             'brazino777','betdasorte','bet da sorte','goldebet',
+             'energia.bet','f12.bet','apostoubet','betpix365',
+             'pagbet','sportbetio','betcris','betninja','jogomix'
+            ].forEach(function(c){ if(textoIA.indexOf(c)!==-1) casas.push(c); });
+        }
+
+        if (casas.length >= 3) {
+            // 3+ casas = apostador habitual → REPROVADO
             var notaOriginal = d.nota;
             d.aprov=false; d.reprovado=true; d.nota=0;
             d.risco='REPROVADO'; d.entradaPct=0.60;
-            d.motivos = 'CORRECAO AUTOMATICA — Apostador identificado pela IA.\n'+
-                'A IA encontrou '+casas.length+' casas de apostas: '+casas.join(', ')+'.\n'+
-                'Porem atribuiu nota '+notaOriginal+' (erro). Sistema corrigiu para 0 = REPROVADO.';
-            d.calculo = 'CORRIGIDO PELO SISTEMA\nIA original: '+notaOriginal+' pontos\n'+
-                'Casas de aposta na analise: '+casas.length+'\nRegra: 3+ casas = REPROVADO\nNota final: 0';
-        } else if (casas.length >= 1 && d.nota > 39) {
-            var notaOrig2 = d.nota;
-            d.nota = Math.min(d.nota, 35);
-            d.aprov=false; d.reprovado=true;
-            d.risco='REPROVADO'; d.entradaPct=0.60;
-            d.motivos = (d.motivos?d.motivos+'\n':'') +
-                'CORRECAO: Apostas detectadas ('+casas.join(', ')+'). Nota de '+notaOrig2+' travada em '+d.nota+'.';
-            d.calculo = (d.calculo||'')+'\nCORRECAO SISTEMA: aposta detectada → nota travada em 35';
+            d.casasJogo = casas;
+            d.motivos = 'REPROVADO — Apostador Identificado\n'+
+                casas.length+' casas detectadas: '+casas.join(', ')+'\n'+
+                '(IA original: '+notaOriginal+' pts — corrigido para 0)';
+            d.calculo = 'CORRIGIDO PELO SISTEMA\nIA: '+notaOriginal+' pts\n'+
+                'Casas: '+casas.join(', ')+'\nRegra: 3+ casas = REPROVADO\nNota final: 0';
+        } else if (casas.length >= 1 && casas.length <= 2 && d.nota > 39) {
+            // 1-2 casas esporadicas → penaliza nota mas NAO reprova
+            var penalidade = casas.length === 1 ? 10 : 20;
+            d.nota = Math.max(40, d.nota - penalidade);
+            d.casasJogo = casas;
+            d.calculo = (d.calculo||'')+
+                '\nCORRECAO: '+casas.length+' casa(s) esporadica(s) detectada(s) → -'+penalidade+
+                ' pts (nota ajustada: '+d.nota+')';
+            // Reavalia perfil com nota nova
+            if (d.nota < 60)      { d.risco='FRACO'; d.entradaPct=0.60; }
+            else if (d.nota < 85) { d.risco='MEDIO'; d.entradaPct=0.35; }
         }
     }
 
@@ -1087,6 +1375,169 @@
         // Reclassifica se subiu de faixa
         if (d.nota >= 85 && d.entradaPct > 0.20) { d.entradaPct = 0.20; }
         else if (d.nota >= 60 && d.entradaPct > 0.35) { d.entradaPct = 0.35; }
+    }
+
+    // ── Validador local de qualidade dos documentos enviados (zero tokens) ──
+    function validarQualidadeDocumentos(textosLocais) {
+        var problemas = [];
+        var textoTotal = textosLocais.join('\n');
+
+        // Sem texto extraivel (so imagens) → sem validacao profunda
+        if (textoTotal.trim().length < 300) return { ok: true, problemas: [] };
+
+        var linhasComValor = (textoTotal.match(/R\$\s*[\d.,]+/gi) || []).length;
+        var temExtratoBancario = /(extrato|movimenta[cç][aã]o|saldo\s+(anterior|atual|disponivel)|historico\s*(de\s*)?lan[cç]amento)/i.test(textoTotal);
+        var temPix = /pix\s*(enviado|recebido|credito|debito)/i.test(textoTotal.toLowerCase());
+
+        // === V1: Comprovante de PIX avulso (nao e extrato) ===
+        var temComprovante = /comprovante\s*(de\s*)?(pix|transfer[eê]ncia|pagamento|deposito)/i.test(textoTotal);
+        if (temComprovante && !temExtratoBancario && linhasComValor < 8) {
+            problemas.push({
+                nivel: 'erro', icone: '🚫',
+                titulo: 'Comprovante de PIX — nao e extrato',
+                mensagem: 'O arquivo parece ser um comprovante de transacao avulsa, nao um extrato bancario completo.',
+                pedirCliente: 'Abre o app do banco → toca em "Extrato" → seleciona os ultimos 3 meses → exporta o PDF completo. Comprovante de PIX isolado nao serve para analise de credito.'
+            });
+        }
+
+        // === V2: Cobertura de periodo (quantos meses o extrato cobre) ===
+        if (!problemas.some(function(p){ return p.nivel === 'erro'; })) {
+            var todasDatas = [];
+            var reData = /\b(\d{2})\/(\d{2})\/(\d{2,4})\b/g;
+            var mData;
+            while ((mData = reData.exec(textoTotal)) !== null) {
+                var dia = parseInt(mData[1]), mes = parseInt(mData[2]), ano = parseInt(mData[3]);
+                if (ano < 100) ano += 2000;
+                if (mes >= 1 && mes <= 12 && dia >= 1 && dia <= 31 && ano >= 2020 && ano <= 2030) {
+                    var ts = new Date(ano, mes - 1, dia).getTime();
+                    if (ts > 0 && ts <= Date.now() + 86400000) todasDatas.push(ts);
+                }
+            }
+            if (todasDatas.length >= 3) {
+                var minDate = Math.min.apply(null, todasDatas);
+                var maxDate = Math.max.apply(null, todasDatas);
+                var difDias = (maxDate - minDate) / 86400000;
+                var diasAtras = (Date.now() - maxDate) / 86400000;
+
+                if (diasAtras > 120) {
+                    var dtRecente = new Date(maxDate).toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
+                    var dtMinima  = new Date(Date.now() - 120*86400000).toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
+                    problemas.push({
+                        nivel: 'erro', icone: '📅',
+                        titulo: 'Extrato desatualizado (' + dtRecente + ')',
+                        mensagem: 'O extrato mais recente encontrado e de ' + dtRecente + ' — mais de 4 meses atras. Nao reflete a situacao financeira atual.',
+                        pedirCliente: 'Este extrato esta vencido para analise. Peca ao cliente exportar o extrato atual do app do banco cobrindo a partir de ' + dtMinima + '.'
+                    });
+                } else if (difDias < 55 && todasDatas.length >= 5) {
+                    var mesesCob = Math.round(difDias / 30 * 10) / 10;
+                    problemas.push({
+                        nivel: 'aviso', icone: '⚠️',
+                        titulo: 'Extrato muito curto (~' + mesesCob + ' mes)',
+                        mensagem: 'O extrato cobre apenas ' + Math.round(difDias) + ' dias. Precisamos de pelo menos 2–3 meses para uma analise confiavel.',
+                        pedirCliente: 'Peca ao cliente abrir o app do banco → Extrato → selecionar 3 meses de periodo → exportar PDF completo. Quanto mais longo, maiores as chances de aprovacao.'
+                    });
+                }
+            }
+        }
+
+        // === V3: Extrato cego (Caixa Tem, poupanca sem movimentacoes) ===
+        var cego = detectarExtratoCego(textoTotal);
+        if (cego.cego) {
+            problemas.push({
+                nivel: 'aviso', icone: '🔒',
+                titulo: 'Extrato com visibilidade limitada',
+                mensagem: 'O extrato e de ' + (cego.tipo || 'conta poupanca/beneficio') + ' e nao mostra para onde o dinheiro vai — apenas entradas.',
+                pedirCliente: 'O extrato da ' + (cego.tipo || 'poupanca') + ' sozinho nao e suficiente. Se o cliente tiver conta em outro banco (Nubank, Bradesco, Itau...), peca o extrato dessa conta tambem. Vai aumentar muito as chances de aprovacao.'
+            });
+        }
+
+        // === V4: So holerite, sem extrato bancario ===
+        var temHolerite = /holerite|contracheque|folha\s+de\s+pagamento|proventos.*desconto|desconto.*inss|competencia\s*\d/i.test(textoTotal);
+        if (temHolerite && !temExtratoBancario && !temPix) {
+            problemas.push({
+                nivel: 'aviso', icone: '📋',
+                titulo: 'Apenas holerite — sem extrato bancario',
+                mensagem: 'Identificamos um holerite, mas nao um extrato bancario. A analise ficara incompleta e pode resultar em reprovacao desnecessaria.',
+                pedirCliente: 'Holerite recebido! Para analise completa peca tambem o extrato bancario dos ultimos 3 meses em PDF (app do banco → Extrato → 3 meses → Exportar PDF).'
+            });
+        }
+
+        // === V5: Valores todos redondos — suspeito de extrato manipulado ===
+        if (temExtratoBancario && linhasComValor >= 8) {
+            var valoresEncontrados = [];
+            var reVal = /R\$\s*([\d.]+),([\d]{2})/g;
+            var mv;
+            while ((mv = reVal.exec(textoTotal)) !== null) {
+                var centavos = parseInt(mv[2]);
+                valoresEncontrados.push(centavos);
+            }
+            if (valoresEncontrados.length >= 8) {
+                var redondos = valoresEncontrados.filter(function(c){ return c === 0; }).length;
+                if (redondos / valoresEncontrados.length > 0.92) {
+                    problemas.push({
+                        nivel: 'aviso', icone: '⚠️',
+                        titulo: 'Extrato com valores suspeitos',
+                        mensagem: 'Quase todas as transacoes tem valores redondos (sem centavos). Extratos reais raramente tem esse padrao — pode indicar documento editado.',
+                        pedirCliente: 'Peca ao cliente exportar o extrato diretamente pelo app do banco (nao screenshot). Conferir se os valores batem com a conta real.'
+                    });
+                }
+            }
+        }
+
+        var temErro = problemas.some(function(p){ return p.nivel === 'erro'; });
+        return { ok: !temErro, problemas: problemas };
+    }
+
+    function mostrarModalDocQualidade(problemas, onContinuar, onFechar) {
+        var temErro = problemas.some(function(p){ return p.nivel === 'erro'; });
+
+        var listaHTML = problemas.map(function(p) {
+            var corBg  = p.nivel==='erro' ? 'rgba(239,68,68,.1)'  : 'rgba(251,191,36,.08)';
+            var corBdr = p.nivel==='erro' ? 'rgba(239,68,68,.35)' : 'rgba(251,191,36,.25)';
+            var corTxt = p.nivel==='erro' ? '#f87171'             : '#fbbf24';
+            return '<div style="background:'+corBg+';border:1px solid '+corBdr+';border-radius:12px;padding:13px;display:flex;flex-direction:column;gap:6px">'+
+                '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:1.1rem">'+p.icone+'</span><span style="font-size:.82rem;font-weight:800;color:'+corTxt+'">'+esc(p.titulo)+'</span></div>'+
+                '<p style="margin:0;font-size:.73rem;color:rgba(255,255,255,.6);line-height:1.45">'+esc(p.mensagem)+'</p>'+
+                '<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:9px 11px;margin-top:2px">'+
+                    '<div style="font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.3);margin-bottom:4px">📲 O que pedir ao cliente</div>'+
+                    '<p style="margin:0;font-size:.76rem;color:#e2e8f0;line-height:1.5">'+esc(p.pedirCliente)+'</p>'+
+                '</div>'+
+            '</div>';
+        }).join('');
+
+        var tituloPrincipal = temErro ? '⛔ Documentos Insuficientes' : '⚠️ Atencao aos Documentos';
+        var subtitulo = temErro
+            ? 'Ha problemas que impedem a analise. Solicite os documentos corretos antes de continuar.'
+            : 'Encontramos pontos de atencao. Voce pode pedir melhorias ao cliente ou continuar com o que esta disponivel.';
+        var corBorda  = temErro ? 'rgba(239,68,68,.3)' : 'rgba(251,191,36,.3)';
+        var corHeader = temErro ? '#f87171' : '#fbbf24';
+        var txtFechar = '← Fechar e solicitar documentos';
+        var txtCont   = temErro ? 'Analisar mesmo assim (nao recomendado)' : 'Continuar mesmo assim →';
+        var stiloCont = temErro
+            ? 'background:transparent;border:1px solid rgba(255,255,255,.07);color:rgba(255,255,255,.22);'
+            : 'background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.22);color:#fbbf24;';
+
+        var modal = document.createElement('div');
+        modal.id = 'cs_modal_docq';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:6000;display:flex;align-items:center;justify-content:center;padding:16px;';
+        modal.innerHTML =
+            '<div style="background:#0b1325;border:1.5px solid '+corBorda+';border-radius:18px;width:100%;max-width:400px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.75)">'+
+                '<div style="padding:18px 18px 12px;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0">'+
+                    '<div style="font-size:1rem;font-weight:800;color:'+corHeader+'">'+tituloPrincipal+'</div>'+
+                    '<div style="font-size:.67rem;color:rgba(255,255,255,.43);margin-top:4px;line-height:1.4">'+subtitulo+'</div>'+
+                '</div>'+
+                '<div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px;display:flex;flex-direction:column;gap:10px">'+
+                    listaHTML+
+                '</div>'+
+                '<div style="padding:14px;border-top:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;gap:8px;flex-shrink:0">'+
+                    '<button id="cs_docq_fechar" style="width:100%;padding:13px;border-radius:12px;border:none;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;font-family:Poppins,sans-serif;font-size:.85rem;font-weight:700;cursor:pointer">'+esc(txtFechar)+'</button>'+
+                    '<button id="cs_docq_continuar" style="width:100%;padding:10px;border-radius:10px;font-family:Poppins,sans-serif;font-size:.71rem;font-weight:600;cursor:pointer;'+stiloCont+'">'+esc(txtCont)+'</button>'+
+                '</div>'+
+            '</div>';
+
+        document.body.appendChild(modal);
+        document.getElementById('cs_docq_fechar').addEventListener('click', function(){ document.body.removeChild(modal); onFechar(); });
+        document.getElementById('cs_docq_continuar').addEventListener('click', function(){ document.body.removeChild(modal); onContinuar(); });
     }
 
     function openOverlay(){var ov=el('cs_ov');if(!ov)return;ov.classList.add('active');_docsId=[];_docsRend=[];_busy=false;_last=null;if(el('cs_produto'))el('cs_produto').value='';if(el('cs_valor'))el('cs_valor').value='';el('cs_res').classList.add('cs-h');el('cs_prog').classList.add('cs-h');resetUIState();renderDocsId();renderDocsRend();setBtnState();}
@@ -1219,6 +1670,23 @@
             });
             var textoParaApostas=textosLocais.join('\n');
 
+            // ── PASSO 1.5: Validacao da qualidade dos documentos (zero tokens) ──
+            var qualidadeDocs = validarQualidadeDocumentos(textosLocais);
+            if (qualidadeDocs.problemas.length > 0) {
+                _busy = false; setBtnState(); el('cs_prog').classList.add('cs-h');
+                var prosseguirAnalise = await new Promise(function(resolve) {
+                    mostrarModalDocQualidade(
+                        qualidadeDocs.problemas,
+                        function(){ resolve(true); },
+                        function(){ resolve(false); }
+                    );
+                });
+                if (!prosseguirAnalise) return;
+                _busy = true; setBtnState();
+                el('cs_prog').classList.remove('cs-h');
+                el('cs_res').classList.add('cs-h');
+            }
+
             // ── PASSO 2: Pre-filtro local de apostas ──
             setProg('Verificando perfil de risco...',25);
             var apostas = detectarApostas(textoParaApostas);
@@ -1340,6 +1808,17 @@
 
             setProg('Finalizando...',90);
             var d=extrair(resp);d._produto=prod;
+
+            // Merge casas detectadas localmente (pre-IA) no resultado
+            if (apostas.casas && apostas.casas.length > 0) {
+                var casasJaExist = (d.casasJogo||[]).map(function(c){ return String(c).toLowerCase(); });
+                apostas.casas.forEach(function(c) {
+                    if (casasJaExist.indexOf(c.toLowerCase()) === -1) {
+                        if (!d.casasJogo) d.casasJogo = [];
+                        d.casasJogo.push(c);
+                    }
+                });
+            }
 
             validarApostasNaResposta(d);
 
