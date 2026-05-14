@@ -362,6 +362,7 @@
             var nomesBatem = obj.nomesBatem !== false;
             var dec = (obj.decisao || '').toUpperCase();
             var nota = typeof obj.nota === 'number' ? obj.nota : parseInt(obj.nota || 0);
+            if (nota > 92) nota = 92; // teto: nenhum cliente e perfeito
 
             if (!nomesBatem) {
                 dec = 'REPROVADO'; nota = 0; obj.nivel = 'REPROVADO';
@@ -606,6 +607,10 @@
         var riscoLabel=d.risco.split(' \u00b7 ')[0];
         var secoes=parsearSecoes(d.analise||'');
 
+        // ── helpers ──
+        var crd=function(bg,bd,cont,extra){return '<div style="background:'+(bg||'rgba(255,255,255,.04)')+';border:1.5px solid '+(bd||'rgba(255,255,255,.09)')+';border-radius:14px;padding:10px 12px;'+(extra||'')+'">'+cont+'</div>';};
+        var lbl=function(cor,txt){return '<div style="font-size:.5rem;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:'+cor+';margin-bottom:5px">'+txt+'</div>';};
+
         // ── BANNER ──
         var banner='';
         if(d.entradaAlta) banner='<div class="cs-dec" style="background:rgba(245,158,11,.12);border:2px solid rgba(245,158,11,.4);color:#f59e0b"><i class="bi bi-exclamation-triangle-fill"></i> PLANO C \u2014 ENTRADA TURBINADA</div>';
@@ -615,225 +620,337 @@
 
         // ── CONFIANÇA ──
         var confianca_html='';
-        if(d.confianca==='BAIXA') confianca_html='<div class="cs-alert" style="background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.3);color:#fbbf24"><i class="bi bi-exclamation-triangle-fill" style="color:#fbbf24"></i><span><strong>Atenção:</strong> Documento com qualidade baixa. Peça uma foto melhor.</span></div>';
-        else if(d.confianca==='MEDIA') confianca_html='<div class="cs-alert" style="background:rgba(251,191,36,.04);border-color:rgba(251,191,36,.15);color:rgba(251,191,36,.7)"><i class="bi bi-eye-fill"></i><span>Qualidade media — verifique o nome manualmente.</span></div>';
+        if(d.confianca==='BAIXA') confianca_html='<div class="cs-alert" style="background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.3);color:#fbbf24"><i class="bi bi-exclamation-triangle-fill"></i><span><strong>Aten\u00e7\u00e3o:</strong> Documento com qualidade baixa. Pe\u00e7a uma foto melhor.</span></div>';
+        else if(d.confianca==='MEDIA') confianca_html='<div class="cs-alert" style="background:rgba(251,191,36,.04);border-color:rgba(251,191,36,.15);color:rgba(251,191,36,.7)"><i class="bi bi-eye-fill"></i><span>Qualidade m\u00e9dia — verifique o nome manualmente.</span></div>';
 
-        // ── NOTA ──
-        var nota_html='<div class="cs-nota-row"><div class="cs-nota-c" style="border-color:'+nc+';color:'+nc+';background:'+nc+'18">'+d.nota+'</div><div><div class="cs-nota-lbl">Pontuação · <span style="color:'+nc+';font-weight:800">'+riscoLabel+'</span></div>'+(d.rendaEstimada>0?'<div class="cs-nota-renda">\ud83d\udcb5 Renda estimada: <strong>'+R$(d.rendaEstimada)+'</strong></div>':'')+'</div></div>';
+        // ── ROW: score + nome/resumo + titularidade ──
+        // titStr e apostasLinha calculados abaixo, mas precisamos deles aqui — montamos depois
+        var _titStrInner=function(){
+            if(!(d.nomeDocPessoal||d.nomeRenda)) return '';
+            var mc2=d.nomesBatem===true?'#4ade80':d.nomesBatem===false?'#f87171':'#fbbf24';
+            var ml2=d.nomesBatem===true?'\u2705 Titularidade confirmada':d.nomesBatem===false?'\ud83d\udea8 FRAUDE \u2014 nomes divergem':'\u26a0\ufe0f Sem doc. pessoal';
+            return (d.nomeDocPessoal?'<div style="font-size:.69rem;color:rgba(255,255,255,.6)">\ud83c\uddee\ud83c\udced Doc: '+esc(d.nomeDocPessoal)+'</div>':'')+
+                   (d.nomeRenda?'<div style="font-size:.69rem;color:rgba(255,255,255,.6)">\ud83d\udcc4 Renda: '+esc(d.nomeRenda)+'</div>':'')+
+                   '<div style="font-size:.71rem;font-weight:800;color:'+mc2+';margin-top:3px">'+ml2+'</div>';
+        };
+        var _casasJogoEarly=d.casasJogo||[];
+        var _apostasLinhaInner=_casasJogoEarly.length===0?
+            '<div style="display:flex;align-items:center;gap:5px;margin-top:5px">'+
+            '<span style="font-size:.65rem;font-weight:800;color:#4ade80">\ud83c\udfb0 Sem apostas</span>'+
+            '<span style="font-size:.6rem;color:rgba(74,222,128,.5)">· Extrato limpo</span></div>':'';
+        var _titBlock=(_titStrInner()||_apostasLinhaInner)?
+            '<div style="margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08)">'+_titStrInner()+_apostasLinhaInner+'</div>':'';
 
-        // ── RESUMO EXECUTIVO ──
-        var resumo_html='';
-        if(d.resumoExec) resumo_html='<div style="background:rgba(59,130,246,.08);border:1.5px solid rgba(59,130,246,.25);border-radius:12px;padding:12px 14px"><div style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#60a5fa;margin-bottom:5px">\ud83d\udca1 Resumo Executivo</div><p style="margin:0;font-size:.85rem;line-height:1.6;color:#e0e7ff;font-weight:500">'+esc(d.resumoExec)+'</p></div>';
-
-        // ── IDENTIFICAÇÃO ──
-        var tid='';
-        if(d.nomeDocPessoal||d.nomeRenda){
-            var mc=d.nomesBatem===true?'#4ade80':d.nomesBatem===false?'#f87171':'#fbbf24';
-            var mi=d.nomesBatem===true?'\u2705':d.nomesBatem===false?'\ud83d\udea8':'\u26a0\ufe0f';
-            var ml=d.nomesBatem===true?'Titularidade confirmada':d.nomesBatem===false?'FRAUDE \u2014 nomes divergem':'Sem documento pessoal';
-            tid='<div style="display:flex;flex-direction:column;gap:4px;padding:9px 11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:9px;margin-top:8px">'+
-                (d.nomeDocPessoal?'<div style="font-size:.74rem;color:#e2e8f0">\ud83c\uddee\ud83c\udced <strong>Doc:</strong> '+esc(d.nomeDocPessoal)+'</div>':'')+
-                (d.nomeRenda?'<div style="font-size:.74rem;color:#e2e8f0">\ud83d\udcc4 <strong>Renda:</strong> '+esc(d.nomeRenda)+'</div>':'')+
-                '<div style="font-size:.74rem;font-weight:800;color:'+mc+'">'+mi+' '+ml+'</div>'+
+        var scoreRow=
+            '<div style="display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:stretch;margin-bottom:8px">'+
+            crd('linear-gradient(145deg,rgba('+
+                (d.aprov?'22,163,74':'239,68,68')+',.18),rgba('+(d.aprov?'22,163,74':'239,68,68')+',.06))',
+                'rgba('+(d.aprov?'34,197,94':'239,68,68')+',.25)',
+                '<div style="font-size:2.6rem;font-weight:900;color:'+nc+';line-height:1;text-align:center">'+d.nota+'</div>'+
+                '<div style="font-size:.44rem;color:'+nc+';font-weight:800;text-align:center;letter-spacing:.1em">'+riscoLabel+'</div>',
+                'display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:72px;padding:12px 10px;')+
+            crd('rgba('+( d.aprov?'34,197,94':'239,68,68')+',.06)','rgba('+(d.aprov?'34,197,94':'239,68,68')+',.15)',
+                '<div style="font-size:.52rem;font-weight:800;color:'+(d.aprov?'#4ade80':'#f87171')+';letter-spacing:.09em;margin-bottom:3px">'+(d.aprov?'\u2705 APROVADO':'❌ REPROVADO')+'</div>'+
+                '<div style="font-size:.88rem;font-weight:800;color:#fff;line-height:1.2;margin-bottom:4px">'+esc(d.nomeCompleto)+'</div>'+
+                (d.resumoExec?'<div style="font-size:.69rem;color:rgba(255,255,255,.5);line-height:1.4">'+esc(d.resumoExec)+'</div>':'')+
+                (d.rendaEstimada>0?'<div style="font-size:.7rem;font-weight:700;color:#4ade80;margin-top:5px">\ud83d\udcb5 '+R$(d.rendaEstimada)+'/m\u00eas</div>':'')+
+                _titBlock
+            )+
             '</div>';
-        }
-        var perfil_html='';
-        if(d.perfil||tid){
-            perfil_html='<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-left:3px solid #60a5fa;border-radius:12px;padding:13px 14px;display:flex;flex-direction:column;gap:8px">'+
-                '<div style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#60a5fa">\ud83d\udc64 '+esc(d.nomeCompleto)+'</div>'+
-                (d.perfil?'<div style="font-size:.81rem;line-height:1.65;color:#e2e8f0">'+esc(d.perfil).replace(/\n/g,'<br>')+'</div>':'')+
-                tid+
-            '</div>';
+
+        // ── SIMULADOR ──
+        var sim_block='';
+        if(d.aprov){
+            var vn=valorBase||0;
+            var enBaseMin=Math.ceil(vn*d.entradaPct/10)*10;
+            var enTurb=d.entradaAlta&&d.entrada?Math.ceil(parseFloat(d.entrada)/10)*10:enBaseMin;
+            var enMin=d.entradaAlta?enTurb:enBaseMin;
+            var en=enMin;
+            var np=d.parcelas?parseInt(d.parcelas):12, tx=d.taxa?parseFloat(d.taxa):6;
+            var vp=price(vn,en,np,tx), tt=en+vp*np;
+            var parcOpts=''; for(var px=1;px<=12;px++) parcOpts+='<option value="'+px+'"'+(px===np?' selected':'')+'>'+px+'x</option>';
+            var aviso=d.entradaAlta?
+                '<div class="cs-sim-aviso cs-sim-aviso-orange"><i class="bi bi-lock-fill"></i> Entrada m\u00ednima travada em '+R$(enMin)+' ('+Math.round(enMin/vn*100)+'%) — Entrada Turbinada</div>':
+                '<div class="cs-sim-aviso"><i class="bi bi-lock-fill"></i> Entrada m\u00ednima: '+Math.round(d.entradaPct*100)+'% = '+R$(enMin)+' | Perfil '+riscoLabel+'</div>';
+            sim_block=crd(d.entradaAlta?'rgba(245,158,11,.06)':'rgba(255,255,255,.03)',d.entradaAlta?'rgba(245,158,11,.2)':'rgba(255,255,255,.08)',
+                '<div style="font-size:.52rem;font-weight:800;color:'+(d.entradaAlta?'#f59e0b':'rgba(255,255,255,.4)')+';text-transform:uppercase;letter-spacing:.09em;margin-bottom:8px"><i class="bi bi-sliders"></i> Simular Condi\u00e7\u00f5es</div>'+
+                aviso+
+                '<div class="cs-sim-grid"><div><label class="cs-lbl">Entrada (R$)</label><input class="cs-in" type="number" id="cs_en" value="'+en.toFixed(2)+'" step="10"></div>'+
+                '<div><label class="cs-lbl">Parcelas</label><select class="cs-in" id="cs_np">'+parcOpts+'</select></div>'+
+                '<div><label class="cs-lbl">Juros %am</label><input class="cs-in" type="number" id="cs_tx" value="'+tx.toFixed(1)+'" min="0" max="30" step="0.5"></div></div>'+
+                '<div class="cs-pills" id="cs_pills">'+
+                    '<div class="cs-pill'+(d.entradaAlta?' cs-pill-o':'')+'">Entrada: <strong>'+R$(en)+'</strong></div>'+
+                    '<div class="cs-pill"><strong>'+np+'x</strong> de <strong>'+R$(vp)+'</strong> <span style="font-size:.65em;opacity:.65">MENSAL</span></div>'+
+                    '<div class="cs-pill cs-pill-j">Juros: <strong>'+tx+'%am</strong></div>'+
+                    '<div class="cs-pill cs-pill-t">Total: <strong>'+R$(tt)+'</strong></div>'+
+                '</div>',
+                'margin-bottom:8px;');
         }
 
-        // ── APOSTAS ──
-        var apostas_html='';
+        // ── WHATSAPP ──
+        var wppMsg=d.aprov?(function(){
+            var vn2=valorBase||0,enB=Math.ceil(vn2*d.entradaPct/10)*10;
+            var enT2=d.entradaAlta&&d.entrada?Math.ceil(parseFloat(d.entrada)/10)*10:enB;
+            var en2=d.entradaAlta?enT2:enB;
+            var np2=d.parcelas?parseInt(d.parcelas):12,tx2=d.taxa?parseFloat(d.taxa):6;
+            var vp2=price(vn2,en2,np2,tx2);
+            return gerarWpp(d._produto||'Aparelho',en2,np2,vp2,d);
+        })():gerarWppReprovado(d.nomeCliente);
+        var wpp_block='<div class="cs-wpp" style="margin-bottom:10px"><div class="cs-wpp-lbl"><i class="bi bi-whatsapp"></i> Mensagem para o cliente</div>'+
+            '<div class="cs-wpp-txt" id="cs_wpp_txt">'+esc(wppMsg).replace(/\n/g,'<br>')+'</div>'+
+            '<div class="cs-wpp-cp-hint" id="cs_wpp_hint"><i class="bi bi-clipboard-fill"></i> Toque para copiar</div></div>';
+
+        // ── BENTO GRID ──
+        var titStr=''; // titularidade agora está dentro do scoreRow
+
+        // Apostas card — só gera card quando HÁ apostas detectadas
         var casasJogo=d.casasJogo||[];
-        if(casasJogo.length>0){
-            var casasItems=casasJogo.map(function(c){
-                return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(239,68,68,.1)">'+
-                    '<i class="bi bi-x-circle-fill" style="color:#f87171;font-size:.75rem;flex-shrink:0"></i>'+
-                    '<span style="font-size:.8rem;color:#fca5a5;font-weight:600">'+esc(typeof c==='object'?c.casa||c:String(c))+'</span>'+
-                '</div>';
-            }).join('');
-            apostas_html='<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-left:3px solid #ef4444;border-radius:12px;padding:13px 14px;display:flex;flex-direction:column;gap:8px">'+
-                '<div style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#f87171">\ud83c\udfb0 Apostas Identificadas \u2014 '+casasJogo.length+' Casa'+(casasJogo.length>1?'s':'')+'</div>'+
-                '<div>'+casasItems+'</div>'+
-                (secoes['CASAS DE JOGO']?'<div style="font-size:.75rem;color:rgba(255,255,255,.5);line-height:1.5;margin-top:4px">'+esc(secoes['CASAS DE JOGO']).replace(/\n/g,'<br>')+'</div>':'')+
-            '</div>';
-        } else {
-            apostas_html='<div style="background:rgba(74,222,128,.05);border:1px solid rgba(74,222,128,.15);border-left:3px solid #4ade80;border-radius:12px;padding:11px 13px;display:flex;align-items:center;gap:10px">'+
-                '<i class="bi bi-check-circle-fill" style="color:#4ade80;font-size:1.1rem;flex-shrink:0"></i>'+
-                '<div><div style="font-size:.72rem;font-weight:800;color:#4ade80">Sem Apostas Identificadas</div>'+
-                '<div style="font-size:.68rem;color:rgba(255,255,255,.4)">Nenhuma casa de apostas encontrada no extrato</div></div>'+
-            '</div>';
-        }
+        var apostasCard=casasJogo.length>0?
+            crd('rgba(239,68,68,.07)','rgba(239,68,68,.2)',
+                lbl('#f87171','\ud83c\udfb0 Apostas — '+casasJogo.length+' casa'+(casasJogo.length>1?'s':''))+
+                casasJogo.map(function(c){return '<div style="font-size:.74rem;color:#fca5a5;font-weight:600">\u274c '+esc(typeof c==='object'?c.casa||c:String(c))+'</div>';}).join('')+
+                (secoes['CASAS DE JOGO']?'<div style="font-size:.69rem;color:rgba(255,255,255,.4);margin-top:5px;line-height:1.45">'+esc(secoes['CASAS DE JOGO'])+'</div>':'')
+            ):''; // sem apostas = sem card; titularidade já está no scoreRow
 
-        // ── RENDA ──
-        var renda_html=renderSecaoCard('\ud83d\udcb0','Análise de Renda',secoes['RENDA'],'#4ade80');
+        // 2-col row
+        var row2=function(a,b){return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px">'+a+b+'</div>';};
+        var full=function(c){return '<div style="margin-bottom:7px">'+c+'</div>';};
 
-        // ── COMPROMETIMENTO com barra visual ──
-        var comp_html='';
+        // Comprometimento com barra
+        var compCard='';
         if(secoes['COMPROMETIMENTO']){
             var compT=secoes['COMPROMETIMENTO'];
-            var mPct=compT.match(/(\d+)\s*[\-\–]?\s*%/);
+            var mPct=compT.match(/(\d+)\s*[\-\u2013]?\s*%/);
             var pct=mPct?Math.min(parseInt(mPct[1]),100):0;
             var barCor=pct>=90?'#ef4444':pct>=70?'#f59e0b':'#4ade80';
-            var barHtml=pct>0?'<div style="margin-top:8px"><div style="display:flex;justify-content:space-between;align-items:center;font-size:.65rem;color:rgba(255,255,255,.5);margin-bottom:5px"><span>Comprometimento de renda</span><span style="color:'+barCor+';font-weight:800;font-size:.78rem">'+pct+'%</span></div><div style="background:rgba(255,255,255,.08);border-radius:99px;height:8px;overflow:hidden"><div style="height:100%;background:'+barCor+';border-radius:99px;width:'+pct+'%"></div></div></div>':'';
-            comp_html=renderSecaoCard('\ud83d\udcca','Comprometimento de Renda',compT,'#fbbf24',barHtml);
+            compCard=crd('rgba(251,191,36,.06)','rgba(251,191,36,.2)',
+                lbl('#fbbf24','\ud83d\udcca Comprometimento')+
+                '<div style="font-size:1.5rem;font-weight:900;color:#fbbf24;line-height:1">'+pct+'%</div>'+
+                '<div style="background:rgba(255,255,255,.08);border-radius:99px;height:6px;margin-top:8px;overflow:hidden">'+
+                '<div style="width:'+pct+'%;height:100%;background:'+barCor+';border-radius:99px"></div></div>'+
+                '<div style="font-size:.65rem;color:rgba(255,255,255,.4);margin-top:4px;line-height:1.4">'+esc(compT)+'</div>'
+            );
         }
 
-        // ── SAÚDE FINANCEIRA ──
-        var saude_html='';
-        var saldoT=secoes['SALDOS']||''; var dividaT=secoes['DIVIDAS ATIVAS']||'';
-        if(saldoT||dividaT){
-            var saudeConteudo=(saldoT?'SALDOS:\n'+saldoT:'')+((saldoT&&dividaT)?'\n\n':'')+(dividaT?'DÍVIDAS ATIVAS:\n'+dividaT:'');
-            saude_html=renderSecaoCard('\ud83c\udfe6','Saúde Financeira',saudeConteudo.trim(),'#a78bfa');
-        }
+        // Saúde / Saldos
+        var saldoT=secoes['SALDOS']||'', dividaT=secoes['DIVIDAS ATIVAS']||'';
+        var saudeCard=(saldoT||dividaT)?crd('rgba(129,140,248,.06)','rgba(129,140,248,.2)',
+            lbl('#818cf8','\ud83c\udfe6 Sa\u00fade Financeira')+
+            (saldoT?'<div style="font-size:.71rem;color:rgba(255,255,255,.6);line-height:1.5;margin-bottom:4px"><strong style="color:#818cf8">Saldos:</strong> '+esc(saldoT)+'</div>':'')+
+            (dividaT?'<div style="font-size:.71rem;color:rgba(255,255,255,.6);line-height:1.5"><strong style="color:#f87171">D\u00edvidas:</strong> '+esc(dividaT)+'</div>':'')
+        ):'';
 
-        // ── COMPROMISSOS FIXOS ──
-        var fixos_html=renderSecaoCard('\ud83d\udccb','Compromissos Fixos',secoes['COMPROMISSOS FIXOS'],'#f59e0b');
+        // Renda
+        var rendaCard=secoes['RENDA']?crd('rgba(74,222,128,.04)','rgba(74,222,128,.15)',
+            lbl('#4ade80','\ud83d\udcb0 An\u00e1lise de Renda')+
+            '<div style="font-size:.74rem;color:rgba(255,255,255,.6);line-height:1.55">'+esc(secoes['RENDA']).replace(/\n/g,'<br>')+'</div>'
+        ):'';
 
-        // ── PADRÕES ──
-        var padroes_html=renderSecaoCard('\ud83d\udd0d','Padrões de Risco',secoes['PADROES DE RISCO'],'#fb923c');
+        // Fixos
+        var fixosCard=secoes['COMPROMISSOS FIXOS']?crd('rgba(245,158,11,.06)','rgba(245,158,11,.18)',
+            lbl('#f59e0b','\ud83d\udccb Compromissos Fixos')+
+            '<div style="font-size:.74rem;color:rgba(255,255,255,.6);line-height:1.55">'+esc(secoes['COMPROMISSOS FIXOS']).replace(/\n/g,'<br>')+'</div>'
+        ):'';
 
-        // ── RACIOCÍNIO DA NOTA ──
-        var calc_html='';
-        if(d.calculo) calc_html='<div style="background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.2);border-left:3px solid #a78bfa;border-radius:12px;padding:13px 14px">'+
-            '<div style="font-size:.6rem;font-weight:800;text-transform:uppercase;color:#a78bfa;margin-bottom:6px">\ud83d\udcca Raciocínio da Nota</div>'+
-            '<div style="font-size:.79rem;line-height:1.6;color:#ddd6fe">'+esc(d.calculo).replace(/\n/g,'<br>')+'</div>'+
-        '</div>';
+        // Padrões
+        var padroesCard=secoes['PADROES DE RISCO']?crd('rgba(249,115,22,.06)','rgba(249,115,22,.18)',
+            lbl('#fb923c','\ud83d\udd0d Padr\u00f5es de Risco')+
+            '<div style="font-size:.74rem;color:rgba(255,255,255,.6);line-height:1.55">'+esc(secoes['PADROES DE RISCO']).replace(/\n/g,'<br>')+'</div>'
+        ):'';
 
-        // ── CONSELHO ──
-        var conselho_html=''; // removido
-        if(false && d.conselho) conselho_html='<div style="background:rgba(74,222,128,.06);border:1.5px solid rgba(74,222,128,.2);border-radius:12px;padding:12px 14px">'+
-            '<div style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#4ade80;margin-bottom:5px">\ud83c\udfaf Conselho pro Vendedor</div>'+
-            '<p style="margin:0;font-size:.82rem;line-height:1.6;color:#bbf7d0">'+esc(d.conselho)+'</p>'+
-        '</div>';
+        // Raciocínio — anotação compacta, não um card grande
+        var calcCard=d.calculo?
+            '<div style="padding:8px 11px;border-radius:9px;background:rgba(139,92,246,.05);border-left:2.5px solid rgba(139,92,246,.3)">'+
+            '<div style="font-size:.5rem;font-weight:800;color:#a78bfa;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">\ud83d\udcca Racioc\u00ednio da Nota</div>'+
+            '<div style="font-size:.67rem;color:rgba(255,255,255,.45);line-height:1.5">'+esc(d.calculo)+'</div>'+
+            '</div>':'';
 
-        // ── MOTIVOS ──
-        var motivos_html='';
-        if(d.reprovado&&d.motivos) motivos_html='<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-left:3px solid #ef4444;border-radius:12px;padding:13px 14px">'+
-            '<div style="font-size:.6rem;font-weight:800;text-transform:uppercase;color:#f87171;margin-bottom:6px">\u274c Motivos da Reprovação</div>'+
-            '<div style="font-size:.81rem;line-height:1.65;color:#fca5a5">'+esc(d.motivos).replace(/\n/g,'<br>')+'</div>'+
-        '</div>';
+        // Motivos reprovação
+        var motivosCard=(d.reprovado&&d.motivos)?crd('rgba(239,68,68,.09)','rgba(239,68,68,.25)',
+            lbl('#f87171','\u274c Motivos da Reprova\u00e7\u00e3o')+
+            '<div style="font-size:.76rem;color:#fca5a5;line-height:1.55">'+esc(d.motivos).replace(/\n/g,'<br>')+'</div>'
+        ):'';
 
-        // ── ALVO DE VENDA ──
-        var alvo_html='';
-        if(d.rendaEstimada>0&&d.nota!==null&&!d.reprovado){
-            var alvoPct=d.nota>=85?0.30:d.nota>=60?0.20:0.10;
-            var alvoTeto=d.rendaEstimada*alvoPct;
-            var alvoFinan=alvoTeto*8.4;
-            var alvoMaxParcela=Math.floor((alvoFinan/(1-d.entradaPct))/10)*10;
-            var multRenda=d.nota>=85?3.0:d.nota>=60?2.2:1.0;
-            var alvoMaxRenda=Math.floor((d.rendaEstimada*multRenda)/10)*10;
-            var alvoMax=Math.min(alvoMaxParcela,alvoMaxRenda);
-            var travaAtiva=alvoMaxRenda<alvoMaxParcela?'renda':'parcela';
-            var alvoColor=d.nota>=85?'#4ade80':d.nota>=60?'#fbbf24':'#fb923c';
-            var alvoSub=travaAtiva==='renda'?'Limitado pela renda ('+multRenda+'x = '+R$(alvoMaxRenda)+') \u00b7 entrada '+Math.round(d.entradaPct*100)+'%':'Parcela em '+Math.round(alvoPct*100)+'% da renda \u00b7 entrada '+Math.round(d.entradaPct*100)+'%';
-            var alvoExpl='Aparelhos até '+R$(alvoMax)+' para '+esc(d.nomeCliente||'este cliente')+'. Renda '+R$(d.rendaEstimada)+', perfil '+(d.nota>=85?'FORTE':d.nota>=60?'MÉDIO':'FRACO')+', limite '+multRenda+'x a renda.';
-            var alvoTid='cs_alvo_tip_'+Date.now();
-            alvo_html='<div id="'+alvoTid+'_wrap" style="position:relative;cursor:pointer" onclick="(function(e,id){var t=document.getElementById(id);if(t){var s=t.style.opacity!=\'1\';t.style.opacity=s?\'1\':\'0\';t.style.pointerEvents=s?\'auto\':\'none\';if(s)setTimeout(function(){t.style.opacity=\'0\';t.style.pointerEvents=\'none\';},4500);}})(this,\''+alvoTid+'\')">'+
-                '<div style="display:flex;align-items:center;gap:10px;padding:9px 13px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">'+
-                    '<i class="bi bi-bullseye" style="color:'+alvoColor+';font-size:1rem;flex-shrink:0"></i>'+
-                    '<div style="flex:1"><div style="font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:rgba(255,255,255,.4)">Alvo de Venda Ideal <i class="bi bi-info-circle" style="font-size:.6rem;opacity:.5"></i></div>'+
-                    '<div style="font-size:.88rem;font-weight:800;color:'+alvoColor+'">Aparelhos de até '+R$(alvoMax)+'</div>'+
-                    '<div style="font-size:.62rem;color:rgba(255,255,255,.4)">'+alvoSub+'</div></div>'+
-                '</div>'+
-                '<div id="'+alvoTid+'" style="opacity:0;pointer-events:none;transition:opacity .3s;position:absolute;top:0;left:0;right:0;z-index:10;background:rgba(15,20,40,.97);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:11px 13px;font-size:.76rem;line-height:1.6;color:#e2e8f0;">'+esc(alvoExpl)+'</div>'+
-            '</div>';
-        }
+        // Perfil
+        var perfilCard=(d.perfil||titStr)?crd('rgba(96,165,250,.05)','rgba(96,165,250,.15)',
+            lbl('#60a5fa','\ud83d\udc64 Perfil do Cliente \u2014 '+esc(d.nomeCompleto))+
+            (d.perfil?'<div style="font-size:.76rem;color:rgba(255,255,255,.65);line-height:1.55;margin-bottom:'+(titStr?'8':'0')+'px">'+esc(d.perfil).replace(/\n/g,'<br>')+'</div>':'')+
+            (titStr?'<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:7px 9px">'+titStr+'</div>':'')
+        ):'';
 
-        // ── BLOCO WHATSAPP ──
-        function mkWppBlock(msgFn) {
-            var msg=typeof msgFn==='string'?msgFn:msgFn();
-            return '<div class="cs-wpp"><div class="cs-wpp-lbl"><i class="bi bi-whatsapp"></i> Mensagem para o cliente \u2014 toque para copiar</div>'+
-                '<div class="cs-wpp-txt" id="cs_wpp_txt" title="Toque para copiar">'+esc(msg).replace(/\n/g,'<br>')+'</div>'+
-                '<div class="cs-wpp-cp-hint" id="cs_wpp_hint"><i class="bi bi-clipboard-fill"></i> Toque para copiar</div></div>';
-        }
+        // Montagem bento — apostas card só aparece se houver casas detectadas
+        var bento=
+            full(scoreRow)+
+            confianca_html+
+            (d.aprov?sim_block:'')+
+            wpp_block+                                  // WPP aparece UMA VEZ aqui
+            (apostasCard?full(apostasCard):'')+
+            (rendaCard?full(rendaCard):'')+
+            ((compCard||saudeCard)?row2(compCard||'<div></div>',saudeCard||'<div></div>'):'')+
+            (fixosCard?full(fixosCard):'')+
+            (padroesCard?full(padroesCard):'')+
+            (perfilCard?full(perfilCard):'')+
+            (motivosCard?full(motivosCard):'')+
+            (calcCard?full(calcCard):'');               // Raciocínio ao final, compacto
 
-        // ── REPROVADO ──
-        if(!d.aprov){
-            return '<div class="cs-ri">'+
-                banner+confianca_html+nota_html+resumo_html+
-                perfil_html+apostas_html+
-                renda_html+comp_html+saude_html+fixos_html+padroes_html+
-                calc_html+conselho_html+motivos_html+
-                mkWppBlock(gerarWppReprovado(d.nomeCliente))+
-            '</div>';
-        }
-
-        // ── APROVADO ──
-        var vn=valorBase||0;
-        var enBaseMin=Math.ceil(vn*d.entradaPct/10)*10;
-        var enTurb=d.entradaAlta&&d.entrada?Math.ceil(parseFloat(d.entrada)/10)*10:enBaseMin;
-        var enMin=d.entradaAlta?enTurb:enBaseMin;
-        var en=enMin;
-        var np=d.parcelas?parseInt(d.parcelas):12, tx=d.taxa?parseFloat(d.taxa):6;
-        var vp=price(vn,en,np,tx), tt=en+vp*np;
-
-        if(d.downgrade){
-            return '<div class="cs-ri">'+
-                banner+confianca_html+nota_html+alvo_html+resumo_html+
-                perfil_html+apostas_html+renda_html+comp_html+
-                conselho_html+mkWppBlock(gerarWpp(d._produto||'Aparelho',en,np,vp,d))+
-            '</div>';
-        }
-
-        var parcOpts=''; for(var px=1;px<=12;px++) parcOpts+='<option value="'+px+'"'+(px===np?' selected':'')+'>'+px+'x</option>';
-        var sim_grid='<div class="cs-sim-grid">'+
-            '<div><label class="cs-lbl">Entrada (R$)</label><input class="cs-in" type="number" id="cs_en" value="'+en.toFixed(2)+'" step="10"></div>'+
-            '<div><label class="cs-lbl">Parcelas</label><select class="cs-in" id="cs_np">'+parcOpts+'</select></div>'+
-            '<div><label class="cs-lbl">Juros %am</label><input class="cs-in" type="number" id="cs_tx" value="'+tx.toFixed(1)+'" min="0" max="30" step="0.5"></div>'+
-            '</div>'+
-            '<div class="cs-pills" id="cs_pills">'+
-                '<div class="cs-pill'+(d.entradaAlta?' cs-pill-o':'')+'"> Entrada: <strong>'+R$(en)+'</strong></div>'+
-                '<div class="cs-pill"> <strong>'+np+'x</strong> de <strong>'+R$(vp)+'</strong> <span style="font-size:.65em;opacity:.65">MENSAL</span></div>'+
-                '<div class="cs-pill cs-pill-j"> Juros: <strong>'+tx+'%am</strong></div>'+
-                '<div class="cs-pill cs-pill-t"> Total: <strong>'+R$(tt)+'</strong></div>'+
-            '</div>';
-        var sim=d.entradaAlta?
-            '<div class="cs-sim cs-sim-orange"><div class="cs-sim-ttl"><i class="bi bi-lightning-charge-fill"></i> Entrada Turbinada</div><div class="cs-sim-aviso cs-sim-aviso-orange"><i class="bi bi-lock-fill"></i> Entrada mínima travada em '+R$(enMin)+' ('+Math.round(enMin/vn*100)+'% do valor)</div>'+sim_grid+'</div>':
-            '<div class="cs-sim"><div class="cs-sim-ttl"><i class="bi bi-sliders"></i> Simular condições</div><div class="cs-sim-aviso"><i class="bi bi-lock-fill"></i> Entrada mínima: '+Math.round(d.entradaPct*100)+'% = '+R$(enMin)+' | Perfil '+riscoLabel+'</div>'+sim_grid+'</div>';
-
-        return '<div class="cs-ri">'+
-            banner+confianca_html+nota_html+alvo_html+resumo_html+
-            perfil_html+apostas_html+
-            renda_html+comp_html+saude_html+fixos_html+padroes_html+
-            calc_html+conselho_html+
-            sim+mkWppBlock(gerarWpp(d._produto||'Aparelho',en,np,vp,d))+
-        '</div>';
+        return '<div class="cs-ri">'+banner+bento+'</div>';
     }
 
 
     async function abrirHist() {
         if(!document.getElementById('cs-reuso-css')){
             var s=document.createElement('style'); s.id='cs-reuso-css';
-            s.textContent='.cs-btn-reuso{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(139,92,246,.3);background:rgba(139,92,246,.08);color:#a78bfa;font-family:"Poppins",sans-serif;font-size:.72rem;font-weight:700;cursor:pointer;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s}.cs-btn-reuso:active{background:rgba(139,92,246,.2);transform:scale(0.98)}';
+            s.textContent=
+                '.cs-btn-reuso{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(139,92,246,.3);background:rgba(139,92,246,.08);color:#a78bfa;font-family:"Poppins",sans-serif;font-size:.72rem;font-weight:700;cursor:pointer;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s}'+
+                '.cs-btn-reuso:active{background:rgba(139,92,246,.2);transform:scale(0.98)}'+
+                '#cs_hist_search{width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:9px 12px 9px 34px;color:#fff;font-family:"Poppins",sans-serif;font-size:.78rem;outline:none}'+
+                '#cs_hist_search::placeholder{color:rgba(255,255,255,.3)}'+
+                '.cs-hitem2{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:11px 12px;margin-bottom:7px;transition:border-color .15s}'+
+                '.cs-hitem2:active{border-color:rgba(255,255,255,.18)}';
             document.head.appendChild(s);
         }
         var ov=el('cs_hist_ov'); if(!ov)return; ov.classList.add('active');
-        var list=el('cs_hist_list'); if(list)list.innerHTML='<div class="cs-hist-load"><i class="bi bi-hourglass-split"></i> Carregando...</div>';
+        // Inject search box above list if not yet present
+        var listWrap=el('cs_hist_list');
+        if(listWrap&&!el('cs_hist_search_wrap')){
+            var sw=document.createElement('div');sw.id='cs_hist_search_wrap';
+            sw.style.cssText='padding:12px 14px 8px;position:sticky;top:0;background:var(--cs-bg,#0b1325);z-index:5;';
+            sw.innerHTML='<div style="position:relative"><i class="bi bi-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,.35);font-size:.8rem"></i>'+
+                '<input id="cs_hist_search" type="search" placeholder="Buscar por nome, produto ou operador..." autocomplete="off"></div>'+
+                '<div id="cs_hist_filtros" style="display:flex;gap:6px;margin-top:8px">'+
+                    '<button class="cs-hfiltro cs-hfiltro-ativo" data-f="todos" style="padding:4px 10px;border-radius:99px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:#fff;font-size:.65rem;font-weight:700;cursor:pointer;font-family:inherit">Todos</button>'+
+                    '<button class="cs-hfiltro" data-f="aprovado" style="padding:4px 10px;border-radius:99px;border:1px solid rgba(74,222,128,.25);background:rgba(74,222,128,.06);color:#4ade80;font-size:.65rem;font-weight:700;cursor:pointer;font-family:inherit">✅ Aprovados</button>'+
+                    '<button class="cs-hfiltro" data-f="reprovado" style="padding:4px 10px;border-radius:99px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.06);color:#f87171;font-size:.65rem;font-weight:700;cursor:pointer;font-family:inherit">❌ Reprovados</button>'+
+                '</div>';
+            listWrap.parentNode.insertBefore(sw,listWrap);
+        }
+        if(listWrap)listWrap.innerHTML='<div class="cs-hist-load"><i class="bi bi-hourglass-split"></i> Carregando...</div>';
         try {
             var fb=await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
-            var db=window._firebaseDB; if(!db){if(list)list.innerHTML='<div class="cs-hist-empty">Firebase nao disponivel</div>';return;}
+            var db=window._firebaseDB; if(!db){if(listWrap)listWrap.innerHTML='<div class="cs-hist-empty">Firebase n\u00e3o dispon\u00edvel</div>';return;}
             var snap=await fb.get(fb.ref(db,SAVE_PATH)), items=[];
             if(snap.exists()) snap.forEach(function(c){var v=c.val();if(v)items.push(Object.assign({id:c.key},v));});
             items=items.filter(function(i){return i.ts&&i.ts>(Date.now()-HIST_DAYS*86400000);}).sort(function(a,b){return(b.ts||0)-(a.ts||0);});
             window._histItems=items;
-            if(!list)return;
-            if(!items.length){list.innerHTML='<div class="cs-hist-empty">Nenhuma consulta recente</div>';return;}
-            list.innerHTML=items.map(function(it,i){
-                var ap=it.decisao==='APROVADO'||it.decisao==='ENTRADA_ALTA'||it.decisao==='DOWNGRADE';
-                var dt=it.ts?new Date(it.ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'--';
-                var tc=ap?'#4ade80':'#f87171', tags='';
-                if(ap){if(it.entrada)tags+='<span class="cs-htag">Entrada: '+R$(it.entrada)+'</span>';if(it.vparcela)tags+='<span class="cs-htag">12x '+R$(it.vparcela)+'</span>';}
-                var resumoLimpo=it.resumo?it.resumo.substring(0,120)+(it.resumo.length>120?'...':''):'Sem detalhes.';
-                var btnReuso=ap?'<button class="cs-btn-reuso" data-i="'+i+'"><i class="bi bi-person-check-fill"></i> Reaproveitar Perfil (0 Tokens)</button>':'';
-                return '<div class="cs-hitem" style="border-left:4px solid '+tc+'"><div class="cs-hrow1"><span class="cs-hnome">'+esc(it.nomeCliente)+'</span><span style="font-size:.65rem;font-weight:800;color:'+tc+'">'+(ap?'V APROVADO':'X NEGADO')+'</span></div><div class="cs-hprod" style="margin-bottom:4px">'+esc(it.produto)+'</div><div style="font-size:.68rem;color:rgba(255,255,255,0.5);font-style:italic;line-height:1.2;margin-bottom:8px">"'+esc(resumoLimpo)+'"</div><div class="cs-htags">'+tags+'</div><div class="cs-hfoot"><span>'+dt+'</span><span>Op: '+esc(it.operador)+'</span></div>'+btnReuso+'</div>';
-            }).join('');
-            list.querySelectorAll('.cs-btn-reuso').forEach(function(btn){btn.addEventListener('click',function(e){usarPerfilHistorico(parseInt(e.currentTarget.dataset.i));});});
-        } catch(e){if(list)list.innerHTML='<div style="padding:16px;color:#f87171">Erro</div>';}
+            if(!listWrap)return;
+            if(!items.length){listWrap.innerHTML='<div class="cs-hist-empty">Nenhuma consulta recente</div>';return;}
+
+            // ── PAINEL DE ESTATÍSTICAS ──
+            (function(){
+                var statsWrap=document.getElementById('cs_hist_stats');
+                if(!statsWrap){
+                    statsWrap=document.createElement('div');
+                    statsWrap.id='cs_hist_stats';
+                    statsWrap.style.cssText='padding:0 14px 10px;';
+                    var sw2=document.getElementById('cs_hist_search_wrap');
+                    if(sw2) sw2.parentNode.insertBefore(statsWrap,sw2.nextSibling);
+                    else listWrap.parentNode.insertBefore(statsWrap,listWrap);
+                }
+                function startOf(type){var d=new Date();d.setHours(0,0,0,0);if(type==='week')d.setDate(d.getDate()-d.getDay());if(type==='month')d.setDate(1);return d.getTime();}
+                function statsFor(since){
+                    var sub=items.filter(function(i){return i.ts>=since;});
+                    var ap=sub.filter(function(i){return i.decisao==='APROVADO'||i.decisao==='ENTRADA_ALTA'||i.decisao==='DOWNGRADE';}).length;
+                    return {total:sub.length,ap:ap,neg:sub.length-ap};
+                }
+                var sd=statsFor(startOf('day')),sw=statsFor(startOf('week')),sm=statsFor(startOf('month'));
+                function col(label,data){
+                    var pct=data.total>0?Math.round(data.ap/data.total*100):0;
+                    return '<div style="flex:1;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:9px 10px;display:flex;flex-direction:column;gap:4px">'+
+                        '<div style="font-size:.5rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.3)">'+label+'</div>'+
+                        '<div style="font-size:1.4rem;font-weight:900;color:#fff;line-height:1">'+data.total+'</div>'+
+                        '<div style="display:flex;gap:4px;font-size:.6rem;font-weight:700">'+
+                            '<span style="color:#4ade80">\u2705 '+data.ap+'</span>'+
+                            '<span style="color:rgba(255,255,255,.2)">|</span>'+
+                            '<span style="color:#f87171">\u274c '+data.neg+'</span>'+
+                        '</div>'+
+                        '<div style="background:rgba(255,255,255,.08);border-radius:99px;height:4px;overflow:hidden">'+
+                            '<div style="width:'+pct+'%;height:100%;background:linear-gradient(90deg,#4ade80,#22c55e);border-radius:99px"></div>'+
+                        '</div>'+
+                        '<div style="font-size:.53rem;color:rgba(255,255,255,.28)">'+pct+'% aprov.</div>'+
+                    '</div>';
+                }
+                statsWrap.innerHTML=
+                    '<div style="font-size:.52rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.28);margin-bottom:6px">📊 Estatísticas</div>'+
+                    '<div style="display:flex;gap:5px">'+col('Hoje',sd)+col('Semana',sw)+col('Mês',sm)+'</div>';
+            })();
+
+            var filtroAtual='todos', buscaAtual='';
+
+            function renderItems(){
+                var busca=buscaAtual.toLowerCase().trim();
+                var filtrados=items.filter(function(it){
+                    var ap=it.decisao==='APROVADO'||it.decisao==='ENTRADA_ALTA'||it.decisao==='DOWNGRADE';
+                    if(filtroAtual==='aprovado'&&!ap) return false;
+                    if(filtroAtual==='reprovado'&&ap) return false;
+                    if(!busca) return true;
+                    return (it.nomeCliente||'').toLowerCase().indexOf(busca)!==-1||
+                           (it.produto||'').toLowerCase().indexOf(busca)!==-1||
+                           (it.operador||'').toLowerCase().indexOf(busca)!==-1||
+                           (it.cpf||'').toLowerCase().indexOf(busca)!==-1;
+                });
+                if(!filtrados.length){listWrap.innerHTML='<div class="cs-hist-empty">\ud83d\udd0d Nenhum resultado encontrado</div>';return;}
+                listWrap.innerHTML=filtrados.map(function(it){
+                    var idx=items.indexOf(it);
+                    var ap=it.decisao==='APROVADO'||it.decisao==='ENTRADA_ALTA'||it.decisao==='DOWNGRADE';
+                    var dt=it.ts?new Date(it.ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'--';
+                    var tc=ap?'#4ade80':'#f87171';
+                    var notaVal=(it.nota!==undefined&&it.nota!==null)?it.nota:'--';
+                    var notaCor=notaVal>=80?'#16a34a':notaVal>=60?'#d97706':notaVal>=40?'#f59e0b':'#dc2626';
+                    var resumoLimpo=it.resumo?it.resumo.substring(0,100)+(it.resumo.length>100?'...':''):'';
+                    var tags='';
+                    if(ap){if(it.entrada)tags+='<span class="cs-htag">'+R$(it.entrada)+' entrada</span>';if(it.vparcela)tags+='<span class="cs-htag">12x '+R$(it.vparcela)+'</span>';}
+                    var btnReuso=ap?'<button class="cs-btn-reuso" data-i="'+idx+'"><i class="bi bi-person-check-fill"></i> Reaproveitar (0 Tokens)</button>':'';
+                    return '<div class="cs-hitem2">'+
+                        '<div style="display:flex;align-items:flex-start;gap:9px">'+
+                            // Nota badge
+                            '<div style="min-width:40px;height:40px;border-radius:10px;background:'+(typeof notaVal==='number'?notaCor+'18':'rgba(255,255,255,.06)')+';border:1.5px solid '+(typeof notaVal==='number'?notaCor:'rgba(255,255,255,.1)')+';display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">'+
+                                '<span style="font-size:.95rem;font-weight:900;color:'+(typeof notaVal==='number'?notaCor:'rgba(255,255,255,.4)')+';line-height:1">'+notaVal+'</span>'+
+                            '</div>'+
+                            '<div style="flex:1;min-width:0">'+
+                                '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px">'+
+                                    '<span style="font-size:.82rem;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.nomeCliente||'--')+'</span>'+
+                                    '<span style="font-size:.6rem;font-weight:800;color:'+tc+';white-space:nowrap;flex-shrink:0">'+(ap?'✅ APROV':'❌ NEG')+'</span>'+
+                                '</div>'+
+                                '<div style="font-size:.68rem;color:rgba(255,255,255,.45);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.produto||'--')+'</div>'+
+                                (resumoLimpo?'<div style="font-size:.67rem;color:rgba(255,255,255,.35);line-height:1.4;margin-top:4px;font-style:italic">'+esc(resumoLimpo)+'</div>':'')+
+                                (tags?'<div class="cs-htags" style="margin-top:5px">'+tags+'</div>':'')+
+                                '<div style="display:flex;justify-content:space-between;font-size:.6rem;color:rgba(255,255,255,.3);margin-top:6px">'+
+                                    '<span>'+dt+'</span>'+
+                                    '<span>Op: '+esc(it.operador||'--')+'</span>'+
+                                '</div>'+
+                            '</div>'+
+                        '</div>'+
+                        btnReuso+
+                    '</div>';
+                }).join('');
+                listWrap.querySelectorAll('.cs-btn-reuso').forEach(function(btn){
+                    btn.addEventListener('click',function(e){usarPerfilHistorico(parseInt(e.currentTarget.dataset.i));});
+                });
+            }
+
+            renderItems();
+
+            // Busca
+            var searchEl=el('cs_hist_search');
+            if(searchEl){
+                searchEl.value='';
+                var novoSearch=searchEl.cloneNode(true);searchEl.parentNode.replaceChild(novoSearch,searchEl);
+                novoSearch.addEventListener('input',function(){buscaAtual=this.value;renderItems();});
+            }
+
+            // Filtros
+            var filtros=document.querySelectorAll('.cs-hfiltro');
+            filtros.forEach(function(btn){
+                var novo=btn.cloneNode(true);btn.parentNode.replaceChild(novo,btn);
+                novo.addEventListener('click',function(){
+                    filtroAtual=this.dataset.f;
+                    document.querySelectorAll('.cs-hfiltro').forEach(function(b){b.classList.remove('cs-hfiltro-ativo');b.style.fontWeight='700';b.style.opacity='.65';});
+                    this.classList.add('cs-hfiltro-ativo');this.style.opacity='1';
+                    renderItems();
+                });
+            });
+
+        } catch(e){if(listWrap)listWrap.innerHTML='<div style="padding:16px;color:#f87171">Erro ao carregar hist\u00f3rico</div>';}
     }
 
     function usarPerfilHistorico(idx) {
@@ -1207,7 +1324,7 @@
             var mAdj = l.match(/([+\-])\s*(\d+)\s*$/);
             if (mAdj) soma += (mAdj[1] === '+' ? 1 : -1) * parseInt(mAdj[2]);
         });
-        var notaCalc = Math.max(0, Math.min(100, teto !== null ? Math.min(soma, teto) : soma));
+        var notaCalc = Math.max(0, Math.min(92, teto !== null ? Math.min(soma, teto) : soma));
         if (notaCalc === d.nota) return;
         var notaOriginal = d.nota;
         d.nota = notaCalc;
