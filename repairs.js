@@ -1,13 +1,14 @@
 // repairs.js — Gerenciamento de Consertos
 // Depende de: window._firebaseDB, window.currentUserProfile, window.showCustomModal
 
-import { ref, push, update, remove, onValue, off }
+import { ref, push, update, remove, onValue, off, get, set }
     from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
 
 // ============================================================
 // CONSTANTES
 // ============================================================
 const REPAIRS_PATH      = 'manutencao';
+const REPAIRS_CFG_PATH  = 'manutencao/__settings';
 const CLOUDINARY_CLOUD  = 'dmvynrze6';
 const CLOUDINARY_PRESET = 'g8rdi3om';
 const CLOUDINARY_URL    = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`;
@@ -56,8 +57,19 @@ let allRepairs = [];
 let activeFilter = 'levar_tecnico';
 let repairPhotoBlob = null;
 let repairPhotoUrl  = '';
+// Suporte a até 4 fotos no cadastro
+let repairPhotosBlobs = [null, null, null, null];
+let repairPhotosUrls  = ['', '', '', ''];
 let stepPhotoBlob   = null;
 let stepPhotoUrl    = '';
+
+// Garantia / Config
+let _docRepairId      = null;   // ID do conserto sendo exportado
+let _repCfgTerms      = '';
+let _repCfgWppMsg     = 'Olá {nome}, aqui está o comprovante do seu conserto! 🛠️\nGuarde este documento, ele serve como sua garantia.';
+let _repCfgLogoUrl    = '';   // carregado do Firebase path 'settings'.logoBase64
+let _repCfgSigUrl     = '';   // carregado do Firebase path 'settings'.signatureBase64
+let _repCfgHeader     = '';   // carregado do Firebase path 'settings'.header
 
 // ============================================================
 // HELPERS
@@ -498,9 +510,11 @@ function buildCard(r) {
         diasNoStatus = `<span class="rep-badge rep-badge-info">🕒 ${d}d</span>`;
     }
 
-    // ── Thumb ─────────────────────────────────────────────────────
-    const thumb = r.fotoUrl
-        ? `<img src="${r.fotoUrl}" class="rep-thumb" alt="foto" onclick="event.stopPropagation();window._repAbrirFoto('${r.fotoUrl}')">`
+    // ── Thumb (primeira foto) ────────────────────────────────────
+    const todasFotos = (r.fotosUrls && r.fotosUrls.length) ? r.fotosUrls : (r.fotoUrl ? [r.fotoUrl] : []);
+    const fotoThumb  = todasFotos[0] || null;
+    const thumb = fotoThumb
+        ? `<img src="${fotoThumb}" class="rep-thumb" alt="foto" onclick="event.stopPropagation();window._repVerFotos('${r.id}')">`
         : `<div class="rep-thumb-placeholder"><i class="bi bi-phone"></i></div>`;
 
     // ── Body: detalhes completos ──────────────────────────────────
@@ -548,6 +562,16 @@ function buildCard(r) {
                 ${r.numeroCliente ? `<span><i class="bi bi-whatsapp" style="color:#25d366;"></i> ${escHtml(r.numeroCliente)}</span>` : ''}
             </div>
 
+            <!-- Galeria de fotos do cadastro -->
+            ${todasFotos.length > 0 ? `
+            <div class="rep-foto-galeria">
+                ${todasFotos.map((url, i) => `
+                <img src="${url}" class="rep-foto-thumb-mini"
+                    onclick="event.stopPropagation();window._repVerFotos('${r.id}', ${i})"
+                    alt="Foto ${i + 1}" title="Foto ${i + 1}">
+                `).join('')}
+            </div>` : ''}
+
             <!-- Timeline -->
             ${timelineHtml}
 
@@ -557,6 +581,7 @@ function buildCard(r) {
                 ${buildUndoBtn(r)}
                 <div class="rep-card-actions-secondary">
                     ${r.numeroCliente ? `<button class="rep-btn rep-btn-ghost rep-btn-sm rep-wpp" data-rep-whatsapp="${escHtml(r.numeroCliente)}" title="WhatsApp"><i class="bi bi-whatsapp"></i></button>` : ''}
+                    ${finaliz ? `<button class="rep-btn rep-btn-ghost rep-btn-sm" data-rep-action="emitir_doc" data-rep-id="${r.id}" title="Emitir Recibo/Garantia" style="color:#6da037;"><i class="bi bi-file-earmark-text-fill"></i></button>` : ''}
                     <button class="rep-btn rep-btn-ghost rep-btn-sm" data-rep-action="edit" data-rep-id="${r.id}"><i class="bi bi-pencil-fill"></i></button>
                     <button class="rep-btn rep-btn-danger rep-btn-sm" data-rep-action="delete" data-rep-id="${r.id}"><i class="bi bi-trash-fill"></i></button>
                 </div>
@@ -625,6 +650,7 @@ async function handleAction(action, id) {
         case 'to_em_reparo':     openStepModal(repair, STATUS.EM_REPARO,     '📸 Foto: Entrega ao Técnico',    'Registrar entrega ao técnico'); break;
         case 'to_loja_reparado': openStepModal(repair, STATUS.LOJA_REPARADO, '📸 Foto: Devolução pelo Técnico', 'Confirmar retorno à loja');     break;
         case 'to_finalizado':    openStepModal(repair, STATUS.FINALIZADO,    '📸 Foto: Entrega ao Cliente',    'Confirmar entrega ao cliente'); break;
+        case 'emitir_doc':       _abrirDocModal(id); break;
     }
 }
 
@@ -690,6 +716,29 @@ function confirmDelete(id) {
 function openRepairForm(repair = null) {
     repairPhotoBlob = null;
     repairPhotoUrl  = repair?.fotoUrl || '';
+    // Restaurar múltiplas fotos
+    repairPhotosBlobs = [null, null, null, null];
+    const savedUrls = repair?.fotosUrls || [];
+    repairPhotosUrls = [
+        savedUrls[0] || repair?.fotoUrl || '',
+        savedUrls[1] || '',
+        savedUrls[2] || '',
+        savedUrls[3] || '',
+    ];
+    // Renderizar previews das fotos extras
+    for (let i = 0; i < 4; i++) {
+        const img = document.getElementById('repFoto' + i + 'Img');
+        const prev = document.getElementById('repFoto' + i + 'Preview');
+        const ph = document.getElementById('repFoto' + i + 'Placeholder');
+        if (repairPhotosUrls[i]) {
+            if (img) img.src = repairPhotosUrls[i];
+            if (prev) prev.style.display = 'block';
+            if (ph) ph.style.display = 'none';
+        } else {
+            if (prev) prev.style.display = 'none';
+            if (ph) ph.style.display = 'flex';
+        }
+    }
 
     const overlay  = document.getElementById('repFormOverlay');
     const title    = document.getElementById('repFormTitle');
@@ -777,6 +826,14 @@ async function submitRepairForm() {
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Salvando...'; }
 
     try {
+        // Upload das fotos (até 4)
+        for (let i = 0; i < 4; i++) {
+            if (repairPhotosBlobs[i]) {
+                repairPhotosUrls[i] = await uploadFoto(repairPhotosBlobs[i]);
+            }
+        }
+        const fotosUrls = repairPhotosUrls.filter(u => u);
+        const fotoUrlPrincipal = fotosUrls[0] || null;
         if (repairPhotoBlob) repairPhotoUrl = await uploadFoto(repairPhotoBlob);
         const existing = id ? allRepairs.find(r => r.id === id) : null;
         const data = {
@@ -788,7 +845,8 @@ async function submitRepairForm() {
             horaMaxima:       hora || null,
             valorCobrado:     valor,
             responsavel:      responsavel || null,
-            fotoUrl:          repairPhotoUrl || null,
+            fotoUrl:          fotoUrlPrincipal,
+            fotosUrls:        fotosUrls.length ? fotosUrls : null,
             status:           existing?.status || STATUS.LOJA_SEM_ANALISE,
             tsCadastro:       existing?.tsCadastro || tsNow(),
             criadoPor:        existing?.criadoPor || getUser(),
@@ -899,6 +957,397 @@ function initPhotoInput(inputId, previewId, imgId, lblId, onBlobReady) {
 // ============================================================
 // INICIALIZAÇÃO
 // ============================================================
+// ============================================================
+// LAZY LOAD — html2canvas + jsPDF (só carrega quando precisa)
+// ============================================================
+let _pdfLibsLoaded = false;
+async function _garantirPdfLibs() {
+    if (_pdfLibsLoaded) return;
+    const carregarScript = url => new Promise((res, rej) => {
+        if (document.querySelector(`script[src="${url}"]`) && window.html2canvas && window.jspdf) { res(); return; }
+        const s = document.createElement('script');
+        s.src = url;
+        s.onload = res;
+        s.onerror = rej;
+        document.head.appendChild(s);
+    });
+    await carregarScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
+    await carregarScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
+    _pdfLibsLoaded = true;
+}
+
+// ============================================================
+// CONFIGURAÇÕES — carregar do Firebase
+// ============================================================
+async function _loadRepairCfg() {
+    const db = getDb();
+
+    // 1. Config dos consertos (termos + mensagem wpp + logo própria)
+    try {
+        const snap = await get(ref(db, REPAIRS_CFG_PATH));
+        if (snap.exists()) {
+            const c = snap.val();
+            _repCfgTerms  = c.terms  || '';
+            _repCfgWppMsg = c.wppMsg || _repCfgWppMsg;
+            if (c.logoBase64) _repCfgLogoUrl = c.logoBase64; // logo própria dos consertos
+        }
+    } catch(e) { console.warn('repairs cfg load:', e); }
+
+    // 2. Logo, assinatura e cabeçalho — lê direto do Firebase path 'settings'
+    //    (mesmo path que o app.js usa: ref(db, 'settings'))
+    try {
+        const snapS = await get(ref(db, 'settings'));
+        if (snapS.exists()) {
+            const s = snapS.val();
+            if (!_repCfgLogoUrl && s.logoBase64) _repCfgLogoUrl = s.logoBase64; // fallback se não tem logo própria
+            if (s.signatureBase64) _repCfgSigUrl  = s.signatureBase64;
+            if (s.header)          _repCfgHeader  = s.header;
+        }
+    } catch(e) { console.warn('repairs settings load:', e); }
+}
+
+async function _saveRepairCfg() {
+    const terms  = document.getElementById('repCfgTerms')?.value?.trim()  || '';
+    const wppMsg = document.getElementById('repCfgWppMsg')?.value?.trim() || '';
+    const btn    = document.getElementById('repCfgSaveBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Salvando...'; }
+    try {
+        // Incluir logo própria se foi alterada nesta sessão
+        const cfgData = { terms, wppMsg };
+        if (_repCfgLogoUrl && _repCfgLogoUrl.startsWith('data:')) {
+            cfgData.logoBase64 = _repCfgLogoUrl;
+        }
+        await set(ref(getDb(), REPAIRS_CFG_PATH), cfgData);
+        _repCfgTerms  = terms;
+        _repCfgWppMsg = wppMsg;
+        _closeConfigModal();
+        showToast('✅ Configurações salvas!');
+    } catch(e) {
+        showToast('❌ Erro: ' + e.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i> Salvar'; }
+    }
+}
+
+function _abrirConfigModal() {
+    const ta1 = document.getElementById('repCfgTerms');
+    const ta2 = document.getElementById('repCfgWppMsg');
+    if (ta1) ta1.value = _repCfgTerms;
+    if (ta2) ta2.value = _repCfgWppMsg;
+    // Mostrar logo atual se existir
+    const previewEl = document.getElementById('repCfgLogoPreview');
+    const placeholderEl = document.getElementById('repCfgLogoPlaceholder');
+    if (_repCfgLogoUrl) {
+        if (previewEl) { previewEl.src = _repCfgLogoUrl; previewEl.style.display = 'block'; }
+        if (placeholderEl) placeholderEl.style.display = 'none';
+    } else {
+        if (previewEl) previewEl.style.display = 'none';
+        if (placeholderEl) placeholderEl.style.display = 'flex';
+    }
+    const ov = document.getElementById('repCfgOverlay');
+    if (ov) ov.style.display = 'flex';
+}
+
+function _closeConfigModal() {
+    const ov = document.getElementById('repCfgOverlay');
+    if (ov) ov.style.display = 'none';
+}
+
+// ============================================================
+// MODAL DE DOCUMENTO — passo 1 (prazo) + passo 2 (ações)
+// ============================================================
+function _abrirDocModal(repairId) {
+    _docRepairId = repairId;
+    const btnWpp = document.getElementById('repDocBtnWpp');
+    const btnPdf = document.getElementById('repDocBtnPdf');
+    if (btnWpp) { btnWpp.style.opacity = '1'; btnWpp.dataset.used = ''; }
+    if (btnPdf) { btnPdf.style.opacity = '1'; btnPdf.dataset.used = ''; }
+    const sel = document.getElementById('repDocPrazo');
+    if (sel) sel.value = '90';
+    // Limpa campo de solução
+    const sol = document.getElementById('repDocSolucao');
+    if (sol) sol.value = '';
+    _toggleCustomPrazo();
+    const ov = document.getElementById('repDocOverlay');
+    if (ov) ov.style.display = 'flex';
+    // Garante que o campo "Serviço Realizado" seja o primeiro visível
+    setTimeout(() => {
+        const body = document.querySelector('#repDocOverlay .rep-modal-body');
+        if (body) body.scrollTop = 0;
+    }, 50);
+}
+
+function _closeDocModal() {
+    _docRepairId = null;
+    const ov = document.getElementById('repDocOverlay');
+    if (ov) ov.style.display = 'none';
+}
+
+function _toggleCustomPrazo() {
+    const sel  = document.getElementById('repDocPrazo');
+    const wrap = document.getElementById('repDocCustomWrap');
+    if (!sel || !wrap) return;
+    wrap.style.display = sel.value === 'custom' ? 'block' : 'none';
+}
+
+function _getDias() {
+    const sel = document.getElementById('repDocPrazo');
+    if (!sel) return 90;
+    if (sel.value === 'custom') {
+        return parseInt(document.getElementById('repDocCustomDias')?.value) || 0;
+    }
+    return parseInt(sel.value) || 0;
+}
+
+// Passo 2A — WhatsApp
+function _enviarWpp() {
+    const repair = allRepairs.find(r => r.id === _docRepairId);
+    if (!repair) return;
+    const btn = document.getElementById('repDocBtnWpp');
+    const dias = _getDias();
+    const nome = repair.nomeCliente?.split(' ')[0] || 'cliente';
+    const prazoTxt = dias === 0 ? 'sem garantia' :
+                     dias === 365 ? '1 ano de garantia' :
+                     dias === 180 ? '6 meses de garantia' :
+                     dias === 90  ? '3 meses de garantia' :
+                     dias === 30  ? '30 dias de garantia' : `${dias} dias de garantia`;
+    const msg = (_repCfgWppMsg || 'Olá {nome}, aqui está o comprovante do seu conserto! 🛠️')
+        .replace('{nome}', nome)
+        .replace('{prazo}', prazoTxt)
+        .replace('{aparelho}', repair.modeloAparelho || 'aparelho');
+    const link = whatsappLink(repair.numeroCliente);
+    if (!link) { showToast('⚠️ Número do cliente não cadastrado.'); return; }
+    window.open(`${link}?text=${encodeURIComponent(msg)}`, '_blank');
+    if (btn) { btn.style.opacity = '0.45'; btn.dataset.used = '1'; }
+    _verificarFechamento();
+}
+
+// Passo 2B — Gerar PDF e compartilhar
+async function _gerarECompartilhar() {
+    const repair = allRepairs.find(r => r.id === _docRepairId);
+    if (!repair) return;
+    const btn = document.getElementById('repDocBtnPdf');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Gerando PDF...'; }
+    try {
+        await _garantirPdfLibs();
+        const dias     = _getDias();
+        const solucao  = document.getElementById('repDocSolucao')?.value?.trim() || '';
+        const htmlRecibo = _buildReciboHTML(repair, dias, solucao);
+
+        // Container panfleto — 420px = mesmo tamanho do mockup aprovado
+        const container = document.createElement('div');
+        container.style.cssText = 'position:fixed;top:0;left:-9999px;width:420px;background:#fff;z-index:-1;';
+        container.innerHTML = htmlRecibo;
+        document.body.appendChild(container);
+        await new Promise(r => setTimeout(r, 700));
+
+        const canvas = await window.html2canvas(container, {
+            scale: 3, useCORS: true, backgroundColor: '#ffffff', windowWidth: 420,
+        });
+        document.body.removeChild(container);
+
+        // PDF tamanho panfleto (proporcional ao canvas, não A4)
+        const { jsPDF } = window.jspdf;
+        // Converte pixels para mm: 1px ≈ 0.2646mm a 96dpi
+        const pxToMm  = px => px * 0.2646;
+        const pdfW    = pxToMm(canvas.width / 3);   // divide por scale
+        const pdfH    = pxToMm(canvas.height / 3);
+        const pdf     = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [pdfW, pdfH] });
+        const imgData = canvas.toDataURL('image/jpeg', 0.93);
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH);
+
+        const pdfBlob  = pdf.output('blob');
+        const nomeArq  = `garantia-${(repair.nomeCliente||'conserto').replace(/\s+/g,'-')}.pdf`;
+        const pdfFile  = new File([pdfBlob], nomeArq, { type: 'application/pdf' });
+
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+            await navigator.share({ files: [pdfFile], title: 'Comprovante de Serviço' });
+        } else {
+            const url = URL.createObjectURL(pdfBlob);
+            const a = document.createElement('a');
+            a.href = url; a.download = nomeArq; a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 2000);
+        }
+        if (btn) { btn.style.opacity = '0.45'; btn.dataset.used = '1'; }
+        _verificarFechamento();
+    } catch(e) {
+        showToast('❌ Erro ao gerar PDF: ' + e.message);
+        console.error(e);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill"></i> Gerar PDF e Compartilhar'; }
+    }
+}
+
+// Fecha o modal automaticamente se os dois botões foram usados
+function _verificarFechamento() {
+    const btnWpp = document.getElementById('repDocBtnWpp');
+    const btnPdf = document.getElementById('repDocBtnPdf');
+    if (btnWpp?.dataset.used === '1' && btnPdf?.dataset.used === '1') {
+        setTimeout(_closeDocModal, 600);
+    }
+}
+
+// ============================================================
+// BUILDER DO RECIBO — estilo Moderno, A4 compacto
+// ============================================================
+function _buildReciboHTML(repair, dias, solucao = '') {
+    const tsBase   = repair.timeline?.finalizado?.ts || repair.tsCadastro || Date.now();
+    const dEntrega = new Date(tsBase);
+    const dVenc    = new Date(tsBase);
+    dVenc.setDate(dVenc.getDate() + dias);
+    const fmtData  = d => d.toLocaleDateString('pt-BR');
+    const docNum   = (repair.id || '').slice(-6).toUpperCase();
+    const prazoTxt = dias === 0   ? 'Sem Garantia' :
+                     dias === 365 ? '1 Ano'   :
+                     dias === 180 ? '6 Meses' :
+                     dias === 90  ? '3 Meses' :
+                     dias === 30  ? '30 Dias' : `${dias} Dias`;
+    const termos   = _repCfgTerms ||
+        'O serviço possui garantia contra o mesmo defeito pelo prazo indicado. Não cobre danos físicos, líquidos ou mau uso após a retirada do aparelho. Apresente este documento para acionar a garantia.';
+    const servicoExibido = solucao || repair.descricaoDefeito || '';
+    const headerLinhas   = (_repCfgHeader || '').replace(/\n/g, '<br>');
+
+    const logoTag = _repCfgLogoUrl
+        ? `<img src="${_repCfgLogoUrl}" style="width:96px;height:96px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+        : `<div style="width:96px;height:96px;border-radius:50%;background:linear-gradient(135deg,#4a7c2f,#6da037);display:flex;align-items:center;justify-content:center;color:#fff;font-size:36px;font-weight:bold;font-family:sans-serif;flex-shrink:0;">W</div>`;
+
+    const sigTag = _repCfgSigUrl
+        ? `<img src="${_repCfgSigUrl}" style="height:42px;object-fit:contain;display:block;margin:0 auto 6px;">`
+        : '';
+
+    return `
+    <div style="font-family:'Trebuchet MS',Arial,sans-serif;background:#fff;color:#1a1a1a;width:420px;box-sizing:border-box;">
+
+      <!-- TOPO ESCURO -->
+      <div style="background:#111;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          ${logoTag}
+          <div>
+            <div style="color:#fff;font-weight:bold;font-size:12px;letter-spacing:1px;margin-bottom:3px;">WORKCELL TECNOLOGIA</div>
+            <div style="color:#888;font-size:8px;line-height:1.5;">${headerLinhas || 'Goiânia - GO'}</div>
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="color:#6da037;font-size:7px;letter-spacing:2px;text-transform:uppercase;margin-bottom:3px;">Ordem de Serviço</div>
+          <div style="color:#fff;font-size:16px;font-weight:bold;letter-spacing:2px;">#${docNum}</div>
+        </div>
+      </div>
+
+      <!-- CORPO -->
+      <div style="padding:18px 20px;">
+
+        <!-- Cliente + Datas -->
+        <div style="display:flex;gap:16px;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #eee;">
+          <div style="flex:1;">
+            <div style="font-size:7px;letter-spacing:2px;text-transform:uppercase;color:#aaa;margin-bottom:6px;">Cliente</div>
+            <div style="font-size:14px;font-weight:bold;margin-bottom:3px;">${escHtml(repair.nomeCliente)}</div>
+            <div style="font-size:10px;color:#666;">📱 ${escHtml(repair.numeroCliente || 'Não informado')}</div>
+          </div>
+          <div style="flex:1;text-align:right;">
+            <div style="font-size:7px;letter-spacing:2px;text-transform:uppercase;color:#aaa;margin-bottom:6px;">Datas</div>
+            <div style="font-size:10px;color:#444;line-height:1.9;">
+              <span style="color:#aaa;">Entrega:</span> <strong>${fmtData(dEntrega)}</strong><br>
+              <span style="color:#aaa;">Resp.:</span> <strong>${escHtml(repair.responsavel || repair.criadoPor || '—')}</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Aparelho e Serviço -->
+        <div style="background:#f7f9f5;border-radius:8px;padding:12px 16px;margin-bottom:14px;border-left:3px solid #6da037;">
+          <div style="font-size:7px;letter-spacing:2px;text-transform:uppercase;color:#aaa;margin-bottom:6px;">Aparelho e Serviço Realizado</div>
+          <div style="font-size:12px;font-weight:bold;margin-bottom:4px;">${escHtml(repair.modeloAparelho || 'Não informado')}</div>
+          <div style="font-size:10px;color:#555;line-height:1.5;">${escHtml(servicoExibido)}</div>
+        </div>
+
+        <!-- Garantia + Valor -->
+        <div style="display:flex;gap:10px;margin-bottom:16px;">
+          <div style="flex:1;background:#f0f7eb;border:1px solid #c5e0a8;border-radius:8px;padding:12px 14px;">
+            <div style="font-size:7px;letter-spacing:2px;text-transform:uppercase;color:#5a8a30;margin-bottom:6px;">Garantia</div>
+            <div style="font-size:18px;font-weight:bold;color:#4a7c2f;">${prazoTxt}</div>
+            ${dias > 0 ? `<div style="font-size:9px;color:#6da037;margin-top:3px;">até ${fmtData(dVenc)}</div>` : ''}
+          </div>
+          <div style="flex:1;background:#111;border-radius:8px;padding:12px 14px;">
+            <div style="font-size:7px;letter-spacing:2px;text-transform:uppercase;color:#555;margin-bottom:6px;">Total Cobrado</div>
+            <div style="font-size:18px;font-weight:bold;color:#fff;">R$ ${Number(repair.valorCobrado||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+          </div>
+        </div>
+
+        <!-- Termos -->
+        ${dias > 0 ? `
+        <div style="border-top:1px solid #eee;padding-top:12px;margin-bottom:18px;">
+          <div style="font-size:7px;letter-spacing:2px;text-transform:uppercase;color:#ccc;margin-bottom:6px;">Termos de Garantia</div>
+          <div style="font-size:9px;color:#888;line-height:1.7;">${escHtml(termos)}</div>
+        </div>` : '<div style="margin-bottom:16px;"></div>'}
+
+        <!-- Assinatura -->
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;padding-top:4px;">
+          <div style="font-size:7px;color:#ddd;">Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+          <div style="text-align:center;">
+            ${sigTag}
+            <div style="width:120px;height:1px;background:#bbb;margin:0 auto 4px;"></div>
+            <div style="font-size:7px;color:#aaa;letter-spacing:1px;">Assinatura Autorizada</div>
+          </div>
+        </div>
+
+      </div>
+    </div>`;
+}
+
+// ============================================================
+// WIRES DOS NOVOS MODAIS
+// ============================================================
+function _wireDocModal() {
+    document.getElementById('repDocCloseBtn')?.addEventListener('click',  _closeDocModal);
+    document.getElementById('repDocOverlay')?.addEventListener('click', e => {
+        if (e.target === document.getElementById('repDocOverlay')) _closeDocModal();
+    });
+    document.getElementById('repDocPrazo')?.addEventListener('change', _toggleCustomPrazo);
+    document.getElementById('repDocBtnWpp')?.addEventListener('click',  _enviarWpp);
+    document.getElementById('repDocBtnPdf')?.addEventListener('click',  _gerarECompartilhar);
+}
+
+function _wireCfgModal() {
+    document.getElementById('repCfgBtn')?.addEventListener('click',      _abrirConfigModal);
+    document.getElementById('repCfgCloseBtn')?.addEventListener('click', _closeConfigModal);
+    document.getElementById('repCfgSaveBtn')?.addEventListener('click',  _saveRepairCfg);
+    document.getElementById('repCfgOverlay')?.addEventListener('click', e => {
+        if (e.target === document.getElementById('repCfgOverlay')) _closeConfigModal();
+    });
+    // Upload de logo própria dos consertos
+    const logoInput = document.getElementById('repCfgLogoInput');
+    if (logoInput) {
+        logoInput.addEventListener('change', async e => {
+            const file = e.target.files[0];
+            logoInput.value = '';
+            if (!file) return;
+            try {
+                const blob = await comprimirFoto(file);
+                const reader = new FileReader();
+                reader.onload = ev => {
+                    _repCfgLogoUrl = ev.target.result;
+                    const previewEl = document.getElementById('repCfgLogoPreview');
+                    const placeholderEl = document.getElementById('repCfgLogoPlaceholder');
+                    if (previewEl) { previewEl.src = _repCfgLogoUrl; previewEl.style.display = 'block'; }
+                    if (placeholderEl) placeholderEl.style.display = 'none';
+                };
+                reader.readAsDataURL(blob);
+            } catch(e2) { showToast('❌ Erro ao processar imagem.'); }
+        });
+    }
+
+    // Quando teclado sobe no mobile, rola o campo focado pra dentro do modal
+    const cfgBody = document.querySelector('#repCfgOverlay .rep-modal-body');
+    if (cfgBody) {
+        cfgBody.addEventListener('focusin', e => {
+            const el = e.target;
+            if (!el || (el.tagName !== 'TEXTAREA' && el.tagName !== 'INPUT')) return;
+            setTimeout(() => {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 350); // aguarda teclado subir
+        });
+    }
+}
+
 export function initRepairs() {
     if (!window._firebaseDB) {
         setTimeout(initRepairs, 500);
@@ -910,6 +1359,9 @@ export function initRepairs() {
     wireUndoEvents();
     wireFilterBtns();
     wireSearchInput();
+    _wireDocModal();
+    _wireCfgModal();
+    _loadRepairCfg();
     listenRepairs(items => render(items));
 }
 
@@ -924,16 +1376,48 @@ function wireFormEvents() {
     });
     document.getElementById('repFormSaveBtn')?.addEventListener('click', submitRepairForm);
 
-    initPhotoInput('repFormPhotoInputCamera',  'repFormPhotoPreview', 'repFormPhotoImg', 'repFormPhotoBtnLabel', b => {
-        repairPhotoBlob = b;
-        document.getElementById('repFormPhotoPlaceholder')?.style && (document.getElementById('repFormPhotoPlaceholder').style.display = 'none');
-    });
-    initPhotoInput('repFormPhotoInputGallery', 'repFormPhotoPreview', 'repFormPhotoImg', 'repFormPhotoBtnLabel', b => {
-        repairPhotoBlob = b;
-        document.getElementById('repFormPhotoPlaceholder')?.style && (document.getElementById('repFormPhotoPlaceholder').style.display = 'none');
-    });
-    document.getElementById('repFormPhotoBtnCamera')?.addEventListener('click', () => document.getElementById('repFormPhotoInputCamera')?.click());
-    document.getElementById('repFormPhotoBtnGallery')?.addEventListener('click', () => document.getElementById('repFormPhotoInputGallery')?.click());
+    // Wire das 4 fotos do cadastro
+    for (let i = 0; i < 4; i++) {
+        const idx = i; // closure
+        initPhotoInput(
+            'repFoto' + idx + 'InputCamera',
+            'repFoto' + idx + 'Preview',
+            'repFoto' + idx + 'Img',
+            'repFoto' + idx + 'BtnLabel',
+            b => {
+                repairPhotosBlobs[idx] = b;
+                repairPhotosUrls[idx] = '';
+                document.getElementById('repFoto' + idx + 'Placeholder')?.style &&
+                    (document.getElementById('repFoto' + idx + 'Placeholder').style.display = 'none');
+            }
+        );
+        initPhotoInput(
+            'repFoto' + idx + 'InputGallery',
+            'repFoto' + idx + 'Preview',
+            'repFoto' + idx + 'Img',
+            'repFoto' + idx + 'BtnLabel',
+            b => {
+                repairPhotosBlobs[idx] = b;
+                repairPhotosUrls[idx] = '';
+                document.getElementById('repFoto' + idx + 'Placeholder')?.style &&
+                    (document.getElementById('repFoto' + idx + 'Placeholder').style.display = 'none');
+            }
+        );
+        document.getElementById('repFoto' + idx + 'BtnCamera')?.addEventListener('click', () =>
+            document.getElementById('repFoto' + idx + 'InputCamera')?.click());
+        document.getElementById('repFoto' + idx + 'BtnGallery')?.addEventListener('click', () =>
+            document.getElementById('repFoto' + idx + 'InputGallery')?.click());
+        document.getElementById('repFoto' + idx + 'Remove')?.addEventListener('click', () => {
+            repairPhotosBlobs[idx] = null;
+            repairPhotosUrls[idx]  = '';
+            const img  = document.getElementById('repFoto' + idx + 'Img');
+            const prev = document.getElementById('repFoto' + idx + 'Preview');
+            const ph   = document.getElementById('repFoto' + idx + 'Placeholder');
+            if (img)  img.src = '';
+            if (prev) prev.style.display = 'none';
+            if (ph)   ph.style.display = 'flex';
+        });
+    }
     document.getElementById('repFormPhotoRemove')?.addEventListener('click', () => {
         repairPhotoBlob = null; repairPhotoUrl = '';
         const preview = document.getElementById('repFormPhotoPreview');
@@ -1066,6 +1550,37 @@ function wireSearchInput() {
         }, 200);
     });
 })();
+
+// Visualizador de galeria de fotos do cadastro
+window._repVerFotos = function(repId, indexInicial = 0) {
+    const repair = allRepairs.find(r => r.id === repId);
+    if (!repair) return;
+    const fotos = (repair.fotosUrls && repair.fotosUrls.length) ? repair.fotosUrls : (repair.fotoUrl ? [repair.fotoUrl] : []);
+    if (!fotos.length) return;
+    let idx = indexInicial;
+
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.95);display:flex;flex-direction:column;align-items:center;justify-content:center;';
+
+    function render() {
+        const temAnterior = idx > 0;
+        const temProximo  = idx < fotos.length - 1;
+        ov.innerHTML = `
+            <div style="position:relative;width:100%;max-width:500px;display:flex;align-items:center;justify-content:center;padding:0 48px;box-sizing:border-box;">
+                ${temAnterior ? `<button onclick="window._repGaleriaNav(-1)" style="position:absolute;left:4px;background:rgba(255,255,255,.12);border:none;border-radius:50%;width:40px;height:40px;color:#fff;font-size:1.4rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">‹</button>` : ''}
+                <img src="${fotos[idx]}" style="max-width:100%;max-height:75vh;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.8);">
+                ${temProximo ? `<button onclick="window._repGaleriaNav(1)"  style="position:absolute;right:4px;background:rgba(255,255,255,.12);border:none;border-radius:50%;width:40px;height:40px;color:#fff;font-size:1.4rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">›</button>` : ''}
+            </div>
+            <div style="color:rgba(255,255,255,.5);font-size:.8rem;margin-top:14px;">${idx + 1} / ${fotos.length}</div>
+            <button onclick="document.getElementById('_repGaleriaOv').remove()" style="margin-top:16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;color:#fff;padding:8px 20px;cursor:pointer;font-size:.8rem;">Fechar</button>
+        `;
+    }
+    window._repGaleriaNav = function(dir) { idx = Math.max(0, Math.min(fotos.length - 1, idx + dir)); render(); };
+    ov.id = '_repGaleriaOv';
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+    render();
+};
 
 // Abrir foto em overlay
 window._repAbrirFoto = function(url) {

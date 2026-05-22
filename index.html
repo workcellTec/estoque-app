@@ -28,7 +28,7 @@
 
 <!-- html2pdf: lazy loaded via app.js quando necessário -->
 
-    <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js@6.6.2/dist/fuse.min.js" defer></script>
     <!-- html2canvas: lazy loaded via app.js quando necessário -->
     
 
@@ -2102,10 +2102,13 @@ window.addEventListener('load', function() {
 <div class="container hidden" id="repairsContainer" style="display:none;">
 
     <!-- Header -->
-    <div class="section-header">
-        <h3><i class="bi bi-wrench-adjustable-circle-fill"></i> Consertos</h3>
+    <div class="section-header d-flex align-items-center justify-content-between">
         <button aria-label="Voltar" class="btn-back" id="backFromRepairs">
             <i class="bi bi-arrow-left"></i>
+        </button>
+        <h3 style="margin:0;"><i class="bi bi-wrench-adjustable-circle-fill"></i> Consertos</h3>
+        <button id="repCfgBtn" class="btn-back" title="Configurações dos Consertos" style="font-size:.95rem;">
+            <i class="bi bi-gear-fill"></i>
         </button>
     </div>
 
@@ -2216,35 +2219,78 @@ window.addEventListener('load', function() {
                 </select>
             </div>
 
-            <!-- Foto do aparelho — silhueta grande empurra conteúdo acima do teclado -->
+            <!-- Fotos do aparelho — até 4 fotos -->
             <div class="rep-field">
-                <label><i class="bi bi-camera-fill"></i> Foto do Aparelho</label>
-                <input type="file" id="repFormPhotoInputCamera"  accept="image/*" capture="environment" style="display:none;">
-                <input type="file" id="repFormPhotoInputGallery" accept="image/*" style="display:none;">
-
-                <!-- Silhueta: visível enquanto não há foto -->
-                <div id="repFormPhotoPlaceholder" class="rep-photo-placeholder">
-                    <div class="rep-photo-silhouette">
-                        <i class="bi bi-phone" style="font-size:3.5rem;"></i>
-                        <i class="bi bi-camera" style="font-size:1.4rem;position:absolute;bottom:8px;right:-4px;"></i>
+                <label><i class="bi bi-camera-fill"></i> Fotos do Aparelho <span style="opacity:.4;font-size:.7rem;">(até 4)</span></label>
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px;">
+                <!-- Foto 0 -->
+                <div style="flex:1;min-width:0;">
+                    <input type="file" id="repFoto0InputCamera"  accept="image/*" capture="environment" style="display:none;">
+                    <input type="file" id="repFoto0InputGallery" accept="image/*" style="display:none;">
+                    <div id="repFoto0Placeholder" style="aspect-ratio:1;border-radius:10px;background:rgba(255,255,255,.05);border:1px dashed rgba(255,255,255,.15);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;" onclick="document.getElementById('repFoto0InputGallery').click()">
+                        <i class="bi bi-camera" style="font-size:1.4rem;opacity:.3;"></i>
+                        <span style="font-size:.6rem;opacity:.3;text-align:center;">Foto Principal</span>
                     </div>
-                    <span class="rep-photo-hint">Foto do aparelho</span>
-                    <div class="rep-photo-btns" style="margin-top:12px;">
-                        <button class="rep-btn rep-btn-ghost rep-btn-sm" id="repFormPhotoBtnCamera" type="button">
-                            <i class="bi bi-camera-fill"></i> Câmera
-                        </button>
-                        <button class="rep-btn rep-btn-ghost rep-btn-sm" id="repFormPhotoBtnGallery" type="button">
-                            <i class="bi bi-image-fill"></i> <span id="repFormPhotoBtnLabel">Galeria</span>
-                        </button>
+                    <div id="repFoto0Preview" style="display:none;position:relative;aspect-ratio:1;">
+                        <img id="repFoto0Img" src="" style="width:100%;height:100%;object-fit:cover;border-radius:10px;display:block;">
+                        <button id="repFoto0Remove" type="button" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.7);border:none;color:#fff;border-radius:50%;width:22px;height:22px;font-size:.6rem;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                    <div style="display:flex;gap:4px;margin-top:4px;">
+                        <button id="repFoto0BtnCamera"  class="rep-btn rep-btn-ghost rep-btn-sm" type="button" style="flex:1;font-size:.6rem;padding:4px;"><i class="bi bi-camera-fill"></i></button>
+                        <button id="repFoto0BtnGallery" class="rep-btn rep-btn-ghost rep-btn-sm" type="button" style="flex:1;font-size:.6rem;padding:4px;"><span id="repFoto0BtnLabel"><i class="bi bi-image-fill"></i></span></button>
                     </div>
                 </div>
-
-                <!-- Preview: visível depois que foto é escolhida -->
-                <div id="repFormPhotoPreview" style="display:none;position:relative;">
-                    <img id="repFormPhotoImg" src="" alt="preview" style="width:100%;height:260px;object-fit:cover;border-radius:14px;display:block;">
-                    <button id="repFormPhotoRemove" type="button" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,.7);border:none;color:#fff;border-radius:50%;width:30px;height:30px;font-size:.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">
-                        <i class="bi bi-x-lg"></i>
-                    </button>
+                <!-- Foto 1 -->
+                <div style="flex:1;min-width:0;">
+                    <input type="file" id="repFoto1InputCamera"  accept="image/*" capture="environment" style="display:none;">
+                    <input type="file" id="repFoto1InputGallery" accept="image/*" style="display:none;">
+                    <div id="repFoto1Placeholder" style="aspect-ratio:1;border-radius:10px;background:rgba(255,255,255,.05);border:1px dashed rgba(255,255,255,.15);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;" onclick="document.getElementById('repFoto1InputGallery').click()">
+                        <i class="bi bi-camera" style="font-size:1.4rem;opacity:.3;"></i>
+                        <span style="font-size:.6rem;opacity:.3;text-align:center;">Foto 2</span>
+                    </div>
+                    <div id="repFoto1Preview" style="display:none;position:relative;aspect-ratio:1;">
+                        <img id="repFoto1Img" src="" style="width:100%;height:100%;object-fit:cover;border-radius:10px;display:block;">
+                        <button id="repFoto1Remove" type="button" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.7);border:none;color:#fff;border-radius:50%;width:22px;height:22px;font-size:.6rem;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                    <div style="display:flex;gap:4px;margin-top:4px;">
+                        <button id="repFoto1BtnCamera"  class="rep-btn rep-btn-ghost rep-btn-sm" type="button" style="flex:1;font-size:.6rem;padding:4px;"><i class="bi bi-camera-fill"></i></button>
+                        <button id="repFoto1BtnGallery" class="rep-btn rep-btn-ghost rep-btn-sm" type="button" style="flex:1;font-size:.6rem;padding:4px;"><span id="repFoto1BtnLabel"><i class="bi bi-image-fill"></i></span></button>
+                    </div>
+                </div>
+                <!-- Foto 2 -->
+                <div style="flex:1;min-width:0;">
+                    <input type="file" id="repFoto2InputCamera"  accept="image/*" capture="environment" style="display:none;">
+                    <input type="file" id="repFoto2InputGallery" accept="image/*" style="display:none;">
+                    <div id="repFoto2Placeholder" style="aspect-ratio:1;border-radius:10px;background:rgba(255,255,255,.05);border:1px dashed rgba(255,255,255,.15);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;" onclick="document.getElementById('repFoto2InputGallery').click()">
+                        <i class="bi bi-camera" style="font-size:1.4rem;opacity:.3;"></i>
+                        <span style="font-size:.6rem;opacity:.3;text-align:center;">Foto 3</span>
+                    </div>
+                    <div id="repFoto2Preview" style="display:none;position:relative;aspect-ratio:1;">
+                        <img id="repFoto2Img" src="" style="width:100%;height:100%;object-fit:cover;border-radius:10px;display:block;">
+                        <button id="repFoto2Remove" type="button" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.7);border:none;color:#fff;border-radius:50%;width:22px;height:22px;font-size:.6rem;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                    <div style="display:flex;gap:4px;margin-top:4px;">
+                        <button id="repFoto2BtnCamera"  class="rep-btn rep-btn-ghost rep-btn-sm" type="button" style="flex:1;font-size:.6rem;padding:4px;"><i class="bi bi-camera-fill"></i></button>
+                        <button id="repFoto2BtnGallery" class="rep-btn rep-btn-ghost rep-btn-sm" type="button" style="flex:1;font-size:.6rem;padding:4px;"><span id="repFoto2BtnLabel"><i class="bi bi-image-fill"></i></span></button>
+                    </div>
+                </div>
+                <!-- Foto 3 -->
+                <div style="flex:1;min-width:0;">
+                    <input type="file" id="repFoto3InputCamera"  accept="image/*" capture="environment" style="display:none;">
+                    <input type="file" id="repFoto3InputGallery" accept="image/*" style="display:none;">
+                    <div id="repFoto3Placeholder" style="aspect-ratio:1;border-radius:10px;background:rgba(255,255,255,.05);border:1px dashed rgba(255,255,255,.15);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;" onclick="document.getElementById('repFoto3InputGallery').click()">
+                        <i class="bi bi-camera" style="font-size:1.4rem;opacity:.3;"></i>
+                        <span style="font-size:.6rem;opacity:.3;text-align:center;">Foto 4</span>
+                    </div>
+                    <div id="repFoto3Preview" style="display:none;position:relative;aspect-ratio:1;">
+                        <img id="repFoto3Img" src="" style="width:100%;height:100%;object-fit:cover;border-radius:10px;display:block;">
+                        <button id="repFoto3Remove" type="button" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.7);border:none;color:#fff;border-radius:50%;width:22px;height:22px;font-size:.6rem;cursor:pointer;display:flex;align-items:center;justify-content:center;"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                    <div style="display:flex;gap:4px;margin-top:4px;">
+                        <button id="repFoto3BtnCamera"  class="rep-btn rep-btn-ghost rep-btn-sm" type="button" style="flex:1;font-size:.6rem;padding:4px;"><i class="bi bi-camera-fill"></i></button>
+                        <button id="repFoto3BtnGallery" class="rep-btn rep-btn-ghost rep-btn-sm" type="button" style="flex:1;font-size:.6rem;padding:4px;"><span id="repFoto3BtnLabel"><i class="bi bi-image-fill"></i></span></button>
+                    </div>
+                </div>
                 </div>
             </div>
         </div>
@@ -2313,6 +2359,114 @@ window.addEventListener('load', function() {
         <div class="rep-modal-footer">
             <button class="rep-btn rep-btn-ghost" id="repConfirmNo">Cancelar</button>
             <button class="rep-btn rep-btn-danger" id="repConfirmYes"><i class="bi bi-trash-fill"></i> Excluir</button>
+        </div>
+    </div>
+</div>
+
+<!-- ─── MODAL: EMITIR RECIBO / GARANTIA ─── -->
+<div class="rep-modal-overlay" id="repDocOverlay" style="display:none;">
+    <div class="rep-modal">
+        <div class="rep-modal-header">
+            <span><i class="bi bi-file-earmark-text-fill" style="color:#6da037;margin-right:6px;"></i>Emitir Recibo / Garantia</span>
+            <button class="rep-modal-close" id="repDocCloseBtn"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="rep-modal-body">
+
+            <!-- Serviço realizado -->
+            <div class="rep-field">
+                <label style="font-size:.8rem;opacity:.7;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">
+                    <i class="bi bi-wrench-fill" style="color:#6da037;"></i> Serviço Realizado
+                </label>
+                <input type="text" id="repDocSolucao" class="form-control" style="margin-top:6px;"
+                    placeholder="Ex: Troca de tela, Bateria substituída...">
+                <small style="opacity:.4;font-size:.68rem;display:block;margin-top:3px;">Aparece no documento no lugar da descrição do defeito.</small>
+            </div>
+
+            <!-- Prazo -->
+            <div class="rep-field" style="margin-top:14px;">
+                <label style="font-size:.8rem;opacity:.7;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">
+                    <i class="bi bi-shield-check-fill" style="color:#6da037;"></i> Prazo de Garantia
+                </label>
+                <select id="repDocPrazo" class="form-select" style="margin-top:6px;">
+                    <option value="0">Sem Garantia (Recibo Simples)</option>
+                    <option value="30">30 dias</option>
+                    <option value="90" selected>3 meses</option>
+                    <option value="180">6 meses</option>
+                    <option value="365">1 ano</option>
+                    <option value="custom">Personalizado...</option>
+                </select>
+                <div id="repDocCustomWrap" style="display:none;margin-top:8px;">
+                    <input type="number" id="repDocCustomDias" class="form-control" placeholder="Quantidade de dias" min="1" max="3650">
+                </div>
+            </div>
+
+            <!-- Divisor -->
+            <div style="height:1px;background:rgba(255,255,255,.08);margin:18px 0;"></div>
+
+            <!-- Ações -->
+            <div class="rep-field" style="margin-bottom:0;">
+                <label style="font-size:.8rem;opacity:.7;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:block;">
+                    <i class="bi bi-send-fill"></i> Enviar para o Cliente
+                </label>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                    <button id="repDocBtnWpp" class="rep-btn rep-btn-primary" style="background:#25d366;border-color:#25d366;justify-content:center;gap:8px;transition:opacity .3s;">
+                        <i class="bi bi-whatsapp"></i> Enviar mensagem no WhatsApp
+                    </button>
+                    <button id="repDocBtnPdf" class="rep-btn rep-btn-primary" style="justify-content:center;gap:8px;transition:opacity .3s;">
+                        <i class="bi bi-file-earmark-pdf-fill"></i> Gerar PDF e Compartilhar
+                    </button>
+                </div>
+                <p style="font-size:.68rem;opacity:.4;margin:10px 0 0;text-align:center;line-height:1.4;">
+                    Pode usar qualquer opção independentemente.<br>Após usar as duas, o painel fecha automaticamente.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── MODAL: CONFIGURAÇÕES DOS CONSERTOS ─── -->
+<div class="rep-modal-overlay" id="repCfgOverlay" style="display:none;">
+    <div class="rep-modal">
+        <div class="rep-modal-header">
+            <span><i class="bi bi-gear-fill" style="color:#6da037;margin-right:6px;"></i>Configurações — Consertos</span>
+            <button class="rep-modal-close" id="repCfgCloseBtn"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="rep-modal-body" style="padding-bottom:240px;">
+            <!-- Logo própria dos consertos -->
+            <div class="rep-field" style="margin-bottom:18px;">
+                <label><i class="bi bi-image-fill" style="color:#6da037;"></i> Logo dos Consertos</label>
+                <input type="file" id="repCfgLogoInput" accept="image/*" style="display:none;">
+                <div style="display:flex;align-items:center;gap:12px;margin-top:8px;">
+                    <div id="repCfgLogoPlaceholder" style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.06);border:1px dashed rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.3);font-size:1.4rem;flex-shrink:0;">
+                        <i class="bi bi-image"></i>
+                    </div>
+                    <img id="repCfgLogoPreview" src="" style="display:none;width:64px;height:64px;border-radius:50%;object-fit:cover;flex-shrink:0;">
+                    <div>
+                        <button class="rep-btn rep-btn-ghost rep-btn-sm" onclick="document.getElementById('repCfgLogoInput').click()" type="button">
+                            <i class="bi bi-upload"></i> Escolher logo
+                        </button>
+                        <div style="font-size:.65rem;opacity:.4;margin-top:4px;">Sem borda branca. Substitui a logo do app neste recibo.</div>
+                    </div>
+                </div>
+            </div>
+            <div class="rep-field">
+                <label><i class="bi bi-shield-fill-check" style="color:#6da037;"></i> Termo de Garantia dos Consertos</label>
+                <textarea id="repCfgTerms" class="form-control" rows="5"
+                    placeholder="Ex: O serviço tem garantia de 90 dias contra o mesmo defeito..."></textarea>
+                <small style="opacity:.45;font-size:.68rem;display:block;margin-top:4px;">Aparece no PDF. Se vazio, usa um texto padrão.</small>
+            </div>
+            <div class="rep-field" style="margin-top:16px;">
+                <label><i class="bi bi-whatsapp" style="color:#25d366;"></i> Mensagem padrão do WhatsApp</label>
+                <textarea id="repCfgWppMsg" class="form-control" rows="4"
+                    placeholder="Ex: Olá {nome}, seu aparelho está pronto!"></textarea>
+                <small style="opacity:.45;font-size:.68rem;display:block;margin-top:4px;">
+                    Use {nome} = nome do cliente · {aparelho} = modelo · {prazo} = prazo da garantia
+                </small>
+            </div>
+        </div>
+        <div class="rep-modal-footer">
+            <button class="rep-btn rep-btn-ghost" onclick="document.getElementById('repCfgOverlay').style.display='none'">Cancelar</button>
+            <button class="rep-btn rep-btn-primary" id="repCfgSaveBtn"><i class="bi bi-check-lg"></i> Salvar</button>
         </div>
     </div>
 </div>
@@ -2775,6 +2929,24 @@ window.addEventListener('load', function() {
     color: #fff !important;
     border-color: var(--primary-color) !important;
 }
+
+/* ── Galeria de fotos do cadastro no card ── */
+.rep-foto-galeria {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 8px 0 4px;
+}
+.rep-foto-thumb-mini {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1.5px solid rgba(255,255,255,.1);
+    transition: transform .15s, border-color .15s;
+}
+.rep-foto-thumb-mini:hover { transform: scale(1.06); border-color: var(--rep-green, #6da037); }
 </style>
 
 <script>
@@ -3136,3 +3308,4 @@ window.addEventListener('load', function() {
 
 </body>
 </html>
+
