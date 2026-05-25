@@ -262,7 +262,7 @@
     function buildPrompt(produto, valor, rendaPreCalculada) {
         var vf = Number(valor).toLocaleString('pt-BR',{minimumFractionDigits:2});
         var vn = Number(valor);
-        var e20 = (vn*0.20).toLocaleString('pt-BR',{minimumFractionDigits:2});
+        var e33 = (vn*0.33).toLocaleString('pt-BR',{minimumFractionDigits:2});
         var e35 = (vn*0.35).toLocaleString('pt-BR',{minimumFractionDigits:2});
         var e60 = (vn*0.60).toLocaleString('pt-BR',{minimumFractionDigits:2});
         return (
@@ -304,7 +304,7 @@
 '   1-4 esporadicas = penaliza nota mas nao reprova.\n\n'+
 
 'Todo o resto APROVA com condicoes:\n'+
-'  FORTE (85-100): entrada 20% = R$ '+e20+' | teto parcela 30% renda\n'+
+'  FORTE (85-100): entrada 20% = R$ '+e33+' | teto parcela 30% renda\n'+
 '  MEDIO (60-84):  entrada 35% = R$ '+e35+' | teto parcela 20% renda\n'+
 '  FRACO (40-59):  entrada 60% = R$ '+e60+' | teto parcela 10% renda\n\n'+
 
@@ -393,7 +393,7 @@
             var confianca      = (obj.confiancaLeitura || 'ALTA').toUpperCase();
 
             var risco = 'REPROVADO', entradaPct = 0.60;
-            if (nota >= 85) { risco = 'FORTE';      entradaPct = 0.20; }
+            if (nota >= 85) { risco = 'FORTE';      entradaPct = 0.33; }
             else if (nota >= 60) { risco = 'MEDIO'; entradaPct = 0.35; }
             else if (nota >= 40) { risco = 'FRACO'; entradaPct = 0.60; }
             else { risco = 'REPROVADO'; aprov = false; }
@@ -883,46 +883,57 @@
                     if(filtroAtual==='aprovado'&&!ap) return false;
                     if(filtroAtual==='reprovado'&&ap) return false;
                     if(!busca) return true;
-                    return (it.nomeCliente||'').toLowerCase().indexOf(busca)!==-1||
-                           (it.produto||'').toLowerCase().indexOf(busca)!==-1||
-                           (it.operador||'').toLowerCase().indexOf(busca)!==-1||
-                           (it.cpf||'').toLowerCase().indexOf(busca)!==-1;
+                    return (String(it.nomeCliente||'')).toLowerCase().indexOf(busca)!==-1||
+                           (String(it.produto||'')).toLowerCase().indexOf(busca)!==-1||
+                           (String(it.operador||'')).toLowerCase().indexOf(busca)!==-1||
+                           (String(it.cpf||'')).toLowerCase().indexOf(busca)!==-1;
                 });
                 if(!filtrados.length){listWrap.innerHTML='<div class="cs-hist-empty">\ud83d\udd0d Nenhum resultado encontrado</div>';return;}
-                listWrap.innerHTML=filtrados.map(function(it){
-                    var idx=items.indexOf(it);
-                    var ap=it.decisao==='APROVADO'||it.decisao==='ENTRADA_ALTA'||it.decisao==='DOWNGRADE';
-                    var dt=it.ts?new Date(it.ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'--';
-                    var tc=ap?'#4ade80':'#f87171';
-                    var notaVal=(it.nota!==undefined&&it.nota!==null)?it.nota:'--';
-                    var notaCor=notaVal>=80?'#16a34a':notaVal>=60?'#d97706':notaVal>=40?'#f59e0b':'#dc2626';
-                    var resumoLimpo=it.resumo?it.resumo.substring(0,100)+(it.resumo.length>100?'...':''):'';
-                    var tags='';
-                    if(ap){if(it.entrada)tags+='<span class="cs-htag">'+R$(it.entrada)+' entrada</span>';if(it.vparcela)tags+='<span class="cs-htag">12x '+R$(it.vparcela)+'</span>';}
-                    var btnReuso=ap?'<button class="cs-btn-reuso" data-i="'+idx+'"><i class="bi bi-person-check-fill"></i> Reaproveitar (0 Tokens)</button>':'';
-                    return '<div class="cs-hitem2">'+
-                        '<div style="display:flex;align-items:flex-start;gap:9px">'+
-                            // Nota badge
-                            '<div style="min-width:40px;height:40px;border-radius:10px;background:'+(typeof notaVal==='number'?notaCor+'18':'rgba(255,255,255,.06)')+';border:1.5px solid '+(typeof notaVal==='number'?notaCor:'rgba(255,255,255,.1)')+';display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">'+
-                                '<span style="font-size:.95rem;font-weight:900;color:'+(typeof notaVal==='number'?notaCor:'rgba(255,255,255,.4)')+';line-height:1">'+notaVal+'</span>'+
-                            '</div>'+
-                            '<div style="flex:1;min-width:0">'+
-                                '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px">'+
-                                    '<span style="font-size:.82rem;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.nomeCliente||'--')+'</span>'+
-                                    '<span style="font-size:.6rem;font-weight:800;color:'+tc+';white-space:nowrap;flex-shrink:0">'+(ap?'✅ APROV':'❌ NEG')+'</span>'+
+                var htmlParts=[];
+                filtrados.forEach(function(it){
+                    try{
+                        var idx=items.indexOf(it);
+                        var ap=it.decisao==='APROVADO'||it.decisao==='ENTRADA_ALTA'||it.decisao==='DOWNGRADE';
+                        var dt=it.ts?new Date(it.ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'--';
+                        var tc=ap?'#4ade80':'#f87171';
+                        var notaNum=typeof it.nota==='number'?it.nota:(parseInt(it.nota)||null);
+                        var notaVal=notaNum!==null?notaNum:'--';
+                        var notaCor=notaNum!==null?(notaNum>=80?'#16a34a':notaNum>=60?'#d97706':notaNum>=40?'#f59e0b':'#dc2626'):'#6b7280';
+                        // resumo — forçar string para evitar crash em registros antigos
+                        var resumoRaw=String(it.resumo||'');
+                        var resumoLimpo=resumoRaw.length>100?resumoRaw.substring(0,100)+'...':resumoRaw;
+                        var tags='';
+                        if(ap){
+                            if(it.entrada!=null)tags+='<span class="cs-htag">'+R$(it.entrada)+' entrada</span>';
+                            if(it.vparcela!=null)tags+='<span class="cs-htag">12x '+R$(it.vparcela)+'</span>';
+                        }
+                        var btnReuso=ap?'<button class="cs-btn-reuso" data-i="'+idx+'"><i class="bi bi-person-check-fill"></i> Reaproveitar (0 Tokens)</button>':'';
+                        htmlParts.push(
+                            '<div class="cs-hitem2">'+
+                                '<div style="display:flex;align-items:flex-start;gap:9px">'+
+                                    '<div style="min-width:40px;height:40px;border-radius:10px;background:'+notaCor+'18;border:1.5px solid '+notaCor+';display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">'+
+                                        '<span style="font-size:.95rem;font-weight:900;color:'+notaCor+';line-height:1">'+notaVal+'</span>'+
+                                    '</div>'+
+                                    '<div style="flex:1;min-width:0">'+
+                                        '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px">'+
+                                            '<span style="font-size:.82rem;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(String(it.nomeCliente||'--'))+'</span>'+
+                                            '<span style="font-size:.6rem;font-weight:800;color:'+tc+';white-space:nowrap;flex-shrink:0">'+(ap?'\u2705 APROV':'\u274c NEG')+'</span>'+
+                                        '</div>'+
+                                        '<div style="font-size:.68rem;color:rgba(255,255,255,.45);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(String(it.produto||'--'))+'</div>'+
+                                        (resumoLimpo?'<div style="font-size:.67rem;color:rgba(255,255,255,.35);line-height:1.4;margin-top:4px;font-style:italic">'+esc(resumoLimpo)+'</div>':'')+
+                                        (tags?'<div class="cs-htags" style="margin-top:5px">'+tags+'</div>':'')+
+                                        '<div style="display:flex;justify-content:space-between;font-size:.6rem;color:rgba(255,255,255,.3);margin-top:6px">'+
+                                            '<span>'+dt+'</span>'+
+                                            '<span>Op: '+esc(String(it.operador||'--'))+'</span>'+
+                                        '</div>'+
+                                    '</div>'+
                                 '</div>'+
-                                '<div style="font-size:.68rem;color:rgba(255,255,255,.45);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.produto||'--')+'</div>'+
-                                (resumoLimpo?'<div style="font-size:.67rem;color:rgba(255,255,255,.35);line-height:1.4;margin-top:4px;font-style:italic">'+esc(resumoLimpo)+'</div>':'')+
-                                (tags?'<div class="cs-htags" style="margin-top:5px">'+tags+'</div>':'')+
-                                '<div style="display:flex;justify-content:space-between;font-size:.6rem;color:rgba(255,255,255,.3);margin-top:6px">'+
-                                    '<span>'+dt+'</span>'+
-                                    '<span>Op: '+esc(it.operador||'--')+'</span>'+
-                                '</div>'+
-                            '</div>'+
-                        '</div>'+
-                        btnReuso+
-                    '</div>';
-                }).join('');
+                                btnReuso+
+                            '</div>'
+                        );
+                    }catch(itemErr){ console.warn('Erro ao renderizar item do historico:',itemErr,it); }
+                });
+                listWrap.innerHTML=htmlParts.join('');
                 listWrap.querySelectorAll('.cs-btn-reuso').forEach(function(btn){
                     btn.addEventListener('click',function(e){usarPerfilHistorico(parseInt(e.currentTarget.dataset.i));});
                 });
@@ -950,7 +961,7 @@
                 });
             });
 
-        } catch(e){if(listWrap)listWrap.innerHTML='<div style="padding:16px;color:#f87171">Erro ao carregar hist\u00f3rico</div>';}
+        } catch(e){ console.error('Erro abrirHist:',e); if(listWrap)listWrap.innerHTML='<div style="padding:16px;color:#f87171">Erro ao carregar hist\u00f3rico: '+esc(String(e.message||e))+'</div>'; }
     }
 
     function usarPerfilHistorico(idx) {
@@ -1330,7 +1341,7 @@
         d.nota = notaCalc;
         d.calculo += '\n\n⚠️ CORRECAO SISTEMA: IA retornou ' + notaOriginal +
             ' pts mas soma do proprio calculo = ' + notaCalc + ' pts — nota corrigida automaticamente.';
-        if (notaCalc >= 85) { d.entradaPct = 0.20; }
+        if (notaCalc >= 85) { d.entradaPct = 0.33; }
         else if (notaCalc >= 60) { d.entradaPct = 0.35; }
         else if (notaCalc >= 40) { d.entradaPct = 0.60; }
         else {
@@ -1469,7 +1480,7 @@
             '\n\n💡 Perfil PJ/autonomo com alto giro financeiro.';
 
         // Reclassifica se subiu de faixa
-        if (d.nota >= 85 && d.entradaPct > 0.20) { d.entradaPct = 0.20; }
+        if (d.nota >= 85 && d.entradaPct > 0.33) { d.entradaPct = 0.33; }
         else if (d.nota >= 60 && d.entradaPct > 0.35) { d.entradaPct = 0.35; }
     }
 
