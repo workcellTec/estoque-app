@@ -108,7 +108,10 @@
         if (!wrap) return;
         const max = maxInst(getMachine());
         const cur = getInst();
-        const vals = [0,1,8,10,12,18].filter(v => v===0||v<=max);
+        // Atualiza o max do slider dinamicamente conforme a máquina
+        const slider = el('fv_installments');
+        if (slider) slider.max = max;
+        const vals = [0,1,8,10,12,18,21].filter(v => v===0||v<=max);
         wrap.innerHTML = vals.map(v =>
             `<button class="fv-ibtn${cur===v?' active':''}" data-v="${v}">${v===0?'Déb':`${v}x`}</button>`
         ).join('');
@@ -704,7 +707,7 @@
                                 <span style="font-size:.65rem;font-weight:700;color:var(--primary-color)" id="fv_inst_label">Déb</span>
                             </div>
                             <div class="fv-ibtns" id="fv_inst_btns"></div>
-                            <input type="range" class="fv-islider" id="fv_installments" min="0" max="18" step="1" value="0">
+                            <input type="range" class="fv-islider" id="fv_installments" min="0" max="21" step="1" value="0">
                         </div>
 
                     </div>
