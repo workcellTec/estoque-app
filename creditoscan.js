@@ -486,6 +486,8 @@
             decisao:d.reprovado?'REPROVADO':d.downgrade?'DOWNGRADE':d.entradaAlta?'ENTRADA_ALTA':'APROVADO',
             nota:d.nota, 
             risco:d.risco, 
+            rendaEstimada:d.rendaEstimada||null,
+            casasJogo:(d.casasJogo||[]).filter(Boolean).join(','),
             entrada:d.entrada||null, 
             parcelas:d.parcelas||null,
             vparcela:d.vparcela||null, 
@@ -824,61 +826,181 @@
                 '</div>';
             listWrap.parentNode.insertBefore(sw,listWrap);
         }
-        if(listWrap)listWrap.innerHTML='<div class="cs-hist-load"><i class="bi bi-hourglass-split"></i> Carregando...</div>';
+        if(listWrap){
+            if(!document.getElementById('cs_hist_stats')){
+                listWrap.innerHTML='<div id="cs_hist_stats" style="display:flex;flex-direction:column;gap:9px;margin-bottom:4px"></div><div id="cs_hist_items"><div class="cs-hist-load"><i class="bi bi-hourglass-split"></i> Carregando...</div></div>';
+            } else {
+                var _itmD=document.getElementById('cs_hist_items');
+                if(_itmD) _itmD.innerHTML='<div class="cs-hist-load"><i class="bi bi-hourglass-split"></i> Carregando...</div>';
+            }
+        }
         try {
             var fb=await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
-            var db=window._firebaseDB; if(!db){if(listWrap)listWrap.innerHTML='<div class="cs-hist-empty">Firebase n\u00e3o dispon\u00edvel</div>';return;}
+            var db=window._firebaseDB; if(!db){var _fd=document.getElementById('cs_hist_items')||listWrap;if(_fd)_fd.innerHTML='<div class="cs-hist-empty">Firebase nao disponivel</div>';return;}
             var snap=await fb.get(fb.ref(db,SAVE_PATH)), items=[];
             if(snap.exists()) snap.forEach(function(c){var v=c.val();if(v)items.push(Object.assign({id:c.key},v));});
-            items=items.filter(function(i){return i.ts&&i.ts>(Date.now()-HIST_DAYS*86400000);}).sort(function(a,b){return(b.ts||0)-(a.ts||0);});
+            items=items.filter(function(i){return i.ts&&i.ts>(Date.now()-365*86400000);}).sort(function(a,b){return(b.ts||0)-(a.ts||0);});
             window._histItems=items;
             if(!listWrap)return;
-            if(!items.length){listWrap.innerHTML='<div class="cs-hist-empty">Nenhuma consulta recente</div>';return;}
+            if(!items.length){renderDashboard();var _ed=document.getElementById('cs_hist_items')||listWrap;if(_ed)_ed.innerHTML='<div class="cs-hist-empty">Nenhuma consulta recente</div>';return;}
 
-            // ── PAINEL DE ESTATÍSTICAS ──
-            (function(){
-                var statsWrap=document.getElementById('cs_hist_stats');
-                if(!statsWrap){
-                    statsWrap=document.createElement('div');
-                    statsWrap.id='cs_hist_stats';
-                    statsWrap.style.cssText='padding:0 14px 10px;';
-                    var sw2=document.getElementById('cs_hist_search_wrap');
-                    if(sw2) sw2.parentNode.insertBefore(statsWrap,sw2.nextSibling);
-                    else listWrap.parentNode.insertBefore(statsWrap,listWrap);
-                }
-                function startOf(type){var d=new Date();d.setHours(0,0,0,0);if(type==='week')d.setDate(d.getDate()-d.getDay());if(type==='month')d.setDate(1);return d.getTime();}
-                function statsFor(since){
-                    var sub=items.filter(function(i){return i.ts>=since;});
-                    var ap=sub.filter(function(i){return i.decisao==='APROVADO'||i.decisao==='ENTRADA_ALTA'||i.decisao==='DOWNGRADE';}).length;
-                    return {total:sub.length,ap:ap,neg:sub.length-ap};
-                }
-                var sd=statsFor(startOf('day')),sw=statsFor(startOf('week')),sm=statsFor(startOf('month'));
-                function col(label,data){
-                    var pct=data.total>0?Math.round(data.ap/data.total*100):0;
-                    return '<div style="flex:1;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:9px 10px;display:flex;flex-direction:column;gap:4px">'+
-                        '<div style="font-size:.5rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.3)">'+label+'</div>'+
-                        '<div style="font-size:1.4rem;font-weight:900;color:#fff;line-height:1">'+data.total+'</div>'+
-                        '<div style="display:flex;gap:4px;font-size:.6rem;font-weight:700">'+
-                            '<span style="color:#4ade80">\u2705 '+data.ap+'</span>'+
-                            '<span style="color:rgba(255,255,255,.2)">|</span>'+
-                            '<span style="color:#f87171">\u274c '+data.neg+'</span>'+
+            // ── PERIOD CHIPS ──────────────────────────────────────────────
+            var periodDays = 30; // default
+            function setPeriodChips(){
+                document.querySelectorAll('.cs-pchip').forEach(function(b){
+                    var isActive = parseInt(b.dataset.days) === periodDays;
+                    b.classList.toggle('cs-pchip-ativo', isActive);
+                });
+            }
+            document.querySelectorAll('.cs-pchip').forEach(function(b){
+                b.addEventListener('click',function(){
+                    periodDays = parseInt(this.dataset.days);
+                    setPeriodChips();
+                    renderDashboard();
+                    renderItems();
+                });
+            });
+            setPeriodChips();
+
+            // ── LAYOUT C DASHBOARD ────────────────────────────────────────────
+            var statsWrap = document.getElementById('cs_hist_stats');
+            if(!statsWrap){
+                statsWrap = document.createElement('div');
+                statsWrap.id = 'cs_hist_stats';
+                statsWrap.style.cssText = 'display:flex;flex-direction:column;gap:9px;margin-bottom:4px';
+                listWrap.insertBefore(statsWrap, listWrap.firstChild);
+            }
+
+            function isAp(it){ return it.decisao==='APROVADO'||it.decisao==='ENTRADA_ALTA'||it.decisao==='DOWNGRADE'; }
+
+            function renderDashboard(){
+                var since = Date.now() - periodDays * 86400000;
+                var sub = items.filter(function(i){ return i.ts >= since; });
+                var ap = sub.filter(isAp);
+                var rep = sub.filter(function(i){ return !isAp(i); });
+                var pct = sub.length > 0 ? Math.round(ap.length/sub.length*100) : 0;
+
+                // Nota média
+                var notas = sub.map(function(i){ return typeof i.nota==='number'?i.nota:parseInt(i.nota)||null; }).filter(function(n){ return n!==null; });
+                var notaMed = notas.length ? Math.round(notas.reduce(function(a,b){return a+b;},0)/notas.length) : '--';
+
+                // Renda média aprovados
+                var rendas = ap.map(function(i){ return parseFloat(i.rendaEstimada)||null; }).filter(function(r){ return r&&r>0; });
+                var rendaMed = rendas.length ? Math.round(rendas.reduce(function(a,b){return a+b;},0)/rendas.length) : null;
+
+                // Apostas
+                var repAposta = rep.filter(function(i){ return i.casasJogo && String(i.casasJogo).length > 0; }).length;
+
+                // Perfis
+                var forte = sub.filter(function(i){ return (i.nota||0)>=85; }).length;
+                var medio = sub.filter(function(i){ var n=i.nota||0; return n>=60&&n<85; }).length;
+                var fraco = sub.filter(function(i){ var n=i.nota||0; return n>=40&&n<60; }).length;
+                var reprN = rep.length;
+                var maxP = Math.max(forte,medio,fraco,reprN,1);
+
+                // Notas para mini barras verticais (faixas de 10)
+                var faixas = [0,10,20,30,40,50,60,70,80,90];
+                var faixaCounts = faixas.map(function(f){
+                    return sub.filter(function(i){ var n=i.nota||0; return n>=f&&n<f+10; }).length;
+                });
+                var maxF = Math.max.apply(null, faixaCounts.concat([1]));
+
+                // Nota mais frequente
+                var notaFreq = {};
+                sub.forEach(function(i){ var n=i.nota||0; notaFreq[n]=(notaFreq[n]||0)+1; });
+                var topNota='--', topCount=0;
+                Object.keys(notaFreq).forEach(function(k){ if(notaFreq[k]>topCount){topCount=notaFreq[k];topNota=k;} });
+
+                // Insight apostas pct
+                var apostaPct = rep.length > 0 ? Math.round(repAposta/rep.length*100) : 0;
+
+                function pBar(label, count, color, gradient){
+                    var w = sub.length > 0 ? Math.round(count/sub.length*100) : 0;
+                    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">'+
+                        '<div style="font-size:.6rem;font-weight:700;width:54px;flex-shrink:0;color:'+color+'">'+label+'</div>'+
+                        '<div style="flex:1;height:22px;background:rgba(255,255,255,.05);border-radius:7px;overflow:hidden">'+
+                            '<div style="width:'+w+'%;height:100%;background:'+gradient+';border-radius:7px;display:flex;align-items:center;padding-left:'+(w>15?'8':'0')+'px;font-size:.62rem;font-weight:700;color:rgba(0,0,0,.75);white-space:nowrap;transition:width .4s">'+
+                                (w>12?count+' cliente'+(count!==1?'s':''):'')+'</div>'+
                         '</div>'+
-                        '<div style="background:rgba(255,255,255,.08);border-radius:99px;height:4px;overflow:hidden">'+
-                            '<div style="width:'+pct+'%;height:100%;background:linear-gradient(90deg,#4ade80,#22c55e);border-radius:99px"></div>'+
-                        '</div>'+
-                        '<div style="font-size:.53rem;color:rgba(255,255,255,.28)">'+pct+'% aprov.</div>'+
+                        '<div style="font-size:.65rem;font-weight:700;color:'+color+';width:22px;text-align:right">'+count+'</div>'+
                     '</div>';
                 }
-                statsWrap.innerHTML=
-                    '<div style="font-size:.52rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.28);margin-bottom:6px">📊 Estatísticas</div>'+
-                    '<div style="display:flex;gap:5px">'+col('Hoje',sd)+col('Semana',sw)+col('Mês',sm)+'</div>';
-            })();
+
+                function miniBar(i, count, maxVal){
+                    var h = maxVal > 0 ? Math.round(count/maxVal*50) : 0;
+                    var colors = ['#ef4444','#f97316','#f97316','#eab308','#eab308','#f97316','#f97316','#22c55e','#22c55e','#10b981'];
+                    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">'+
+                        '<div style="font-size:.52rem;font-weight:700;color:rgba(255,255,255,.5)">'+count+'</div>'+
+                        '<div style="width:100%;height:'+Math.max(h,2)+'px;background:'+colors[i]+';border-radius:3px 3px 0 0;opacity:.75;min-height:2px"></div>'+
+                        '<div style="font-size:.49rem;color:rgba(255,255,255,.3)">'+(faixas[i])+'</div>'+
+                    '</div>';
+                }
+
+                statsWrap.innerHTML =
+                    // Card resumo grande
+                    '<div style="background:linear-gradient(135deg,rgba(124,58,237,.18),rgba(185,28,28,.12));border:1px solid rgba(139,92,246,.2);border-radius:14px;padding:14px">'+
+                        '<div style="font-size:.52rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.35);margin-bottom:7px">'+
+                            (periodDays===1?'Hoje':periodDays===7?'Últimos 7 dias':periodDays===30?'Últimos 30 dias':periodDays===90?'Últimos 3 meses':periodDays===180?'Últimos 6 meses':'Último ano')+
+                        '</div>'+
+                        '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:10px">'+
+                            '<div><div style="font-size:2.2rem;font-weight:900;line-height:1">'+sub.length+'</div>'+
+                            '<div style="font-size:.68rem;color:rgba(255,255,255,.4);margin-top:2px">análises realizadas</div></div>'+
+                            '<div style="text-align:right">'+
+                                '<div style="font-size:.95rem;font-weight:800;color:#4ade80">'+pct+'% aprovados</div>'+
+                                '<div style="font-size:.62rem;color:rgba(255,255,255,.35)">'+ap.length+' aprov · '+rep.length+' reprov</div>'+
+                                (notaMed!=='--'?'<div style="font-size:.62rem;color:rgba(255,255,255,.35);margin-top:3px">Nota média: <strong style="color:#fb923c">'+notaMed+'</strong></div>':'')+
+                            '</div>'+
+                        '</div>'+
+                        '<div style="height:6px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden">'+
+                            '<div style="width:'+pct+'%;height:100%;background:linear-gradient(90deg,#4ade80,#22d3ee);border-radius:99px;transition:width .4s"></div>'+
+                        '</div>'+
+                    '</div>'+
+                    // Distribuição por perfil
+                    (sub.length > 0 ?
+                    '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:12px">'+
+                        '<div style="font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.4);margin-bottom:10px">📊 Distribuição de notas</div>'+
+                        (topNota!=='--'?'<div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:8px;font-size:.63rem;font-weight:600;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.2);color:#c4b5fd;margin-bottom:10px">🏆 Nota mais comum: <strong>'+topNota+' pts</strong> — '+topCount+' cliente'+(topCount!==1?'s':'')+'</div>':'')+
+                        pBar('FORTE 85+',  forte,  '#4ade80', 'linear-gradient(90deg,#4ade80,#22d3ee)')+
+                        pBar('MEDIO 60+',  medio,  '#fb923c', 'linear-gradient(90deg,#fb923c,#fbbf24)')+
+                        pBar('FRACO 40+',  fraco,  '#fbbf24', 'linear-gradient(90deg,#fbbf24,#f59e0b)')+
+                        pBar('REPROV.',    reprN,  '#f87171', 'linear-gradient(90deg,#f87171,#ef4444)')+
+                        '<div style="height:1px;background:rgba(255,255,255,.06);margin:8px 0 10px"></div>'+
+                        '<div style="font-size:.56rem;color:rgba(255,255,255,.3);margin-bottom:7px">Frequência por faixa de 10 pts</div>'+
+                        '<div style="display:flex;align-items:flex-end;gap:4px;height:66px">'+
+                            faixaCounts.map(function(c,i){ return miniBar(i,c,maxF); }).join('')+
+                        '</div>'+
+                    '</div>' : '')+
+                    // Insights
+                    (sub.length > 0 ?
+                    '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:12px">'+
+                        '<div style="font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.4);margin-bottom:10px">💡 Insights</div>'+
+                        '<div style="display:flex;flex-direction:column;gap:8px">'+
+                            (repAposta>0?
+                            '<div style="display:flex;align-items:center;gap:9px;font-size:.71rem;color:rgba(255,255,255,.65)">'+
+                                '<div style="width:26px;height:26px;border-radius:8px;background:rgba(239,68,68,.1);display:flex;align-items:center;justify-content:center;font-size:.8rem;flex-shrink:0">🎰</div>'+
+                                '<span><strong style="color:#f87171">'+repAposta+' reprovado'+(repAposta!==1?'s':'')+'</strong> por apostas ('+apostaPct+'% das reprovações)</span>'+
+                            '</div>':'')+
+                            (rendaMed?
+                            '<div style="display:flex;align-items:center;gap:9px;font-size:.71rem;color:rgba(255,255,255,.65)">'+
+                                '<div style="width:26px;height:26px;border-radius:8px;background:rgba(74,222,128,.08);display:flex;align-items:center;justify-content:center;font-size:.8rem;flex-shrink:0">💰</div>'+
+                                '<span>Renda média dos aprovados: <strong style="color:#4ade80">R$ '+rendaMed.toLocaleString('pt-BR')+'</strong></span>'+
+                            '</div>':'')+
+                            (medio>0?
+                            '<div style="display:flex;align-items:center;gap:9px;font-size:.71rem;color:rgba(255,255,255,.65)">'+
+                                '<div style="width:26px;height:26px;border-radius:8px;background:rgba(249,115,22,.08);display:flex;align-items:center;justify-content:center;font-size:.8rem;flex-shrink:0">📈</div>'+
+                                '<span>Perfil mais frequente: <strong style="color:#fb923c">MEDIO</strong> — '+Math.round(medio/sub.length*100)+'% dos clientes</span>'+
+                            '</div>':'')+
+                        '</div>'+
+                    '</div>' : '');
+            }
+            renderDashboard();
 
             var filtroAtual='todos', buscaAtual='';
 
             function renderItems(){
+                var since = Date.now() - periodDays * 86400000;
                 var busca=buscaAtual.toLowerCase().trim();
-                var filtrados=items.filter(function(it){
+                var filtrados=items.filter(function(it){ if(it.ts < since) return false;
                     var ap=it.decisao==='APROVADO'||it.decisao==='ENTRADA_ALTA'||it.decisao==='DOWNGRADE';
                     if(filtroAtual==='aprovado'&&!ap) return false;
                     if(filtroAtual==='reprovado'&&ap) return false;
@@ -888,7 +1010,7 @@
                            (String(it.operador||'')).toLowerCase().indexOf(busca)!==-1||
                            (String(it.cpf||'')).toLowerCase().indexOf(busca)!==-1;
                 });
-                if(!filtrados.length){listWrap.innerHTML='<div class="cs-hist-empty">\ud83d\udd0d Nenhum resultado encontrado</div>';return;}
+                var itemsDiv=document.getElementById('cs_hist_items')||listWrap;if(!filtrados.length){itemsDiv.innerHTML='<div class="cs-hist-empty">Nenhum resultado encontrado</div>';return;}
                 var htmlParts=[];
                 filtrados.forEach(function(it){
                     try{
@@ -933,8 +1055,8 @@
                         );
                     }catch(itemErr){ console.warn('Erro ao renderizar item do historico:',itemErr,it); }
                 });
-                listWrap.innerHTML=htmlParts.join('');
-                listWrap.querySelectorAll('.cs-btn-reuso').forEach(function(btn){
+                var itemsDiv2=document.getElementById('cs_hist_items')||listWrap;itemsDiv2.innerHTML=htmlParts.join('');
+                (document.getElementById('cs_hist_items')||listWrap).querySelectorAll('.cs-btn-reuso').forEach(function(btn){
                     btn.addEventListener('click',function(e){usarPerfilHistorico(parseInt(e.currentTarget.dataset.i));});
                 });
             }
@@ -961,7 +1083,7 @@
                 });
             });
 
-        } catch(e){ console.error('Erro abrirHist:',e); if(listWrap)listWrap.innerHTML='<div style="padding:16px;color:#f87171">Erro ao carregar hist\u00f3rico: '+esc(String(e.message||e))+'</div>'; }
+        } catch(e){ console.error('Erro abrirHist:',e); var _errd=document.getElementById('cs_hist_items')||listWrap;if(_errd)_errd.innerHTML='<div style="padding:16px;color:#f87171">Erro: '+esc(String(e.message||e))+'</div>'; }
     }
 
     function usarPerfilHistorico(idx) {
@@ -2059,7 +2181,7 @@
     function injectCSS(){
         if(el('cs-st'))return;
         var s=document.createElement('style');s.id='cs-st';
-        s.textContent='#cs_ov{display:none;position:fixed;inset:0;z-index:3000;background:var(--bg-color,#0b1325);flex-direction:column;overflow:hidden}#cs_ov.active{display:flex}.cs-hdr{display:flex;align-items:center;gap:10px;padding:12px 14px 10px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.06)}.cs-hdr-ico{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,rgba(139,92,246,.28),rgba(239,68,68,.22));display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0}.cs-hdr-ttl{font-size:.93rem;font-weight:800;color:var(--text-color,#fff)}.cs-hdr-sub{font-size:.59rem;color:var(--text-secondary,rgba(255,255,255,.5))}.cs-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 14px 100px;display:flex;flex-direction:column;gap:13px}.cs-sec{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:15px;padding:13px}.cs-sec-ttl{font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--primary-color,#7c3aed);margin-bottom:10px;display:flex;align-items:center;gap:6px}.cs-counter{font-size:.62rem;font-weight:700;margin-left:auto;color:rgba(255,255,255,.35);transition:color .2s}.cs-fld{margin-bottom:10px}.cs-fld:last-child{margin-bottom:0}.cs-lbl{font-size:.63rem;font-weight:600;color:var(--text-secondary,rgba(255,255,255,.5));margin-bottom:5px;display:block}.cs-row2{display:grid;grid-template-columns:1fr 120px;gap:10px;align-items:end}.cs-in{width:100%;background:rgba(0,0,0,.3);border:1.5px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 12px;color:var(--text-color,#fff);font-family:\'Poppins\',sans-serif;font-size:.86rem;outline:none;box-sizing:border-box;transition:border-color .18s}.cs-in:focus{border-color:var(--primary-color,#7c3aed)}select.cs-in{appearance:none;-webkit-appearance:none;cursor:pointer}.cs-uz{border:2px dashed rgba(255,255,255,.13);border-radius:13px;padding:14px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}.cs-uz-id{border-color:rgba(74,222,128,.2)}.cs-uz-id:hover{border-color:rgba(74,222,128,.5);background:rgba(74,222,128,.04)}.cs-uz-rend{border-color:rgba(139,92,246,.2)}.cs-uz-rend:hover{border-color:rgba(139,92,246,.5);background:rgba(139,92,246,.04)}.cs-uz-ico{font-size:1.5rem;margin-bottom:4px;opacity:.8}.cs-uz-txt{font-size:.78rem;font-weight:600;color:var(--text-color,#fff);margin-bottom:2px}.cs-uz-sub{font-size:.6rem;color:var(--text-secondary,rgba(255,255,255,.45))}.cs-ubtns{display:flex;gap:7px;margin-top:8px}.cs-ubtn{flex:1;padding:8px 6px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:var(--text-color,#fff);font-family:\'Poppins\',sans-serif;font-size:.68rem;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;transition:background .14s}.cs-ubtn:active{background:rgba(139,92,246,.2)}.cs-docs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.cs-dt{position:relative;width:64px;height:64px;border-radius:10px;overflow:hidden;border:1.5px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04)}.cs-dt img{width:100%;height:100%;object-fit:cover}.cs-dt-pdf{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#f87171;font-size:1.3rem}.cs-dt-pdf span{font-size:.5rem;font-weight:700;color:#f87171}.cs-dt-rm{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.78);border:none;color:#fff;font-size:.6rem;cursor:pointer;display:flex;align-items:center;justify-content:center}.cs-btn-analisar{width:100%;padding:15px;border-radius:14px;border:none;background:linear-gradient(135deg,#7c3aed,#b91c1c);color:#fff;font-family:\'Poppins\',sans-serif;font-size:.93rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 20px rgba(139,92,246,.3);transition:opacity .18s,transform .12s}.cs-btn-analisar:active{transform:scale(.98)}.cs-btn-analisar:disabled{opacity:.38;cursor:not-allowed}.cs-btn-hist{padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:var(--text-secondary,rgba(255,255,255,.5));font-family:\'Poppins\',sans-serif;font-size:.73rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:background .14s;white-space:nowrap}.cs-btn-hist:active{background:rgba(255,255,255,.08)}.cs-prog{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:13px}.cs-prog-lbl{font-size:.74rem;font-weight:600;color:var(--text-secondary,rgba(255,255,255,.6));margin-bottom:8px;display:flex;align-items:center;gap:7px}.cs-prog-lbl::before{content:\'\';width:10px;height:10px;border-radius:50%;border:2px solid var(--primary-color,#7c3aed);border-top-color:transparent;animation:cs-spin .7s linear infinite;flex-shrink:0}@keyframes cs-spin{to{transform:rotate(360deg)}}.cs-prog-trk{height:5px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden}.cs-prog-bar{height:100%;background:linear-gradient(90deg,#7c3aed,#b91c1c);border-radius:99px;transition:width .4s ease;width:0%}.cs-res{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:15px;padding:15px;font-size:.82rem;line-height:1.7;color:var(--text-color,#fff)}.cs-ri{display:flex;flex-direction:column;gap:12px}.cs-dec{display:flex;align-items:center;gap:10px;padding:13px 16px;border-radius:12px;font-size:1rem;font-weight:800}.cs-dec-yes{background:rgba(74,222,128,.12);border:2px solid rgba(74,222,128,.4);color:#4ade80}.cs-dec-no{background:rgba(239,68,68,.12);border:2px solid rgba(239,68,68,.4);color:#f87171}.cs-nota-row{display:flex;align-items:center;gap:12px;padding:4px 0}.cs-nota-c{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:800;flex-shrink:0;border:3px solid}.cs-nota-lbl{font-size:.67rem;color:var(--text-secondary)}.cs-nota-risco{font-weight:800;font-size:.84rem}.cs-alert{display:flex;align-items:flex-start;gap:8px;padding:7px 10px;border-radius:9px;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);font-size:.78rem;color:#fca5a5;margin:3px 0;line-height:1.5}.cs-alert i{color:#f87171;flex-shrink:0;margin-top:2px;font-size:.74rem}.cs-alert-red{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.35)}.cs-alert-green{background:rgba(74,222,128,.07);border-color:rgba(74,222,128,.25);color:#86efac}.cs-alert-green i{color:#4ade80}.cs-sim{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:13px;padding:13px}.cs-sim-ttl{font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--primary-color,#a78bfa);margin-bottom:8px;display:flex;align-items:center;gap:6px}.cs-sim-aviso{font-size:.65rem;color:#fbbf24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:6px 10px;margin-bottom:10px;display:flex;align-items:center;gap:6px}.cs-sim-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}.cs-pills{display:flex;flex-wrap:wrap;gap:6px}.cs-pill{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:99px;padding:5px 13px;font-size:.76rem;color:var(--text-color,#fff)}.cs-pill-j{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.25);color:#fbbf24}.cs-pill-t{background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.25);color:#60a5fa}.cs-wpp{background:rgba(37,211,102,.06);border:1px solid rgba(37,211,102,.2);border-radius:12px;padding:13px;display:flex;flex-direction:column;gap:9px}.cs-wpp-lbl{font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#25d366;display:flex;align-items:center;gap:6px}.cs-wpp-txt{font-size:.83rem;line-height:1.7;color:var(--text-color,#fff);background:rgba(0,0,0,.2);border-radius:9px;padding:11px;white-space:pre-wrap;user-select:all;cursor:pointer;border:1.5px solid transparent;transition:background .18s,border-color .18s}.cs-wpp-txt:hover{background:rgba(37,211,102,.08);border-color:rgba(37,211,102,.3)}.cs-wpp-txt:active{background:rgba(37,211,102,.18)}.cs-wpp-cp-hint{display:flex;align-items:center;justify-content:center;gap:7px;padding:8px 16px;border-radius:9px;border:1px solid rgba(37,211,102,.2);background:rgba(37,211,102,.06);color:rgba(37,211,102,.7);font-family:\'Poppins\',sans-serif;font-size:.72rem;font-weight:600;transition:color .3s}.cs-rt{font-size:.86rem;font-weight:800;color:var(--primary-color,#a78bfa);margin:13px 0 5px;padding-bottom:5px;border-bottom:1px solid rgba(255,255,255,.06)}.cs-rp{margin:5px 0}.cs-rb ul,.cs-rb li{list-style:disc;padding-left:16px;margin:4px 0}#cs_hist_ov{display:none;position:fixed;inset:0;z-index:3100;background:var(--bg-color,#0b1325);flex-direction:column;overflow:hidden}#cs_hist_ov.active{display:flex}.cs-hhdr{display:flex;align-items:center;gap:11px;padding:12px 14px 10px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.06)}.cs-hhdr-ttl{font-size:.92rem;font-weight:800;color:var(--text-color,#fff);flex:1}.cs-hhdr-sub{font-size:.61rem;color:var(--text-secondary,rgba(255,255,255,.4))}.cs-hbody{flex:1;overflow-y:auto;padding:12px 13px 80px;display:flex;flex-direction:column;gap:9px}.cs-hitem{border:1px solid;border-radius:13px;padding:11px 13px;display:flex;flex-direction:column;gap:5px}.cs-hrow1{display:flex;justify-content:space-between;align-items:center}.cs-hnome{font-size:.87rem;font-weight:700;color:var(--text-color,#fff)}.cs-hprod{font-size:.73rem;color:var(--text-secondary,rgba(255,255,255,.55))}.cs-hnota{font-size:.67rem;color:var(--text-secondary,rgba(255,255,255,.4))}.cs-htags{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}.cs-htag{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:99px;padding:3px 10px;font-size:.67rem;color:var(--text-color,#fff)}.cs-htag-j{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.2);color:#fbbf24}.cs-hfoot{display:flex;justify-content:space-between;font-size:.59rem;color:rgba(255,255,255,.3);margin-top:3px}.cs-hist-empty,.cs-hist-load{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:60px 20px;color:var(--text-secondary,rgba(255,255,255,.4));font-size:.83rem;text-align:center}.cs-hist-empty i,.cs-hist-load i{font-size:2.4rem;opacity:.4}.ctw-card.c-rose{background:rgba(225,29,72,.09);border-color:rgba(225,29,72,.2)}.ctw-card.c-rose .ctw-card-icon{background:rgba(225,29,72,.16);color:#fb7185}.ctw-card.c-rose .ctw-card-title{color:#fca5a5}.ctw-card.c-rose .ctw-card-sub{color:#fca5a5}.ctw-card.c-rose:hover{background:rgba(225,29,72,.14);border-color:rgba(225,29,72,.38);transform:translateY(-3px)}[data-theme="light"] .ctw-card.c-rose{background:rgba(225,29,72,.07)}.cs-h{display:none!important}.cs-dec-orange{background:rgba(249,115,22,.12);border:2px solid rgba(249,115,22,.45);color:#fb923c}.cs-dec-blue{background:rgba(59,130,246,.12);border:2px solid rgba(59,130,246,.45);color:#60a5fa}.cs-nota-renda{font-size:.72rem;color:var(--text-secondary,rgba(255,255,255,.55));margin-top:3px}.cs-nota-renda strong{color:var(--text-color,#fff)}.cs-sim-orange{border-color:rgba(249,115,22,.25)!important}.cs-sim-aviso-orange{background:rgba(249,115,22,.08)!important;border-color:rgba(249,115,22,.25)!important;color:#fb923c!important}.cs-pill-o{background:rgba(249,115,22,.1);border-color:rgba(249,115,22,.3);color:#fb923c}';
+        s.textContent='#cs_ov{display:none;position:fixed;inset:0;z-index:3000;background:var(--bg-color,#0b1325);flex-direction:column;overflow:hidden}#cs_ov.active{display:flex}.cs-hdr{display:flex;align-items:center;gap:10px;padding:12px 14px 10px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.06)}.cs-hdr-ico{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,rgba(139,92,246,.28),rgba(239,68,68,.22));display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0}.cs-hdr-ttl{font-size:.93rem;font-weight:800;color:var(--text-color,#fff)}.cs-hdr-sub{font-size:.59rem;color:var(--text-secondary,rgba(255,255,255,.5))}.cs-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 14px 100px;display:flex;flex-direction:column;gap:13px}.cs-sec{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:15px;padding:13px}.cs-sec-ttl{font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--primary-color,#7c3aed);margin-bottom:10px;display:flex;align-items:center;gap:6px}.cs-counter{font-size:.62rem;font-weight:700;margin-left:auto;color:rgba(255,255,255,.35);transition:color .2s}.cs-fld{margin-bottom:10px}.cs-fld:last-child{margin-bottom:0}.cs-lbl{font-size:.63rem;font-weight:600;color:var(--text-secondary,rgba(255,255,255,.5));margin-bottom:5px;display:block}.cs-row2{display:grid;grid-template-columns:1fr 120px;gap:10px;align-items:end}.cs-in{width:100%;background:rgba(0,0,0,.3);border:1.5px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 12px;color:var(--text-color,#fff);font-family:\'Poppins\',sans-serif;font-size:.86rem;outline:none;box-sizing:border-box;transition:border-color .18s}.cs-in:focus{border-color:var(--primary-color,#7c3aed)}select.cs-in{appearance:none;-webkit-appearance:none;cursor:pointer}.cs-uz{border:2px dashed rgba(255,255,255,.13);border-radius:13px;padding:14px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}.cs-uz-id{border-color:rgba(74,222,128,.2)}.cs-uz-id:hover{border-color:rgba(74,222,128,.5);background:rgba(74,222,128,.04)}.cs-uz-rend{border-color:rgba(139,92,246,.2)}.cs-uz-rend:hover{border-color:rgba(139,92,246,.5);background:rgba(139,92,246,.04)}.cs-uz-ico{font-size:1.5rem;margin-bottom:4px;opacity:.8}.cs-uz-txt{font-size:.78rem;font-weight:600;color:var(--text-color,#fff);margin-bottom:2px}.cs-uz-sub{font-size:.6rem;color:var(--text-secondary,rgba(255,255,255,.45))}.cs-ubtns{display:flex;gap:7px;margin-top:8px}.cs-ubtn{flex:1;padding:8px 6px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:var(--text-color,#fff);font-family:\'Poppins\',sans-serif;font-size:.68rem;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;transition:background .14s}.cs-ubtn:active{background:rgba(139,92,246,.2)}.cs-docs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.cs-dt{position:relative;width:64px;height:64px;border-radius:10px;overflow:hidden;border:1.5px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04)}.cs-dt img{width:100%;height:100%;object-fit:cover}.cs-dt-pdf{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#f87171;font-size:1.3rem}.cs-dt-pdf span{font-size:.5rem;font-weight:700;color:#f87171}.cs-dt-rm{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.78);border:none;color:#fff;font-size:.6rem;cursor:pointer;display:flex;align-items:center;justify-content:center}.cs-btn-analisar{width:100%;padding:15px;border-radius:14px;border:none;background:linear-gradient(135deg,#7c3aed,#b91c1c);color:#fff;font-family:\'Poppins\',sans-serif;font-size:.93rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 20px rgba(139,92,246,.3);transition:opacity .18s,transform .12s}.cs-btn-analisar:active{transform:scale(.98)}.cs-btn-analisar:disabled{opacity:.38;cursor:not-allowed}.cs-btn-hist{padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:var(--text-secondary,rgba(255,255,255,.5));font-family:\'Poppins\',sans-serif;font-size:.73rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:background .14s;white-space:nowrap}.cs-btn-hist:active{background:rgba(255,255,255,.08)}.cs-prog{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:13px}.cs-prog-lbl{font-size:.74rem;font-weight:600;color:var(--text-secondary,rgba(255,255,255,.6));margin-bottom:8px;display:flex;align-items:center;gap:7px}.cs-prog-lbl::before{content:\'\';width:10px;height:10px;border-radius:50%;border:2px solid var(--primary-color,#7c3aed);border-top-color:transparent;animation:cs-spin .7s linear infinite;flex-shrink:0}@keyframes cs-spin{to{transform:rotate(360deg)}}.cs-prog-trk{height:5px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden}.cs-prog-bar{height:100%;background:linear-gradient(90deg,#7c3aed,#b91c1c);border-radius:99px;transition:width .4s ease;width:0%}.cs-res{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:15px;padding:15px;font-size:.82rem;line-height:1.7;color:var(--text-color,#fff)}.cs-ri{display:flex;flex-direction:column;gap:12px}.cs-dec{display:flex;align-items:center;gap:10px;padding:13px 16px;border-radius:12px;font-size:1rem;font-weight:800}.cs-dec-yes{background:rgba(74,222,128,.12);border:2px solid rgba(74,222,128,.4);color:#4ade80}.cs-dec-no{background:rgba(239,68,68,.12);border:2px solid rgba(239,68,68,.4);color:#f87171}.cs-nota-row{display:flex;align-items:center;gap:12px;padding:4px 0}.cs-nota-c{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:800;flex-shrink:0;border:3px solid}.cs-nota-lbl{font-size:.67rem;color:var(--text-secondary)}.cs-nota-risco{font-weight:800;font-size:.84rem}.cs-alert{display:flex;align-items:flex-start;gap:8px;padding:7px 10px;border-radius:9px;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);font-size:.78rem;color:#fca5a5;margin:3px 0;line-height:1.5}.cs-alert i{color:#f87171;flex-shrink:0;margin-top:2px;font-size:.74rem}.cs-alert-red{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.35)}.cs-alert-green{background:rgba(74,222,128,.07);border-color:rgba(74,222,128,.25);color:#86efac}.cs-alert-green i{color:#4ade80}.cs-sim{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:13px;padding:13px}.cs-sim-ttl{font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--primary-color,#a78bfa);margin-bottom:8px;display:flex;align-items:center;gap:6px}.cs-sim-aviso{font-size:.65rem;color:#fbbf24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:6px 10px;margin-bottom:10px;display:flex;align-items:center;gap:6px}.cs-sim-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}.cs-pills{display:flex;flex-wrap:wrap;gap:6px}.cs-pill{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:99px;padding:5px 13px;font-size:.76rem;color:var(--text-color,#fff)}.cs-pill-j{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.25);color:#fbbf24}.cs-pill-t{background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.25);color:#60a5fa}.cs-wpp{background:rgba(37,211,102,.06);border:1px solid rgba(37,211,102,.2);border-radius:12px;padding:13px;display:flex;flex-direction:column;gap:9px}.cs-wpp-lbl{font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#25d366;display:flex;align-items:center;gap:6px}.cs-wpp-txt{font-size:.83rem;line-height:1.7;color:var(--text-color,#fff);background:rgba(0,0,0,.2);border-radius:9px;padding:11px;white-space:pre-wrap;user-select:all;cursor:pointer;border:1.5px solid transparent;transition:background .18s,border-color .18s}.cs-wpp-txt:hover{background:rgba(37,211,102,.08);border-color:rgba(37,211,102,.3)}.cs-wpp-txt:active{background:rgba(37,211,102,.18)}.cs-wpp-cp-hint{display:flex;align-items:center;justify-content:center;gap:7px;padding:8px 16px;border-radius:9px;border:1px solid rgba(37,211,102,.2);background:rgba(37,211,102,.06);color:rgba(37,211,102,.7);font-family:\'Poppins\',sans-serif;font-size:.72rem;font-weight:600;transition:color .3s}.cs-rt{font-size:.86rem;font-weight:800;color:var(--primary-color,#a78bfa);margin:13px 0 5px;padding-bottom:5px;border-bottom:1px solid rgba(255,255,255,.06)}.cs-rp{margin:5px 0}.cs-rb ul,.cs-rb li{list-style:disc;padding-left:16px;margin:4px 0}#cs_hist_ov{display:none;position:fixed;inset:0;z-index:3100;background:var(--bg-color,#0b1325);flex-direction:column;overflow:hidden}#cs_hist_ov.active{display:flex}.cs-hhdr{display:flex;align-items:center;gap:11px;padding:12px 14px 10px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.06)}.cs-hhdr-ttl{font-size:.92rem;font-weight:800;color:var(--text-color,#fff);flex:1}.cs-hhdr-sub{font-size:.61rem;color:var(--text-secondary,rgba(255,255,255,.4))}.cs-hbody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 13px 80px;display:flex;flex-direction:column;gap:9px}.cs-hitem{border:1px solid;border-radius:13px;padding:11px 13px;display:flex;flex-direction:column;gap:5px}.cs-hrow1{display:flex;justify-content:space-between;align-items:center}.cs-hnome{font-size:.87rem;font-weight:700;color:var(--text-color,#fff)}.cs-hprod{font-size:.73rem;color:var(--text-secondary,rgba(255,255,255,.55))}.cs-hnota{font-size:.67rem;color:var(--text-secondary,rgba(255,255,255,.4))}.cs-htags{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}.cs-htag{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:99px;padding:3px 10px;font-size:.67rem;color:var(--text-color,#fff)}.cs-htag-j{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.2);color:#fbbf24}.cs-hfoot{display:flex;justify-content:space-between;font-size:.59rem;color:rgba(255,255,255,.3);margin-top:3px}.cs-hist-empty,.cs-hist-load{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:60px 20px;color:var(--text-secondary,rgba(255,255,255,.4));font-size:.83rem;text-align:center}.cs-hist-empty i,.cs-hist-load i{font-size:2.4rem;opacity:.4}.cs-pchip{flex-shrink:0;padding:5px 12px;border-radius:99px;border:1.5px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:rgba(255,255,255,.45);font-family:inherit;font-size:.65rem;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .15s}.cs-pchip-ativo{border-color:#7c3aed!important;background:rgba(124,58,237,.18)!important;color:#c4b5fd!important}.cs-hitem2{border:1px solid rgba(255,255,255,.08);border-radius:13px;padding:11px 12px;background:rgba(255,255,255,.03)}.ctw-card.c-rose{background:rgba(225,29,72,.09);border-color:rgba(225,29,72,.2)}.ctw-card.c-rose .ctw-card-icon{background:rgba(225,29,72,.16);color:#fb7185}.ctw-card.c-rose .ctw-card-title{color:#fca5a5}.ctw-card.c-rose .ctw-card-sub{color:#fca5a5}.ctw-card.c-rose:hover{background:rgba(225,29,72,.14);border-color:rgba(225,29,72,.38);transform:translateY(-3px)}[data-theme="light"] .ctw-card.c-rose{background:rgba(225,29,72,.07)}.cs-h{display:none!important}.cs-dec-orange{background:rgba(249,115,22,.12);border:2px solid rgba(249,115,22,.45);color:#fb923c}.cs-dec-blue{background:rgba(59,130,246,.12);border:2px solid rgba(59,130,246,.45);color:#60a5fa}.cs-nota-renda{font-size:.72rem;color:var(--text-secondary,rgba(255,255,255,.55));margin-top:3px}.cs-nota-renda strong{color:var(--text-color,#fff)}.cs-sim-orange{border-color:rgba(249,115,22,.25)!important}.cs-sim-aviso-orange{background:rgba(249,115,22,.08)!important;border-color:rgba(249,115,22,.25)!important;color:#fb923c!important}.cs-pill-o{background:rgba(249,115,22,.1);border-color:rgba(249,115,22,.3);color:#fb923c}';
         document.head.appendChild(s);
     }
 
@@ -2108,7 +2230,16 @@
         '</div>';
         document.body.appendChild(o1);
         var o2=document.createElement('div');o2.id='cs_hist_ov';
-        o2.innerHTML='<div class="cs-hhdr"><button class="btn-back" id="cs_hist_close" style="flex-shrink:0"><i class="bi bi-arrow-left"></i></button><span class="cs-hhdr-ttl">Historico de Consultas</span><span class="cs-hhdr-sub">ultimos 30 dias</span></div><div class="cs-hbody" id="cs_hist_list"></div>';
+        o2.innerHTML='<div class="cs-hhdr"><button class="btn-back" id="cs_hist_close" style="flex-shrink:0"><i class="bi bi-arrow-left"></i></button><div style="flex:1"><span class="cs-hhdr-ttl">Hist\u00f3rico</span><div class="cs-hhdr-sub">Relat\u00f3rio de an\u00e1lises</div></div></div>'+
+        '<div style="padding:0 13px 8px;overflow-x:auto;display:flex;gap:6px;flex-shrink:0;scrollbar-width:none" id="cs_period_row">'+
+          '<button class="cs-pchip" data-days="1">Hoje</button>'+
+          '<button class="cs-pchip" data-days="7">7 dias</button>'+
+          '<button class="cs-pchip cs-pchip-ativo" data-days="30">30 dias</button>'+
+          '<button class="cs-pchip" data-days="90">3 meses</button>'+
+          '<button class="cs-pchip" data-days="180">6 meses</button>'+
+          '<button class="cs-pchip" data-days="365">1 ano</button>'+
+        '</div>'+
+        '<div class="cs-hbody" id="cs_hist_list"></div>';
         document.body.appendChild(o2);
         // Config overlay
         var o3=document.createElement('div');o3.id='cs_cfg_ov';
