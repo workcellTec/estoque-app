@@ -2619,7 +2619,7 @@ tr, td, .card, .list-group-item {
     --primary-color-rgb: 239, 83, 80 !important;
     --glow-1: #8A2BE2 !important;
     --glow-2: #B71C1C !important;
-    --tertiary-color: #030303 !important;
+    --tertiary-color: #0d0303 !important;
     --glass-bg: rgba(28, 28, 28, 0.65) !important;
     --input-bg: rgba(44, 44, 46, 0.7) !important;
 }
@@ -2645,8 +2645,8 @@ body[data-color="green"] {
 }
 
 body[data-color="green"][data-theme="dark"] {
-    --tertiary-color: #050505 !important;
-    --glass-bg: rgba(20, 20, 20, 0.85) !important;
+    --tertiary-color: #030d05 !important;
+    --glass-bg: rgba(10, 30, 15, 0.85) !important;
 }
 
 body[data-color="purple"] {
@@ -2667,6 +2667,12 @@ body[data-color="orange"] {
     --primary-color-rgb: 255, 109, 0 !important;
     --glow-1: #FFAB00 !important;
     --glow-2: #FF3D00 !important;
+}
+
+body[data-color="orange"][data-theme="dark"] {
+    --tertiary-color: #0f0600 !important;
+    --glass-bg: rgba(40, 18, 5, 0.85) !important;
+    --input-bg: rgba(25, 10, 0, 0.5) !important;
 }
 
 body[data-color="pink"] {
@@ -4556,9 +4562,11 @@ body.ctw-v2-active #globalSearchBtn {
 
 /* Balanceamento vertical do mainMenu no v2 */
 body.ctw-v2-active #mainMenu {
-    padding-top: 170px;
-    padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+    padding-top: 132px;
+    padding-bottom: 0;
     justify-content: flex-start;
+    height: auto !important;
+    overflow-y: visible !important;
 }
 
 /* Remove o h2 de boas-vindas no v2 (o nome já está no top pill) */
@@ -6603,12 +6611,10 @@ body.ctw-v2-active #documentsHome {
    MODO PERFORMANCE (body.perf-mode)
    ══════════════════════════════════════════════════════════════ */
 
-/* 1. Cor fixa verde — garante destaque nas imagens exportadas */
+/* 1. Mapeia --bg-color → --tertiary-color para Reposição e CreditoScan
+   ficarem com a cor do tema (ex: roxo usa #0F0720, pink usa #1F0510) */
 body.perf-mode {
-    --primary-color: #10b981;
-    --primary-color-rgb: 16, 185, 129;
-    --bg-color: #000000;
-    --tertiary-color: #000000;
+    --bg-color: var(--tertiary-color);
 }
 
 /* 2. Remove backdrop-filter em tudo — maior ganho de scroll (49 ocorrências) */
@@ -6625,13 +6631,16 @@ body.perf-mode * {
     transition-duration: 0.12s !important;
 }
 
-/* 4. Esconde fundo animado (gradiente rotativo + ambilight) */
-body.perf-mode::before,
+/* 4. Pausa gradiente rotativo e ambilight — cor permanece, animação para */
+body.perf-mode::before {
+    animation-play-state: paused !important;
+}
 body.perf-mode::after {
-    display: none !important;
+    animation-play-state: paused !important;
+    opacity: 0.35 !important;
 }
 
-/* 5. Esconde orbs e efeito shine nos botões */
+/* 5. Esconde orbs (blobs flutuantes) e shine dos botões */
 body.perf-mode .orb-1,
 body.perf-mode .orb-2,
 body.perf-mode .btn-menu::after {
@@ -6681,35 +6690,37 @@ body.perf-mode .ctw-card-sub {
     color: rgba(255, 255, 255, .3) !important;
 }
 
-/* 8. Nav, pill de busca e ring dos atalhos — terminal no perf-mode */
+/* 8. Nav + pill de busca — adaptam à cor do tema */
 body.perf-mode .ctw-bottom-nav {
-    background: rgba(0, 0, 0, .88) !important;
-    box-shadow: 0 2px 12px rgba(0,0,0,.6) !important;
+    background: rgba(var(--primary-color-rgb), 0.1) !important;
+    border-color: rgba(var(--primary-color-rgb), 0.2) !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,.5) !important;
 }
 body.perf-mode .ctw-top-pill {
-    background: rgba(0, 0, 0, .78) !important;
+    background: rgba(var(--primary-color-rgb), 0.08) !important;
+    border-color: rgba(var(--primary-color-rgb), 0.15) !important;
     box-shadow: none !important;
 }
-/* Troca o ring neon por anel monocromático sutil */
+
+/* Ring dos atalhos — tinta com a cor do tema */
 body.perf-mode .ctw-carousel-border {
-    background: rgba(255, 255, 255, .14) !important;
+    background: rgba(var(--primary-color-rgb), 0.5) !important;
 }
-/* Background do círculo interno → preto */
+/* Círculo interno — usa a cor de fundo do tema */
 body.perf-mode .ctw-carousel-window {
-    background: #000 !important;
+    background: var(--tertiary-color) !important;
 }
 body.perf-mode .ctw-carousel-window::before {
-    background: linear-gradient(90deg, #000, transparent) !important;
+    background: linear-gradient(90deg, var(--tertiary-color), transparent) !important;
 }
 body.perf-mode .ctw-carousel-window::after {
-    background: linear-gradient(-90deg, #000, transparent) !important;
+    background: linear-gradient(-90deg, var(--tertiary-color), transparent) !important;
 }
 
-/* 9. Circles dos favoritos — inline styles via JS, sem classe CSS
-   Selector [style*="gradient"] atinge qualquer elemento com gradiente inline */
+/* 9. Circles dos favoritos via JS — tinta com cor do tema */
 body.perf-mode #mainMenu [style*="gradient"],
 body.perf-mode #mainMenu [style*="conic"] {
-    background: rgba(255, 255, 255, .12) !important;
+    background: rgba(var(--primary-color-rgb), 0.3) !important;
     filter: none !important;
 }
 
