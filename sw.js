@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-184';
+const CACHE = 'ctw-186';
 
 self.addEventListener('install', e => {
     self.skipWaiting();
