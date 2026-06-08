@@ -260,6 +260,57 @@ class="dropdown-menu-custom">
         <div id="notification-bell"><span class="notification-badge hidden"></span></div> 
     </div>
 
+    <script>
+        // ── Modo Performance ──────────────────────────────────────
+        (function () {
+            function syncPerfUI(active) {
+                const adminBtn  = document.getElementById('perfModeAdminBtn');
+                const adminLbl  = document.getElementById('perfModeAdminLabel');
+                const adminSub  = document.getElementById('perfModeAdminSub');
+                const sheetLbl  = document.getElementById('perfModeLabelSheet');
+                if (active) {
+                    document.body.classList.add('perf-mode');
+                    if (adminBtn)  adminBtn.classList.add('active');
+                    if (adminLbl)  adminLbl.textContent = 'Desativar Modo Performance';
+                    if (adminSub)  adminSub.textContent = 'Ativado ⚡ — efeitos visuais reduzidos';
+                    if (sheetLbl)  sheetLbl.textContent = 'Ativado ⚡';
+                } else {
+                    document.body.classList.remove('perf-mode');
+                    if (adminBtn)  adminBtn.classList.remove('active');
+                    if (adminLbl)  adminLbl.textContent = 'Ativar Modo Performance';
+                    if (adminSub)  adminSub.textContent = 'Desativado — efeitos visuais completos';
+                    if (sheetLbl)  sheetLbl.textContent = 'Desativado';
+                }
+            }
+            // Aplica ao carregar
+            syncPerfUI(localStorage.getItem('ctw_perf_mode') === '1');
+
+            window.togglePerfMode = function () {
+                const next = localStorage.getItem('ctw_perf_mode') !== '1';
+                localStorage.setItem('ctw_perf_mode', next ? '1' : '0');
+                syncPerfUI(next);
+            };
+
+            // ── Proxy html2canvas: garante frame limpo antes de capturar ──
+            // html2canvas é lazy-loaded; intercepta no momento em que é atribuído ao window
+            let _h2c = null;
+            Object.defineProperty(window, 'html2canvas', {
+                configurable: true,
+                set: function (fn) { _h2c = fn; },
+                get: function () {
+                    if (!_h2c) return undefined;
+                    return function (element, opts) {
+                        return new Promise(function (resolve, reject) {
+                            requestAnimationFrame(function () {
+                                _h2c(element, opts).then(resolve).catch(reject);
+                            });
+                        });
+                    };
+                }
+            });
+        })();
+    </script>
+
 
     <script>
         // Fix: viewport height para teclado mobile (evita fundo aparecer quando teclado abre)
@@ -900,6 +951,15 @@ class="dropdown-menu-custom">
             </div>
 
 
+
+            <!-- Modo Performance -->
+            <button class="perf-toggle-btn" id="perfModeAdminBtn" onclick="window.togglePerfMode()">
+                <i class="bi bi-lightning-charge-fill"></i>
+                <div style="display:flex;flex-direction:column;gap:1px;text-align:left;">
+                    <span id="perfModeAdminLabel">Ativar Modo Performance</span>
+                    <small id="perfModeAdminSub" style="font-size:.65rem;opacity:.65;font-weight:400;">Desativado — efeitos visuais completos</small>
+                </div>
+            </button>
 
             <button class="btn btn-success w-100 py-3" id="saveSettingsBtn">
                 <i class="bi bi-save-fill"></i> Salvar Configurações
@@ -2052,6 +2112,13 @@ window.addEventListener('load', function() {
             <button class="ctw-sheet-item" onclick="document.getElementById('theme-palette-btn').click(); window.closeCtwSheet();">
                 <div class="ctw-sheet-item-icon bg-info"><i class="bi bi-palette-fill"></i></div>
                 <span>Mudar Cores</span>
+            </button>
+            <button class="ctw-sheet-item" onclick="window.togglePerfMode(); window.closeCtwSheet();">
+                <div class="ctw-sheet-item-icon" style="background:rgba(234,179,8,.12);color:#eab308;"><i class="bi bi-lightning-charge-fill"></i></div>
+                <div style="display:flex;flex-direction:column;gap:1px;text-align:left;">
+                    <span>Modo Performance</span>
+                    <small id="perfModeLabelSheet" style="font-size:.6rem;opacity:.6;">Desativado</small>
+                </div>
             </button>
             <button class="ctw-sheet-item" onclick="window.toggleNotifPref(); window.closeCtwSheet();">
                 <div class="ctw-sheet-item-icon" style="background:rgba(239,68,68,.12);color:#ef4444;"><i class="bi bi-bell-fill"></i></div>

@@ -6598,3 +6598,143 @@ body.ctw-v2-active #documentsHome {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   MODO PERFORMANCE (body.perf-mode)
+   ══════════════════════════════════════════════════════════════ */
+
+/* 1. Cor fixa verde — garante destaque nas imagens exportadas */
+body.perf-mode {
+    --primary-color: #10b981;
+    --primary-color-rgb: 16, 185, 129;
+    --bg-color: #000000;
+    --tertiary-color: #000000;
+}
+
+/* 2. Remove backdrop-filter em tudo — maior ganho de scroll (49 ocorrências) */
+body.perf-mode *,
+body.perf-mode *::before,
+body.perf-mode *::after {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* 3. Libera camadas GPU e agiliza transições */
+body.perf-mode * {
+    will-change: auto !important;
+    transition-duration: 0.12s !important;
+}
+
+/* 4. Esconde fundo animado (gradiente rotativo + ambilight) */
+body.perf-mode::before,
+body.perf-mode::after {
+    display: none !important;
+}
+
+/* 5. Esconde orbs e efeito shine nos botões */
+body.perf-mode .orb-1,
+body.perf-mode .orb-2,
+body.perf-mode .btn-menu::after {
+    display: none !important;
+}
+
+/* 6. Pausa animações infinitas decorativas sem tocar nas funcionais */
+body.perf-mode .ctw-carousel-border,
+body.perf-mode .ctw-boot-msg,
+body.perf-mode .fav-tr-ring1,
+body.perf-mode .fav-tr-ring2,
+body.perf-mode .fav-transition-emoji,
+body.perf-mode .fav-transition-label,
+body.perf-mode .ctw-sp-dot-loader span,
+body.perf-mode .scan-ai-pulse {
+    animation-play-state: paused !important;
+}
+
+/* 7. Estilo Terminal nos cards — só no perf-mode */
+body.perf-mode .ctw-card,
+body.perf-mode .ctw-card.c-blue,
+body.perf-mode .ctw-card.c-cyan,
+body.perf-mode .ctw-card.c-orange,
+body.perf-mode .ctw-card.c-purple,
+body.perf-mode .ctw-card.c-green,
+body.perf-mode .ctw-card.c-rose,
+body.perf-mode .ctw-card.c-teal {
+    background: rgba(255, 255, 255, .03) !important;
+    border-color: rgba(255, 255, 255, .09) !important;
+}
+body.perf-mode .ctw-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.1), transparent);
+    pointer-events: none;
+}
+body.perf-mode .ctw-card-icon {
+    background: rgba(255, 255, 255, .06) !important;
+    color: rgba(255, 255, 255, .65) !important;
+}
+body.perf-mode .ctw-card-title {
+    color: rgba(255, 255, 255, .88) !important;
+}
+body.perf-mode .ctw-card-sub {
+    color: rgba(255, 255, 255, .3) !important;
+}
+
+/* 8. Nav, pill de busca e ring dos atalhos — terminal no perf-mode */
+body.perf-mode .ctw-bottom-nav {
+    background: rgba(0, 0, 0, .88) !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,.6) !important;
+}
+body.perf-mode .ctw-top-pill {
+    background: rgba(0, 0, 0, .78) !important;
+    box-shadow: none !important;
+}
+/* Troca o ring neon por anel monocromático sutil */
+body.perf-mode .ctw-carousel-border {
+    background: rgba(255, 255, 255, .14) !important;
+}
+/* Background do círculo interno → preto */
+body.perf-mode .ctw-carousel-window {
+    background: #000 !important;
+}
+body.perf-mode .ctw-carousel-window::before {
+    background: linear-gradient(90deg, #000, transparent) !important;
+}
+body.perf-mode .ctw-carousel-window::after {
+    background: linear-gradient(-90deg, #000, transparent) !important;
+}
+
+/* 9. Circles dos favoritos — inline styles via JS, sem classe CSS
+   Selector [style*="gradient"] atinge qualquer elemento com gradiente inline */
+body.perf-mode #mainMenu [style*="gradient"],
+body.perf-mode #mainMenu [style*="conic"] {
+    background: rgba(255, 255, 255, .12) !important;
+    filter: none !important;
+}
+
+/* Botão toggle Modo Performance */
+.perf-toggle-btn {
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1.5px solid rgba(255, 255, 255, .1);
+    background: rgba(255, 255, 255, .04);
+    color: var(--text-color);
+    font-size: .9rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background .2s, border-color .2s;
+    margin-bottom: 12px;
+    -webkit-tap-highlight-color: transparent;
+}
+.perf-toggle-btn:active { opacity: .8; }
+.perf-toggle-btn.active {
+    background: rgba(234, 179, 8, .12);
+    border-color: rgba(234, 179, 8, .4);
+    color: #eab308;
+}
+.perf-toggle-btn i { font-size: 1rem; }
