@@ -199,6 +199,15 @@ class="dropdown-menu-custom">
                     <div class="icon-box bg-info bg-opacity-10 text-info"><i class="bi bi-palette-fill"></i></div>
                     <span>Mudar Cores</span>
                 </button>
+
+                <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 mt-1 text-color-custom"
+                        onclick="window._togglePerfMode()">
+                    <div class="icon-box bg-warning bg-opacity-10 text-warning" id="perfModeDropdownIcon"><i class="bi bi-lightning-charge-fill"></i></div>
+                    <div style="display:flex;flex-direction:column;gap:1px;">
+                        <span>Modo Performance</span>
+                        <small id="perfModeDropdownSub" style="font-size:.62rem;opacity:.6;">Desativado</small>
+                    </div>
+                </button>
                 <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 mt-1 text-color-custom"
                         onclick="window.toggleNotifPref()">
                     <div class="icon-box bg-danger bg-opacity-10 text-danger"><i class="bi bi-bell-fill"></i></div>
@@ -259,57 +268,6 @@ class="dropdown-menu-custom">
         <div id="theme-palette-btn"></div>
         <div id="notification-bell"><span class="notification-badge hidden"></span></div> 
     </div>
-
-    <script>
-        // ── Modo Performance ──────────────────────────────────────
-        (function () {
-            function syncPerfUI(active) {
-                const adminBtn  = document.getElementById('perfModeAdminBtn');
-                const adminLbl  = document.getElementById('perfModeAdminLabel');
-                const adminSub  = document.getElementById('perfModeAdminSub');
-                const sheetLbl  = document.getElementById('perfModeLabelSheet');
-                if (active) {
-                    document.body.classList.add('perf-mode');
-                    if (adminBtn)  adminBtn.classList.add('active');
-                    if (adminLbl)  adminLbl.textContent = 'Desativar Modo Performance';
-                    if (adminSub)  adminSub.textContent = 'Ativado ⚡ — efeitos visuais reduzidos';
-                    if (sheetLbl)  sheetLbl.textContent = 'Ativado ⚡';
-                } else {
-                    document.body.classList.remove('perf-mode');
-                    if (adminBtn)  adminBtn.classList.remove('active');
-                    if (adminLbl)  adminLbl.textContent = 'Ativar Modo Performance';
-                    if (adminSub)  adminSub.textContent = 'Desativado — efeitos visuais completos';
-                    if (sheetLbl)  sheetLbl.textContent = 'Desativado';
-                }
-            }
-            // Aplica ao carregar
-            syncPerfUI(localStorage.getItem('ctw_perf_mode') === '1');
-
-            window.togglePerfMode = function () {
-                const next = localStorage.getItem('ctw_perf_mode') !== '1';
-                localStorage.setItem('ctw_perf_mode', next ? '1' : '0');
-                syncPerfUI(next);
-            };
-
-            // ── Proxy html2canvas: garante frame limpo antes de capturar ──
-            // html2canvas é lazy-loaded; intercepta no momento em que é atribuído ao window
-            let _h2c = null;
-            Object.defineProperty(window, 'html2canvas', {
-                configurable: true,
-                set: function (fn) { _h2c = fn; },
-                get: function () {
-                    if (!_h2c) return undefined;
-                    return function (element, opts) {
-                        return new Promise(function (resolve, reject) {
-                            requestAnimationFrame(function () {
-                                _h2c(element, opts).then(resolve).catch(reject);
-                            });
-                        });
-                    };
-                }
-            });
-        })();
-    </script>
 
 
     <script>
@@ -952,14 +910,14 @@ class="dropdown-menu-custom">
 
 
 
-            <!-- Modo Performance -->
-            <button class="perf-toggle-btn" id="perfModeAdminBtn" onclick="window.togglePerfMode()">
-                <i class="bi bi-lightning-charge-fill"></i>
-                <div style="display:flex;flex-direction:column;gap:1px;text-align:left;">
-                    <span id="perfModeAdminLabel">Ativar Modo Performance</span>
-                    <small id="perfModeAdminSub" style="font-size:.65rem;opacity:.65;font-weight:400;">Desativado — efeitos visuais completos</small>
-                </div>
-            </button>
+            <!-- MODO PERFORMANCE -->
+            <div class="admin-section w-100">
+                <h4 class="mb-1 text-start"><i class="bi bi-lightning-charge-fill"></i> Modo Performance</h4>
+                <p class="text-secondary small mb-3">Desativa animações e efeitos visuais pesados para melhorar o scroll em celulares lentos.</p>
+                <button class="btn w-100 py-3" id="btnPerfMode" onclick="window._togglePerfMode()">
+                    <i class="bi bi-lightning-charge-fill"></i> <span id="perfModeLabel">Ativar Modo Performance</span>
+                </button>
+            </div>
 
             <button class="btn btn-success w-100 py-3" id="saveSettingsBtn">
                 <i class="bi bi-save-fill"></i> Salvar Configurações
@@ -2113,11 +2071,11 @@ window.addEventListener('load', function() {
                 <div class="ctw-sheet-item-icon bg-info"><i class="bi bi-palette-fill"></i></div>
                 <span>Mudar Cores</span>
             </button>
-            <button class="ctw-sheet-item" onclick="window.togglePerfMode(); window.closeCtwSheet();">
+            <button class="ctw-sheet-item" onclick="window._togglePerfMode()">
                 <div class="ctw-sheet-item-icon" style="background:rgba(234,179,8,.12);color:#eab308;"><i class="bi bi-lightning-charge-fill"></i></div>
                 <div style="display:flex;flex-direction:column;gap:1px;text-align:left;">
                     <span>Modo Performance</span>
-                    <small id="perfModeLabelSheet" style="font-size:.6rem;opacity:.6;">Desativado</small>
+                    <small id="perfModeSheetSub" style="font-size:.6rem;opacity:.6;">Desativado</small>
                 </div>
             </button>
             <button class="ctw-sheet-item" onclick="window.toggleNotifPref(); window.closeCtwSheet();">
@@ -3372,6 +3330,50 @@ window.addEventListener('load', function() {
 
     </div>
 </div>
+
+<script>
+// === MODO PERFORMANCE ===
+(function(){
+    function _applyPerfMode(on){
+        document.body.classList.toggle('perf-mode', on);
+        // Botão na tela de Admin
+        var btn = document.getElementById('btnPerfMode');
+        var lbl = document.getElementById('perfModeLabel');
+        if(btn){
+            btn.className = on ? 'btn btn-warning w-100 py-3' : 'btn btn-outline-secondary w-100 py-3';
+        }
+        if(lbl) lbl.textContent = on ? 'Desativar Modo Performance' : 'Ativar Modo Performance';
+        // Sub-label no dropdown (ambos os layouts)
+        var sub = document.getElementById('perfModeDropdownSub');
+        if(sub) sub.textContent = on ? 'Ativado ⚡' : 'Desativado';
+        // Sub-label no bottom sheet
+        var sheetSub = document.getElementById('perfModeSheetSub');
+        if(sheetSub) sheetSub.textContent = on ? 'Ativado ⚡' : 'Desativado';
+    }
+    window._togglePerfMode = function(){
+        var on = !document.body.classList.contains('perf-mode');
+        localStorage.setItem('ctwPerfMode', on ? '1' : '0');
+        _applyPerfMode(on);
+    };
+    // Aplica na inicialização
+    if(localStorage.getItem('ctwPerfMode') === '1') _applyPerfMode(true);
+    // Garante que o botão de admin reflita o estado quando a aba abrir
+    document.addEventListener('click', function(e){
+        if(e.target && e.target.closest && e.target.closest('[data-admin-section="adminSettingsContent"]')){
+            setTimeout(function(){ _applyPerfMode(document.body.classList.contains('perf-mode')); }, 50);
+        }
+    });
+})();
+</script>
+
+
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js')
+      .then(r => console.log('[SW] Registrado:', r.scope))
+      .catch(e => console.error('[SW] Erro:', e));
+  }
+</script>
 
 </body>
 </html>
