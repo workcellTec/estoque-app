@@ -259,12 +259,27 @@
             'Nao invente. Se nao conseguir calcular, retorne rendaMensal=0.';
     }
 
-    function buildPrompt(produto, valor, rendaPreCalculada) {
+    function buildPrompt(produto, valor, rendaPreCalculada, ignorarApostas) {
         var vf = Number(valor).toLocaleString('pt-BR',{minimumFractionDigits:2});
         var vn = Number(valor);
         var e33 = (vn*0.33).toLocaleString('pt-BR',{minimumFractionDigits:2});
         var e35 = (vn*0.35).toLocaleString('pt-BR',{minimumFractionDigits:2});
         var e60 = (vn*0.60).toLocaleString('pt-BR',{minimumFractionDigits:2});
+        var regraApostas = ignorarApostas ?
+            ('2. Apostador compulsivo: NESTE CASO ESPECIFICO, NAO reprove automaticamente por apostas.\n'+
+             '   Um analista humano ja revisou e decidiu forcar a analise mesmo com apostas detectadas.\n'+
+             '   Ainda assim preencha casasDeJogoEncontradas normalmente (transparencia), mas a decisao\n'+
+             '   final de aprovar/reprovar deve se basear no restante do comportamento financeiro\n'+
+             '   (renda, dividas, comprometimento), sem aplicar reprovacao automatica por volume de apostas.\n\n')
+            :
+            ('2. Apostador compulsivo = REPROVADO\n'+
+             '   Casas: PHOENIX GAMING, PIXBET, BLAZE, APOSTARAIZ, BANKS TECH, ATM PUBLICIDADE,\n'+
+             '   SMART CLUSTER, M V D S M TECHNOLOGY, LOTTOPAY, GM INTERMEDIACAO, WIINPAY,\n'+
+             '   AJC GATEWAY, NEXUMPAY, UNIVEBET, VAIDEBET, BETNACIONAL, R TORRES, NORBE FINTECH,\n'+
+             '   GOLD NOW, LUXTAK, ou nome contendo BET/GAMING/APOSTAS/CASSINO.\n'+
+             '   "SAQUE DIN LOTERICO" NAO e aposta — e operacao bancaria.\n'+
+             '   10+ transacoes OU R$800+/mes OU 3+ meses = REPROVADO.\n'+
+             '   1-4 esporadicas = penaliza nota mas nao reprova.\n\n');
         return (
 'Voce e um analista de credito senior da Workcell, loja de celulares em Joinville-SC.\n'+
 'Analise os documentos do cliente e retorne APENAS um JSON valido, sem texto adicional.\n\n'+
@@ -294,14 +309,7 @@
 
 '=== APENAS 2 REPROVACOES OBRIGATORIAS ===\n'+
 '1. Renda real < R$ 1.000/mes = REPROVADO (nao tem como pagar)\n'+
-'2. Apostador compulsivo = REPROVADO\n'+
-'   Casas: PHOENIX GAMING, PIXBET, BLAZE, APOSTARAIZ, BANKS TECH, ATM PUBLICIDADE,\n'+
-'   SMART CLUSTER, M V D S M TECHNOLOGY, LOTTOPAY, GM INTERMEDIACAO, WIINPAY,\n'+
-'   AJC GATEWAY, NEXUMPAY, UNIVEBET, VAIDEBET, BETNACIONAL, R TORRES, NORBE FINTECH,\n'+
-'   GOLD NOW, LUXTAK, ou nome contendo BET/GAMING/APOSTAS/CASSINO.\n'+
-'   "SAQUE DIN LOTERICO" NAO e aposta — e operacao bancaria.\n'+
-'   10+ transacoes OU R$800+/mes OU 3+ meses = REPROVADO.\n'+
-'   1-4 esporadicas = penaliza nota mas nao reprova.\n\n'+
+regraApostas+
 
 'Todo o resto APROVA com condicoes:\n'+
 '  FORTE (85-100): entrada 20% = R$ '+e33+' | teto parcela 30% renda\n'+
@@ -1535,8 +1543,9 @@
     }
 
     // ── VALIDADOR POS-IA: se a IA viu apostas mas nao reprovou, JS forca ──
-    function validarApostasNaResposta(d) {
+    function validarApostasNaResposta(d, ignorar) {
         if (d.reprovado) return;
+        if (ignorar) return;
         // Prioridade 1: usa casasJogo estruturado retornado pela IA
         var casas = (d.casasJogo || []).filter(Boolean);
 
@@ -1717,6 +1726,26 @@
         return { ok: !temErro, problemas: problemas };
     }
 
+    function mostrarModalForcarIA(onConfirmar, onCancelar) {
+        var modal = document.createElement('div');
+        modal.id = 'cs_modal_forcar_ia';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:6000;display:flex;align-items:center;justify-content:center;padding:16px;';
+        modal.innerHTML =
+            '<div style="background:#0b1325;border:1.5px solid rgba(239,68,68,.35);border-radius:18px;width:100%;max-width:400px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.75)">'+
+                '<div style="padding:18px 18px 12px;border-bottom:1px solid rgba(255,255,255,.06)">'+
+                    '<div style="font-size:1rem;font-weight:800;color:#f87171">⚠️ Forcar Analise via IA</div>'+
+                    '<div style="font-size:.7rem;color:rgba(255,255,255,.5);margin-top:6px;line-height:1.5">Isso ignora a deteccao automatica de apostador compulsivo e envia os documentos pra analise via IA mesmo assim. A IA nao vai aplicar a reprovacao automatica por apostas neste caso — a decisao fica por sua conta.<br><br>Use apenas em casos especificos onde voce julga necessario revisar manualmente.</div>'+
+                '</div>'+
+                '<div style="padding:14px;display:flex;flex-direction:column;gap:8px">'+
+                    '<button id="cs_forcia_ok" style="width:100%;padding:13px;border-radius:12px;border:none;background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;font-family:Poppins,sans-serif;font-size:.85rem;font-weight:700;cursor:pointer">Forcar Analise via IA</button>'+
+                    '<button id="cs_forcia_cancel" style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.07);background:transparent;color:rgba(255,255,255,.5);font-family:Poppins,sans-serif;font-size:.74rem;font-weight:600;cursor:pointer">Cancelar</button>'+
+                '</div>'+
+            '</div>';
+        document.body.appendChild(modal);
+        document.getElementById('cs_forcia_ok').addEventListener('click', function(){ document.body.removeChild(modal); onConfirmar(); });
+        document.getElementById('cs_forcia_cancel').addEventListener('click', function(){ document.body.removeChild(modal); onCancelar && onCancelar(); });
+    }
+
     function mostrarModalDocQualidade(problemas, onContinuar, onFechar) {
         var temErro = problemas.some(function(p){ return p.nivel === 'erro'; });
 
@@ -1887,7 +1916,7 @@
     }
 
 
-    async function iniciarProcessamentoIA(prod, val, cpfValidado) {
+    async function iniciarProcessamentoIA(prod, val, cpfValidado, forcarIA) {
         _busy=true;setBtnState();el('cs_prog').classList.remove('cs-h');el('cs_res').classList.add('cs-h');
 
         try {
@@ -1919,19 +1948,33 @@
             // ── PASSO 2: Pre-filtro local de apostas ──
             setProg('Verificando perfil de risco...',25);
             var apostas = detectarApostas(textoParaApostas);
-            if (apostas.gatilho) {
+            if (apostas.gatilho && !forcarIA) {
                 setProg('Reprovado automaticamente.',100);
                 var dAposta = resultadoApostasReprovado(prod, '', apostas);
                 dAposta._produto = prod;
                 _last = {nome:'Cliente',produto:prod,valor:val,dados:dAposta,entradaMin:0,docsHash:_docsRend.length};
                 await salvarFB('Cliente',prod,apostas.detalhe,dAposta, cpfValidado); 
                 el('cs_prog').classList.add('cs-h');
-                el('cs_res').innerHTML = formatResult(apostas.detalhe, dAposta, val);
+                el('cs_res').innerHTML = formatResult(apostas.detalhe, dAposta, val)+
+                    '<div id="cs_forcar_card" style="margin-top:10px;background:rgba(248,113,113,.08);border:1.5px solid rgba(248,113,113,.3);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px">'+
+                        '<div style="display:flex;align-items:flex-start;gap:10px">'+
+                            '<span style="font-size:1.3rem;line-height:1">⚠️</span>'+
+                            '<div style="flex:1">'+
+                                '<div style="font-size:.82rem;font-weight:800;color:#f87171">Bloqueio automatico de apostas</div>'+
+                                '<div style="font-size:.71rem;color:rgba(255,255,255,.55);line-height:1.45;margin-top:3px">O sistema reprovou automaticamente por deteccao local de apostas no extrato. Se for um caso especifico que merece revisao, voce pode forcar o envio pra analise via IA.</div>'+
+                            '</div>'+
+                        '</div>'+
+                        '<button id="cs_btn_forcar_ia" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;font-family:Poppins,sans-serif;font-weight:700;font-size:.78rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><i class="bi bi-exclamation-triangle-fill"></i> Forcar Analise via IA</button>'+
+                    '</div>';
                 el('cs_res').classList.remove('cs-h');
                 el('cs_res').scrollIntoView({behavior:'smooth',block:'start'});
                 el('cs_btn_analisar').classList.add('cs-h');
                 el('cs_btn_duo').classList.remove('cs-h');
                 wireRes();
+                var btnForcarIA=el('cs_btn_forcar_ia');
+                if(btnForcarIA) btnForcarIA.addEventListener('click',function(){
+                    mostrarModalForcarIA(function(){ iniciarProcessamentoIA(prod,val,cpfValidado,true); });
+                });
                 return;
             }
 
@@ -2010,9 +2053,9 @@
             try {
                 if (temSoTexto) {
                     var textoParaAnalise = '=== EXTRATO ===\n' + textoDigitalStr.substring(0, 25000) + '\n\n';
-                    resp = await aiCallTexto(textoParaAnalise + buildPrompt(prod, val, rendaPreCalculada));
+                    resp = await aiCallTexto(textoParaAnalise + buildPrompt(prod, val, rendaPreCalculada, forcarIA));
                 } else {
-                    resp = await aiCallVision(imagensParaIA, textoDigitalStr, buildPrompt(prod, val, null));
+                    resp = await aiCallVision(imagensParaIA, textoDigitalStr, buildPrompt(prod, val, null, forcarIA));
                 }
             } catch(eAI) {
                 setProg('Erro na IA.',100);
@@ -2038,7 +2081,7 @@
             setProg('Finalizando...',90);
             var d=extrair(resp);d._produto=prod;
 
-            validarApostasNaResposta(d);
+            validarApostasNaResposta(d, forcarIA);
 
             if (d.rendaEstimada > 0 && d.rendaEstimada < 1000 && !d.reprovado) {
                 d.aprov = false; d.reprovado = true; d.nota = Math.min(d.nota, 30);
