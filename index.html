@@ -3048,8 +3048,8 @@ window.addEventListener('load', function() {
         document.getElementById('ctwBdAnoGrid').style.display = 'none';
     };
 
-    window._abrirBirthdayPicker = function(inputId, btnId, labelId) {
-        _bdTarget = { inputId: inputId, btnId: btnId, labelId: labelId };
+    window._abrirBirthdayPicker = function(inputId, btnId, labelId, onConfirm) {
+        _bdTarget = { inputId: inputId, btnId: btnId, labelId: labelId, onConfirm: onConfirm || null };
         var val = document.getElementById(inputId) && document.getElementById(inputId).value;
         if (val) {
             var p = val.split('-');
@@ -3079,6 +3079,7 @@ window.addEventListener('load', function() {
             pad(_bd.dia) + ' de ' + MESES_BD[_bd.mes] + ' de ' + _bd.ano;
         document.getElementById(_bdTarget.btnId).style.borderColor = 'var(--primary-color)';
         window._fecharBirthdayPicker();
+        if (typeof _bdTarget.onConfirm === 'function') _bdTarget.onConfirm(iso);
     };
 
     window._bdSetValor = function(inputId, btnId, labelId, isoVal) {

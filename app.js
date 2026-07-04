@@ -3259,6 +3259,11 @@ function checkForDueInstallments(initialNotifications = []) {
                 }
             }
         }
+        // Aniversários de hoje também entram no painel de Alertas
+        (window._aniversariosHoje || []).forEach(n => {
+            if (!dismissedList.includes(n.notificationId)) notifications.push(n);
+        });
+
         updateNotificationUI(notifications);
     });
 }
@@ -7263,6 +7268,27 @@ function carregarDadosParaEdicao(item) {
             if (el) el.value = campos[id] || '';
         }
 
+        // D2. Data de nascimento vem do CADASTRO DO CLIENTE (não do documento)
+        {
+            const nascEl = document.getElementById('bookipNascimento');
+            if (nascEl) nascEl.value = '';
+            const nascLbl = document.getElementById('bookipNascimentoLabel');
+            if (nascLbl) nascLbl.textContent = 'Definir data';
+            const nascBtn = document.getElementById('bookipNascimentoBtn');
+            if (nascBtn) nascBtn.style.borderColor = '';
+
+            const cpfLimpo = (item.cpf || '').replace(/\D/g, '');
+            const telLimpo = (item.tel || '').replace(/\D/g, '');
+            const nomeLimpo = (item.nome || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const cli = (window.dbClientsCache || []).find(c =>
+                (cpfLimpo.length > 5 && (c.cpf || '').replace(/\D/g, '') === cpfLimpo) ||
+                c.id === `${nomeLimpo}_${telLimpo}`
+            );
+            if (cli && cli.dataNascimento && typeof window._bdSetValor === 'function') {
+                window._bdSetValor('bookipNascimento', 'bookipNascimentoBtn', 'bookipNascimentoLabel', cli.dataNascimento);
+            }
+        }
+
         // E. Restaura Pagamentos
         document.querySelectorAll('.check-pagamento').forEach(chk => chk.checked = false);
         if (item.pagamento) {
@@ -7489,7 +7515,8 @@ criadoPor: currentUserProfile || "Desconhecido",
 
             // SALVA CLIENTE (ROBÔ)
             await salvarClienteAutomatico({
-                nome: dados.nome, cpf: dados.cpf, tel: dados.tel, end: dados.end, email: dados.email
+                nome: dados.nome, cpf: dados.cpf, tel: dados.tel, end: dados.end, email: dados.email,
+                dataNascimento: document.getElementById('bookipNascimento')?.value || ''
             });
 
             // SUCESSO!
@@ -7717,10 +7744,13 @@ async function salvarClienteAutomatico(dados) {
         ultimoCompra: new Date().toISOString()
     };
 
+    // Só inclui a data se veio preenchida (evita sobrescrever com vazio)
+    if (dados.dataNascimento) dadosCliente.dataNascimento = dados.dataNascimento;
+
     // 3. Tenta Salvar
     try {
-        // Usando SET em vez de UPDATE para garantir (força bruta)
-        await set(ref(db, `clientes/${clienteId}`), dadosCliente);
+        // Usando UPDATE para mesclar sem apagar campos existentes (dataNascimento, atribuidoA)
+        await update(ref(db, `clientes/${clienteId}`), dadosCliente);
         // alert("ROBÔ SUCESSO! Cliente salvo na pasta: " + clienteId); 
         console.log("Cliente salvo: " + clienteId);
     } catch (e) {
@@ -7856,6 +7886,18 @@ window.preencherCliente = function(id, idListaParaFechar) {
         document.getElementById('bookipTelefone').value = cliente.tel || '';
         document.getElementById('bookipEndereco').value = cliente.end || '';
         document.getElementById('bookipEmail').value = cliente.email || '';
+
+        // Data de nascimento do cadastro (se houver)
+        if (cliente.dataNascimento && typeof window._bdSetValor === 'function') {
+            window._bdSetValor('bookipNascimento', 'bookipNascimentoBtn', 'bookipNascimentoLabel', cliente.dataNascimento);
+        } else {
+            const nascEl = document.getElementById('bookipNascimento');
+            if (nascEl) nascEl.value = '';
+            const nascLbl = document.getElementById('bookipNascimentoLabel');
+            if (nascLbl) nascLbl.textContent = 'Definir data';
+            const nascBtn = document.getElementById('bookipNascimentoBtn');
+            if (nascBtn) nascBtn.style.borderColor = '';
+        }
         
         // Esconde a lista que foi clicada
         if(idListaParaFechar) {
@@ -10057,11 +10099,17 @@ window.resetFormulariosBookip = function() {
     if (_photoBtnLabel) _photoBtnLabel.textContent = 'Da galeria';
     if (_photoInput) _photoInput.value = '';
 
-    const camposCliente = ['bookipNome', 'bookipCpf', 'bookipTelefone', 'bookipEndereco', 'bookipEmail', 'bookipDataManual'];
+    const camposCliente = ['bookipNome', 'bookipCpf', 'bookipTelefone', 'bookipEndereco', 'bookipEmail', 'bookipDataManual', 'bookipNascimento'];
     camposCliente.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
+
+    // Reseta o label/borda do botão de data de nascimento
+    const nascLabel = document.getElementById('bookipNascimentoLabel');
+    if (nascLabel) nascLabel.textContent = 'Definir data';
+    const nascBtn = document.getElementById('bookipNascimentoBtn');
+    if (nascBtn) nascBtn.style.borderColor = '';
 
     // 2. Limpa Campos de Produto (Temp)
     const camposProd = ['bookipProductSearch', 'bookipProdNomeTemp', 'bookipProdValorTemp', 'bookipProdCorTemp', 'bookipProdObsTemp'];
@@ -11217,6 +11265,7 @@ window.showCustomModal       = showCustomModal;
             + row('aniv','🎂','rgba(251,146,60,.12)','#fb923c','Aniversários de clientes','Alerta no dia do aniversário','aniversarios')
             + row('rep','🔧','rgba(168,85,247,.12)','#a855f7','Alertas de reparo','Prazos próximos e vencidos','reparos')
             + row('bol','💸','rgba(239,68,68,.12)','#ef4444','Boletos vencendo','Parcelas próximas do vencimento','boletos')
+            + '<div id="_npAuditRow" style="display:flex;align-items:center;gap:8px;padding:12px 22px 0;cursor:pointer;color:var(--text-secondary,#8899aa);font-size:.76rem;font-weight:600;"><i class="bi bi-search"></i> Ver clientes sem data de nascimento</div>'
             + '<button id="_npSaveBtn" style="width:calc(100% - 32px);margin:14px 16px 0;padding:14px;border:none;border-radius:14px;background:var(--primary-color,#00e5ff);color:#000;font-weight:700;font-size:.95rem;cursor:pointer;">Salvar preferências</button>'
             + '</div></div>';
 
@@ -11238,6 +11287,11 @@ window.showCustomModal       = showCustomModal;
             updateLabels(cur);
             panel.remove();
             if (typeof window.updateNotificationUI === 'function') window.updateNotificationUI(window._currentNotifications || []);
+        });
+        var _npAuditRow = document.getElementById('_npAuditRow');
+        if (_npAuditRow) _npAuditRow?.addEventListener('click', function() {
+            panel.remove();
+            if (typeof window.auditarAniversarios === 'function') window.auditarAniversarios();
         });
     };
 
