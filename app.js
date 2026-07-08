@@ -7327,21 +7327,13 @@ function carregarDadosParaEdicao(item) {
             btnAdd.classList.add('btn-warning');
         }
 
-        // H. Restaura a Foto (se existir)
-        if (item.fotoUrl) {
-            window._bookipFotoUrl  = item.fotoUrl;
-            window._bookipFotoBlob = null;
-            var imgEl   = document.getElementById('bookipPhotoImg');
-            var preview = document.getElementById('bookipPhotoPreview');
-            var lbl     = document.getElementById('bookipPhotoBtnLabel');
-            if (imgEl)   imgEl.src = item.fotoUrl;
-            if (preview) preview.classList.remove('hidden');
-            if (lbl)     lbl.textContent = 'Substituir foto';
-        } else {
-            window._bookipFotoUrl  = '';
-            window._bookipFotoBlob = null;
-            var preview2 = document.getElementById('bookipPhotoPreview');
-            if (preview2) preview2.classList.add('hidden');
+        // H. Restaura as Fotos (compatível com registros antigos de foto única)
+        {
+            const fotosItem = (Array.isArray(item.fotosUrls) && item.fotosUrls.length)
+                ? item.fotosUrls
+                : (item.fotoUrl ? [item.fotoUrl] : []);
+            if (typeof window._bookipSetFotos === 'function') window._bookipSetFotos(fotosItem);
+            else window._bookipFotos = fotosItem.map(u => ({ url: u, blob: null, preview: '' }));
         }
 
         // I. Finalização
@@ -7382,7 +7374,7 @@ if (btnSave) {
             dataVenda:   document.getElementById('bookipDataManual')?.value || new Date().toISOString().split('T')[0],
             criadoEm:    new Date().toISOString(),
             type:        bookipCartList.some(i => i.isSituation) ? 'situacao' : (window.isSimpleReceiptMode ? 'recibo' : 'garantia'),
-            fotoUrl:     window._bookipFotoUrl || '',
+            fotoUrl:     (window._bookipFotos && window._bookipFotos[0] && window._bookipFotos[0].url) || '',
         };
         const _rawHtml = (typeof getReciboHTML === 'function') ? getReciboHTML(previewDadosTemp) : '<p style="color:#000;padding:20px">Prévia indisponível</p>';
         const previewHtmlTemp = `<div style="width:750px;overflow:hidden;background:#fff;color:#000;">${_rawHtml}</div>`;
@@ -7488,7 +7480,7 @@ if (btnSave) {
                 dataVenda: dataFinalVenda,
                 criadoEm: new Date().toISOString(),
 criadoPor: currentUserProfile || "Desconhecido",
-                fotoUrl: window._bookipFotoUrl || "",
+                fotoUrl: (window._bookipFotos && window._bookipFotos[0] && window._bookipFotos[0].url) || "",
             };
 
             // SALVA NO FIREBASE
@@ -7502,15 +7494,20 @@ criadoPor: currentUserProfile || "Desconhecido",
                 dados.id = newRef.key;
             }
 
-            // UPLOAD FOTO via Imgur (se houver blob pendente)
-            if (window._bookipFotoBlob) {
-                const fotoUrl = await window.uploadFotoCloudinary(window._bookipFotoBlob);
-                if (fotoUrl) {
-                    dados.fotoUrl = fotoUrl;
-                    window._bookipFotoUrl = fotoUrl;
-                    await update(ref(db, 'bookips/' + dados.id), { fotoUrl });
+            // UPLOAD FOTOS via Cloudinary (até 4 — sobe apenas as pendentes)
+            {
+                const fotos = window._bookipFotos || [];
+                const urls = [];
+                for (const f of fotos) {
+                    if (f.url) { urls.push(f.url); continue; }
+                    if (f.blob) {
+                        const u = await window.uploadFotoCloudinary(f.blob);
+                        if (u) { f.url = u; f.blob = null; urls.push(u); }
+                    }
                 }
-                window._bookipFotoBlob = null;
+                dados.fotosUrls = urls;
+                dados.fotoUrl = urls[0] || ''; // compatibilidade com registros/telas antigas
+                await update(ref(db, 'bookips/' + dados.id), { fotosUrls: urls, fotoUrl: urls[0] || '' });
             }
 
             // SALVA CLIENTE (ROBÔ)
@@ -9756,7 +9753,8 @@ const opt = {
                 const settings = (typeof receiptSettings !== 'undefined') ? receiptSettings : {};
                 const saudacao = 'Olá ' + (dados.nome || 'Cliente') + ',';
                 const corpoMensagem = settings.shareMessage || 'segue seu documento em anexo.';
-                const fotoMsg = dados.fotoUrl ? '\n\n📷 Foto do produto: ' + dados.fotoUrl : '';
+                const _fotos = (dados.fotosUrls && dados.fotosUrls.length) ? dados.fotosUrls : (dados.fotoUrl ? [dados.fotoUrl] : []);
+                const fotoMsg = _fotos.length ? '\n\n📷 Foto' + (_fotos.length > 1 ? 's' : '') + ' do produto:\n' + _fotos.join('\n') : '';
                 const textoCompleto = saudacao + '\n\n' + corpoMensagem + fotoMsg;
 
                 try {
@@ -9926,13 +9924,21 @@ window.abrirModalColarZap = function() {
     <div class="custom-modal-overlay active" id="modalZapOverlay" style="z-index: 10000;">
         <div class="custom-modal-content" style="max-width: 90%; width: 400px;">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0 text-success"><i class="bi bi-whatsapp"></i> Colar Dados</h5>
+                <h5 class="mb-0 text-success"><i class="bi bi-whatsapp"></i> Colar Dados <small style="opacity:.35;font-size:.55em;">v4</small></h5>
                 <button class="btn-back" id="btnFecharZap"><i class="bi bi-x-lg"></i></button>
             </div>
             <p class="text-secondary small text-start">Copie a mensagem inteira do cliente e cole abaixo:</p>
-            <textarea id="textoZapInput" class="form-control mb-3" rows="8" placeholder="Ex: *Nome*: João..."></textarea>
+            <textarea id="textoZapInput" class="form-control mb-2" rows="6" placeholder="Ex: *Nome*: João..."></textarea>
+            <div id="zapFotosThumbs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;"></div>
+            <input type="file" id="zapFotoInput" accept="image/*" multiple style="display:none">
+            <button class="btn btn-outline-secondary w-100 mb-2" id="btnZapFoto" style="font-size:.85rem;">
+                <i class="bi bi-camera-fill"></i> Anexar fotos (etiqueta do produto / comprovante)
+            </button>
             <button class="btn btn-success w-100" id="btnProcessarZap">
                 <i class="bi bi-magic"></i> Preencher Automático
+            </button>
+            <button class="btn btn-outline-info w-100 mt-2" id="btnProcessarZapIA">
+                <i class="bi bi-stars"></i> Preencher com I.A
             </button>
         </div>
     </div>`;
@@ -9953,6 +9959,39 @@ window.abrirModalColarZap = function() {
             document.getElementById('containerModalZap').remove(); 
         };
         document.getElementById('btnProcessarZap').onclick = window.processarTextoZap;
+        document.getElementById('btnProcessarZapIA').onclick = window.processarTextoZapIA;
+
+        // Anexo de fotos (etiqueta do produto / comprovante da maquininha)
+        window._zapFotos = [];
+        const zapInput = document.getElementById('zapFotoInput');
+        const zapThumbs = document.getElementById('zapFotosThumbs');
+        function renderZapFotos() {
+            zapThumbs.innerHTML = '';
+            window._zapFotos.forEach((f, i) => {
+                const wrap = document.createElement('div');
+                wrap.style.cssText = 'position:relative;width:54px;height:54px;';
+                const img = document.createElement('img');
+                img.src = URL.createObjectURL(f);
+                img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,.15);';
+                img.onload = () => URL.revokeObjectURL(img.src);
+                const x = document.createElement('button');
+                x.type = 'button'; x.textContent = '✕';
+                x.style.cssText = 'position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:#ef4444;color:#fff;font-size:.6rem;cursor:pointer;line-height:1;';
+                x.onclick = () => { window._zapFotos.splice(i, 1); renderZapFotos(); };
+                wrap.appendChild(img); wrap.appendChild(x);
+                zapThumbs.appendChild(wrap);
+            });
+
+            // Com foto anexada, só a I.A consegue processar — oculta o botão JS
+            const btnJs = document.getElementById('btnProcessarZap');
+            if (btnJs) btnJs.style.display = window._zapFotos.length > 0 ? 'none' : '';
+        }
+        document.getElementById('btnZapFoto').onclick = () => zapInput.click();
+        zapInput.onchange = () => {
+            window._zapFotos = window._zapFotos.concat(Array.from(zapInput.files || [])).slice(0, 4);
+            zapInput.value = '';
+            renderZapFotos();
+        };
     }, 100);
 };
 
@@ -10036,24 +10075,226 @@ window.processarTextoZap = function() {
         }
     }
 
-    // Preenche
-    if (nome) document.getElementById('bookipNome').value = nome;
-    if (cpf) document.getElementById('bookipCpf').value = cpf;
-    if (tel) document.getElementById('bookipTelefone').value = tel;
-    if (email) document.getElementById('bookipEmail').value = email;
-    if (endereco.length > 5) document.getElementById('bookipEndereco').value = endereco;
-    if (dataNascISO) {
+    window._preencherCamposZap({ nome, cpf, tel, email, endereco, dataNascISO });
+};
+
+// Preenche o formulário do Bookip e fecha a janela (usado pelo parser JS e pela I.A)
+window._preencherCamposZap = function(d, extraMsg) {
+    if (d.nome) document.getElementById('bookipNome').value = d.nome;
+    if (d.cpf) document.getElementById('bookipCpf').value = d.cpf;
+    if (d.tel) document.getElementById('bookipTelefone').value = d.tel;
+    if (d.email) document.getElementById('bookipEmail').value = d.email;
+    if (d.endereco && d.endereco.length > 5) document.getElementById('bookipEndereco').value = d.endereco;
+    if (d.dataNascISO) {
         const nascEl = document.getElementById('bookipNascimento');
-        if (nascEl) nascEl.value = dataNascISO;
+        if (nascEl) nascEl.value = d.dataNascISO;
         if (typeof window._bdSetValor === 'function')
-            window._bdSetValor('bookipNascimento','bookipNascimentoBtn','bookipNascimentoLabel', dataNascISO);
+            window._bdSetValor('bookipNascimento','bookipNascimentoBtn','bookipNascimentoLabel', d.dataNascISO);
     }
 
     // Fecha janela
-    document.getElementById('containerModalZap').remove();
-    
-    if (typeof showCustomModal === 'function') showCustomModal({ message: "Dados Processados! ✅" });
-    else alert("Dados Processados!");
+    const cont = document.getElementById('containerModalZap');
+    if (cont) cont.remove();
+
+    const msgFinal = "Dados Processados! ✅" + (extraMsg ? "\n" + extraMsg : "");
+    if (typeof showCustomModal === 'function') showCustomModal({ message: msgFinal });
+    else alert(msgFinal);
+};
+
+// Versão via I.A — usa o mesmo motor do CreditoScan (OpenRouter, chave em settings/openrouterKey)
+window.processarTextoZapIA = async function() {
+    const texto = (document.getElementById('textoZapInput')?.value || '').trim();
+    const fotos = window._zapFotos || [];
+    if (!texto && !fotos.length) {
+        if (typeof showCustomModal === 'function') showCustomModal({ message: "Cole o texto do cliente ou anexe uma foto primeiro!" });
+        return;
+    }
+
+    // Chave: localStorage (cache do CreditoScan) → Firebase settings/openrouterKey
+    async function getZapAiKey() {
+        let key = '';
+        try { key = localStorage.getItem('ctwOpenRouterKey') || ''; } catch(e) {}
+        if (key) return key;
+        try {
+            const fb = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
+            const dbRef = window._firebaseDB; if (!dbRef) return '';
+            const snap = await fb.get(fb.ref(dbRef, 'settings/openrouterKey'));
+            key = snap.val() || '';
+            if (key) try { localStorage.setItem('ctwOpenRouterKey', key); } catch(e) {}
+            return key;
+        } catch(e) { return ''; }
+    }
+
+    // Redimensiona foto para base64 (max 1280px, JPEG 88%)
+    function zapFotoBase64(file) {
+        return new Promise((resolve) => {
+            const img = new Image(), url = URL.createObjectURL(file);
+            img.onload = () => {
+                URL.revokeObjectURL(url);
+                let w = img.width, h = img.height; const M = 1280;
+                if (w > M || h > M) { if (w > h) { h = Math.round(h * M / w); w = M; } else { w = Math.round(w * M / h); h = M; } }
+                const c = document.createElement('canvas'); c.width = w; c.height = h;
+                c.getContext('2d').drawImage(img, 0, 0, w, h);
+                c.toBlob(bl => {
+                    if (!bl) { resolve(null); return; }
+                    const r = new FileReader();
+                    r.onload = () => resolve(r.result.split(',')[1]);
+                    r.readAsDataURL(bl);
+                }, 'image/jpeg', 0.88);
+            };
+            img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+            img.src = url;
+        });
+    }
+
+    const btn = document.getElementById('btnProcessarZapIA');
+    const orig = btn ? btn.innerHTML : '';
+    if (btn) { btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Lendo com I.A...'; btn.disabled = true; }
+
+    try {
+        const key = await getZapAiKey();
+        if (!key) throw new Error('Chave OpenRouter não configurada (a mesma do CreditoScan, em settings/openrouterKey).');
+
+        const prompt = 'Você lê mensagens de WhatsApp de uma loja de celulares no Brasil (texto e/ou fotos de etiquetas de caixas e comprovantes de maquininha de cartão).\n'
+            + 'Extraia os dados e responda SOMENTE com JSON puro, sem markdown, neste formato exato:\n'
+            + '{"cliente":{"nome":"","cpf":"","tel":"","email":"","endereco":"","dataNascimento":""},'
+            + '"produto":{"nome":"","cor":"","imeis":[]},'
+            + '"pagamento":{"formas":[],"valores":[]},"fotosProduto":[]}\n'
+            + 'REGRAS:\n'
+            + '- cliente: cpf no formato XXX.XXX.XXX-XX; tel apenas dígitos com DDD; dataNascimento YYYY-MM-DD ou ""; ausente = "".\n'
+            + '- produto.nome: SEM A COR, no formato "MODELO ARMAZENAMENTO/RAM RAM". Ex: etiqueta "POCO X8 Pro Verde Menta 8GB RAM 256GB ROM" => nome "POCO X8 Pro 256GB/8GB RAM" e cor "Verde Menta".\n'
+            + '- produto.cor: a cor do aparelho, apenas no campo cor (ex: "Verde Menta", "Mint Green").\n'
+            + '- produto.imeis: TODOS os IMEIs encontrados (etiqueta ou texto), apenas dígitos, em ordem (IMEI1, IMEI2).\n'
+            + '- pagamento.valores: TRANSCREVA cada valor TOTAL pago EXATAMENTE como está impresso/escrito, mantendo pontos e vírgulas, um item por forma de pagamento. NÃO converta, NÃO calcule, apenas copie. Ex: comprovante "R$ 2.745,45 EM 18 PARCELAS" => ["2.745,45"] (o valor impresso já é o total, parcelas não multiplicam). Ex: "4x R$ 152,89 (Total: R$ 611,56) + R$ 800,00 no pix" => ["611,56","800,00"] (no parcelado use o TOTAL, nunca a parcela). Sem valor: [].\n'
+            + '- pagamento.formas: subconjunto EXATO de ["Dinheiro/Pix","Crédito","Débito","Boleto","Troca"]. Parcelado (Nx) ou comprovante de crédito => "Crédito". Débito no comprovante => "Débito". Pix, transferência ou dinheiro => "Dinheiro/Pix". Aparelho na troca => "Troca". Boleto/crediário => "Boleto".\n'
+            + '- fotosProduto: índices (base 0, na ordem em que as fotos foram enviadas) das fotos que mostram O PRODUTO ou SUA CAIXA/ETIQUETA. Se houver foto de caixa/etiqueta/aparelho anexada, este campo DEVE conter o índice dela. NUNCA inclua comprovantes de pagamento, documentos ou prints de tela.\n'
+            + (texto ? '\nTEXTO DA MENSAGEM:\n' + texto : '');
+
+        // Monta o conteúdo (fotos + prompt) e escolhe o modelo
+        const content = [];
+        for (const f of fotos) {
+            const b64 = await zapFotoBase64(f);
+            if (b64) content.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b64 } });
+        }
+        const temFoto = content.length > 0;
+        content.push({ type: 'text', text: prompt });
+
+        const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+            body: JSON.stringify({
+                model: temFoto ? 'qwen/qwen3-vl-235b-a22b-instruct' : 'qwen/qwen3-235b-a22b-2507',
+                max_tokens: 2000,
+                temperature: 0,
+                messages: [{ role: 'user', content: temFoto ? content : prompt }]
+            })
+        });
+
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error?.message || 'Erro HTTP ' + resp.status);
+        }
+
+        const data = await resp.json();
+        const raw = (data.choices?.[0]?.message?.content || '').replace(/```json|```/gi, '').trim();
+        console.log('🤖 Zap IA response:', raw);
+        const m = raw.match(/\{[\s\S]*\}/);
+        if (!m) throw new Error('A I.A não retornou dados válidos');
+        const d = JSON.parse(m[0]);
+        const cli = d.cliente || {};
+        const prod = d.produto || {};
+        const pag = d.pagamento || {};
+
+        // ── PRODUTO ──
+        // Blindagem: aceita 2745.45, "2.745,45" ou "R$ 2.745,45"
+        function parseValorBR(v) {
+            if (typeof v === 'number') return v;
+            if (!v) return 0;
+            let s = String(v).replace(/[^\d.,]/g, '');
+            if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+            return parseFloat(s) || 0;
+        }
+
+        if (prod.nome) {
+            const nomeEl = document.getElementById('bookipProdNomeTemp');
+            if (nomeEl) { nomeEl.value = prod.nome; nomeEl.dispatchEvent(new Event('input', { bubbles: true })); }
+        }
+        if (prod.cor) {
+            const corEl = document.getElementById('bookipProdCorTemp');
+            if (corEl) corEl.value = prod.cor;
+        }
+        if (Array.isArray(prod.imeis) && prod.imeis.length) {
+            const obsEl = document.getElementById('bookipProdObsTemp');
+            if (obsEl) obsEl.value = prod.imeis.map((im, i) => 'IMEI' + (i + 1) + ': ' + String(im).replace(/\D/g, '')).join('\n');
+        }
+        const valores = Array.isArray(pag.valores) ? pag.valores : [];
+        const valor = valores.reduce((soma, v) => soma + parseValorBR(v), 0);
+        if (valor > 0) {
+            const valEl = document.getElementById('bookipProdValorTemp');
+            if (valEl) valEl.value = valor.toFixed(2);
+        }
+
+        // ── PAGAMENTO ──
+        const mapaPag = { 'Dinheiro/Pix': 'pagPix', 'Crédito': 'pagCredito', 'Débito': 'pagDebito', 'Boleto': 'pagBoleto', 'Troca': 'pagTroca' };
+        (Array.isArray(pag.formas) ? pag.formas : []).forEach(forma => {
+            const cb = document.getElementById(mapaPag[forma]);
+            if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }
+        });
+
+        // ── FOTO DA GARANTIA ── anexa SÓ as fotos classificadas como produto/caixa (nunca comprovantes)
+        const idxProduto = (Array.isArray(d.fotosProduto) ? d.fotosProduto : [])
+            .map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n >= 0);
+        console.log('📷 Zap IA fotosProduto:', idxProduto);
+
+        async function anexarFotos(indices) {
+            let ok = 0;
+            for (const idx of indices) {
+                const f = fotos[idx];
+                if (!f) continue;
+                if (typeof window._bookipAddFotoFile === 'function') {
+                    if (await window._bookipAddFotoFile(f)) ok++;
+                } else {
+                    console.error('Zap IA: _bookipAddFotoFile ausente — Bookip.js desatualizado no ar');
+                }
+            }
+            return ok;
+        }
+
+        let fotosAnexadas = await anexarFotos(idxProduto);
+        // Fallback 1: modelo numerou a partir de 1 (índice fora do alcance)
+        if (!fotosAnexadas && idxProduto.length && idxProduto.some(i => i >= fotos.length)) {
+            fotosAnexadas = await anexarFotos(idxProduto.map(i => i - 1).filter(i => i >= 0));
+        }
+        // Fallback 2: só existe 1 foto e a I.A claramente leu o produto dela (IMEI/nome)
+        if (!fotosAnexadas && fotos.length === 1 && ((Array.isArray(prod.imeis) && prod.imeis.length) || prod.nome)) {
+            fotosAnexadas = await anexarFotos([0]);
+        }
+        const avisoFoto = fotos.length
+            ? (fotosAnexadas ? '📷 ' + fotosAnexadas + ' foto(s) anexada(s) à garantia.' : '⚠️ Foto não anexada — anexe manualmente.')
+            : '';
+
+        // ── ADICIONA À LISTA ── se a I.A trouxe nome e valor, o item entra direto no recibo
+        if (prod.nome && valor > 0) {
+            const btnAdd = document.getElementById('btnAdicionarItemLista');
+            if (btnAdd) btnAdd.click();
+        }
+
+        // ── CLIENTE (preenche e fecha o modal) ──
+        window._preencherCamposZap({
+            nome: cli.nome || '',
+            cpf: cli.cpf || '',
+            tel: (cli.tel || '').replace(/\D/g, ''),
+            email: cli.email || '',
+            endereco: cli.endereco || '',
+            dataNascISO: /^\d{4}-\d{2}-\d{2}$/.test(cli.dataNascimento || '') ? cli.dataNascimento : ''
+        }, avisoFoto);
+    } catch (e) {
+        console.error('Zap IA falhou:', e);
+        if (btn) { btn.innerHTML = orig; btn.disabled = false; }
+        if (typeof showCustomModal === 'function') {
+            showCustomModal({ message: '❌ I.A falhou: ' + e.message + '\n\nUse o "Preencher Automático" como alternativa (só texto).' });
+        }
+    }
 };
 
 // 3. ATIVADOR DO BOTÃO (O SEGREDO!)
@@ -10089,15 +10330,13 @@ window.resetFormulariosBookip = function() {
     }
 
     // 1. Limpa Campos de Texto do Cliente
-    // Limpa foto
-    window._bookipFotoUrl = '';
-    window._bookipFotoBlob = null;
-    const _photoPreview = document.getElementById('bookipPhotoPreview');
-    const _photoBtnLabel = document.getElementById('bookipPhotoBtnLabel');
-    const _photoInput = document.getElementById('bookipPhotoInput');
-    if (_photoPreview) _photoPreview.classList.add('hidden');
-    if (_photoBtnLabel) _photoBtnLabel.textContent = 'Da galeria';
-    if (_photoInput) _photoInput.value = '';
+    // Limpa fotos (até 4 — a renderização cuida do preview e do label)
+    if (typeof window._bookipSetFotos === 'function') window._bookipSetFotos([]);
+    else window._bookipFotos = [];
+    const _photoInputCam = document.getElementById('bookipPhotoInputCamera');
+    const _photoInputGal = document.getElementById('bookipPhotoInputGallery');
+    if (_photoInputCam) _photoInputCam.value = '';
+    if (_photoInputGal) _photoInputGal.value = '';
 
     const camposCliente = ['bookipNome', 'bookipCpf', 'bookipTelefone', 'bookipEndereco', 'bookipEmail', 'bookipDataManual', 'bookipNascimento'];
     camposCliente.forEach(id => {

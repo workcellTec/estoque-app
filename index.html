@@ -28,6 +28,7 @@
 
 <!-- html2pdf: lazy loaded via app.js quando necessário -->
 
+    <script src="debug.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/fuse.js@6.6.2/dist/fuse.min.js" defer></script>
     <!-- html2canvas: lazy loaded via app.js quando necessário -->
     
@@ -1301,15 +1302,11 @@ do que você precisa??</h2>
                             <!-- Input câmera (abre câmera diretamente) -->
                             <input type="file" id="bookipPhotoInputCamera" accept="image/*" capture="environment" style="display:none">
                             <!-- Input galeria (abre armazenamento) -->
-                            <input type="file" id="bookipPhotoInputGallery" accept="image/*" style="display:none">
+                            <input type="file" id="bookipPhotoInputGallery" accept="image/*" multiple style="display:none">
 
-                            <!-- Preview da foto -->
-                            <div id="bookipPhotoPreview" class="bookip-photo-preview hidden">
-                                <img id="bookipPhotoImg" src="" alt="Foto do produto">
-                                <button class="bookip-photo-remove" id="bookipPhotoRemove" type="button" title="Remover foto">
-                                    <i class="bi bi-x-circle-fill"></i>
-                                </button>
-                                <div class="bookip-photo-preview-label">Toque para trocar</div>
+                            <!-- Preview das fotos (até 4) -->
+                            <div id="bookipPhotoPreview" class="hidden" style="margin-bottom:12px;">
+                                <div id="bookipPhotosThumbs" style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;padding-top:6px;"></div>
                             </div>
 
                             <!-- Dois botões lado a lado -->

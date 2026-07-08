@@ -9,8 +9,9 @@ const BOOKIP_CLOUDINARY_CLOUD  = 'dmvynrze6';
 const BOOKIP_CLOUDINARY_PRESET = 'g8rdi3om';
 const BOOKIP_CLOUDINARY_URL    = `https://api.cloudinary.com/v1_1/${BOOKIP_CLOUDINARY_CLOUD}/image/upload`;
 
-window._bookipFotoUrl  = '';
-window._bookipFotoBlob = null;
+// Fotos do produto — até 4 por garantia: [{ url, blob, preview }]
+window._bookipFotos = [];
+const BOOKIP_MAX_FOTOS = 4;
 
 // ============================================================
 // ABRIR RECIBO SIMPLES
@@ -179,59 +180,116 @@ window.uploadFotoCloudinary = async function(blob) {
 };
 
 // ============================================================
-// INICIALIZAR CÂMERA / GALERIA DO BOOKIP
+// INICIALIZAR CÂMERA / GALERIA DO BOOKIP (até 4 fotos)
 // ============================================================
+
+// Desenha as miniaturas e atualiza botões/label
+window._bookipRenderFotos = function() {
+    const thumbs     = document.getElementById('bookipPhotosThumbs');
+    const preview    = document.getElementById('bookipPhotoPreview');
+    const btnLabel   = document.getElementById('bookipPhotoBtnLabel');
+    const btnCamera  = document.getElementById('bookipPhotoBtnCamera');
+    const btnGallery = document.getElementById('bookipPhotoBtnGallery');
+    const fotos = window._bookipFotos || [];
+    if (!thumbs) return;
+
+    thumbs.innerHTML = '';
+    fotos.forEach((f, i) => {
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'position:relative;width:74px;height:74px;';
+        const img = document.createElement('img');
+        img.src = f.preview || f.url;
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:12px;border:1px solid rgba(255,255,255,.15);cursor:pointer;display:block;';
+        img.addEventListener('click', () => {
+            if (typeof window.abrirFotoBookip === 'function') window.abrirFotoBookip(f.url || f.preview, 'Foto ' + (i + 1));
+        });
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.textContent = '✕';
+        x.style.cssText = 'position:absolute;top:-7px;right:-7px;width:22px;height:22px;border-radius:50%;border:none;background:#ef4444;color:#fff;font-size:.7rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;';
+        x.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const rem = fotos.splice(i, 1)[0];
+            if (rem && rem.preview) { try { URL.revokeObjectURL(rem.preview); } catch(_) {} }
+            window._bookipRenderFotos();
+        });
+        wrap.appendChild(img);
+        wrap.appendChild(x);
+        thumbs.appendChild(wrap);
+    });
+
+    if (preview) preview.classList.toggle('hidden', fotos.length === 0);
+    if (btnLabel) btnLabel.textContent = fotos.length ? (fotos.length + '/' + BOOKIP_MAX_FOTOS + ' fotos') : 'Da galeria';
+    const cheio = fotos.length >= BOOKIP_MAX_FOTOS;
+    [btnCamera, btnGallery].forEach(b => { if (b) { b.disabled = cheio; b.style.opacity = cheio ? '.45' : ''; } });
+};
+
+// Define as fotos a partir de URLs salvas (usado ao carregar edição)
+window._bookipSetFotos = function(urls) {
+    (window._bookipFotos || []).forEach(f => { if (f.preview) { try { URL.revokeObjectURL(f.preview); } catch(_) {} } });
+    window._bookipFotos = (urls || []).slice(0, BOOKIP_MAX_FOTOS).map(u => ({ url: u, blob: null, preview: '' }));
+    window._bookipRenderFotos();
+};
+
+// Adiciona uma foto (File/Blob) comprimindo — usado pelo Zap I.A para anexar a foto da caixa
+window._bookipAddFotoFile = async function(file) {
+    if (!file || (window._bookipFotos || []).length >= BOOKIP_MAX_FOTOS) return false;
+    try {
+        const compressed = await comprimirFotoBookip(file);
+        window._bookipFotos.push({ url: '', blob: compressed, preview: URL.createObjectURL(compressed) });
+        window._bookipRenderFotos();
+        return true;
+    } catch(e) { console.warn('Foto não processada:', e); return false; }
+};
+
 function initBookipPhoto() {
     const inputCamera  = document.getElementById('bookipPhotoInputCamera');
     const inputGallery = document.getElementById('bookipPhotoInputGallery');
     const btnCamera    = document.getElementById('bookipPhotoBtnCamera');
     const btnGallery   = document.getElementById('bookipPhotoBtnGallery');
-    const preview      = document.getElementById('bookipPhotoPreview');
-    const imgEl        = document.getElementById('bookipPhotoImg');
     const btnLabel     = document.getElementById('bookipPhotoBtnLabel');
-    const removeBtn    = document.getElementById('bookipPhotoRemove');
     if (!inputCamera || !inputGallery) return;
 
     if (btnCamera)  btnCamera.addEventListener('click',  () => inputCamera.click());
     if (btnGallery) btnGallery.addEventListener('click', () => inputGallery.click());
 
-    async function handleFile(file) {
-        if (!file) return;
-        if (btnLabel)  btnLabel.textContent   = 'Comprimindo...';
-        if (btnCamera) btnCamera.disabled     = true;
-        if (btnGallery) btnGallery.disabled   = true;
-        try {
-            const compressed = await comprimirFotoBookip(file);
-            const kb = Math.round(compressed.size / 1024);
-            const previewUrl = URL.createObjectURL(compressed);
-            if (imgEl)   imgEl.src = previewUrl;
-            if (preview) preview.classList.remove('hidden');
-            if (btnLabel) btnLabel.textContent = `Foto pronta (${kb}KB)`;
-            window._bookipFotoBlob = compressed;
-            window._bookipFotoUrl  = '';
-        } catch(e) {
-            if (btnLabel) btnLabel.textContent = 'Da galeria';
-            if (typeof window.showCustomModal === 'function') {
-                window.showCustomModal({ message: 'Não foi possível processar a foto. Tente novamente.' });
+    async function handleFiles(fileList) {
+        const files = Array.from(fileList || []);
+        if (!files.length) return;
+
+        const livres = BOOKIP_MAX_FOTOS - (window._bookipFotos || []).length;
+        if (livres <= 0) {
+            if (typeof window.showCustomModal === 'function') window.showCustomModal({ message: 'Máximo de ' + BOOKIP_MAX_FOTOS + ' fotos por garantia.' });
+            return;
+        }
+        const selecionadas = files.slice(0, livres);
+        if (files.length > livres && typeof window.showCustomModal === 'function') {
+            window.showCustomModal({ message: 'Máximo de ' + BOOKIP_MAX_FOTOS + ' fotos — apenas as ' + livres + ' primeiras foram adicionadas.' });
+        }
+
+        if (btnLabel)   btnLabel.textContent = 'Comprimindo...';
+        if (btnCamera)  btnCamera.disabled   = true;
+        if (btnGallery) btnGallery.disabled  = true;
+
+        for (const file of selecionadas) {
+            try {
+                const compressed = await comprimirFotoBookip(file);
+                window._bookipFotos.push({ url: '', blob: compressed, preview: URL.createObjectURL(compressed) });
+            } catch(e) {
+                console.warn('Foto ignorada (compressão falhou):', e);
+                if (typeof window.showCustomModal === 'function') {
+                    window.showCustomModal({ message: 'Uma das fotos não pôde ser processada e foi ignorada.' });
+                }
             }
         }
+
         if (btnCamera)  btnCamera.disabled  = false;
         if (btnGallery) btnGallery.disabled = false;
+        window._bookipRenderFotos();
     }
 
-    inputCamera.addEventListener('change',  () => { handleFile(inputCamera.files[0]);  inputCamera.value  = ''; });
-    inputGallery.addEventListener('change', () => { handleFile(inputGallery.files[0]); inputGallery.value = ''; });
-
-    if (removeBtn) {
-        removeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (imgEl)   imgEl.src = '';
-            if (preview) preview.classList.add('hidden');
-            if (btnLabel) btnLabel.textContent = 'Da galeria';
-            window._bookipFotoBlob = null;
-            window._bookipFotoUrl  = '';
-        });
-    }
+    inputCamera.addEventListener('change',  () => { handleFiles(inputCamera.files);  inputCamera.value  = ''; });
+    inputGallery.addEventListener('change', () => { handleFiles(inputGallery.files); inputGallery.value = ''; });
 }
 
 if (document.readyState === 'loading') {
