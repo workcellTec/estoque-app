@@ -9924,7 +9924,7 @@ window.abrirModalColarZap = function() {
     <div class="custom-modal-overlay active" id="modalZapOverlay" style="z-index: 10000;">
         <div class="custom-modal-content" style="max-width: 90%; width: 400px;">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0 text-success"><i class="bi bi-whatsapp"></i> Colar Dados <small style="opacity:.35;font-size:.55em;">v4</small></h5>
+                <h5 class="mb-0 text-success"><i class="bi bi-whatsapp"></i> Colar Dados <small style="opacity:.35;font-size:.55em;">v5</small></h5>
                 <button class="btn-back" id="btnFecharZap"><i class="bi bi-x-lg"></i></button>
             </div>
             <p class="text-secondary small text-start">Copie a mensagem inteira do cliente e cole abaixo:</p>
@@ -10205,7 +10205,7 @@ window.processarTextoZapIA = async function() {
         const prod = d.produto || {};
         const pag = d.pagamento || {};
 
-        // ── PRODUTO ──
+        // ── PRODUTO (cálculo) ──
         // Blindagem: aceita 2745.45, "2.745,45" ou "R$ 2.745,45"
         function parseValorBR(v) {
             if (typeof v === 'number') return v;
@@ -10214,6 +10214,8 @@ window.processarTextoZapIA = async function() {
             if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
             return parseFloat(s) || 0;
         }
+        const valores = Array.isArray(pag.valores) ? pag.valores : [];
+        const valor = valores.reduce((soma, v) => soma + parseValorBR(v), 0);
 
         if (prod.nome) {
             const nomeEl = document.getElementById('bookipProdNomeTemp');
@@ -10227,11 +10229,14 @@ window.processarTextoZapIA = async function() {
             const obsEl = document.getElementById('bookipProdObsTemp');
             if (obsEl) obsEl.value = prod.imeis.map((im, i) => 'IMEI' + (i + 1) + ': ' + String(im).replace(/\D/g, '')).join('\n');
         }
-        const valores = Array.isArray(pag.valores) ? pag.valores : [];
-        const valor = valores.reduce((soma, v) => soma + parseValorBR(v), 0);
         if (valor > 0) {
             const valEl = document.getElementById('bookipProdValorTemp');
-            if (valEl) valEl.value = valor.toFixed(2);
+            // O campo tem máscara pt-BR (ponto = milhar): "2731.69" viraria 273169.
+            // Formato correto: "2.731,69"
+            if (valEl) {
+                valEl.value = valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                valEl.dispatchEvent(new Event('input', { bubbles: true }));
+            }
         }
 
         // ── PAGAMENTO ──
