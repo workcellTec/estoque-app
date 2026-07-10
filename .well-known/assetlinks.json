@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.workcelltec.twa",
+      "sha256_cert_fingerprints": [
+        "39:4C:6D:AE:4B:FF:C9:63:D1:EA:3D:E4:8A:93:A8:FF:E6:AB:B6:66:2E:3B:49:30:71:A6:41:68:54:8A:E8:9C"
+      ]
+    }
+  }
+]
