@@ -1861,6 +1861,17 @@ async function updateProductInDB(id, data) {
 function renderAdminProductList(filteredList = products) {
     const container = document.getElementById('productsListContainer');
     if (!container) return;
+
+    // Preserva qual card estava aberto e se algum input dentro dele tinha foco,
+    // pra um re-render (disparado pelo onValue do Firebase) não fechar o
+    // accordion nem tirar o usuário do campo que ele está editando.
+    const openCard = container.querySelector('.admin-product-accordion.is-open');
+    const openId = openCard?.dataset.id || null;
+    const activeEl = document.activeElement;
+    const activeField = (activeEl && container.contains(activeEl)) ? activeEl.dataset.field : null;
+    const activeSelectionStart = activeEl?.selectionStart;
+    const activeSelectionEnd = activeEl?.selectionEnd;
+
     const tags = getTagList();
     if (filteredList.length === 0) {
         container.innerHTML = `
@@ -1907,6 +1918,24 @@ function renderAdminProductList(filteredList = products) {
                 </div>
             </div>`;
         }).join('');
+    }
+
+    // Restaura o card que estava aberto e o foco/cursor do campo em edição,
+    // já que o innerHTML acima recriou todos os elementos do zero.
+    if (openId) {
+        const restoredCard = container.querySelector(`.admin-product-accordion[data-id="${openId}"]`);
+        if (restoredCard) {
+            restoredCard.classList.add('is-open');
+            if (activeField) {
+                const restoredInput = restoredCard.querySelector(`[data-field="${activeField}"]`);
+                if (restoredInput) {
+                    restoredInput.focus();
+                    if (typeof activeSelectionStart === 'number' && restoredInput.setSelectionRange) {
+                        try { restoredInput.setSelectionRange(activeSelectionStart, activeSelectionEnd); } catch (_) {}
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -4975,6 +5004,10 @@ let updates = { header, terms, emailMessage, shareMessage: emailMessage };
                     value = e.target.value;
                 }
                 if (id && field && value !== undefined) {
+                    // Atualização otimista: reflete a mudança no array local 'products'
+                    // imediatamente, sem esperar o round-trip do onValue do Firebase.
+                    const localProduct = products.find(p => p.id === id);
+                    if (localProduct) localProduct[field] = value;
                     updateProductInDB(id, { [field]: value });
                 }
             }
@@ -4982,6 +5015,8 @@ let updates = { header, terms, emailMessage, shareMessage: emailMessage };
         if (e.target.matches('.ignore-toggle-switch-admin')) {
             const id = e.target.dataset.id;
             const isChecked = e.target.checked;
+            const localProduct = products.find(p => p.id === id);
+            if (localProduct) localProduct.ignorarContagem = isChecked;
             updateProductInDB(id, { ignorarContagem: isChecked });
         }
     });
