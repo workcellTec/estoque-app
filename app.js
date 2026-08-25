@@ -7138,9 +7138,17 @@ function loadBookipHistory() {
             html += `<div class="text-center py-3"><button id="btnLoadMoreBookip" class="btn btn-outline-primary rounded-pill px-4">Ver Mais</button></div>`;
         }
 
+        // Preserva a posição de rolagem: sem isso, toda atualização em
+        // background (onValue) reconstrói o innerHTML e joga a lista
+        // de volta pro topo enquanto o usuário está navegando nela.
+        const scrollParent = container.closest('.modal-body, [style*="overflow"]') || container;
+        const scrollTopAntes = scrollParent.scrollTop;
+
         container.innerHTML = html;
         reativarListeners();
-        
+
+        scrollParent.scrollTop = scrollTopAntes;
+
         const btnMore = document.getElementById('btnLoadMoreBookip');
         if (btnMore) btnMore?.addEventListener('click', () => { itensVisiveis += incremento; renderizarLote(); });
     }
@@ -7433,6 +7441,8 @@ if (btnSave) {
         btnSave.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Salvando...';
         btnSave.disabled = true;
 
+        console.time('[Bookip] salvar - total');
+
         try {
             // --- BLOCO CIRÚRGICO: CAPTURAR PAGAMENTO ---
             const pags = [];
@@ -7468,7 +7478,9 @@ if (btnSave) {
             // ---------------------------------------------------------
             // CORREÇÃO: GERAÇÃO DO NÚMERO DOC (EVITA DUPLICIDADE)
             // ---------------------------------------------------------
+            console.time('[Bookip] 1. buscar docNumber');
             const snapshot = await get(ref(db, 'bookips'));
+            console.timeEnd('[Bookip] 1. buscar docNumber');
             let docNumberFormatted = '001';
 
             if (currentEditingBookipId) {
@@ -7519,6 +7531,7 @@ criadoPor: currentUserProfile || "Desconhecido",
             };
 
             // SALVA NO FIREBASE
+            console.time('[Bookip] 2. update/push principal');
             if (currentEditingBookipId) {
                 // Atualiza existente
                 await update(ref(db, `bookips/${currentEditingBookipId}`), dados);
@@ -7528,28 +7541,35 @@ criadoPor: currentUserProfile || "Desconhecido",
                 const newRef = await push(ref(db, 'bookips'), dados);
                 dados.id = newRef.key;
             }
+            console.timeEnd('[Bookip] 2. update/push principal');
 
-            // UPLOAD FOTOS via Cloudinary (até 4 — sobe apenas as pendentes)
+            // UPLOAD FOTOS via Cloudinary (até 4 — sobe apenas as pendentes, em paralelo)
             {
+                console.time('[Bookip] 3. upload fotos (paralelo)');
                 const fotos = window._bookipFotos || [];
-                const urls = [];
-                for (const f of fotos) {
-                    if (f.url) { urls.push(f.url); continue; }
+                await Promise.all(fotos.map(async (f) => {
+                    if (f.url) return;
                     if (f.blob) {
                         const u = await window.uploadFotoCloudinary(f.blob);
-                        if (u) { f.url = u; f.blob = null; urls.push(u); }
+                        if (u) { f.url = u; f.blob = null; }
                     }
-                }
+                }));
+                console.timeEnd('[Bookip] 3. upload fotos (paralelo)');
+                const urls = fotos.map(f => f.url).filter(Boolean);
                 dados.fotosUrls = urls;
                 dados.fotoUrl = urls[0] || ''; // compatibilidade com registros/telas antigas
+                console.time('[Bookip] 4. update fotosUrls');
                 await update(ref(db, 'bookips/' + dados.id), { fotosUrls: urls, fotoUrl: urls[0] || '' });
+                console.timeEnd('[Bookip] 4. update fotosUrls');
             }
 
             // SALVA CLIENTE (ROBÔ)
+            console.time('[Bookip] 5. salvarClienteAutomatico');
             await salvarClienteAutomatico({
                 nome: dados.nome, cpf: dados.cpf, tel: dados.tel, end: dados.end, email: dados.email,
                 dataNascimento: document.getElementById('bookipNascimento')?.value || ''
             });
+            console.timeEnd('[Bookip] 5. salvarClienteAutomatico');
 
             // SUCESSO!
             lastSavedBookipData = dados; // Guarda na memória
@@ -7564,8 +7584,10 @@ criadoPor: currentUserProfile || "Desconhecido",
             // Restaura botão salvar
             btnSave.innerHTML = originalText;
             btnSave.disabled = false;
+            console.timeEnd('[Bookip] salvar - total');
 
         } catch (error) {
+            console.timeEnd('[Bookip] salvar - total');
             console.error(error);
             showCustomModal({ message: "Erro ao salvar: " + error.message });
             btnSave.innerHTML = originalText;
@@ -8461,39 +8483,8 @@ window.abrirEstrelaCliente = async function(id, posicao) {
 };
 
 
-// Abre o bookip específico a partir do banner estrela
-window._abrirGarantiaDoBanner = function(bookipId) {
-    document.getElementById('estrelaOverlay')?.remove();
-    document.getElementById('resumoClienteOverlay')?.remove();
-
-    // Vai pra aba de documentos
-    if (typeof window.showMainSection === 'function') window.showMainSection('contract');
-
-    // Polling: espera o DOM do accordion estar pronto
-    let n = 0;
-    const poll = setInterval(() => {
-        n++;
-
-        // Passo 1: garante que o item está na lista visível
-        if (typeof window._bookipNavigateTo === 'function') window._bookipNavigateTo(bookipId);
-
-        // Passo 2: verifica se o collapse já existe no DOM
-        const el = document.getElementById('collapse-bk-' + bookipId);
-        if (el) {
-            clearInterval(poll);
-
-            // Passo 3: abre o accordion deste item
-            el.classList.add('show');
-            const btn = document.querySelector(`[data-bs-target="#collapse-bk-${bookipId}"]`);
-            if (btn) btn.classList.remove('collapsed');
-
-            // Passo 4: scroll suave até ele
-            setTimeout(() => el.closest('.accordion-item, .card, [id]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
-        }
-
-        if (n > 30) clearInterval(poll); // desiste após 3s
-    }, 100);
-};
+// Abre bookip específico (função definida logo abaixo, versão completa
+// com abertura da aba de histórico + toggle de modo)
 
 
 // Banner VIP ao clicar no botão (i) do Bookip
