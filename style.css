@@ -1974,6 +1974,103 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
    /* =========================================
    ESTILO DA LISTA DE PRODUTOS (CORRIGIDO VERTICAL)
    ========================================= */
+/* ============================================================
+   BOOKIP — Botões "Colar do Zap" / "Zap IA" (chips discretos)
+   ============================================================ */
+.bookip-zap-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 13px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border-radius: 20px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    transition: all var(--transition-duration) ease;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.bookip-zap-btn i {
+    font-size: 0.85rem;
+}
+
+.bookip-zap-btn:hover,
+.bookip-zap-btn:active {
+    color: var(--text-color);
+    transform: translateY(-1px);
+}
+
+.bookip-zap-btn.zap-regular i { color: var(--primary-color); }
+.bookip-zap-btn.zap-regular:hover {
+    background: rgba(111, 191, 139, 0.08);
+    border-color: rgba(111, 191, 139, 0.35);
+}
+
+.bookip-zap-btn.zap-ia i { color: #7FB8C4; }
+.bookip-zap-btn.zap-ia:hover {
+    background: rgba(127, 184, 196, 0.08);
+    border-color: rgba(127, 184, 196, 0.35);
+}
+
+/* ============================================================
+   BOOKIP — Botões de foto (Tirar foto / Da galeria)
+   ============================================================ */
+.bookip-photo-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 13px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all var(--transition-duration) ease;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.bookip-photo-btn:hover,
+.bookip-photo-btn:active {
+    background: rgba(111, 191, 139, 0.08);
+    border-color: rgba(111, 191, 139, 0.35);
+    transform: translateY(-1px);
+}
+
+.bookip-photo-btn-icon {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: rgba(var(--primary-color-rgb), 0.12);
+    color: var(--primary-color);
+    font-size: 1rem;
+}
+
+.bookip-photo-btn-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    line-height: 1.25;
+}
+
+.bookip-photo-btn-text span {
+    font-size: 0.83rem;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.bookip-photo-btn-text small {
+    font-size: 0.66rem;
+    color: var(--text-secondary);
+}
+
 .bookip-item-card {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--glass-border);
