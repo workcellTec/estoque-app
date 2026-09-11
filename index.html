@@ -10,7 +10,22 @@
     <title>Central Workcell'</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" id="status-bar-color" content="#0B1120"/>
+    <meta name="theme-color" id="status-bar-color" content="#000000"/>
+
+    <!-- CSS crítico mínimo inline: evita tela branca (FOUC) no instante
+         entre o primeiro paint e o style.css terminar de carregar de forma
+         não-bloqueante (ver preload+onload abaixo). -->
+    <style>
+        html { box-sizing: border-box; height: 100%; }
+        body {
+            margin: 0;
+            font-family: 'Poppins', system-ui, sans-serif;
+            background-color: #000000;
+            color: #F2F2F2;
+            min-height: 100%;
+        }
+    </style>
+
         <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png">
     <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 
@@ -18,17 +33,28 @@
     <link href="https://fonts.googleapis.com" rel="preconnect"/>
     <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    
-     <link rel="stylesheet" href="style.css?v=99">
+
+    <!-- FIX PERFORMANCE: os 3 CSS abaixo eram render-blocking (o navegador
+         travava a primeira pintura da tela até baixar os ~196KB do style.css
+         + Bootstrap). Convertidos para carregamento não-bloqueante via
+         preload+onload, MANTENDO a mesma ordem de aplicação de antes
+         (bootstrap-icons -> bootstrap -> style.css), para não alterar qual
+         regra "ganha" em conflitos de CSS. <noscript> garante fallback caso
+         JS esteja desabilitado. -->
+    <link rel="preload" as="style" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="style.css?v=99" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link rel="stylesheet" href="style.css?v=99">
+    </noscript>
 
 
 
 
 <!-- html2pdf: lazy loaded via app.js quando necessário -->
 
-    <script src="debug.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/fuse.js@6.6.2/dist/fuse.min.js" defer></script>
     <!-- html2canvas: lazy loaded via app.js quando necessário -->
     
@@ -100,28 +126,25 @@
 
 
 
-<!-- TOP BAR v2 — pill com busca + nome (só no estilo 2.0) -->
+<!-- TOP BAR v2 — header (só no estilo 2.0) -->
 <div id="ctwTopBar">
-    <!-- Cabeçalho: título + saudação -->
+    <!-- Cabeçalho: saudação dinâmica + status de conexão -->
     <div class="ctw-top-header">
-        <div class="ctw-top-header-eyebrow">Central Workcell 2.0</div>
-        <div class="ctw-top-header-title">Bem‑vindo(a), <span id="ctwTopHeaderName">visitante</span></div>
-        <div class="ctw-top-header-sub">O que você quer fazer?</div>
+        <div class="ctw-top-header-row">
+            <div class="ctw-top-header-title">
+                <span id="ctwGreeting">Olá</span>, <span id="ctwTopHeaderName">visitante</span>
+            </div>
+            <span id="ctwConnStatus" class="ctw-conn-status ctw-conn-checking" title="Verificando conexão...">
+                <span class="ctw-conn-dot"></span>
+                <span class="ctw-conn-label">Verificando</span>
+            </span>
+        </div>
     </div>
-    <!-- Pill de busca -->
-    <div class="ctw-top-pill">
-        <button class="ctw-top-search" id="ctwTopSearchBtn" aria-label="Busca global">
-            <i class="bi bi-search"></i>
-            <span>Buscar em tudo...</span>
-        </button>
-    </div>
+    <!-- Busca global removida a pedido — buscas locais (dentro de
+         Contratos, Garantias, etc.) continuam funcionando normalmente. -->
 </div>
 
 <div id="top-right-controls" class="top-right-controls-pos">
-    <button id="globalSearchBtn" class="gs-trigger-btn" title="Busca global">
-        <i class="bi bi-search"></i>
-    </button>
-
     <div class="dropdown">
         <button class="btn btn-link p-0 border-0" type="button" data-bs-toggle="dropdown" aria-expanded="false" class="btn-link-custom">
             <div class="avatar-button-wrapper">
@@ -195,20 +218,6 @@ class="dropdown-menu-custom">
                     <span>Alternar Tema</span>
                 </button>
 
-                <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 mt-1 text-color-custom" 
-                        onclick="document.getElementById('theme-palette-btn').click();">
-                    <div class="icon-box bg-info bg-opacity-10 text-info"><i class="bi bi-palette-fill"></i></div>
-                    <span>Mudar Cores</span>
-                </button>
-
-                <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 mt-1 text-color-custom"
-                        onclick="window._togglePerfMode()">
-                    <div class="icon-box bg-warning bg-opacity-10 text-warning" id="perfModeDropdownIcon"><i class="bi bi-lightning-charge-fill"></i></div>
-                    <div style="display:flex;flex-direction:column;gap:1px;">
-                        <span>Modo Performance</span>
-                        <small id="perfModeDropdownSub" style="font-size:.62rem;opacity:.6;">Desativado</small>
-                    </div>
-                </button>
                 <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 mt-1 text-color-custom"
                         onclick="window.toggleNotifPref()">
                     <div class="icon-box bg-danger bg-opacity-10 text-danger"><i class="bi bi-bell-fill"></i></div>
@@ -234,19 +243,6 @@ class="dropdown-menu-custom">
                 </button>
             </li>
 
-                <li class="p-2" id="style20MenuItem">
-                <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 mt-1 text-color-custom"
-                        onclick="window.ativarEstilo20()">
-                    <div class="icon-box text-warning" style="background:rgba(255,193,7,0.12);">
-                        <i class="bi bi-stars"></i>
-                    </div>
-                    <div style="display:flex;flex-direction:column;gap:1px;">
-                        <span id="style20MenuLabel">Testar novo estilo 2.0</span>
-                        <small style="font-size:.6rem;color:var(--text-secondary);font-weight:400;" id="style20MenuSub">Novo layout visual</small>
-                    </div>
-                </button>
-            </li>
-
             <!-- Sair — versão clássica -->
             <li class="p-2">
                 <button class="dropdown-item rounded py-2 d-flex align-items-center gap-2 mt-1"
@@ -266,9 +262,36 @@ class="dropdown-menu-custom">
 
     <div class="hidden-important">
         <input type="checkbox" id="theme-toggle-checkbox">
-        <div id="theme-palette-btn"></div>
         <div id="notification-bell"><span class="notification-badge hidden"></span></div> 
     </div>
+
+    <script>
+        // Modo Performance removido a pedido (era um toggle opcional para
+        // reduzir efeitos visuais em celulares fracos — o app manteve os
+        // efeitos completos por padrão, comportamento agora fixo).
+
+        // ── Proxy html2canvas: garante frame limpo antes de capturar ──
+        // (usado na geração de PDF de contratos — independente do modo
+        // performance, mantido como estava)
+        (function () {
+            // html2canvas é lazy-loaded; intercepta no momento em que é atribuído ao window
+            let _h2c = null;
+            Object.defineProperty(window, 'html2canvas', {
+                configurable: true,
+                set: function (fn) { _h2c = fn; },
+                get: function () {
+                    if (!_h2c) return undefined;
+                    return function (element, opts) {
+                        return new Promise(function (resolve, reject) {
+                            requestAnimationFrame(function () {
+                                _h2c(element, opts).then(resolve).catch(reject);
+                            });
+                        });
+                    };
+                }
+            });
+        })();
+    </script>
 
 
     <script>
@@ -318,7 +341,7 @@ class="dropdown-menu-custom">
         <!-- ⭐ FAVORITOS -->
         <div class="fav-section" id="favSection">
             <div class="fav-header">
-                <span class="fav-title">⭐ Favoritos</span>
+                <span class="fav-title">ACESSO RÁPIDO</span>
                 <button class="fav-edit-btn" id="favEditBtn" title="Personalizar">
                     <i class="bi bi-pencil-fill"></i>
                 </button>
@@ -374,7 +397,7 @@ class="dropdown-menu-custom">
                 <span class="ctw-card-sub">Análise de crédito IA</span>
             </button>
 
-            <button class="ctw-card c-teal" id="goToRepairs2">
+            <button class="ctw-card c-pink" id="goToRepairs2">
                 <div class="ctw-card-icon"><i class="bi bi-wrench-adjustable-circle-fill"></i></div>
                 <span class="ctw-card-title">Consertos</span>
                 <span class="ctw-card-sub">Gerenciamento</span>
@@ -401,13 +424,12 @@ class="dropdown-menu-custom">
             <div class="d-grid gap-2" id="calcMenuClassic">
                 <button class="btn-menu" id="openFecharVenda"><i class="bi bi-cash-coin"></i> Fechar uma venda</button>
                 <button class="btn-menu" id="openRepassarValores"><i class="bi bi-arrow-left-right"></i> Repassar valores</button>
-                <button class="btn-menu" id="openEmprestarValores"><i class="bi bi-people-fill"></i> Emprestar valores</button>
                 <button class="btn-menu" id="openCalcularEmprestimo"><i class="bi bi-bank"></i> Calcular Empréstimo</button>
                 <button class="btn-menu" id="openCalcularPorAparelho"><i class="bi bi-phone"></i> Calcular por aparelho</button>
             </div>
-            <!-- ESTILO 2.0 — grid 3+2 -->
+            <!-- ESTILO 2.0 — grid 2+2 -->
             <div class="ctw-card-grid ctw-grid-5 ctw-menu-hide" id="calcMenuCards">
-                <div class="ctw-grid-row3">
+                <div class="ctw-grid-row2">
                     <button class="ctw-card c-green" id="openFecharVenda2">
                         <div class="ctw-card-icon"><i class="bi bi-cash-coin"></i></div>
                         <span class="ctw-card-title">Fechar</span>
@@ -416,11 +438,6 @@ class="dropdown-menu-custom">
                     <button class="ctw-card c-blue" id="openRepassarValores2">
                         <div class="ctw-card-icon"><i class="bi bi-arrow-left-right"></i></div>
                         <span class="ctw-card-title">Repassar</span>
-                        <span class="ctw-card-sub">Valores</span>
-                    </button>
-                    <button class="ctw-card c-cyan" id="openEmprestarValores2">
-                        <div class="ctw-card-icon"><i class="bi bi-people-fill"></i></div>
-                        <span class="ctw-card-title">Emprestar</span>
                         <span class="ctw-card-sub">Valores</span>
                     </button>
                 </div>
@@ -911,15 +928,6 @@ class="dropdown-menu-custom">
 
 
 
-            <!-- MODO PERFORMANCE -->
-            <div class="admin-section w-100">
-                <h4 class="mb-1 text-start"><i class="bi bi-lightning-charge-fill"></i> Modo Performance</h4>
-                <p class="text-secondary small mb-3">Desativa animações e efeitos visuais pesados para melhorar o scroll em celulares lentos.</p>
-                <button class="btn w-100 py-3" id="btnPerfMode" onclick="window._togglePerfMode()">
-                    <i class="bi bi-lightning-charge-fill"></i> <span id="perfModeLabel">Ativar Modo Performance</span>
-                </button>
-            </div>
-
             <button class="btn btn-success w-100 py-3" id="saveSettingsBtn">
                 <i class="bi bi-save-fill"></i> Salvar Configurações
             </button>
@@ -957,7 +965,6 @@ do que você precisa??</h2>
             <div class="d-grid gap-2" id="docsMenuClassic">
                 <button class="btn-menu" id="openContratoView"><i class="bi bi-file-text-fill"></i> Contratos P/Boleto </button>
                 <button class="btn-menu" id="openBookipView"><i class="bi bi-receipt"></i> Garantias (Bookip)</button>
-                <button class="btn-menu" onclick="window.abrirReciboSimples()"><i class="bi bi-receipt"></i> Novo Recibo</button>
                 <button class="btn-menu" disabled style="opacity: 0.5; cursor: not-allowed; filter: grayscale(100%); background-color: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1);">
                     <i class="bi bi-clipboard-check-fill"></i> Ord. Serviços
                     <span style="font-size: 0.75rem; margin-left: auto; color: var(--text-secondary);">(Em breve)</span>
@@ -974,11 +981,6 @@ do que você precisa??</h2>
                     <div class="ctw-card-icon"><i class="bi bi-receipt"></i></div>
                     <span class="ctw-card-title">Garantia</span>
                     <span class="ctw-card-sub">Bookip</span>
-                </button>
-                <button class="ctw-card c-green" id="openReciboView2">
-                    <div class="ctw-card-icon"><i class="bi bi-receipt-cutoff"></i></div>
-                    <span class="ctw-card-title">Recibo</span>
-                    <span class="ctw-card-sub">Simples</span>
                 </button>
                 <button class="ctw-card c-disabled" disabled>
                     <span class="ctw-card-soon">Em breve</span>
@@ -1091,10 +1093,7 @@ do que você precisa??</h2>
                             <button type="button" id="btnImprimir" class="btn btn-primary">
  <i class="bi bi-check-circle-fill"></i> Finalizar e Salvar Documento
                                 </button>
-                            <button type="button" id="btnLimparCampos" class="btn btn-secondary"><i class='bi bi-eraser'></i> Limpar Campos</button>
-                            <button type="button" id="btnApagarRascunho" class="btn btn-outline-danger"><i class='bi bi-trash'></i> Apagar Rascunho</button>
                         </div>
-                        <div id="draftStatus" class="text-secondary small mt-2 text-center" style="height: 1.2em;"></div>
                         <input type="hidden" id="editingBoletoId" value="">
                     </form>
                 </div>
@@ -1133,9 +1132,14 @@ do que você precisa??</h2>
                 <div class="content-card w-100">
                     <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="form-section-title mb-0"><i class="bi bi-person-lines-fill"></i> Dados do Cliente</h5>
-    <button id="btnZapMagico" class="btn btn-sm btn-success" onclick="abrirModalColarZap()" style="border-radius: 20px;">
-        <i class="bi bi-whatsapp"></i> Colar do Zap
-    </button>
+    <div class="d-flex gap-2">
+        <button id="btnZapMagico" class="btn btn-sm btn-success" onclick="abrirModalColarZap()" style="border-radius: 20px;">
+            <i class="bi bi-whatsapp"></i> Colar do Zap
+        </button>
+        <button id="btnZapIA" class="btn btn-sm btn-outline-info" onclick="window.abrirModalColarZapIA()" style="border-radius: 20px;" title="Preenche cliente, produto e pagamento automaticamente via IA">
+            <i class="bi bi-stars"></i> Colar do Zap (IA)
+        </button>
+    </div>
 </div>
 
                     <div class="row">
@@ -1302,11 +1306,15 @@ do que você precisa??</h2>
                             <!-- Input câmera (abre câmera diretamente) -->
                             <input type="file" id="bookipPhotoInputCamera" accept="image/*" capture="environment" style="display:none">
                             <!-- Input galeria (abre armazenamento) -->
-                            <input type="file" id="bookipPhotoInputGallery" accept="image/*" multiple style="display:none">
+                            <input type="file" id="bookipPhotoInputGallery" accept="image/*" style="display:none">
 
-                            <!-- Preview das fotos (até 4) -->
-                            <div id="bookipPhotoPreview" class="hidden" style="margin-bottom:12px;">
-                                <div id="bookipPhotosThumbs" style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;padding-top:6px;"></div>
+                            <!-- Preview da foto -->
+                            <div id="bookipPhotoPreview" class="bookip-photo-preview hidden">
+                                <img id="bookipPhotoImg" src="" alt="Foto do produto">
+                                <button class="bookip-photo-remove" id="bookipPhotoRemove" type="button" title="Remover foto">
+                                    <i class="bi bi-x-circle-fill"></i>
+                                </button>
+                                <div class="bookip-photo-preview-label">Toque para trocar</div>
                             </div>
 
                             <!-- Dois botões lado a lado -->
@@ -1698,32 +1706,6 @@ do que você precisa??</h2>
     </div>
 
 
-    <div class="custom-modal-overlay" id="themeSelectorModal">
-        <div class="custom-modal-content">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0">Escolha seu Estilo</h5>
-                <button class="btn-back" id="closeThemeModal"><i class="bi bi-x-lg"></i></button>
-            </div>
-            <div class="d-flex justify-content-center gap-3 flex-wrap p-2">
-                <button class="theme-option-btn" data-color="red" style="background: linear-gradient(135deg, #EF5350, #B71C1C);" title="Vermelho Original"></button>
-                <button class="theme-option-btn" data-color="blue" style="background: linear-gradient(135deg, #2979FF, #0D47A1);" title="Cyber Blue"></button>
-                <button class="theme-option-btn" data-color="green" style="background: linear-gradient(135deg, #00E676, #1B5E20);" title="Emerald Green"></button>
-                <button class="theme-option-btn" data-color="purple" style="background: linear-gradient(135deg, #8B5CF6, #4A148C);" title="Deep Purple"></button>
-                <button class="theme-option-btn" data-color="orange" style="background: linear-gradient(135deg, #FF9800, #E65100);" title="Sunset Orange"></button>
-
-<button class="theme-option-btn" data-color="pink" style="background: linear-gradient(135deg, #FF4081, #C51162); box-shadow: 0 4px 15px rgba(255, 64, 129, 0.4);"></button>
-
-<button class="theme-option-btn" data-color="cyan" style="background: linear-gradient(135deg, #00E5FF, #00B8D4); box-shadow: 0 4px 15px rgba(0, 229, 255, 0.4);"></button>
-
-<button class="theme-option-btn" data-color="yellow" style="background: linear-gradient(135deg, #FFD740, #FFAB00); box-shadow: 0 4px 15px rgba(255, 215, 64, 0.4);"></button>
-
-
-            </div>
-            <p class="text-secondary small mt-3">Sua escolha ficará salva neste dispositivo.</p>
-        </div>
-    </div>
-
-
     <div id="postSaveOptions" class="hidden">
         <div class="popup-backdrop"></div> <div class="popup-card">           <div class="mb-4">
                 <i class="bi bi-check-circle-fill text-success" style="font-size: 3.5rem;"></i>
@@ -1847,7 +1829,6 @@ window.addEventListener('load', function() {
         async function loadModules() {
             await Promise.all([
                 import('./notifications.js'),
-                import('./ambilight.js'),
                 import('./Favorites.js'),
                 import('./repairs.js?v=2').then(m => { window._repairsModule = m; }),
                 import('./Bookip.js'),
@@ -1970,44 +1951,9 @@ window.addEventListener('load', function() {
 
 
 
-<!-- Overlay de Navegação da Busca Global (Sherlock) -->
-<div id="gsNavOverlay" style="display:none;position:fixed;inset:0;z-index:99998;background:rgba(7,13,26,0.97);backdrop-filter:blur(8px);flex-direction:column;align-items:center;justify-content:center;gap:20px;">
-    <div style="font-size:3.5rem;animation:sherlockBob 1s ease-in-out infinite alternate;">🔍</div>
-    <div style="font-family:Poppins,sans-serif;font-size:1rem;font-weight:600;color:#00e5ff;letter-spacing:2px;text-transform:uppercase;" id="gsNavMsg">Encontrando...</div>
-    <div style="display:flex;gap:6px;margin-top:4px;">
-        <span style="width:8px;height:8px;border-radius:50%;background:#00e5ff;animation:dotPulse 1.2s ease-in-out infinite;animation-delay:0s;display:block;"></span>
-        <span style="width:8px;height:8px;border-radius:50%;background:#00e5ff;animation:dotPulse 1.2s ease-in-out infinite;animation-delay:0.2s;display:block;"></span>
-        <span style="width:8px;height:8px;border-radius:50%;background:#00e5ff;animation:dotPulse 1.2s ease-in-out infinite;animation-delay:0.4s;display:block;"></span>
-    </div>
-</div>
-<style>
-@keyframes sherlockBob { from { transform: translateY(0) rotate(-8deg); } to { transform: translateY(-10px) rotate(8deg); } }
-@keyframes dotPulse { 0%,80%,100% { opacity:0.2; transform:scale(0.8); } 40% { opacity:1; transform:scale(1.2); } }
-</style>
-
-<!-- BUSCA GLOBAL -->
-<div id="gsOverlay" class="gs-overlay gs-hidden">
-    <div class="gs-backdrop" id="gsBackdrop"></div>
-    <div class="gs-panel">
-        <div class="gs-header">
-            <div class="gs-input-wrap">
-                <i class="bi bi-search gs-icon-sm"></i>
-                <input type="text" id="gsInput" placeholder="Buscar clientes, contratos, garantias..." autocomplete="off" autocorrect="off" spellcheck="false">
-                <button class="gs-clear gs-hidden" id="gsClearBtn"><i class="bi bi-x-lg"></i></button>
-            </div>
-            <button class="gs-cancel-btn" id="gsCancelBtn">Cancelar</button>
-        </div>
-        <div class="gs-filters" id="gsFilters">
-            <button class="gs-filter active" data-filter="all">Tudo</button>
-            <button class="gs-filter" data-filter="cliente">👥 Clientes</button>
-            <button class="gs-filter" data-filter="bookip">📒 Bookips</button>
-            <button class="gs-filter" data-filter="boleto">📋 Contratos</button>
-            <button class="gs-filter" data-filter="conserto">🔧 Consertos</button>
-        </div>
-        <div class="gs-status-bar" id="gsStatus">Digite para buscar</div>
-        <div class="gs-results" id="gsResults"></div>
-    </div>
-</div>
+<!-- Busca global removida a pedido (HTML residual limpo: overlay de
+     navegação "Sherlock" e painel de busca gsOverlay/gsInput/etc — não
+     tinham mais JS controlando, ficaram visíveis sem querer). -->
 
 <!-- ═══════════════════════════════════════════════
      BOTTOM NAV — Estilo 2.0
@@ -2064,17 +2010,6 @@ window.addEventListener('load', function() {
                 <div class="ctw-sheet-item-icon bg-warn"><i class="bi bi-moon-stars-fill"></i></div>
                 <span>Alternar Tema</span>
             </button>
-            <button class="ctw-sheet-item" onclick="document.getElementById('theme-palette-btn').click(); window.closeCtwSheet();">
-                <div class="ctw-sheet-item-icon bg-info"><i class="bi bi-palette-fill"></i></div>
-                <span>Mudar Cores</span>
-            </button>
-            <button class="ctw-sheet-item" onclick="window._togglePerfMode()">
-                <div class="ctw-sheet-item-icon" style="background:rgba(234,179,8,.12);color:#eab308;"><i class="bi bi-lightning-charge-fill"></i></div>
-                <div style="display:flex;flex-direction:column;gap:1px;text-align:left;">
-                    <span>Modo Performance</span>
-                    <small id="perfModeSheetSub" style="font-size:.6rem;opacity:.6;">Desativado</small>
-                </div>
-            </button>
             <button class="ctw-sheet-item" onclick="window.toggleNotifPref(); window.closeCtwSheet();">
                 <div class="ctw-sheet-item-icon" style="background:rgba(239,68,68,.12);color:#ef4444;"><i class="bi bi-bell-fill"></i></div>
                 <div style="display:flex;flex-direction:column;gap:1px;text-align:left;">
@@ -2085,13 +2020,6 @@ window.addEventListener('load', function() {
             <button class="ctw-sheet-item" onclick="document.getElementById('profileSelectorModal').classList.add('active'); window.closeCtwSheet();">
                 <div class="ctw-sheet-item-icon bg-primary"><i class="bi bi-people-fill"></i></div>
                 <span>Trocar Usuário</span>
-            </button>
-            <button class="ctw-sheet-item" onclick="window.ativarEstilo20(); window.closeCtwSheet();">
-                <div class="ctw-sheet-item-icon bg-stars"><i class="bi bi-stars"></i></div>
-                <div style="display:flex;flex-direction:column;gap:1px;text-align:left;">
-                    <span id="ctwSheetStyleLabel">Voltar ao estilo clássico</span>
-                    <small style="font-size:.6rem;opacity:.6;" id="ctwSheetStyleSub">Layout em lista original</small>
-                </div>
             </button>
 
             <!-- Administração -->
@@ -2489,44 +2417,6 @@ window.addEventListener('load', function() {
         <div class="rep-modal-footer">
             <button class="rep-btn rep-btn-ghost" onclick="document.getElementById('repCfgOverlay').style.display='none'">Cancelar</button>
             <button class="rep-btn rep-btn-primary" id="repCfgSaveBtn"><i class="bi bi-check-lg"></i> Salvar</button>
-        </div>
-    </div>
-</div>
-
-<!-- ─── BANNER: EXPERIMENTAR LAYOUT 2.0 ─── -->
-<div id="v2PromoBanner" class="v2-promo-overlay" style="display:none;" aria-modal="true" role="dialog">
-    <div class="v2-promo-card">
-        <!-- Ícone topo -->
-        <div class="v2-promo-icon-wrap">
-            <div class="v2-promo-icon-ring">
-                <i class="bi bi-stars"></i>
-            </div>
-        </div>
-
-        <!-- Badge novidade -->
-        <span class="v2-promo-badge">✨ Novidade</span>
-
-        <!-- Título -->
-        <h3 class="v2-promo-title">Layout 2.0 disponível!</h3>
-
-        <!-- Descrição -->
-        <p class="v2-promo-desc">
-            Seu app foi atualizado com um novo visual moderno — navegação flutuante, acesso rápido e uma experiência muito mais limpa.
-        </p>
-
-        <!-- Nota rodapé -->
-        <p class="v2-promo-note">
-            <i class="bi bi-arrow-left-right"></i>
-            Você pode voltar ao layout clássico a qualquer momento em
-            <strong>Perfil → Voltar ao estilo clássico</strong>
-        </p>
-
-        <!-- Botões -->
-        <div class="v2-promo-actions">
-            <button class="v2-promo-btn-no"  id="v2PromoBtnNo">Agora não</button>
-            <button class="v2-promo-btn-yes" id="v2PromoBtnYes">
-                <i class="bi bi-lightning-charge-fill"></i> Experimentar!
-            </button>
         </div>
     </div>
 </div>
@@ -3045,8 +2935,8 @@ window.addEventListener('load', function() {
         document.getElementById('ctwBdAnoGrid').style.display = 'none';
     };
 
-    window._abrirBirthdayPicker = function(inputId, btnId, labelId, onConfirm) {
-        _bdTarget = { inputId: inputId, btnId: btnId, labelId: labelId, onConfirm: onConfirm || null };
+    window._abrirBirthdayPicker = function(inputId, btnId, labelId) {
+        _bdTarget = { inputId: inputId, btnId: btnId, labelId: labelId };
         var val = document.getElementById(inputId) && document.getElementById(inputId).value;
         if (val) {
             var p = val.split('-');
@@ -3076,7 +2966,6 @@ window.addEventListener('load', function() {
             pad(_bd.dia) + ' de ' + MESES_BD[_bd.mes] + ' de ' + _bd.ano;
         document.getElementById(_bdTarget.btnId).style.borderColor = 'var(--primary-color)';
         window._fecharBirthdayPicker();
-        if (typeof _bdTarget.onConfirm === 'function') _bdTarget.onConfirm(iso);
     };
 
     window._bdSetValor = function(inputId, btnId, labelId, isoVal) {
@@ -3328,50 +3217,6 @@ window.addEventListener('load', function() {
 
     </div>
 </div>
-
-<script>
-// === MODO PERFORMANCE ===
-(function(){
-    function _applyPerfMode(on){
-        document.body.classList.toggle('perf-mode', on);
-        // Botão na tela de Admin
-        var btn = document.getElementById('btnPerfMode');
-        var lbl = document.getElementById('perfModeLabel');
-        if(btn){
-            btn.className = on ? 'btn btn-warning w-100 py-3' : 'btn btn-outline-secondary w-100 py-3';
-        }
-        if(lbl) lbl.textContent = on ? 'Desativar Modo Performance' : 'Ativar Modo Performance';
-        // Sub-label no dropdown (ambos os layouts)
-        var sub = document.getElementById('perfModeDropdownSub');
-        if(sub) sub.textContent = on ? 'Ativado ⚡' : 'Desativado';
-        // Sub-label no bottom sheet
-        var sheetSub = document.getElementById('perfModeSheetSub');
-        if(sheetSub) sheetSub.textContent = on ? 'Ativado ⚡' : 'Desativado';
-    }
-    window._togglePerfMode = function(){
-        var on = !document.body.classList.contains('perf-mode');
-        localStorage.setItem('ctwPerfMode', on ? '1' : '0');
-        _applyPerfMode(on);
-    };
-    // Aplica na inicialização
-    if(localStorage.getItem('ctwPerfMode') === '1') _applyPerfMode(true);
-    // Garante que o botão de admin reflita o estado quando a aba abrir
-    document.addEventListener('click', function(e){
-        if(e.target && e.target.closest && e.target.closest('[data-admin-section="adminSettingsContent"]')){
-            setTimeout(function(){ _applyPerfMode(document.body.classList.contains('perf-mode')); }, 50);
-        }
-    });
-})();
-</script>
-
-
-<script>
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js')
-      .then(r => console.log('[SW] Registrado:', r.scope))
-      .catch(e => console.error('[SW] Erro:', e));
-  }
-</script>
 
 </body>
 </html>

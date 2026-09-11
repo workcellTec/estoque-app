@@ -1,19 +1,14 @@
 {
-  "id": "/estoque-app/",
-  "name": "Central Workcell",
-  "short_name": "CTW",
-  "description": "Gerenciador para vendas de loja de smartphones",
+  "name": "Concertos - AMÉRICACell",
+  "short_name": "Concertos - AMÉRICACell",
+  "description": "App de gerenciamento de consertos para assistência técnica",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "theme_color": "#0a1a0a",
+  "theme_color": "#000000",
   "background_color": "#000000",
   "lang": "pt-BR",
-  "dir": "ltr",
-  "prefer_related_applications": false,
-  "categories": ["productivity", "utilities"],
-  "screenshots": [],
   "icons": [
     {
       "src": "icons/icon-192.png",
@@ -39,5 +34,7 @@
       "type": "image/png",
       "purpose": "maskable"
     }
-  ]
+  ],
+  "screenshots": [],
+  "categories": ["productivity", "utilities"]
 }

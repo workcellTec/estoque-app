@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
-import { getDatabase, ref, push, update, remove, onValue, off, get, set } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
+import { getDatabase, ref, push, update, remove, onValue, off, get, set, runTransaction } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyANdJzvmHr8JVqrjveXbP_ZV6ZRR6fcVQk",
@@ -481,6 +481,8 @@ let receiptSettings = {
 
 let currentCalculatorSectionId = 'calculatorHome', productsListener = null, rates = {};
 let boletosListener = null;
+let _boletosHistoryCache = []; // guarda o último array de contratos carregado, para a busca filtrar sem nova leitura no Firebase
+let _boletosHistoryLimiteExibicao = 40; // quantos itens mostrar quando não há busca ativa (ver renderBoletosHistoryFiltrado)
 let installmentNotificationsListener = null;
 let generalNotificationsListener = null;
 let currentMainSectionId = 'main';
@@ -525,9 +527,7 @@ window.alternarModoInput = function() {
 const APARELHO_FAVORITES_KEY = 'ctwAparelhoFavoritos';
 const CHECKED_ITEMS_KEY = 'ctwCheckedItems';
 const MAX_FAVORITES = 5;
-const CONTRACT_DRAFT_KEY = 'ctwContractDraft';
 const TAG_TEXTS_KEY = 'ctwTagTexts';
-let draftSaveTimeout;
 
 const safeStorage = {
     getItem(key) { try { return localStorage.getItem(key); } catch (e) { console.warn("Acesso ao localStorage negado.", e); return null; } },
@@ -546,8 +546,8 @@ window.applyTheme = function(theme) {
     // --- AJUSTE DA BARRA DE STATUS ---
     const metaTheme = document.getElementById('status-bar-color');
     if (metaTheme) {
-        // Se for tema light, barra branca. Se for dark, usa a cor do azul profundo do seu CSS
-        const corStatus = (theme === 'light') ? '#FFFFFF' : '#0B1120';
+        // Se for tema light, barra branca. Se for dark, usa o preto neutro do CSS
+        const corStatus = (theme === 'light') ? '#FFFFFF' : '#000000';
         metaTheme.setAttribute('content', corStatus);
     }
 };
@@ -571,9 +571,11 @@ function showMainSection(sectionId) {
 
     // Hook v2: controla visibilidade do top bar (busca global)
     // Roda aqui dentro pois os listeners chamam esta função diretamente,
-    // não window.showMainSection — então o interceptor externo não basta
+    // não window.showMainSection — então o interceptor externo não basta.
+    // OBS: não depende mais de localStorage('ctwMenuStyle'), pois o
+    // Layout 1.0 foi desativado e o app agora é sempre v2 — o topo deve
+    // sumir em qualquer seção que não seja a tela inicial ('main').
     (function() {
-        if (localStorage.getItem('ctwMenuStyle') !== 'v2') return;
         var topBar = document.getElementById('ctwTopBar');
         if (!topBar) return;
         topBar.style.display = (sectionId === 'main') ? 'block' : 'none';
@@ -1861,17 +1863,6 @@ async function updateProductInDB(id, data) {
 function renderAdminProductList(filteredList = products) {
     const container = document.getElementById('productsListContainer');
     if (!container) return;
-
-    // Preserva qual card estava aberto e se algum input dentro dele tinha foco,
-    // pra um re-render (disparado pelo onValue do Firebase) não fechar o
-    // accordion nem tirar o usuário do campo que ele está editando.
-    const openCard = container.querySelector('.admin-product-accordion.is-open');
-    const openId = openCard?.dataset.id || null;
-    const activeEl = document.activeElement;
-    const activeField = (activeEl && container.contains(activeEl)) ? activeEl.dataset.field : null;
-    const activeSelectionStart = activeEl?.selectionStart;
-    const activeSelectionEnd = activeEl?.selectionEnd;
-
     const tags = getTagList();
     if (filteredList.length === 0) {
         container.innerHTML = `
@@ -1918,24 +1909,6 @@ function renderAdminProductList(filteredList = products) {
                 </div>
             </div>`;
         }).join('');
-    }
-
-    // Restaura o card que estava aberto e o foco/cursor do campo em edição,
-    // já que o innerHTML acima recriou todos os elementos do zero.
-    if (openId) {
-        const restoredCard = container.querySelector(`.admin-product-accordion[data-id="${openId}"]`);
-        if (restoredCard) {
-            restoredCard.classList.add('is-open');
-            if (activeField) {
-                const restoredInput = restoredCard.querySelector(`[data-field="${activeField}"]`);
-                if (restoredInput) {
-                    restoredInput.focus();
-                    if (typeof activeSelectionStart === 'number' && restoredInput.setSelectionRange) {
-                        try { restoredInput.setSelectionRange(activeSelectionStart, activeSelectionEnd); } catch (_) {}
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -2517,7 +2490,32 @@ function setupPWA() {
         // Usa URL relativa — funciona tanto em github.io/repo/ quanto em domínio próprio
         const swUrl = new URL('sw.js', window.location.href).href;
         navigator.serviceWorker.register(swUrl)
-            .then(reg => console.log('✅ SW registrado:', reg.scope))
+            .then(reg => {
+                console.log('✅ SW registrado:', reg.scope);
+
+                // FIX: sem isso, o navegador podia continuar servindo arquivos
+                // antigos do cache do Service Worker por dias, mesmo com F5 —
+                // "as mudanças não aparecem" era esse cache, não o código.
+                // Checa updates toda vez que o app abre/volta ao primeiro plano.
+                reg.update();
+                document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'visible') reg.update();
+                });
+
+                // Quando uma nova versão termina de instalar, assume o controle
+                // e recarrega a página automaticamente — sem exigir ação manual.
+                reg.addEventListener('updatefound', () => {
+                    const novoSW = reg.installing;
+                    if (!novoSW) return;
+                    novoSW.addEventListener('statechange', () => {
+                        if (novoSW.state === 'installed' && navigator.serviceWorker.controller) {
+                            // Havia um SW controlando a página antes → é atualização,
+                            // não primeira instalação. Recarrega para usar a versão nova.
+                            window.location.reload();
+                        }
+                    });
+                });
+            })
             .catch(err => console.warn('SW falhou:', err));
     }
 }
@@ -2575,6 +2573,24 @@ function calculateContractPayments() {
     // Campo de exibição readonly
     const dispPrazo = document.getElementById('contratoPrazoDisplay');
     if (dispPrazo) dispPrazo.value = prazoTexto;
+}
+
+// Gera um código interno único para o contrato, formato DDMM-XXX (ex: 2609-001).
+// Usa transação atômica no Firebase (contadores/contratoSeq/DDMM) para garantir
+// que dois contratos criados ao mesmo tempo por usuários diferentes NUNCA
+// recebam o mesmo número — mesmo que caiam no mesmo instante.
+// O código é interno (busca/organização): não aparece no PDF do contrato.
+async function gerarCodigoContrato() {
+    const agora = new Date();
+    const dd = String(agora.getDate()).padStart(2, '0');
+    const mm = String(agora.getMonth() + 1).padStart(2, '0');
+    const chaveDia = dd + mm; // ex: "2609"
+
+    const contadorRef = ref(db, 'contadores/contratoSeq/' + chaveDia);
+    const resultado = await runTransaction(contadorRef, (valorAtual) => (valorAtual || 0) + 1);
+    const seq = resultado.snapshot.val() || 1;
+
+    return chaveDia + '-' + String(seq).padStart(3, '0');
 }
 
 function numeroPorExtenso(numero, tipo = 'normal') {
@@ -2643,48 +2659,10 @@ function numeroPorExtenso(numero, tipo = 'normal') {
     }
 }
 
-function saveContractDraft() {
-    const draftStatus = document.getElementById('draftStatus');
-    const formData = {};
-    document.querySelectorAll('#contractForm input, #contractForm select').forEach(input => {
-        if(input.id) {
-            formData[input.id] = input.value;
-        }
-    });
-    safeStorage.setItem(CONTRACT_DRAFT_KEY, JSON.stringify(formData));
-    if (draftStatus) {
-        draftStatus.textContent = 'Rascunho salvo!';
-        clearTimeout(draftSaveTimeout);
-        draftSaveTimeout = setTimeout(() => {
-            draftStatus.textContent = '';
-        }, 2000);
-    }
-}
-
-function loadContractDraft() {
-    const savedDraft = safeStorage.getItem(CONTRACT_DRAFT_KEY);
-    if (savedDraft) {
-        const formData = JSON.parse(savedDraft);
-        for (const key in formData) {
-            const input = document.getElementById(key);
-            if (input) {
-                input.value = formData[key];
-            }
-        }
-        calculateContractPayments();
-        showCustomModal({ message: 'Rascunho anterior carregado.'});
-    }
-}
-
-function clearContractDraft(clearStorage = true) {
-    document.getElementById('contractForm').reset();
-    calculateContractPayments();
-    if(clearStorage) {
-        safeStorage.removeItem(CONTRACT_DRAFT_KEY);
-        showCustomModal({ message: 'Rascunho apagado.'});
-    }
-}
-
+// Sistema de rascunho de contrato removido (salvava formulário no
+// localStorage). Foi a causa raiz do bug de contratos sobrepondo uns aos
+// outros e foi removido a pedido, junto com os botões "Limpar Campos" e
+// "Apagar Rascunho" no HTML.
 
 function populatePreview() {
     try {
@@ -2927,7 +2905,10 @@ function loadBoletosHistory() {
     const boletosRef = ref(db, 'boletos');
     const historyContainer = document.getElementById('historyBoletoContent');
     historyContainer.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Carregando...</span></div></div>';
-    
+
+    _boletosHistoryLimiteExibicao = 40; // reinicia o lote ao reabrir a tela
+    hookBoletosHistoryActions(); // liga o listener delegado uma única vez (idempotente)
+
     if (boletosListener) off(boletosRef, 'value', boletosListener);
     
     boletosListener = onValue(boletosRef, (snapshot) => {
@@ -2948,28 +2929,77 @@ function loadBoletosHistory() {
 }
 
 function renderBoletosHistory(data) {
-    const historyContainer = document.getElementById('historyBoletoContent');
     const boletosArray = Object.keys(data).map(key => ({ id: key, ...data[key] }));
     boletosArray.sort((a, b) => new Date(b.criadoEm) - new Date(a.criadoEm));
+    _boletosHistoryCache = boletosArray; // guarda o array completo para a busca reutilizar
 
-    if (boletosArray.length === 0) {
-        historyContainer.innerHTML = `<div class="text-center p-5">...</div>`;
+    // Preserva o que já estiver digitado na busca ao re-renderizar (ex: novo dado chegou do Firebase)
+    const buscaAtual = document.getElementById('buscaContratoInput')?.value || '';
+    renderBoletosHistoryFiltrado(buscaAtual);
+}
+
+function renderBoletosHistoryFiltrado(termoBusca) {
+    const historyContainer = document.getElementById('historyBoletoContent');
+    const termo = (termoBusca || '').toLowerCase().trim();
+
+    let boletosArray = !termo ? _boletosHistoryCache : _boletosHistoryCache.filter(b => {
+        const alvo = [b.codigoInterno, b.compradorNome, b.compradorCpf, b.compradorTelefone, b.produtoImei, b.produtoModelo]
+            .map(v => (v || '').toString().toLowerCase())
+            .join(' ');
+        return alvo.includes(termo);
+    });
+
+    // PERFORMANCE: sem busca ativa, renderiza só os mais recentes de cada vez
+    // (a lista já vem ordenada do mais novo pro mais antigo). Isso evita
+    // montar centenas/milhares de itens no DOM de uma vez em celulares mais
+    // fracos. Com busca ativa, mostra todos os resultados encontrados —
+    // já que aí a lista tende a ser pequena.
+    const LOTE_INICIAL = _boletosHistoryLimiteExibicao;
+    let temMais = false;
+    if (!termo && boletosArray.length > LOTE_INICIAL) {
+        temMais = boletosArray.length - LOTE_INICIAL;
+        boletosArray = boletosArray.slice(0, LOTE_INICIAL);
+    }
+
+    const buscaHtml = `
+        <div class="mb-3">
+            <input type="text" id="buscaContratoInput" class="form-control" placeholder="🔎 Buscar por nome, CPF, telefone ou IMEI..." value="${escapeHtml(termoBusca || '')}">
+        </div>`;
+
+    if (_boletosHistoryCache.length === 0) {
+        historyContainer.innerHTML = `<div class="text-center p-5">
+            <i class="bi bi-journal-x" style="font-size: 4rem; color: var(--text-secondary);"></i>
+            <h5 class="mt-3">Nenhum formulário no histórico</h5>
+            <p class="text-secondary">Crie um novo formulário para vê-lo aqui.</p>
+        </div>`;
         return;
     }
 
-    historyContainer.innerHTML = `<div class="accordion w-100 history-accordion" id="boletosAccordion">${boletosArray.map(boleto => {
+    if (boletosArray.length === 0) {
+        historyContainer.innerHTML = buscaHtml + `<div class="text-center p-5">
+            <i class="bi bi-search" style="font-size: 3rem; color: var(--text-secondary);"></i>
+            <h5 class="mt-3">Nenhum contrato encontrado</h5>
+            <p class="text-secondary">Tente buscar por outro nome, CPF, telefone ou IMEI.</p>
+        </div>`;
+        hookBuscaContratoInput();
+        return;
+    }
+
+    historyContainer.innerHTML = buscaHtml + `<div class="accordion w-100 history-accordion" id="boletosAccordion">${boletosArray.map(boleto => {
         const telefoneLimpo = boleto.compradorTelefone ? boleto.compradorTelefone.replace(/\D/g, '') : '';
         const whatsappLink = telefoneLimpo ? `https://wa.me/55${telefoneLimpo}` : '';
         const telefoneHtml = whatsappLink ? `<a href="${whatsappLink}" target="_blank" class="btn btn-sm btn-success py-0"><i class="bi bi-whatsapp"></i> ${escapeHtml(boleto.compradorTelefone)}</a>` : '(Não informado)';
+        const codigoTag = boleto.codigoInterno ? `<span class="badge bg-secondary me-2">#${escapeHtml(boleto.codigoInterno)}</span>` : '';
         return `
         <div class="accordion-item">
             <h2 class="accordion-header" id="heading-${boleto.id}">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${boleto.id}" aria-expanded="false" aria-controls="collapse-${boleto.id}">
-                    ${escapeHtml(boleto.compradorNome)} — ${new Date(boleto.criadoEm).toLocaleDateString('pt-BR')}
+                    ${codigoTag}${escapeHtml(boleto.compradorNome)} — ${new Date(boleto.criadoEm).toLocaleDateString('pt-BR')}
                 </button>
             </h2>
             <div id="collapse-${boleto.id}" class="accordion-collapse collapse" aria-labelledby="heading-${boleto.id}" data-bs-parent="#boletosAccordion">
                 <div class="accordion-body">
+                    ${boleto.codigoInterno ? `<p class="mb-1"><strong>Código:</strong> #${escapeHtml(boleto.codigoInterno)}</p>` : ''}
                     <p class="mb-1"><strong>Comprador:</strong> ${escapeHtml(boleto.compradorNome)}</p>
                     <p class="mb-1"><strong>CPF:</strong> ${escapeHtml(boleto.compradorCpf || '—')}</p>
                     <p class="mb-2"><strong>Telefone:</strong> ${telefoneHtml}</p>
@@ -2981,208 +3011,326 @@ function renderBoletosHistory(data) {
                     <hr style="border-color: var(--glass-border); margin: 8px 0;">
                     <div class="d-flex gap-2 flex-wrap justify-content-end">
                         <button class="btn btn-sm btn-primary editar-boleto-btn" data-id="${boleto.id}"><i class="bi bi-pencil-fill"></i> Editar</button>
+                        <button class="btn btn-sm btn-info duplicar-boleto-btn" data-id="${boleto.id}" title="Criar novo contrato reaproveitando os dados deste cliente"><i class="bi bi-files"></i> Duplicar</button>
                         <button class="btn btn-sm btn-success reenviar-boleto-btn" data-id="${boleto.id}"><i class="bi bi-share-fill"></i> Reenviar</button>
                         <button class="btn btn-sm btn-outline-danger delete-boleto-btn" data-id="${boleto.id}"><i class="bi bi-trash"></i> Excluir</button>
                     </div>
                 </div>
             </div>
         </div>`
-    }).join('')}</div>`;
+    }).join('')}</div>${temMais ? `<div class="text-center mt-3"><button class="btn btn-outline-secondary btn-sm" id="btnCarregarMaisContratos">Carregar mais ${temMais} contrato${temMais > 1 ? 's' : ''}</button></div>` : ''}`;
 
-    // --- EDITAR ---
-    historyContainer.querySelectorAll('.editar-boleto-btn').forEach(btn => {
-        btn?.addEventListener('click', (e) => {
-            const boletoId = e.currentTarget.dataset.id;
-            const boleto = boletosArray.find(b => b.id === boletoId);
-            if (!boleto) return;
+    // Os cliques (Editar/Reenviar/Excluir) são tratados por delegação de evento
+    // em hookBoletosHistoryActions(), ligada uma única vez — não aqui. Antes,
+    // cada render recriava um addEventListener por botão (centenas deles),
+    // o que deixava a busca pesada a cada tecla digitada.
+    hookBuscaContratoInput();
+}
 
-            // Guarda ID no campo hidden do formulário (mais seguro que variável JS)
-            const hiddenId = document.getElementById('editingBoletoId');
-            if (hiddenId) hiddenId.value = boletoId;
-            window.currentEditingBoletoId = boletoId; // mantém compatibilidade
+// Ação de Editar um contrato existente: preenche o formulário para edição.
+function acaoEditarBoleto(boletoId, boletosArray) {
+    const boleto = boletosArray.find(b => b.id === boletoId);
+    if (!boleto) return;
 
-            // Preenche o formulário
-            document.getElementById('compradorNome').value = boleto.compradorNome || '';
-            document.getElementById('compradorCpf').value = boleto.compradorCpf || '';
-            document.getElementById('compradorRg').value = boleto.compradorRg || '';
-            document.getElementById('compradorTelefone').value = boleto.compradorTelefone || '';
-            document.getElementById('compradorEndereco').value = boleto.compradorEndereco || '';
-            document.getElementById('produtoModelo').value = boleto.produtoModelo || '';
-            document.getElementById('produtoImei').value = boleto.produtoImei || '';
-            if (document.getElementById('aparelhoEstado')) {
-                if (boleto.aparelhoEstado !== undefined) document.getElementById('aparelhoEstado').value = boleto.aparelhoEstado;
-                else document.getElementById('aparelhoEstado').value = 'Novo';
-            }
-            if (document.getElementById('aparelhoAcessorios')) document.getElementById('aparelhoAcessorios').value = boleto.aparelhoAcessorios || '';
-            if (document.getElementById('contratoPrazo')) document.getElementById('contratoPrazo').value = boleto.contratoPrazo || '';
-            // valorTotal → campo hidden
-            document.getElementById('valorTotal').value = boleto.valorTotal || '';
-            document.getElementById('valorEntrada').value = boleto.valorEntrada || '';
-            document.getElementById('numeroParcelas').value = boleto.numeroParcelas || '';
-            document.getElementById('tipoParcela').value = boleto.tipoParcela || 'mensais';
-            // valorParcela salvo como "R$ X,XX" — extrai o número para o input numérico
-            if (boleto.valorParcela) {
-                const vpNum = parseBrazilianCurrencyToFloat(String(boleto.valorParcela));
-                if (!isNaN(vpNum)) document.getElementById('valorParcela').value = vpNum.toFixed(2);
-            }
-            // Recalcula todos os campos derivados (prazo display, total display, saldo)
-            calculateContractPayments();
-            document.getElementById('primeiroVencimento').value = boleto.primeiroVencimento || '';
-            document.getElementById('valorTotal').dispatchEvent(new Event('input'));
+    // Guarda ID no campo hidden do formulário (mais seguro que variável JS)
+    const hiddenId = document.getElementById('editingBoletoId');
+    if (hiddenId) hiddenId.value = boletoId;
+    window.currentEditingBoletoId = boletoId; // mantém compatibilidade
 
-            // Troca para aba "Novo" SEM disparar o change (evita re-render do histórico)
-            const toggle = document.getElementById('boletoModeToggle');
-            if (toggle && toggle.checked) {
-                toggle.checked = false;
-                // Troca as divs manualmente sem chamar loadBoletosHistory
-                const newContent = document.getElementById('newBoletoContent');
-                const histContent = document.getElementById('historyBoletoContent');
-                if (newContent) newContent.classList.remove('hidden');
-                if (histContent) histContent.classList.add('hidden');
-            }
+    // Preenche o formulário
+    document.getElementById('compradorNome').value = boleto.compradorNome || '';
+    document.getElementById('compradorCpf').value = boleto.compradorCpf || '';
+    document.getElementById('compradorRg').value = boleto.compradorRg || '';
+    document.getElementById('compradorTelefone').value = boleto.compradorTelefone || '';
+    document.getElementById('compradorEndereco').value = boleto.compradorEndereco || '';
+    document.getElementById('produtoModelo').value = boleto.produtoModelo || '';
+    document.getElementById('produtoImei').value = boleto.produtoImei || '';
+    if (document.getElementById('aparelhoEstado')) {
+        if (boleto.aparelhoEstado !== undefined) document.getElementById('aparelhoEstado').value = boleto.aparelhoEstado;
+        else document.getElementById('aparelhoEstado').value = 'Novo';
+    }
+    if (document.getElementById('aparelhoAcessorios')) document.getElementById('aparelhoAcessorios').value = boleto.aparelhoAcessorios || '';
+    if (document.getElementById('contratoPrazo')) document.getElementById('contratoPrazo').value = boleto.contratoPrazo || '';
+    // valorTotal → campo hidden
+    document.getElementById('valorTotal').value = boleto.valorTotal || '';
+    document.getElementById('valorEntrada').value = boleto.valorEntrada || '';
+    document.getElementById('numeroParcelas').value = boleto.numeroParcelas || '';
+    document.getElementById('tipoParcela').value = boleto.tipoParcela || 'mensais';
+    // valorParcela salvo como "R$ X,XX" — extrai o número para o input numérico
+    if (boleto.valorParcela) {
+        const vpNum = parseBrazilianCurrencyToFloat(String(boleto.valorParcela));
+        if (!isNaN(vpNum)) document.getElementById('valorParcela').value = vpNum.toFixed(2);
+    }
+    // Recalcula todos os campos derivados (prazo display, total display, saldo)
+    calculateContractPayments();
+    document.getElementById('primeiroVencimento').value = boleto.primeiroVencimento || '';
+    document.getElementById('valorTotal').dispatchEvent(new Event('input'));
 
-            // Atualiza o botão para indicar edição
-            const btnImprimir = document.getElementById('btnImprimir');
-            if (btnImprimir) {
-                btnImprimir.innerHTML = '<i class="bi bi-save-fill"></i> Salvar Alterações';
-                btnImprimir.classList.remove('btn-primary');
-                btnImprimir.classList.add('btn-warning');
-            }
+    // Troca para aba "Novo" SEM disparar o change (evita re-render do histórico)
+    const toggle = document.getElementById('boletoModeToggle');
+    if (toggle && toggle.checked) {
+        toggle.checked = false;
+        // Troca as divs manualmente sem chamar loadBoletosHistory
+        const newContent = document.getElementById('newBoletoContent');
+        const histContent = document.getElementById('historyBoletoContent');
+        if (newContent) newContent.classList.remove('hidden');
+        if (histContent) histContent.classList.add('hidden');
+    }
 
-            // Banner de alerta de edição
-            let banner = document.getElementById('editingBannerBoleto');
-            if (!banner) {
-                banner = document.createElement('div');
-                banner.id = 'editingBannerBoleto';
-                banner.style.cssText = 'background:#f0ad4e;color:#000;padding:8px 12px;border-radius:8px;margin-bottom:10px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;';
-                const form = document.getElementById('contractForm');
-                if (form) form.parentNode.insertBefore(banner, form);
-            }
-            banner.innerHTML = '<span>✏️ Editando contrato de <strong>' + escapeHtml(boleto.compradorNome || '') + '</strong></span>' +
-                '<button type="button" onclick="cancelarEdicaoBoleto()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;">✕</button>';
-            banner.style.display = 'flex';
-        });
+    // Atualiza o botão para indicar edição
+    const btnImprimir = document.getElementById('btnImprimir');
+    if (btnImprimir) {
+        btnImprimir.innerHTML = '<i class="bi bi-save-fill"></i> Salvar Alterações';
+        btnImprimir.classList.remove('btn-primary');
+        btnImprimir.classList.add('btn-warning');
+    }
+
+    // Banner de alerta de edição
+    let banner = document.getElementById('editingBannerBoleto');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'editingBannerBoleto';
+        banner.style.cssText = 'background:#f0ad4e;color:#000;padding:8px 12px;border-radius:8px;margin-bottom:10px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;';
+        const form = document.getElementById('contractForm');
+        if (form) form.parentNode.insertBefore(banner, form);
+    }
+    banner.innerHTML = '<span>✏️ Editando contrato de <strong>' + escapeHtml(boleto.compradorNome || '') + '</strong></span>' +
+        '<button type="button" onclick="cancelarEdicaoBoleto()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;">✕</button>';
+    banner.style.display = 'flex';
+}
+
+// Ação de Duplicar um contrato existente: aproveita os dados do CLIENTE
+// (nome, CPF, RG, telefone, endereço) para começar um contrato novo, sem
+// levar os dados do aparelho/valores — que mudam a cada venda. Útil quando
+// o mesmo cliente compra de novo e não precisa redigitar os dados pessoais.
+function acaoDuplicarBoleto(boletoId, boletosArray) {
+    const boleto = boletosArray.find(b => b.id === boletoId);
+    if (!boleto) return;
+
+    // Garante que não há edição em andamento — este é sempre um contrato
+    // NOVO, nunca deve sobrescrever o original nem o que estava sendo editado.
+    if (typeof window.cancelarEdicaoBoleto === 'function') window.cancelarEdicaoBoleto();
+    const hiddenId = document.getElementById('editingBoletoId');
+    if (hiddenId) hiddenId.value = '';
+    window.currentEditingBoletoId = null;
+
+    // Reseta o formulário inteiro antes de preencher, para não arrastar
+    // nenhum resíduo de aparelho/valores de uma tela anterior.
+    const form = document.getElementById('contractForm');
+    if (form) form.reset();
+
+    // Preenche SÓ os dados do cliente
+    document.getElementById('compradorNome').value = boleto.compradorNome || '';
+    document.getElementById('compradorCpf').value = boleto.compradorCpf || '';
+    document.getElementById('compradorRg').value = boleto.compradorRg || '';
+    document.getElementById('compradorTelefone').value = boleto.compradorTelefone || '';
+    document.getElementById('compradorEndereco').value = boleto.compradorEndereco || '';
+    // Dados do aparelho e valores ficam em branco de propósito — são de
+    // uma venda nova, não da venda antiga que está sendo duplicada.
+
+    // Troca para aba "Novo" SEM disparar o change (evita re-render do histórico)
+    const toggle = document.getElementById('boletoModeToggle');
+    if (toggle && toggle.checked) {
+        toggle.checked = false;
+        const newContent = document.getElementById('newBoletoContent');
+        const histContent = document.getElementById('historyBoletoContent');
+        if (newContent) newContent.classList.remove('hidden');
+        if (histContent) histContent.classList.add('hidden');
+    }
+
+    // Garante que o botão de salvar está no estado "novo contrato" (não "editar")
+    const btnImprimir = document.getElementById('btnImprimir');
+    if (btnImprimir) {
+        btnImprimir.innerHTML = '<i class="bi bi-check-circle-fill"></i> Finalizar e Salvar Documento';
+        btnImprimir.classList.remove('btn-warning');
+        btnImprimir.classList.add('btn-primary');
+    }
+
+    // Aviso discreto (reaproveita showCustomModal, sem travar o fluxo)
+    if (typeof showCustomModal === 'function') {
+        showCustomModal({ message: 'Dados de ' + (boleto.compradorNome || 'cliente') + ' copiados. Preencha os dados do aparelho para este novo contrato.' });
+    }
+
+    // Foca no primeiro campo que precisa ser preenchido (aparelho)
+    document.getElementById('produtoModelo')?.focus();
+}
+
+// Ação de Reenviar um contrato existente: gera o PDF a partir dos dados salvos e compartilha.
+async function acaoReenviarBoleto(boletoId, boletosArray) {
+    const boleto = boletosArray.find(b => b.id === boletoId);
+    if (!boleto) return;
+
+    // FIX: "Reenviar" só gera um PDF a partir dos dados existentes e
+    // não deve herdar um editingBoletoId de uma edição anterior não
+    // cancelada — senão um "Salvar" feito logo depois sobrescreveria
+    // o contrato errado.
+    if (typeof window.cancelarEdicaoBoleto === 'function') window.cancelarEdicaoBoleto();
+
+    // Preenche o preview com os dados do boleto
+    document.getElementById('compradorNome').value = boleto.compradorNome || '';
+    document.getElementById('compradorCpf').value = boleto.compradorCpf || '';
+    document.getElementById('compradorRg').value = boleto.compradorRg || '';
+    document.getElementById('compradorTelefone').value = boleto.compradorTelefone || '';
+    document.getElementById('compradorEndereco').value = boleto.compradorEndereco || '';
+    document.getElementById('produtoModelo').value = boleto.produtoModelo || '';
+    document.getElementById('produtoImei').value = boleto.produtoImei || '';
+    if (document.getElementById('aparelhoEstado')) {
+        if (boleto.aparelhoEstado !== undefined) document.getElementById('aparelhoEstado').value = boleto.aparelhoEstado;
+        else document.getElementById('aparelhoEstado').value = 'Novo';
+    }
+    if (document.getElementById('aparelhoAcessorios')) document.getElementById('aparelhoAcessorios').value = boleto.aparelhoAcessorios || '';
+    if (document.getElementById('contratoPrazo')) document.getElementById('contratoPrazo').value = boleto.contratoPrazo || '';
+    // valorTotal → campo hidden
+    document.getElementById('valorTotal').value = boleto.valorTotal || '';
+    document.getElementById('valorEntrada').value = boleto.valorEntrada || '';
+    document.getElementById('numeroParcelas').value = boleto.numeroParcelas || '';
+    document.getElementById('tipoParcela').value = boleto.tipoParcela || 'mensais';
+    // valorParcela salvo como "R$ X,XX" — extrai o número para o input numérico
+    if (boleto.valorParcela) {
+        const vpNum = parseBrazilianCurrencyToFloat(String(boleto.valorParcela));
+        if (!isNaN(vpNum)) document.getElementById('valorParcela').value = vpNum.toFixed(2);
+    }
+    // Recalcula todos os campos derivados (prazo display, total display, saldo)
+    calculateContractPayments();
+    document.getElementById('primeiroVencimento').value = boleto.primeiroVencimento || '';
+    // Recalcula saldo e parcela
+    calculateContractPayments();
+    populatePreview();
+
+    const tempDiv = document.createElement('div');
+    tempDiv.style.cssText = 'font-family: Times New Roman, serif; font-size: 10pt; line-height: 1.5; color: #000; background: #fff; padding: 20px; width: 750px; box-sizing: border-box;';
+    tempDiv.innerHTML = document.getElementById('contractPreview').innerHTML;
+
+    const titulo = tempDiv.querySelector('h4');
+    if (titulo) titulo.style.cssText = 'font-size: 10.5pt; font-weight: bold; color: #000; text-align: center; margin-bottom: 16pt; line-height: 1.4;';
+
+    tempDiv.querySelectorAll('p, div, strong, span').forEach(el => {
+        el.style.wordBreak = 'keep-all';
+        el.style.overflowWrap = 'break-word';
+        el.style.pageBreakInside = 'avoid';
     });
 
-    // --- REENVIAR ---
-    historyContainer.querySelectorAll('.reenviar-boleto-btn').forEach(btn => {
-        btn?.addEventListener('click', async (e) => {
-            const boletoId = e.currentTarget.dataset.id;
-            const boleto = boletosArray.find(b => b.id === boletoId);
-            if (!boleto) return;
+    const nomeArq = 'Contrato-' + (boleto.compradorNome || 'cliente').split(' ')[0] + '.pdf';
+    const opt = {
+        margin: [10, 10, 10, 10],
+        filename: nomeArq,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
 
-            // Preenche o preview com os dados do boleto
-            document.getElementById('compradorNome').value = boleto.compradorNome || '';
-            document.getElementById('compradorCpf').value = boleto.compradorCpf || '';
-            document.getElementById('compradorRg').value = boleto.compradorRg || '';
-            document.getElementById('compradorTelefone').value = boleto.compradorTelefone || '';
-            document.getElementById('compradorEndereco').value = boleto.compradorEndereco || '';
-            document.getElementById('produtoModelo').value = boleto.produtoModelo || '';
-            document.getElementById('produtoImei').value = boleto.produtoImei || '';
-            if (document.getElementById('aparelhoEstado')) {
-                if (boleto.aparelhoEstado !== undefined) document.getElementById('aparelhoEstado').value = boleto.aparelhoEstado;
-                else document.getElementById('aparelhoEstado').value = 'Novo';
-            }
-            if (document.getElementById('aparelhoAcessorios')) document.getElementById('aparelhoAcessorios').value = boleto.aparelhoAcessorios || '';
-            if (document.getElementById('contratoPrazo')) document.getElementById('contratoPrazo').value = boleto.contratoPrazo || '';
-            // valorTotal → campo hidden
-            document.getElementById('valorTotal').value = boleto.valorTotal || '';
-            document.getElementById('valorEntrada').value = boleto.valorEntrada || '';
-            document.getElementById('numeroParcelas').value = boleto.numeroParcelas || '';
-            document.getElementById('tipoParcela').value = boleto.tipoParcela || 'mensais';
-            // valorParcela salvo como "R$ X,XX" — extrai o número para o input numérico
-            if (boleto.valorParcela) {
-                const vpNum = parseBrazilianCurrencyToFloat(String(boleto.valorParcela));
-                if (!isNaN(vpNum)) document.getElementById('valorParcela').value = vpNum.toFixed(2);
-            }
-            // Recalcula todos os campos derivados (prazo display, total display, saldo)
-            calculateContractPayments();
-            document.getElementById('primeiroVencimento').value = boleto.primeiroVencimento || '';
-            // Recalcula saldo e parcela
-            calculateContractPayments();
-            populatePreview();
+    showCustomModal({ message: 'Gerando PDF, aguarde...' });
 
-            const tempDiv = document.createElement('div');
-            tempDiv.style.cssText = 'font-family: Times New Roman, serif; font-size: 10pt; line-height: 1.5; color: #000; background: #fff; padding: 20px; width: 750px; box-sizing: border-box;';
-            tempDiv.innerHTML = document.getElementById('contractPreview').innerHTML;
-
-            const titulo = tempDiv.querySelector('h4');
-            if (titulo) titulo.style.cssText = 'font-size: 10.5pt; font-weight: bold; color: #000; text-align: center; margin-bottom: 16pt; line-height: 1.4;';
-
-            tempDiv.querySelectorAll('p, div, strong, span').forEach(el => {
-                el.style.wordBreak = 'keep-all';
-                el.style.overflowWrap = 'break-word';
-                el.style.pageBreakInside = 'avoid';
-            });
-
-            const nomeArq = 'Contrato-' + (boleto.compradorNome || 'cliente').split(' ')[0] + '.pdf';
-            const opt = {
-                margin: [10, 10, 10, 10],
-                filename: nomeArq,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
-
-            showCustomModal({ message: 'Gerando PDF, aguarde...' });
-
-            // Aguarda libs, depois gera PDF e compartilha — tudo na mesma chain de Promise
-            garantirPdfLibs().then(() => {
-                return html2pdf().set(opt).from(tempDiv).output('blob');
-            }).then(async function(pdfBlob) {
-                const file = new File([pdfBlob], nomeArq, { type: 'application/pdf' });
-                if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                    try {
-                        await navigator.share({
-                            files: [file],
-                            title: 'Contrato Workcell Tecnologia',
-                            text: 'Olá ' + (boleto.compradorNome || 'Cliente') + ', segue seu contrato em anexo.'
-                        });
-                    } catch(err) {
-                        if (err.name !== 'AbortError') {
-                            const url = URL.createObjectURL(pdfBlob);
-                            const a = document.createElement('a');
-                            a.href = url; a.download = nomeArq; a.click();
-                            URL.revokeObjectURL(url);
-                        }
-                    }
-                } else {
+    // Aguarda libs, depois gera PDF e compartilha — tudo na mesma chain de Promise
+    garantirPdfLibs().then(() => {
+        return html2pdf().set(opt).from(tempDiv).output('blob');
+    }).then(async function(pdfBlob) {
+        const file = new File([pdfBlob], nomeArq, { type: 'application/pdf' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            try {
+                await navigator.share({
+                    files: [file],
+                    title: 'Contrato Workcell Tecnologia',
+                    text: 'Olá ' + (boleto.compradorNome || 'Cliente') + ', segue seu contrato em anexo.'
+                });
+            } catch(err) {
+                if (err.name !== 'AbortError') {
                     const url = URL.createObjectURL(pdfBlob);
                     const a = document.createElement('a');
                     a.href = url; a.download = nomeArq; a.click();
                     URL.revokeObjectURL(url);
                 }
-            }).catch(err => showCustomModal({ message: 'Erro ao gerar PDF: ' + err.message }));
-        });
-    });
+            }
+        } else {
+            const url = URL.createObjectURL(pdfBlob);
+            const a = document.createElement('a');
+            a.href = url; a.download = nomeArq; a.click();
+            URL.revokeObjectURL(url);
+        }
+    }).catch(err => showCustomModal({ message: 'Erro ao gerar PDF: ' + err.message }));
+}
 
-    // --- EXCLUIR ---
-    historyContainer.querySelectorAll('.delete-boleto-btn').forEach(btn => {
-        btn?.addEventListener('click', (e) => {
-            const boletoId = e.currentTarget.dataset.id;
-            const boleto = boletosArray.find(b => b.id === boletoId);
-            const nomeCliente = boleto ? boleto.compradorNome : 'este registro';
+// Ação de Excluir um contrato existente, com dupla confirmação.
+function acaoExcluirBoleto(boletoId, boletosArray) {
+    const boleto = boletosArray.find(b => b.id === boletoId);
+    const nomeCliente = boleto ? boleto.compradorNome : 'este registro';
+    showCustomModal({
+        message: 'Tem certeza que deseja excluir o contrato de ' + escapeHtml(nomeCliente) + '? Esta ação NÃO pode ser desfeita.',
+        confirmText: "Sim, Excluir",
+        onConfirm: async () => {
             showCustomModal({
-                message: 'Tem certeza que deseja excluir o contrato de ' + escapeHtml(nomeCliente) + '? Esta ação NÃO pode ser desfeita.',
-                confirmText: "Sim, Excluir",
+                message: 'CONFIRMAÇÃO FINAL: Apagar o contrato de ' + escapeHtml(nomeCliente) + ' permanentemente?',
+                confirmText: "Apagar Definitivamente",
                 onConfirm: async () => {
-                    showCustomModal({
-                        message: 'CONFIRMAÇÃO FINAL: Apagar o contrato de ' + escapeHtml(nomeCliente) + ' permanentemente?',
-                        confirmText: "Apagar Definitivamente",
-                        onConfirm: async () => {
-                            try {
-                                await remove(ref(db, 'boletos/' + boletoId));
-                                showCustomModal({ message: "Registro excluído com sucesso." });
-                            } catch (error) {
-                                showCustomModal({ message: 'Erro ao excluir: ' + error.message });
-                            }
-                        },
-                        onCancel: () => {}
-                    });
+                    try {
+                        await remove(ref(db, 'boletos/' + boletoId));
+                        showCustomModal({ message: "Registro excluído com sucesso." });
+                    } catch (error) {
+                        showCustomModal({ message: 'Erro ao excluir: ' + error.message });
+                    }
                 },
                 onCancel: () => {}
             });
-        });
+        },
+        onCancel: () => {}
+    });
+}
+
+// Liga UMA ÚNICA VEZ o listener delegado de cliques do histórico de contratos
+// (Editar/Reenviar/Excluir). Antes, cada render recriava um addEventListener
+// por botão — com centenas de contratos isso deixava a busca pesada a cada
+// tecla digitada. Delegação = 1 listener fixo no container, sempre.
+let _boletosHistoryActionsHooked = false;
+function hookBoletosHistoryActions() {
+    if (_boletosHistoryActionsHooked) return;
+    _boletosHistoryActionsHooked = true;
+
+    const historyContainer = document.getElementById('historyBoletoContent');
+    if (!historyContainer) return;
+
+    historyContainer.addEventListener('click', (e) => {
+        const editBtn = e.target.closest('.editar-boleto-btn');
+        if (editBtn) { acaoEditarBoleto(editBtn.dataset.id, _boletosHistoryCache); return; }
+
+        const dupBtn = e.target.closest('.duplicar-boleto-btn');
+        if (dupBtn) { acaoDuplicarBoleto(dupBtn.dataset.id, _boletosHistoryCache); return; }
+
+        const resendBtn = e.target.closest('.reenviar-boleto-btn');
+        if (resendBtn) { acaoReenviarBoleto(resendBtn.dataset.id, _boletosHistoryCache); return; }
+
+        const delBtn = e.target.closest('.delete-boleto-btn');
+        if (delBtn) { acaoExcluirBoleto(delBtn.dataset.id, _boletosHistoryCache); return; }
+
+        const maisBtn = e.target.closest('#btnCarregarMaisContratos');
+        if (maisBtn) {
+            _boletosHistoryLimiteExibicao += 40;
+            const buscaAtual = document.getElementById('buscaContratoInput')?.value || '';
+            renderBoletosHistoryFiltrado(buscaAtual);
+            return;
+        }
+    });
+}
+
+// Liga o listener de digitação do campo de busca de contratos.
+// Chamado toda vez que o histórico é (re)renderizado, já que o input é recriado no innerHTML.
+let _buscaContratoDebounce = null;
+function hookBuscaContratoInput() {
+    const input = document.getElementById('buscaContratoInput');
+    if (!input) return;
+    input.addEventListener('input', (e) => {
+        const valor = e.target.value;
+        const cursorPos = e.target.selectionStart;
+        clearTimeout(_buscaContratoDebounce);
+        _buscaContratoDebounce = setTimeout(() => {
+            _boletosHistoryLimiteExibicao = 40; // nova busca reinicia o lote de exibição
+            renderBoletosHistoryFiltrado(valor);
+            // Restaura foco e posição do cursor, já que o input foi recriado no innerHTML
+            const novoInput = document.getElementById('buscaContratoInput');
+            if (novoInput) {
+                novoInput.focus();
+                novoInput.setSelectionRange(cursorPos, cursorPos);
+            }
+        }, 350);
     });
 }
 
@@ -3205,13 +3353,18 @@ function setupNotificationListeners() {
                 }
             });
         }
-        checkForDueInstallments(generalNotifications);
+        // Notificações de parcela/boleto desativadas — ver checkForDueInstallments()
+        updateNotificationUI(generalNotifications);
     });
 
     // Aniversários (aguarda 5s para dbClientsCache estar preenchido)
     setTimeout(() => window.checarAniversariosHoje && window.checarAniversariosHoje(), 5000);
 }
 
+// Notificações de parcela/boleto vencendo — DESATIVADAS a pedido.
+// Função mantida (não removida) para facilitar reativação futura: basta
+// voltar a chamar checkForDueInstallments(generalNotifications) no lugar
+// de updateNotificationUI(generalNotifications) acima.
 function checkForDueInstallments(initialNotifications = []) {
     if (!db || !isAuthReady) return;
     const boletosRef = ref(db, 'boletos');
@@ -3288,11 +3441,6 @@ function checkForDueInstallments(initialNotifications = []) {
                 }
             }
         }
-        // Aniversários de hoje também entram no painel de Alertas
-        (window._aniversariosHoje || []).forEach(n => {
-            if (!dismissedList.includes(n.notificationId)) notifications.push(n);
-        });
-
         updateNotificationUI(notifications);
     });
 }
@@ -3578,76 +3726,24 @@ function loadTagTexts() {
 // ============================================================
 // ============================================================
 // 🤖 FUNÇÃO DE TEMA (ESPECIAL PARA ANDROID)
+// Seletor de cores removido — o app usa uma única paleta fixa
+// (verde), só claro/escuro continuam alternáveis. Mantém apenas
+// a sincronização da barra de status do Android com o fundo atual.
 // ============================================================
-window.applyColorTheme = function(color) {
-    if (!color) return;
-
-    // 1. Aplica o atributo para o CSS reagir
-    document.body.removeAttribute('data-color');
-    if (color !== 'red') { // 'red' é o padrão, se for outro, aplica
-        document.body.setAttribute('data-color', color);
-    }
-    
-    // 2. Salva na memória (com segurança)
-    try {
-        if (typeof safeStorage !== 'undefined') {
-            safeStorage.setItem('ctwColorTheme', color);
-        } else {
-            localStorage.setItem('ctwColorTheme', color);
-        }
-    } catch (e) { console.warn('Erro ao salvar tema:', e); }
-
-    // 3. Feedback Visual nos botões
-    const btns = document.querySelectorAll('.theme-option-btn');
-    if (btns) {
-        btns.forEach(btn => {
-            btn.innerHTML = ''; 
-            btn.classList.remove('active');
-            if (btn.dataset.color === color) {
-                btn.classList.add('active');
-                btn.innerHTML = '<i class="bi bi-check-lg"></i>';
-            }
-        });
-    }
-
-    // 4. LÓGICA "AMBIENT MODE" (Barra de Status Android)
-    // O Android precisa de um tempinho para entender que a cor do fundo mudou
+(function syncAndroidStatusBar() {
     setTimeout(() => {
         const metaTheme = document.getElementById('status-bar-color');
-        
-        if (metaTheme) {
-            // Pega o estilo computado do corpo da página
-            const style = getComputedStyle(document.body);
-            
-            // Tenta pegar a variável --tertiary-color
-            let androidColor = style.getPropertyValue('--tertiary-color').trim();
+        if (!metaTheme) return;
 
-            // Se a variável estiver vazia, pega a cor de fundo bruta (background-color)
-            if (!androidColor || androidColor === 'rgba(0, 0, 0, 0)') {
-                androidColor = style.backgroundColor;
-            }
-
-            // Se ainda assim falhar, forçamos a cor padrão do seu tema (Dark Blue)
-            // Isso evita que fique branco ou preto padrão
-            if (!androidColor || androidColor === 'rgba(0, 0, 0, 0)') {
-                androidColor = '#0B1120'; 
-            }
-
-            // Aplica na Meta Tag do Android
-            metaTheme.setAttribute('content', androidColor);
-            
-            // Console log para você debugar se precisar
-            // console.log('Android Theme Applied:', androidColor);
+        const style = getComputedStyle(document.body);
+        let androidColor = style.getPropertyValue('--tertiary-color').trim();
+        if (!androidColor || androidColor === 'rgba(0, 0, 0, 0)') {
+            androidColor = style.backgroundColor;
         }
-    }, 100); // 100ms é o tempo ideal para o motor do Chrome atualizar
-};
-
-// 5. Garante que rode ao abrir o App (Autocorreção)
-(function() {
-    // Espera 200ms para garantir que o HTML carregou
-    setTimeout(() => {
-        const salvo = localStorage.getItem('ctwColorTheme') || 'red';
-        if(window.applyColorTheme) window.applyColorTheme(salvo);
+        if (!androidColor || androidColor === 'rgba(0, 0, 0, 0)') {
+            androidColor = '#000000';
+        }
+        metaTheme.setAttribute('content', androidColor);
     }, 200);
 })();
 
@@ -3795,7 +3891,6 @@ async function main() {
     try {
         setupPWA();
         applyTheme(safeStorage.getItem('theme') || 'dark');
-        applyColorTheme(safeStorage.getItem('ctwColorTheme') || 'red');
 
         // BOOT ANIMATION — carrossel de recursos do app
         (function runBootAnimation() {
@@ -3882,7 +3977,27 @@ async function main() {
         app = initializeApp(firebaseConfig); 
         auth = getAuth(app); 
         db = getDatabase(app);
-        
+
+        // Indicador de status de conexão (bolinha no topo v2). Usa o nó
+        // especial .info/connected do Realtime Database, que reflete a
+        // conexão de verdade com o Firebase (não só "tem internet").
+        onValue(ref(db, '.info/connected'), (snap) => {
+            const conectado = snap.val() === true;
+            const el = document.getElementById('ctwConnStatus');
+            if (!el) return;
+            const label = el.querySelector('.ctw-conn-label');
+            el.classList.remove('ctw-conn-checking', 'ctw-conn-online', 'ctw-conn-offline');
+            if (conectado) {
+                el.classList.add('ctw-conn-online');
+                el.title = 'Conectado';
+                if (label) label.textContent = 'Online';
+            } else {
+                el.classList.add('ctw-conn-offline');
+                el.title = 'Sem conexão — as alterações podem não estar sendo salvas';
+                if (label) label.textContent = 'Offline';
+            }
+        });
+
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 userId = user.uid;
@@ -3893,14 +4008,7 @@ async function main() {
                 window._dbRef    = ref;    // expõe ref() para módulos IIFE
                 window._dbUpdate = update; // expõe update() para módulos IIFE
 
-                // Cache bookips para VIP/Ranking
-                window._bookipsCache = [];
-                onValue(ref(db, 'bookips'), snap => {
-                    const v = snap.val();
-                    window._bookipsCache = v ? Object.values(v) : [];
-                });
-
-                // Cache de bookips para VIP/Ranking — carrega independente da aba aberta
+                // Cache bookips para VIP/Ranking — carrega independente da aba aberta
                 window._bookipsCache = [];
                 onValue(ref(db, 'bookips'), snap => {
                     const v = snap.val();
@@ -5004,10 +5112,6 @@ let updates = { header, terms, emailMessage, shareMessage: emailMessage };
                     value = e.target.value;
                 }
                 if (id && field && value !== undefined) {
-                    // Atualização otimista: reflete a mudança no array local 'products'
-                    // imediatamente, sem esperar o round-trip do onValue do Firebase.
-                    const localProduct = products.find(p => p.id === id);
-                    if (localProduct) localProduct[field] = value;
                     updateProductInDB(id, { [field]: value });
                 }
             }
@@ -5015,8 +5119,6 @@ let updates = { header, terms, emailMessage, shareMessage: emailMessage };
         if (e.target.matches('.ignore-toggle-switch-admin')) {
             const id = e.target.dataset.id;
             const isChecked = e.target.checked;
-            const localProduct = products.find(p => p.id === id);
-            if (localProduct) localProduct.ignorarContagem = isChecked;
             updateProductInDB(id, { ignorarContagem: isChecked });
         }
     });
@@ -5964,16 +6066,16 @@ Se não houver smartphones: []`;
         document.getElementById('historyBoletoContent').classList.toggle('hidden', !showHistory);
         if (showHistory) {
             loadBoletosHistory();
+        } else {
+            // FIX: ao voltar para "Novo Contrato" sem ter cancelado uma edição
+            // em andamento, o editingBoletoId ficava "preso" no ID antigo e o
+            // próximo save sobrescrevia (update) o contrato errado em vez de
+            // criar um novo (push). Limpa o estado de edição aqui também.
+            if (typeof window.cancelarEdicaoBoleto === 'function') window.cancelarEdicaoBoleto();
         }
     });
     document.getElementById('contractForm')?.addEventListener('input', () => {
         calculateContractPayments();
-        saveContractDraft();
-    });
-    document.getElementById('btnLimparCampos')?.addEventListener('click', () => clearContractDraft(true));
-    document.getElementById('btnApagarRascunho')?.addEventListener('click', () => {
-        safeStorage.removeItem(CONTRACT_DRAFT_KEY);
-        showCustomModal({ message: 'Rascunho apagado.' });
     });
     document.getElementById('btnImprimir')?.addEventListener('click', async () => {
         const contractForm = document.getElementById('contractForm');
@@ -6044,6 +6146,49 @@ Se não houver smartphones: []`;
             criadoPor: currentUserProfile || 'Desconhecido'
         };
 
+        // ── FIX CRASH/PERDA DE DADOS ──────────────────────────
+        // Antes, o contrato só era salvo no Firebase DEPOIS do PDF ser
+        // gerado (html2canvas/html2pdf). Se a geração do PDF travasse ou
+        // o app crashasse nesse meio tempo (comum em documentos longos),
+        // o contrato preenchido se perdia — nada ia pra nuvem.
+        // Agora: salva na nuvem PRIMEIRO. O PDF é gerado só depois, e se
+        // ele falhar o contrato já está seguro e pode gerar o PDF de novo
+        // mais tarde pela lista de contratos.
+        showCustomModal({ message: 'Salvando contrato na nuvem...' });
+
+        const hiddenIdEl = document.getElementById('editingBoletoId');
+        const editId = (hiddenIdEl && hiddenIdEl.value) ? hiddenIdEl.value : window.currentEditingBoletoId;
+
+        try {
+            if (editId) {
+                await update(ref(db, 'boletos/' + editId), boletoData);
+            } else {
+                // Código interno (DDMM-XXX) gerado só na criação — nunca muda depois.
+                // Não aparece no PDF, serve só para busca/organização interna.
+                const codigoInterno = await gerarCodigoContrato();
+                boletoData.codigoInterno = codigoInterno;
+                await push(boletosRef, boletoData);
+            }
+        } catch (error) {
+            console.error("Erro ao salvar contrato na nuvem: ", error);
+            showCustomModal({ message: 'Não foi possível salvar o contrato na nuvem. Verifique sua conexão e tente novamente — nenhum dado foi perdido, o formulário continua preenchido.' });
+            return; // não tenta gerar PDF se nem salvou
+        }
+
+        // A partir daqui o contrato já está seguro no Firebase.
+        if (editId) {
+            if (hiddenIdEl) hiddenIdEl.value = '';
+            window.currentEditingBoletoId = null;
+            const btnImprimir2 = document.getElementById('btnImprimir');
+            if (btnImprimir2) {
+                btnImprimir2.innerHTML = '<i class="bi bi-printer"></i> Imprimir e Salvar';
+                btnImprimir2.classList.remove('btn-warning');
+                btnImprimir2.classList.add('btn-primary');
+            }
+            const banner2 = document.getElementById('editingBannerBoleto');
+            if (banner2) banner2.style.display = 'none';
+        }
+
         // Popula o conteúdo do contrato
         populatePreview();
 
@@ -6058,11 +6203,16 @@ Se não houver smartphones: []`;
             titulo.style.cssText = 'font-size: 10.5pt; font-weight: bold; color: #000; text-align: center; margin-bottom: 16pt; line-height: 1.4;';
         }
 
-        // Evita corte de palavras em todos os elementos
-        tempDiv.querySelectorAll('p, div, strong, span') .forEach(el => {
+        // Evita corte de palavras E de página no meio de um elemento.
+        // FIX letra cortada entre páginas: setamos as duas grafias da
+        // propriedade (a antiga "page-break-inside" e a atual "break-inside")
+        // pois dependendo do motor do WebView só uma delas é respeitada,
+        // e ampliamos para li/tr também (linhas de tabela e listas).
+        tempDiv.querySelectorAll('p, div, strong, span, li, tr').forEach(el => {
             el.style.wordBreak = 'keep-all';
             el.style.overflowWrap = 'break-word';
             el.style.pageBreakInside = 'avoid';
+            el.style.breakInside = 'avoid';
         });
 
         // Garante que os campos strong tenham o valor correto
@@ -6075,45 +6225,27 @@ Se não houver smartphones: []`;
         const nomeArquivo = 'Contrato-' + nomeCliente.split(' ')[0] + '.pdf';
 
         const opt = {
-            margin: [10, 10, 10, 10],
+            margin: [10, 10, 12, 10],
             filename: nomeArquivo,
             image: { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 2, useCORS: true },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            // FIX letra cortada entre páginas: combina os 3 modos de quebra
+            // do html2pdf.js. 'css'/'legacy' respeitam o break-inside:avoid
+            // que acabamos de setar em cada parágrafo/linha; 'avoid-all' é
+            // uma segunda camada que evita cortar qualquer elemento sempre
+            // que existir espaço pra empurrá-lo pra próxima página.
+            pagebreak: { mode: ['css', 'legacy', 'avoid-all'] }
         };
 
-        showCustomModal({ message: 'Gerando PDF, aguarde...' });
+        showCustomModal({ message: 'Contrato salvo! Gerando PDF, aguarde...' });
 
         try {
-            // ✅ FIX 1: await garantirPdfLibs — garante que html2pdf e html2canvas estejam carregados
+            // ✅ await garantirPdfLibs — garante que html2pdf e html2canvas estejam carregados
             await garantirPdfLibs();
 
-            // ✅ FIX 2: await aqui dentro de handler async — preserva o user gesture para navigator.share
+            // ✅ await aqui dentro de handler async — preserva o user gesture para navigator.share
             const pdfBlob = await html2pdf().set(opt).from(tempDiv).output('blob');
-
-            // Salva ou atualiza no Firebase
-            const hiddenIdEl = document.getElementById('editingBoletoId');
-            const editId = (hiddenIdEl && hiddenIdEl.value) ? hiddenIdEl.value : window.currentEditingBoletoId;
-
-            if (editId) {
-                update(ref(db, 'boletos/' + editId), boletoData).catch(function(e) {
-                    console.error("Erro ao atualizar contrato: ", e);
-                });
-                if (hiddenIdEl) hiddenIdEl.value = '';
-                window.currentEditingBoletoId = null;
-                const btnImprimir2 = document.getElementById('btnImprimir');
-                if (btnImprimir2) {
-                    btnImprimir2.innerHTML = '<i class="bi bi-printer"></i> Imprimir e Salvar';
-                    btnImprimir2.classList.remove('btn-warning');
-                    btnImprimir2.classList.add('btn-primary');
-                }
-                const banner2 = document.getElementById('editingBannerBoleto');
-                if (banner2) banner2.style.display = 'none';
-            } else {
-                push(boletosRef, boletoData).catch(function(error) {
-                    console.error("Erro ao salvar contrato: ", error);
-                });
-            }
 
             const nomeCliente2 = document.getElementById('compradorNome').value || 'Cliente';
             const file = new File([pdfBlob], nomeArquivo, { type: 'application/pdf' });
@@ -6148,7 +6280,7 @@ Se não houver smartphones: []`;
             }
         } catch(error) {
             console.error("Erro ao gerar PDF:", error);
-            showCustomModal({ message: 'Erro ao gerar PDF: ' + error.message });
+            showCustomModal({ message: 'O contrato já está salvo com segurança na nuvem ✅, mas houve um erro ao gerar o PDF: ' + error.message + '. Você pode gerar o PDF de novo mais tarde pela lista de contratos.' });
         }
     });
 
@@ -6292,36 +6424,7 @@ Se não houver smartphones: []`;
     
     setupVisibilityToggles();
     updateMachineVisibility();
-    
-        // --- LÓGICA DO SELETOR DE TEMAS ---
-    const themeModal = document.getElementById('themeSelectorModal');
-    
-    // Abrir Modal
-    const paletteBtn = document.getElementById('theme-palette-btn');
-    if (paletteBtn) {
-        paletteBtn?.addEventListener('click', () => {
-            themeModal.classList.add('active');
-        });
-    }
-    
-    // Fechar Modal
-    const closeThemeBtn = document.getElementById('closeThemeModal');
-    if (closeThemeBtn) {
-        closeThemeBtn?.addEventListener('click', () => {
-            themeModal.classList.remove('active');
-        });
-    }
-    
-    // Clicar nas cores
-    document.querySelectorAll('.theme-option-btn').forEach(btn => {
-        btn?.addEventListener('click', () => {
-            applyColorTheme(btn.dataset.color);
-            // Pequeno delay para fechar o modal
-            setTimeout(() => themeModal.classList.remove('active'), 200);
-        });
-    });
-    
-    
+
 // --- TOGGLE NOVO / HISTÓRICO (CORRIGIDO E SEM BUG VISUAL) ---
 const bookipToggle = document.getElementById('bookipModeToggle');
 
@@ -7138,17 +7241,9 @@ function loadBookipHistory() {
             html += `<div class="text-center py-3"><button id="btnLoadMoreBookip" class="btn btn-outline-primary rounded-pill px-4">Ver Mais</button></div>`;
         }
 
-        // Preserva a posição de rolagem: sem isso, toda atualização em
-        // background (onValue) reconstrói o innerHTML e joga a lista
-        // de volta pro topo enquanto o usuário está navegando nela.
-        const scrollParent = container.closest('.modal-body, [style*="overflow"]') || container;
-        const scrollTopAntes = scrollParent.scrollTop;
-
         container.innerHTML = html;
         reativarListeners();
-
-        scrollParent.scrollTop = scrollTopAntes;
-
+        
         const btnMore = document.getElementById('btnLoadMoreBookip');
         if (btnMore) btnMore?.addEventListener('click', () => { itensVisiveis += incremento; renderizarLote(); });
     }
@@ -7311,27 +7406,6 @@ function carregarDadosParaEdicao(item) {
             if (el) el.value = campos[id] || '';
         }
 
-        // D2. Data de nascimento vem do CADASTRO DO CLIENTE (não do documento)
-        {
-            const nascEl = document.getElementById('bookipNascimento');
-            if (nascEl) nascEl.value = '';
-            const nascLbl = document.getElementById('bookipNascimentoLabel');
-            if (nascLbl) nascLbl.textContent = 'Definir data';
-            const nascBtn = document.getElementById('bookipNascimentoBtn');
-            if (nascBtn) nascBtn.style.borderColor = '';
-
-            const cpfLimpo = (item.cpf || '').replace(/\D/g, '');
-            const telLimpo = (item.tel || '').replace(/\D/g, '');
-            const nomeLimpo = (item.nome || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-            const cli = (window.dbClientsCache || []).find(c =>
-                (cpfLimpo.length > 5 && (c.cpf || '').replace(/\D/g, '') === cpfLimpo) ||
-                c.id === `${nomeLimpo}_${telLimpo}`
-            );
-            if (cli && cli.dataNascimento && typeof window._bdSetValor === 'function') {
-                window._bdSetValor('bookipNascimento', 'bookipNascimentoBtn', 'bookipNascimentoLabel', cli.dataNascimento);
-            }
-        }
-
         // E. Restaura Pagamentos
         document.querySelectorAll('.check-pagamento').forEach(chk => chk.checked = false);
         if (item.pagamento) {
@@ -7370,13 +7444,21 @@ function carregarDadosParaEdicao(item) {
             btnAdd.classList.add('btn-warning');
         }
 
-        // H. Restaura as Fotos (compatível com registros antigos de foto única)
-        {
-            const fotosItem = (Array.isArray(item.fotosUrls) && item.fotosUrls.length)
-                ? item.fotosUrls
-                : (item.fotoUrl ? [item.fotoUrl] : []);
-            if (typeof window._bookipSetFotos === 'function') window._bookipSetFotos(fotosItem);
-            else window._bookipFotos = fotosItem.map(u => ({ url: u, blob: null, preview: '' }));
+        // H. Restaura a Foto (se existir)
+        if (item.fotoUrl) {
+            window._bookipFotoUrl  = item.fotoUrl;
+            window._bookipFotoBlob = null;
+            var imgEl   = document.getElementById('bookipPhotoImg');
+            var preview = document.getElementById('bookipPhotoPreview');
+            var lbl     = document.getElementById('bookipPhotoBtnLabel');
+            if (imgEl)   imgEl.src = item.fotoUrl;
+            if (preview) preview.classList.remove('hidden');
+            if (lbl)     lbl.textContent = 'Substituir foto';
+        } else {
+            window._bookipFotoUrl  = '';
+            window._bookipFotoBlob = null;
+            var preview2 = document.getElementById('bookipPhotoPreview');
+            if (preview2) preview2.classList.add('hidden');
         }
 
         // I. Finalização
@@ -7417,7 +7499,7 @@ if (btnSave) {
             dataVenda:   document.getElementById('bookipDataManual')?.value || new Date().toISOString().split('T')[0],
             criadoEm:    new Date().toISOString(),
             type:        bookipCartList.some(i => i.isSituation) ? 'situacao' : (window.isSimpleReceiptMode ? 'recibo' : 'garantia'),
-            fotoUrl:     (window._bookipFotos && window._bookipFotos[0] && window._bookipFotos[0].url) || '',
+            fotoUrl:     window._bookipFotoUrl || '',
         };
         const _rawHtml = (typeof getReciboHTML === 'function') ? getReciboHTML(previewDadosTemp) : '<p style="color:#000;padding:20px">Prévia indisponível</p>';
         const previewHtmlTemp = `<div style="width:750px;overflow:hidden;background:#fff;color:#000;">${_rawHtml}</div>`;
@@ -7440,8 +7522,6 @@ if (btnSave) {
         const originalText = btnSave.innerHTML;
         btnSave.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Salvando...';
         btnSave.disabled = true;
-
-        console.time('[Bookip] salvar - total');
 
         try {
             // --- BLOCO CIRÚRGICO: CAPTURAR PAGAMENTO ---
@@ -7478,9 +7558,7 @@ if (btnSave) {
             // ---------------------------------------------------------
             // CORREÇÃO: GERAÇÃO DO NÚMERO DOC (EVITA DUPLICIDADE)
             // ---------------------------------------------------------
-            console.time('[Bookip] 1. buscar docNumber');
             const snapshot = await get(ref(db, 'bookips'));
-            console.timeEnd('[Bookip] 1. buscar docNumber');
             let docNumberFormatted = '001';
 
             if (currentEditingBookipId) {
@@ -7527,11 +7605,10 @@ if (btnSave) {
                 dataVenda: dataFinalVenda,
                 criadoEm: new Date().toISOString(),
 criadoPor: currentUserProfile || "Desconhecido",
-                fotoUrl: (window._bookipFotos && window._bookipFotos[0] && window._bookipFotos[0].url) || "",
+                fotoUrl: window._bookipFotoUrl || "",
             };
 
             // SALVA NO FIREBASE
-            console.time('[Bookip] 2. update/push principal');
             if (currentEditingBookipId) {
                 // Atualiza existente
                 await update(ref(db, `bookips/${currentEditingBookipId}`), dados);
@@ -7541,35 +7618,22 @@ criadoPor: currentUserProfile || "Desconhecido",
                 const newRef = await push(ref(db, 'bookips'), dados);
                 dados.id = newRef.key;
             }
-            console.timeEnd('[Bookip] 2. update/push principal');
 
-            // UPLOAD FOTOS via Cloudinary (até 4 — sobe apenas as pendentes, em paralelo)
-            {
-                console.time('[Bookip] 3. upload fotos (paralelo)');
-                const fotos = window._bookipFotos || [];
-                await Promise.all(fotos.map(async (f) => {
-                    if (f.url) return;
-                    if (f.blob) {
-                        const u = await window.uploadFotoCloudinary(f.blob);
-                        if (u) { f.url = u; f.blob = null; }
-                    }
-                }));
-                console.timeEnd('[Bookip] 3. upload fotos (paralelo)');
-                const urls = fotos.map(f => f.url).filter(Boolean);
-                dados.fotosUrls = urls;
-                dados.fotoUrl = urls[0] || ''; // compatibilidade com registros/telas antigas
-                console.time('[Bookip] 4. update fotosUrls');
-                await update(ref(db, 'bookips/' + dados.id), { fotosUrls: urls, fotoUrl: urls[0] || '' });
-                console.timeEnd('[Bookip] 4. update fotosUrls');
+            // UPLOAD FOTO via Imgur (se houver blob pendente)
+            if (window._bookipFotoBlob) {
+                const fotoUrl = await window.uploadFotoCloudinary(window._bookipFotoBlob);
+                if (fotoUrl) {
+                    dados.fotoUrl = fotoUrl;
+                    window._bookipFotoUrl = fotoUrl;
+                    await update(ref(db, 'bookips/' + dados.id), { fotoUrl });
+                }
+                window._bookipFotoBlob = null;
             }
 
             // SALVA CLIENTE (ROBÔ)
-            console.time('[Bookip] 5. salvarClienteAutomatico');
             await salvarClienteAutomatico({
-                nome: dados.nome, cpf: dados.cpf, tel: dados.tel, end: dados.end, email: dados.email,
-                dataNascimento: document.getElementById('bookipNascimento')?.value || ''
+                nome: dados.nome, cpf: dados.cpf, tel: dados.tel, end: dados.end, email: dados.email
             });
-            console.timeEnd('[Bookip] 5. salvarClienteAutomatico');
 
             // SUCESSO!
             lastSavedBookipData = dados; // Guarda na memória
@@ -7584,10 +7648,8 @@ criadoPor: currentUserProfile || "Desconhecido",
             // Restaura botão salvar
             btnSave.innerHTML = originalText;
             btnSave.disabled = false;
-            console.timeEnd('[Bookip] salvar - total');
 
         } catch (error) {
-            console.timeEnd('[Bookip] salvar - total');
             console.error(error);
             showCustomModal({ message: "Erro ao salvar: " + error.message });
             btnSave.innerHTML = originalText;
@@ -7798,13 +7860,10 @@ async function salvarClienteAutomatico(dados) {
         ultimoCompra: new Date().toISOString()
     };
 
-    // Só inclui a data se veio preenchida (evita sobrescrever com vazio)
-    if (dados.dataNascimento) dadosCliente.dataNascimento = dados.dataNascimento;
-
     // 3. Tenta Salvar
     try {
-        // Usando UPDATE para mesclar sem apagar campos existentes (dataNascimento, atribuidoA)
-        await update(ref(db, `clientes/${clienteId}`), dadosCliente);
+        // Usando SET em vez de UPDATE para garantir (força bruta)
+        await set(ref(db, `clientes/${clienteId}`), dadosCliente);
         // alert("ROBÔ SUCESSO! Cliente salvo na pasta: " + clienteId); 
         console.log("Cliente salvo: " + clienteId);
     } catch (e) {
@@ -7813,30 +7872,13 @@ async function salvarClienteAutomatico(dados) {
 }
 
 //=======================================
-// AUTOCOMPLETE DE CLIENTES (VERSÃO FINAL LIMPA)
+// AUTOCOMPLETE DE CLIENTES
 // ============================================================
-let dbClientsCache = []; 
-
-/// 1. Carrega os clientes do Banco e Atualiza a Tabela
-if (typeof db !== 'undefined') {
-    const clientsRef = ref(db, 'clientes');
-    onValue(clientsRef, (snapshot) => {
-        if (snapshot.exists()) {
-            // Transforma o objeto do banco em uma lista
-            const dados = snapshot.val();
-            dbClientsCache = Object.values(dados);
-        } else {
-            dbClientsCache = [];
-        }
-
-        // --- A MÁGICA ACONTECE AQUI ---
-        // Verifica se a tela de Clientes está aberta. Se estiver, atualiza a tabela agora!
-        const container = document.getElementById('clientsContainer');
-        if (container && !container.classList.contains('hidden') && typeof renderClientsTable === 'function') {
-            renderClientsTable();
-        }
-    });
-}
+// O cache real de clientes é window.dbClientsCache, carregado pelo
+// listener único mais abaixo ("Conexão com o Banco"). Havia um segundo
+// listener idêntico aqui, com uma variável local (dbClientsCache) que
+// quase nada usava — baixava a lista de clientes do zero duas vezes e
+// mantinha dois listeners ativos para sempre. Removido.
 
 
 // 2. Lógica de Pesquisa
@@ -7940,18 +7982,6 @@ window.preencherCliente = function(id, idListaParaFechar) {
         document.getElementById('bookipTelefone').value = cliente.tel || '';
         document.getElementById('bookipEndereco').value = cliente.end || '';
         document.getElementById('bookipEmail').value = cliente.email || '';
-
-        // Data de nascimento do cadastro (se houver)
-        if (cliente.dataNascimento && typeof window._bdSetValor === 'function') {
-            window._bdSetValor('bookipNascimento', 'bookipNascimentoBtn', 'bookipNascimentoLabel', cliente.dataNascimento);
-        } else {
-            const nascEl = document.getElementById('bookipNascimento');
-            if (nascEl) nascEl.value = '';
-            const nascLbl = document.getElementById('bookipNascimentoLabel');
-            if (nascLbl) nascLbl.textContent = 'Definir data';
-            const nascBtn = document.getElementById('bookipNascimentoBtn');
-            if (nascBtn) nascBtn.style.borderColor = '';
-        }
         
         // Esconde a lista que foi clicada
         if(idListaParaFechar) {
@@ -8483,8 +8513,39 @@ window.abrirEstrelaCliente = async function(id, posicao) {
 };
 
 
-// Abre bookip específico (função definida logo abaixo, versão completa
-// com abertura da aba de histórico + toggle de modo)
+// Abre o bookip específico a partir do banner estrela
+window._abrirGarantiaDoBanner = function(bookipId) {
+    document.getElementById('estrelaOverlay')?.remove();
+    document.getElementById('resumoClienteOverlay')?.remove();
+
+    // Vai pra aba de documentos
+    if (typeof window.showMainSection === 'function') window.showMainSection('contract');
+
+    // Polling: espera o DOM do accordion estar pronto
+    let n = 0;
+    const poll = setInterval(() => {
+        n++;
+
+        // Passo 1: garante que o item está na lista visível
+        if (typeof window._bookipNavigateTo === 'function') window._bookipNavigateTo(bookipId);
+
+        // Passo 2: verifica se o collapse já existe no DOM
+        const el = document.getElementById('collapse-bk-' + bookipId);
+        if (el) {
+            clearInterval(poll);
+
+            // Passo 3: abre o accordion deste item
+            el.classList.add('show');
+            const btn = document.querySelector(`[data-bs-target="#collapse-bk-${bookipId}"]`);
+            if (btn) btn.classList.remove('collapsed');
+
+            // Passo 4: scroll suave até ele
+            setTimeout(() => el.closest('.accordion-item, .card, [id]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+        }
+
+        if (n > 30) clearInterval(poll); // desiste após 3s
+    }, 100);
+};
 
 
 // Banner VIP ao clicar no botão (i) do Bookip
@@ -9209,7 +9270,6 @@ setupProductTags();
             if (areaContrato) {
                 areaContrato.classList.remove('hidden');
                 areaContrato.style.display = 'block';
-                if (typeof loadContractDraft === 'function') loadContractDraft();
                 // Pré-carrega as libs de PDF em background para que o share funcione na hora H
                 if (typeof garantirPdfLibs === 'function') garantirPdfLibs();
             }
@@ -9779,8 +9839,7 @@ const opt = {
                 const settings = (typeof receiptSettings !== 'undefined') ? receiptSettings : {};
                 const saudacao = 'Olá ' + (dados.nome || 'Cliente') + ',';
                 const corpoMensagem = settings.shareMessage || 'segue seu documento em anexo.';
-                const _fotos = (dados.fotosUrls && dados.fotosUrls.length) ? dados.fotosUrls : (dados.fotoUrl ? [dados.fotoUrl] : []);
-                const fotoMsg = _fotos.length ? '\n\n📷 Foto' + (_fotos.length > 1 ? 's' : '') + ' do produto:\n' + _fotos.join('\n') : '';
+                const fotoMsg = dados.fotoUrl ? '\n\n📷 Foto do produto: ' + dados.fotoUrl : '';
                 const textoCompleto = saudacao + '\n\n' + corpoMensagem + fotoMsg;
 
                 try {
@@ -9950,21 +10009,13 @@ window.abrirModalColarZap = function() {
     <div class="custom-modal-overlay active" id="modalZapOverlay" style="z-index: 10000;">
         <div class="custom-modal-content" style="max-width: 90%; width: 400px;">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0 text-success"><i class="bi bi-whatsapp"></i> Colar Dados <small style="opacity:.35;font-size:.55em;">v5</small></h5>
+                <h5 class="mb-0 text-success"><i class="bi bi-whatsapp"></i> Colar Dados</h5>
                 <button class="btn-back" id="btnFecharZap"><i class="bi bi-x-lg"></i></button>
             </div>
             <p class="text-secondary small text-start">Copie a mensagem inteira do cliente e cole abaixo:</p>
-            <textarea id="textoZapInput" class="form-control mb-2" rows="6" placeholder="Ex: *Nome*: João..."></textarea>
-            <div id="zapFotosThumbs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;"></div>
-            <input type="file" id="zapFotoInput" accept="image/*" multiple style="display:none">
-            <button class="btn btn-outline-secondary w-100 mb-2" id="btnZapFoto" style="font-size:.85rem;">
-                <i class="bi bi-camera-fill"></i> Anexar fotos (etiqueta do produto / comprovante)
-            </button>
+            <textarea id="textoZapInput" class="form-control mb-3" rows="8" placeholder="Ex: *Nome*: João..."></textarea>
             <button class="btn btn-success w-100" id="btnProcessarZap">
                 <i class="bi bi-magic"></i> Preencher Automático
-            </button>
-            <button class="btn btn-outline-info w-100 mt-2" id="btnProcessarZapIA">
-                <i class="bi bi-stars"></i> Preencher com I.A
             </button>
         </div>
     </div>`;
@@ -9985,39 +10036,6 @@ window.abrirModalColarZap = function() {
             document.getElementById('containerModalZap').remove(); 
         };
         document.getElementById('btnProcessarZap').onclick = window.processarTextoZap;
-        document.getElementById('btnProcessarZapIA').onclick = window.processarTextoZapIA;
-
-        // Anexo de fotos (etiqueta do produto / comprovante da maquininha)
-        window._zapFotos = [];
-        const zapInput = document.getElementById('zapFotoInput');
-        const zapThumbs = document.getElementById('zapFotosThumbs');
-        function renderZapFotos() {
-            zapThumbs.innerHTML = '';
-            window._zapFotos.forEach((f, i) => {
-                const wrap = document.createElement('div');
-                wrap.style.cssText = 'position:relative;width:54px;height:54px;';
-                const img = document.createElement('img');
-                img.src = URL.createObjectURL(f);
-                img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,.15);';
-                img.onload = () => URL.revokeObjectURL(img.src);
-                const x = document.createElement('button');
-                x.type = 'button'; x.textContent = '✕';
-                x.style.cssText = 'position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:#ef4444;color:#fff;font-size:.6rem;cursor:pointer;line-height:1;';
-                x.onclick = () => { window._zapFotos.splice(i, 1); renderZapFotos(); };
-                wrap.appendChild(img); wrap.appendChild(x);
-                zapThumbs.appendChild(wrap);
-            });
-
-            // Com foto anexada, só a I.A consegue processar — oculta o botão JS
-            const btnJs = document.getElementById('btnProcessarZap');
-            if (btnJs) btnJs.style.display = window._zapFotos.length > 0 ? 'none' : '';
-        }
-        document.getElementById('btnZapFoto').onclick = () => zapInput.click();
-        zapInput.onchange = () => {
-            window._zapFotos = window._zapFotos.concat(Array.from(zapInput.files || [])).slice(0, 4);
-            zapInput.value = '';
-            renderZapFotos();
-        };
     }, 100);
 };
 
@@ -10101,231 +10119,24 @@ window.processarTextoZap = function() {
         }
     }
 
-    window._preencherCamposZap({ nome, cpf, tel, email, endereco, dataNascISO });
-};
-
-// Preenche o formulário do Bookip e fecha a janela (usado pelo parser JS e pela I.A)
-window._preencherCamposZap = function(d, extraMsg) {
-    if (d.nome) document.getElementById('bookipNome').value = d.nome;
-    if (d.cpf) document.getElementById('bookipCpf').value = d.cpf;
-    if (d.tel) document.getElementById('bookipTelefone').value = d.tel;
-    if (d.email) document.getElementById('bookipEmail').value = d.email;
-    if (d.endereco && d.endereco.length > 5) document.getElementById('bookipEndereco').value = d.endereco;
-    if (d.dataNascISO) {
+    // Preenche
+    if (nome) document.getElementById('bookipNome').value = nome;
+    if (cpf) document.getElementById('bookipCpf').value = cpf;
+    if (tel) document.getElementById('bookipTelefone').value = tel;
+    if (email) document.getElementById('bookipEmail').value = email;
+    if (endereco.length > 5) document.getElementById('bookipEndereco').value = endereco;
+    if (dataNascISO) {
         const nascEl = document.getElementById('bookipNascimento');
-        if (nascEl) nascEl.value = d.dataNascISO;
+        if (nascEl) nascEl.value = dataNascISO;
         if (typeof window._bdSetValor === 'function')
-            window._bdSetValor('bookipNascimento','bookipNascimentoBtn','bookipNascimentoLabel', d.dataNascISO);
+            window._bdSetValor('bookipNascimento','bookipNascimentoBtn','bookipNascimentoLabel', dataNascISO);
     }
 
     // Fecha janela
-    const cont = document.getElementById('containerModalZap');
-    if (cont) cont.remove();
-
-    const msgFinal = "Dados Processados! ✅" + (extraMsg ? "\n" + extraMsg : "");
-    if (typeof showCustomModal === 'function') showCustomModal({ message: msgFinal });
-    else alert(msgFinal);
-};
-
-// Versão via I.A — usa o mesmo motor do CreditoScan (OpenRouter, chave em settings/openrouterKey)
-window.processarTextoZapIA = async function() {
-    const texto = (document.getElementById('textoZapInput')?.value || '').trim();
-    const fotos = window._zapFotos || [];
-    if (!texto && !fotos.length) {
-        if (typeof showCustomModal === 'function') showCustomModal({ message: "Cole o texto do cliente ou anexe uma foto primeiro!" });
-        return;
-    }
-
-    // Chave: localStorage (cache do CreditoScan) → Firebase settings/openrouterKey
-    async function getZapAiKey() {
-        let key = '';
-        try { key = localStorage.getItem('ctwOpenRouterKey') || ''; } catch(e) {}
-        if (key) return key;
-        try {
-            const fb = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
-            const dbRef = window._firebaseDB; if (!dbRef) return '';
-            const snap = await fb.get(fb.ref(dbRef, 'settings/openrouterKey'));
-            key = snap.val() || '';
-            if (key) try { localStorage.setItem('ctwOpenRouterKey', key); } catch(e) {}
-            return key;
-        } catch(e) { return ''; }
-    }
-
-    // Redimensiona foto para base64 (max 1280px, JPEG 88%)
-    function zapFotoBase64(file) {
-        return new Promise((resolve) => {
-            const img = new Image(), url = URL.createObjectURL(file);
-            img.onload = () => {
-                URL.revokeObjectURL(url);
-                let w = img.width, h = img.height; const M = 1280;
-                if (w > M || h > M) { if (w > h) { h = Math.round(h * M / w); w = M; } else { w = Math.round(w * M / h); h = M; } }
-                const c = document.createElement('canvas'); c.width = w; c.height = h;
-                c.getContext('2d').drawImage(img, 0, 0, w, h);
-                c.toBlob(bl => {
-                    if (!bl) { resolve(null); return; }
-                    const r = new FileReader();
-                    r.onload = () => resolve(r.result.split(',')[1]);
-                    r.readAsDataURL(bl);
-                }, 'image/jpeg', 0.88);
-            };
-            img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
-            img.src = url;
-        });
-    }
-
-    const btn = document.getElementById('btnProcessarZapIA');
-    const orig = btn ? btn.innerHTML : '';
-    if (btn) { btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Lendo com I.A...'; btn.disabled = true; }
-
-    try {
-        const key = await getZapAiKey();
-        if (!key) throw new Error('Chave OpenRouter não configurada (a mesma do CreditoScan, em settings/openrouterKey).');
-
-        const prompt = 'Você lê mensagens de WhatsApp de uma loja de celulares no Brasil (texto e/ou fotos de etiquetas de caixas e comprovantes de maquininha de cartão).\n'
-            + 'Extraia os dados e responda SOMENTE com JSON puro, sem markdown, neste formato exato:\n'
-            + '{"cliente":{"nome":"","cpf":"","tel":"","email":"","endereco":"","dataNascimento":""},'
-            + '"produto":{"nome":"","cor":"","imeis":[]},'
-            + '"pagamento":{"formas":[],"valores":[]},"fotosProduto":[]}\n'
-            + 'REGRAS:\n'
-            + '- cliente: cpf no formato XXX.XXX.XXX-XX; tel apenas dígitos com DDD; dataNascimento YYYY-MM-DD ou ""; ausente = "".\n'
-            + '- produto.nome: SEM A COR, no formato "MODELO ARMAZENAMENTO/RAM RAM". Ex: etiqueta "POCO X8 Pro Verde Menta 8GB RAM 256GB ROM" => nome "POCO X8 Pro 256GB/8GB RAM" e cor "Verde Menta".\n'
-            + '- produto.cor: a cor do aparelho, apenas no campo cor (ex: "Verde Menta", "Mint Green").\n'
-            + '- produto.imeis: TODOS os IMEIs encontrados (etiqueta ou texto), apenas dígitos, em ordem (IMEI1, IMEI2).\n'
-            + '- pagamento.valores: TRANSCREVA cada valor TOTAL pago EXATAMENTE como está impresso/escrito, mantendo pontos e vírgulas, um item por forma de pagamento. NÃO converta, NÃO calcule, apenas copie. Ex: comprovante "R$ 2.745,45 EM 18 PARCELAS" => ["2.745,45"] (o valor impresso já é o total, parcelas não multiplicam). Ex: "4x R$ 152,89 (Total: R$ 611,56) + R$ 800,00 no pix" => ["611,56","800,00"] (no parcelado use o TOTAL, nunca a parcela). Sem valor: [].\n'
-            + '- pagamento.formas: subconjunto EXATO de ["Dinheiro/Pix","Crédito","Débito","Boleto","Troca"]. Parcelado (Nx) ou comprovante de crédito => "Crédito". Débito no comprovante => "Débito". Pix, transferência ou dinheiro => "Dinheiro/Pix". Aparelho na troca => "Troca". Boleto/crediário => "Boleto".\n'
-            + '- fotosProduto: índices (base 0, na ordem em que as fotos foram enviadas) das fotos que mostram O PRODUTO ou SUA CAIXA/ETIQUETA. Se houver foto de caixa/etiqueta/aparelho anexada, este campo DEVE conter o índice dela. NUNCA inclua comprovantes de pagamento, documentos ou prints de tela.\n'
-            + (texto ? '\nTEXTO DA MENSAGEM:\n' + texto : '');
-
-        // Monta o conteúdo (fotos + prompt) e escolhe o modelo
-        const content = [];
-        for (const f of fotos) {
-            const b64 = await zapFotoBase64(f);
-            if (b64) content.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b64 } });
-        }
-        const temFoto = content.length > 0;
-        content.push({ type: 'text', text: prompt });
-
-        const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
-            body: JSON.stringify({
-                model: temFoto ? 'qwen/qwen3-vl-235b-a22b-instruct' : 'qwen/qwen3-235b-a22b-2507',
-                max_tokens: 2000,
-                temperature: 0,
-                messages: [{ role: 'user', content: temFoto ? content : prompt }]
-            })
-        });
-
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.error?.message || 'Erro HTTP ' + resp.status);
-        }
-
-        const data = await resp.json();
-        const raw = (data.choices?.[0]?.message?.content || '').replace(/```json|```/gi, '').trim();
-        console.log('🤖 Zap IA response:', raw);
-        const m = raw.match(/\{[\s\S]*\}/);
-        if (!m) throw new Error('A I.A não retornou dados válidos');
-        const d = JSON.parse(m[0]);
-        const cli = d.cliente || {};
-        const prod = d.produto || {};
-        const pag = d.pagamento || {};
-
-        // ── PRODUTO (cálculo) ──
-        // Blindagem: aceita 2745.45, "2.745,45" ou "R$ 2.745,45"
-        function parseValorBR(v) {
-            if (typeof v === 'number') return v;
-            if (!v) return 0;
-            let s = String(v).replace(/[^\d.,]/g, '');
-            if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
-            return parseFloat(s) || 0;
-        }
-        const valores = Array.isArray(pag.valores) ? pag.valores : [];
-        const valor = valores.reduce((soma, v) => soma + parseValorBR(v), 0);
-
-        if (prod.nome) {
-            const nomeEl = document.getElementById('bookipProdNomeTemp');
-            if (nomeEl) { nomeEl.value = prod.nome; nomeEl.dispatchEvent(new Event('input', { bubbles: true })); }
-        }
-        if (prod.cor) {
-            const corEl = document.getElementById('bookipProdCorTemp');
-            if (corEl) corEl.value = prod.cor;
-        }
-        if (Array.isArray(prod.imeis) && prod.imeis.length) {
-            const obsEl = document.getElementById('bookipProdObsTemp');
-            if (obsEl) obsEl.value = prod.imeis.map((im, i) => 'IMEI' + (i + 1) + ': ' + String(im).replace(/\D/g, '')).join('\n');
-        }
-        if (valor > 0) {
-            const valEl = document.getElementById('bookipProdValorTemp');
-            // O campo tem máscara pt-BR (ponto = milhar): "2731.69" viraria 273169.
-            // Formato correto: "2.731,69"
-            if (valEl) {
-                valEl.value = valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                valEl.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-        }
-
-        // ── PAGAMENTO ──
-        const mapaPag = { 'Dinheiro/Pix': 'pagPix', 'Crédito': 'pagCredito', 'Débito': 'pagDebito', 'Boleto': 'pagBoleto', 'Troca': 'pagTroca' };
-        (Array.isArray(pag.formas) ? pag.formas : []).forEach(forma => {
-            const cb = document.getElementById(mapaPag[forma]);
-            if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }
-        });
-
-        // ── FOTO DA GARANTIA ── anexa SÓ as fotos classificadas como produto/caixa (nunca comprovantes)
-        const idxProduto = (Array.isArray(d.fotosProduto) ? d.fotosProduto : [])
-            .map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n >= 0);
-        console.log('📷 Zap IA fotosProduto:', idxProduto);
-
-        async function anexarFotos(indices) {
-            let ok = 0;
-            for (const idx of indices) {
-                const f = fotos[idx];
-                if (!f) continue;
-                if (typeof window._bookipAddFotoFile === 'function') {
-                    if (await window._bookipAddFotoFile(f)) ok++;
-                } else {
-                    console.error('Zap IA: _bookipAddFotoFile ausente — Bookip.js desatualizado no ar');
-                }
-            }
-            return ok;
-        }
-
-        let fotosAnexadas = await anexarFotos(idxProduto);
-        // Fallback 1: modelo numerou a partir de 1 (índice fora do alcance)
-        if (!fotosAnexadas && idxProduto.length && idxProduto.some(i => i >= fotos.length)) {
-            fotosAnexadas = await anexarFotos(idxProduto.map(i => i - 1).filter(i => i >= 0));
-        }
-        // Fallback 2: só existe 1 foto e a I.A claramente leu o produto dela (IMEI/nome)
-        if (!fotosAnexadas && fotos.length === 1 && ((Array.isArray(prod.imeis) && prod.imeis.length) || prod.nome)) {
-            fotosAnexadas = await anexarFotos([0]);
-        }
-        const avisoFoto = fotos.length
-            ? (fotosAnexadas ? '📷 ' + fotosAnexadas + ' foto(s) anexada(s) à garantia.' : '⚠️ Foto não anexada — anexe manualmente.')
-            : '';
-
-        // ── ADICIONA À LISTA ── se a I.A trouxe nome e valor, o item entra direto no recibo
-        if (prod.nome && valor > 0) {
-            const btnAdd = document.getElementById('btnAdicionarItemLista');
-            if (btnAdd) btnAdd.click();
-        }
-
-        // ── CLIENTE (preenche e fecha o modal) ──
-        window._preencherCamposZap({
-            nome: cli.nome || '',
-            cpf: cli.cpf || '',
-            tel: (cli.tel || '').replace(/\D/g, ''),
-            email: cli.email || '',
-            endereco: cli.endereco || '',
-            dataNascISO: /^\d{4}-\d{2}-\d{2}$/.test(cli.dataNascimento || '') ? cli.dataNascimento : ''
-        }, avisoFoto);
-    } catch (e) {
-        console.error('Zap IA falhou:', e);
-        if (btn) { btn.innerHTML = orig; btn.disabled = false; }
-        if (typeof showCustomModal === 'function') {
-            showCustomModal({ message: '❌ I.A falhou: ' + e.message + '\n\nUse o "Preencher Automático" como alternativa (só texto).' });
-        }
-    }
+    document.getElementById('containerModalZap').remove();
+    
+    if (typeof showCustomModal === 'function') showCustomModal({ message: "Dados Processados! ✅" });
+    else alert("Dados Processados!");
 };
 
 // 3. ATIVADOR DO BOTÃO (O SEGREDO!)
@@ -10344,6 +10155,189 @@ setTimeout(() => {
 }, 1000); // Espera 1 segundo pra garantir que o HTML carregou
 
 // ============================================================
+// COLAR DO ZAP (IA) — Garantia/Bookip
+// Opção paralela ao "Colar do Zap" tradicional (regex). Usa o mesmo motor
+// de visão do CreditoScan (OpenRouter/Qwen-VL) para ler o texto colado +
+// uma foto opcional do produto, e preencher TUDO: dados do cliente, dados
+// do produto (nome, cor, IMEI), forma de pagamento e valor total.
+// ============================================================
+window._zapIaFotoBase64 = null;
+
+window.abrirModalColarZapIA = function() {
+    const modalHtml = `
+    <div class="custom-modal-overlay active" id="modalZapIAOverlay" style="z-index: 10000;">
+        <div class="custom-modal-content" style="max-width: 90%; width: 420px;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0 text-info"><i class="bi bi-stars"></i> Colar do Zap (IA)</h5>
+                <button class="btn-back" id="btnFecharZapIA"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <p class="text-secondary small text-start">Cole a mensagem do cliente (dados, produto, pagamento) e, se tiver, adicione uma foto do produto — a IA preenche tudo sozinha.</p>
+            <textarea id="textoZapIAInput" class="form-control mb-3" rows="8" placeholder="Ex: *Nome*: João... 200 a vista no pix + 12x de 199,00..."></textarea>
+
+            <div class="mb-3">
+                <input type="file" id="zapIAFotoInput" accept="image/*" style="display:none">
+                <div id="zapIAFotoPreviewWrap" class="hidden" style="position:relative;margin-bottom:8px;">
+                    <img id="zapIAFotoPreview" src="" style="width:100%;max-height:180px;object-fit:contain;border-radius:10px;border:1px solid var(--glass-border);">
+                    <button type="button" id="btnZapIARemoverFoto" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:28px;height:28px;"><i class="bi bi-x-lg"></i></button>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-info w-100" id="btnZapIASelecionarFoto">
+                    <i class="bi bi-camera-fill"></i> Adicionar foto do produto (opcional)
+                </button>
+            </div>
+
+            <button class="btn btn-info w-100" id="btnProcessarZapIA">
+                <i class="bi bi-magic"></i> Preencher com IA
+            </button>
+            <div id="zapIAStatus" class="text-center small text-secondary mt-2"></div>
+        </div>
+    </div>`;
+
+    const existente = document.getElementById('containerModalZapIA');
+    if (existente) existente.remove();
+    window._zapIaFotoBase64 = null;
+
+    const div = document.createElement('div');
+    div.id = 'containerModalZapIA';
+    div.innerHTML = modalHtml;
+    document.body.appendChild(div);
+
+    setTimeout(() => {
+        document.getElementById('textoZapIAInput').focus();
+        document.getElementById('btnFecharZapIA').onclick = function() {
+            document.getElementById('containerModalZapIA').remove();
+        };
+
+        const fotoInput = document.getElementById('zapIAFotoInput');
+        document.getElementById('btnZapIASelecionarFoto').onclick = () => fotoInput.click();
+        fotoInput.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (typeof window._ctwResizeToBase64 !== 'function') {
+                showCustomModal({ message: 'Módulo de IA ainda carregando, tente novamente em instantes.' });
+                return;
+            }
+            const base64 = await window._ctwResizeToBase64(file);
+            if (!base64) return;
+            window._zapIaFotoBase64 = base64;
+            document.getElementById('zapIAFotoPreview').src = 'data:image/jpeg;base64,' + base64;
+            document.getElementById('zapIAFotoPreviewWrap').classList.remove('hidden');
+        };
+        document.getElementById('btnZapIARemoverFoto').onclick = () => {
+            window._zapIaFotoBase64 = null;
+            document.getElementById('zapIAFotoPreviewWrap').classList.add('hidden');
+            fotoInput.value = '';
+        };
+
+        document.getElementById('btnProcessarZapIA').onclick = window.processarTextoZapIA;
+    }, 100);
+};
+
+// Monta o prompt de instrução para a IA — regras exatas conforme especificado.
+function _buildPromptZapIA() {
+    return 'Você é um assistente que lê uma mensagem de WhatsApp de venda (e opcionalmente uma foto do produto) e extrai dados estruturados para preencher um formulário de garantia.\n\n' +
+        'A mensagem pode conter, em qualquer ordem: nome do cliente, CPF, telefone, endereço, data de nascimento, nome do produto, cor, forma(s) de pagamento e valores.\n\n' +
+        'REGRA DE VALOR TOTAL — muito importante:\n' +
+        'Se a mensagem tiver um valor à vista (Pix/Dinheiro) SEPARADO de um valor parcelado no cartão (ex: "200 a vista no pix" + "12x de 199,00" com um "Total: 2388,00"), ' +
+        'o "Total" informado geralmente é APENAS a soma das parcelas do cartão. Nesse caso, some o valor à vista + esse total do cartão para chegar no valorTotal final. ' +
+        'Exemplo: 200 (pix) + 2388 (total do cartão) = valorTotal 2588.00. ' +
+        'Se só houver um valor mencionado (sem separação pix+cartão), use esse valor direto.\n\n' +
+        'REGRA DE FORMA DE PAGAMENTO:\n' +
+        'Identifique todas as formas de pagamento mencionadas. Valores possíveis: "pix" (inclui dinheiro/pix), "credito", "debito", "boleto", "troca". Pode haver mais de uma.\n\n' +
+        'REGRA DA FOTO (se houver foto do produto):\n' +
+        'Olhe a foto e tente identificar o nome/modelo do produto, a cor, e um número de série/IMEI visível (em etiqueta, caixa ou tela de configurações). ' +
+        'Priorize o que estiver escrito no texto da mensagem; use a foto para completar o que faltar ou confirmar.\n\n' +
+        'REGRA MASTER DE OBSERVAÇÃO (campo obs): só coloque o IMEI/Serial nesse campo. Se não houver IMEI/Serial identificável em nenhuma fonte, deixe o campo obs vazio ("").\n\n' +
+        'Retorne APENAS um JSON válido, sem texto extra, sem markdown, no formato exato:\n' +
+        '{"nome":"","cpf":"","telefone":"","endereco":"","email":"","dataNascimento":"","produtoNome":"","produtoCor":"","imei":"","valorTotal":0,"pagamento":{"pix":false,"credito":false,"debito":false,"boleto":false,"troca":false}}\n\n' +
+        'Datas de nascimento no formato AAAA-MM-DD (se não souber o ano, deixe vazio). Não invente dados que não estão presentes. Campos não encontrados ficam com string vazia ou false.';
+}
+
+window.processarTextoZapIA = async function() {
+    const texto = document.getElementById('textoZapIAInput').value.trim();
+    const foto = window._zapIaFotoBase64;
+    if (!texto && !foto) {
+        showCustomModal({ message: 'Cole o texto ou adicione uma foto do produto.' });
+        return;
+    }
+
+    const btn = document.getElementById('btnProcessarZapIA');
+    const status = document.getElementById('zapIAStatus');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Processando...'; }
+    if (status) status.textContent = 'A IA está lendo os dados...';
+
+    try {
+        if (typeof window._ctwAiVision !== 'function') {
+            throw new Error('Módulo de IA ainda não carregou. Tente novamente em instantes.');
+        }
+        const imagens = foto ? [{ base64: foto }] : [];
+        const resposta = await window._ctwAiVision(imagens, texto, _buildPromptZapIA());
+
+        // Extrai o JSON da resposta (a IA às vezes envolve em texto/markdown, mesmo pedindo pra não)
+        const jsonMatch = resposta.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error('A IA não retornou dados reconhecíveis. Tente reformular o texto.');
+        const dados = JSON.parse(jsonMatch[0]);
+
+        _preencherFormularioComDadosIA(dados);
+
+        document.getElementById('containerModalZapIA').remove();
+        if (typeof showCustomModal === 'function') showCustomModal({ message: 'Dados preenchidos pela IA! Confira antes de salvar. ✅' });
+    } catch (err) {
+        console.error('Erro no Colar do Zap (IA):', err);
+        if (status) status.textContent = '';
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-magic"></i> Preencher com IA'; }
+        showCustomModal({ message: 'Erro ao processar com IA: ' + err.message });
+        return;
+    }
+};
+
+// Preenche os campos do cliente + produto temp + checkboxes de pagamento,
+// e adiciona o item à lista automaticamente (equivalente a clicar em
+// "Adicionar à Lista").
+function _preencherFormularioComDadosIA(d) {
+    // --- Dados do cliente ---
+    if (d.nome) document.getElementById('bookipNome').value = d.nome;
+    if (d.cpf) {
+        let cpfLimpo = d.cpf.replace(/\D/g, '');
+        if (cpfLimpo.length === 11) cpfLimpo = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+        document.getElementById('bookipCpf').value = cpfLimpo || d.cpf;
+    }
+    if (d.telefone) document.getElementById('bookipTelefone').value = d.telefone.replace(/\D/g, '');
+    if (d.endereco) document.getElementById('bookipEndereco').value = d.endereco;
+    if (d.email) document.getElementById('bookipEmail').value = d.email;
+    if (d.dataNascimento && /^\d{4}-\d{2}-\d{2}$/.test(d.dataNascimento)) {
+        const nascEl = document.getElementById('bookipNascimento');
+        if (nascEl) nascEl.value = d.dataNascimento;
+        if (typeof window._bdSetValor === 'function') {
+            window._bdSetValor('bookipNascimento', 'bookipNascimentoBtn', 'bookipNascimentoLabel', d.dataNascimento);
+        }
+    }
+
+    // --- Dados do produto (campos temporários, antes de "Adicionar à Lista") ---
+    if (d.produtoNome) document.getElementById('bookipProdNomeTemp').value = d.produtoNome;
+    if (d.produtoCor) document.getElementById('bookipProdCorTemp').value = d.produtoCor;
+    // Regra master: só IMEI/Serial na observação — nunca outro texto.
+    document.getElementById('bookipProdObsTemp').value = d.imei ? d.imei : '';
+
+    const valorInput = document.getElementById('bookipProdValorTemp');
+    if (valorInput && d.valorTotal) valorInput.value = Number(d.valorTotal).toFixed(2);
+    const qtdInput = document.getElementById('bookipProdQtdTemp');
+    if (qtdInput && !qtdInput.value) qtdInput.value = 1;
+
+    // --- Forma(s) de pagamento ---
+    const pag = d.pagamento || {};
+    const mapaCheckbox = { pix: 'pagPix', credito: 'pagCredito', debito: 'pagDebito', boleto: 'pagBoleto', troca: 'pagTroca' };
+    Object.keys(mapaCheckbox).forEach(function(chave) {
+        const cb = document.getElementById(mapaCheckbox[chave]);
+        if (cb && pag[chave]) cb.checked = true;
+    });
+
+    // --- Adiciona o item à lista automaticamente, se houver nome de produto ---
+    if (d.produtoNome) {
+        const btnAdd = document.getElementById('btnAdicionarItemLista');
+        if (btnAdd) btnAdd.click();
+    }
+}
+
 // ============================================================
 // FUNÇÃO DE FAXINA (LIMPA TUDO: DADOS, VISUAL E RASCUNHO)
 // ============================================================
@@ -10361,25 +10355,21 @@ window.resetFormulariosBookip = function() {
     }
 
     // 1. Limpa Campos de Texto do Cliente
-    // Limpa fotos (até 4 — a renderização cuida do preview e do label)
-    if (typeof window._bookipSetFotos === 'function') window._bookipSetFotos([]);
-    else window._bookipFotos = [];
-    const _photoInputCam = document.getElementById('bookipPhotoInputCamera');
-    const _photoInputGal = document.getElementById('bookipPhotoInputGallery');
-    if (_photoInputCam) _photoInputCam.value = '';
-    if (_photoInputGal) _photoInputGal.value = '';
+    // Limpa foto
+    window._bookipFotoUrl = '';
+    window._bookipFotoBlob = null;
+    const _photoPreview = document.getElementById('bookipPhotoPreview');
+    const _photoBtnLabel = document.getElementById('bookipPhotoBtnLabel');
+    const _photoInput = document.getElementById('bookipPhotoInput');
+    if (_photoPreview) _photoPreview.classList.add('hidden');
+    if (_photoBtnLabel) _photoBtnLabel.textContent = 'Da galeria';
+    if (_photoInput) _photoInput.value = '';
 
-    const camposCliente = ['bookipNome', 'bookipCpf', 'bookipTelefone', 'bookipEndereco', 'bookipEmail', 'bookipDataManual', 'bookipNascimento'];
+    const camposCliente = ['bookipNome', 'bookipCpf', 'bookipTelefone', 'bookipEndereco', 'bookipEmail', 'bookipDataManual'];
     camposCliente.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
-
-    // Reseta o label/borda do botão de data de nascimento
-    const nascLabel = document.getElementById('bookipNascimentoLabel');
-    if (nascLabel) nascLabel.textContent = 'Definir data';
-    const nascBtn = document.getElementById('bookipNascimentoBtn');
-    if (nascBtn) nascBtn.style.borderColor = '';
 
     // 2. Limpa Campos de Produto (Temp)
     const camposProd = ['bookipProductSearch', 'bookipProdNomeTemp', 'bookipProdValorTemp', 'bookipProdCorTemp', 'bookipProdObsTemp'];
@@ -11479,9 +11469,9 @@ window.showCustomModal       = showCustomModal;
     function getPrefs() {
         try {
             var raw = safeStorage.getItem(PREFS_KEY);
-            if (raw) { var p = JSON.parse(raw); return { aniversarios: p.aniversarios !== false, reparos: p.reparos !== false, boletos: p.boletos !== false }; }
+            if (raw) { var p = JSON.parse(raw); return { aniversarios: p.aniversarios !== false, reparos: p.reparos !== false }; }
         } catch(e) {}
-        return { aniversarios: true, reparos: true, boletos: true };
+        return { aniversarios: true, reparos: true };
     }
     function savePrefs(p) { safeStorage.setItem(PREFS_KEY, JSON.stringify(p)); }
 
@@ -11489,7 +11479,6 @@ window.showCustomModal       = showCustomModal;
         var parts = ['📢'];
         if (prefs.aniversarios) parts.push('🎂');
         if (prefs.reparos)      parts.push('🔧');
-        if (prefs.boletos)      parts.push('💸');
         var label = parts.join(' ');
         var el1 = document.getElementById('notifPrefLabel');
         var el2 = document.getElementById('notifPrefLabelSheet');
@@ -11534,16 +11523,14 @@ window.showCustomModal       = showCustomModal;
             + '<div style="height:1px;background:rgba(255,255,255,.07);margin:0 22px;"></div>'
             + row('aniv','🎂','rgba(251,146,60,.12)','#fb923c','Aniversários de clientes','Alerta no dia do aniversário','aniversarios')
             + row('rep','🔧','rgba(168,85,247,.12)','#a855f7','Alertas de reparo','Prazos próximos e vencidos','reparos')
-            + row('bol','💸','rgba(239,68,68,.12)','#ef4444','Boletos vencendo','Parcelas próximas do vencimento','boletos')
-            + '<div id="_npAuditRow" style="display:flex;align-items:center;gap:8px;padding:12px 22px 0;cursor:pointer;color:var(--text-secondary,#8899aa);font-size:.76rem;font-weight:600;"><i class="bi bi-search"></i> Ver clientes sem data de nascimento</div>'
             + '<button id="_npSaveBtn" style="width:calc(100% - 32px);margin:14px 16px 0;padding:14px;border:none;border-radius:14px;background:var(--primary-color,#00e5ff);color:#000;font-weight:700;font-size:.95rem;cursor:pointer;">Salvar preferências</button>'
             + '</div></div>';
 
         panel?.addEventListener('click', function(e) { if (e.target === panel) panel.remove(); });
         document.body.appendChild(panel);
 
-        ['aniversarios','reparos','boletos'].forEach(function(key) {
-            var idMap = { aniversarios:'aniv', reparos:'rep', boletos:'bol' };
+        ['aniversarios','reparos'].forEach(function(key) {
+            var idMap = { aniversarios:'aniv', reparos:'rep' };
             var _npBtn = document.getElementById('_np_' + idMap[key]);
             if (_npBtn) _npBtn?.addEventListener('click', function() {
                 cur[key] = !cur[key];
@@ -11558,11 +11545,6 @@ window.showCustomModal       = showCustomModal;
             panel.remove();
             if (typeof window.updateNotificationUI === 'function') window.updateNotificationUI(window._currentNotifications || []);
         });
-        var _npAuditRow = document.getElementById('_npAuditRow');
-        if (_npAuditRow) _npAuditRow?.addEventListener('click', function() {
-            panel.remove();
-            if (typeof window.auditarAniversarios === 'function') window.auditarAniversarios();
-        });
     };
 
     window.getNotifPref = function() { return getPrefs(); };
@@ -11573,7 +11555,6 @@ window.showCustomModal       = showCustomModal;
             if (n.isGeneral)  return true;
             if (n.isBirthday) return prefs.aniversarios;
             if (n.repairId)   return prefs.reparos;
-            if (n.boletoId)   return prefs.boletos;
             return true;
         });
     };
@@ -12213,8 +12194,9 @@ window.updateNotificationUI  = updateNotificationUI;
 })();
 
 // ============================================================
-// NOTIFICAÇÕES — "Ver contrato" usa a navegação da busca global
-// (overlay Sherlock + vence barreira do "Ver Mais")
+// NOTIFICAÇÕES — "Ver contrato" abre o histórico de documentos
+// (a navegação com overlay "Sherlock" da antiga busca global foi
+// removida; usa direto o fallback simples, que sempre funcionou)
 // ============================================================
 (function() {
     function hookVerBoleto() {
@@ -12223,18 +12205,12 @@ window.updateNotificationUI  = updateNotificationUI;
             // Fecha balões antes de navegar
             var container = document.getElementById('notif-balloons-container');
             if (container && typeof closeBalloons === 'function') closeBalloons(container);
-            // Usa o mesmo navigate da busca global (com Sherlock overlay)
-            if (typeof window._ctwNavigate === 'function') {
-                window._ctwNavigate('boleto', boletoId);
-            } else {
-                // Fallback básico
-                if (typeof window.showMainSection === 'function') window.showMainSection('contract');
-                setTimeout(function() {
-                    if (typeof window.openDocumentsSection === 'function') window.openDocumentsSection('contrato');
-                    var t = document.getElementById('boletoModeToggle');
-                    if (t && !t.checked) { t.checked = true; t.dispatchEvent(new Event('change')); }
-                }, 300);
-            }
+            if (typeof window.showMainSection === 'function') window.showMainSection('contract');
+            setTimeout(function() {
+                if (typeof window.openDocumentsSection === 'function') window.openDocumentsSection('contrato');
+                var t = document.getElementById('boletoModeToggle');
+                if (t && !t.checked) { t.checked = true; t.dispatchEvent(new Event('change')); }
+            }, 300);
         };
     }
     // Aguarda Favorites.js carregar (que define verBoletoDeNotificacao primeiro)
@@ -12248,7 +12224,10 @@ window.updateNotificationUI  = updateNotificationUI;
     var STYLE_KEY = 'ctwMenuStyle'; // 'classic' | 'v2'
 
     function isV2() {
-        return (localStorage.getItem(STYLE_KEY) || 'classic') === 'v2';
+        // LAYOUT 1.0 DESATIVADO: o app agora usa somente o Design 2.0.
+        // Trava aqui centraliza a decisão — todo o resto do código que
+        // consulta isV2()/localStorage('ctwMenuStyle') passa a ver sempre v2.
+        return true;
     }
 
     // Aplica o estilo sem animação (usado no boot)
@@ -12292,12 +12271,10 @@ window.updateNotificationUI  = updateNotificationUI;
             'goToAdmin2':             'goToAdmin',
             'openFecharVenda2':       'openFecharVenda',
             'openRepassarValores2':   'openRepassarValores',
-            'openEmprestarValores2':  'openEmprestarValores',
             'openCalcularEmprestimo2':'openCalcularEmprestimo',
             'openCalcularPorAparelho2':'openCalcularPorAparelho',
             'openContratoView2':      'openContratoView',
             'openBookipView2':        'openBookipView',
-            'openReciboView2':        null, // usa onclick direto
         };
 
         Object.keys(map).forEach(function(v2Id) {
@@ -12308,10 +12285,6 @@ window.updateNotificationUI  = updateNotificationUI;
                 btn?.addEventListener('click', function() {
                     var orig = document.getElementById(targetId);
                     if (orig) orig.click();
-                });
-            } else if (v2Id === 'openReciboView2') {
-                btn?.addEventListener('click', function() {
-                    if (typeof window.abrirReciboSimples === 'function') window.abrirReciboSimples();
                 });
             }
         });
@@ -12388,326 +12361,19 @@ window.updateNotificationUI  = updateNotificationUI;
 // → Movido para bookip.js: comprimirFotoBookip, uploadFotoCloudinary, initBookipPhoto
 
 // ============================================================
-// BUSCA GLOBAL
 // ============================================================
-(function() {
-    var _bookipsCache = [];
-    var _boletosCache = [];
-    var _repairsCache = [];
-    var _activeFilter = 'all';
-
-    function setupCaches() {
-        if (typeof db === 'undefined' || typeof onValue === 'undefined') {
-            setTimeout(setupCaches, 800);
-            return;
-        }
-        onValue(ref(db, 'bookips'), function(snap) {
-            if (snap.exists()) {
-                _bookipsCache = Object.entries(snap.val()).map(function(e) {
-                    return Object.assign({ id: e[0] }, e[1]);
-                });
-            }
-        });
-        onValue(ref(db, 'boletos'), function(snap) {
-            if (snap.exists()) {
-                _boletosCache = Object.entries(snap.val()).map(function(e) {
-                    return Object.assign({ id: e[0] }, e[1]);
-                });
-            }
-        });
-        onValue(ref(db, 'manutencao'), function(snap) {
-            if (snap.exists()) {
-                _repairsCache = Object.entries(snap.val()).map(function(e) {
-                    return Object.assign({ id: e[0] }, e[1]);
-                });
-            } else {
-                _repairsCache = [];
-            }
-        });
-    }
-
-    function norm(s) {
-        return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    }
-
-    function hl(text, q) {
-        if (!q || !text) return text || '';
-        var esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return text.replace(new RegExp('(' + esc + ')', 'gi'), '<span class="gs-hl">$1</span>');
-    }
-
-    function search(q) {
-        var nq = norm(q);
-        if (nq.length < 2) return [];
-        var results = [];
-        var af = _activeFilter;
-
-        if (af === 'all' || af === 'cliente') {
-            (window.dbClientsCache || []).forEach(function(c) {
-                if (norm([c.nome, c.cpf, c.tel, c.email].join(' ')).indexOf(nq) >= 0) {
-                    results.push({ type: 'cliente', id: c.id, title: c.nome || 'Sem nome', sub: [c.tel, c.cpf].filter(Boolean).join(' - '), data: c });
-                }
-            });
-        }
-        if (af === 'all' || af === 'bookip') {
-            _bookipsCache.forEach(function(b) {
-                var prods = (b.items || []).map(function(i) { return i.nome; }).join(' ');
-                if (norm([b.nome, b.cpf, b.tel, prods].join(' ')).indexOf(nq) >= 0) {
-                    results.push({ type: 'bookip', id: b.id, title: b.nome || 'Sem nome', sub: prods || b.dataVenda || '', data: b });
-                }
-            });
-        }
-        if (af === 'all' || af === 'boleto') {
-            _boletosCache.forEach(function(b) {
-                if (norm([b.compradorNome, b.compradorCpf, b.compradorTelefone, b.produtoModelo, b.produtoImei].join(' ')).indexOf(nq) >= 0) {
-                    results.push({ type: 'boleto', id: b.id, title: b.compradorNome || 'Sem nome', sub: [b.produtoModelo, b.produtoImei].filter(Boolean).join(' - ') || (b.numeroParcelas ? b.numeroParcelas + ' parcelas' : ''), data: b });
-                }
-            });
-        }
-        if (af === 'all' || af === 'conserto') {
-            _repairsCache.forEach(function(r) {
-                if (norm([r.nomeCliente, r.descricaoDefeito, r.numeroCliente].join(' ')).indexOf(nq) >= 0) {
-                    var statusLabels = { loja_sem_analise: 'Levar ao Técnico', em_reparo: 'Em Reparo', loja_reparado: 'Finalizado Loja', finalizado: 'Entregue' };
-                    results.push({ type: 'conserto', id: r.id, title: r.nomeCliente || 'Sem nome', sub: (r.descricaoDefeito || '') + (r.status ? ' · ' + (statusLabels[r.status] || r.status) : ''), data: r });
-                }
-            });
-        }
-        return results.slice(0, 30);
-    }
-
-    function renderResults(results, q) {
-        var cont = document.getElementById('gsResults');
-        var stat = document.getElementById('gsStatus');
-        if (!cont) return;
-        if (!results.length) {
-            stat.textContent = 'Nenhum resultado';
-            cont.innerHTML = '<div class="gs-empty">Nada encontrado para "' + q + '"</div>';
-            return;
-        }
-        stat.textContent = results.length + (results.length > 1 ? ' resultados' : ' resultado');
-        var icons = { cliente: '&#128101;', bookip: '&#128210;', boleto: '&#128203;' , conserto: '🔧' };
-        var tags = { cliente: 'Cliente', bookip: 'Bookip', boleto: 'Contrato' };
-        cont.innerHTML = results.map(function(r) {
-            return '<div class="gs-card" data-type="' + r.type + '" data-id="' + r.id + '">' +
-                '<div class="gs-card-icon gs-ic-' + r.type + '">' + icons[r.type] + '</div>' +
-                '<div class="gs-card-body"><div class="gs-card-title">' + hl(r.title, q) + '</div>' +
-                (r.sub ? '<div class="gs-card-sub">' + r.sub + '</div>' : '') + '</div>' +
-                '<span class="gs-card-tag gs-tag-' + r.type + '">' + tags[r.type] + '</span></div>';
-        }).join('');
-        cont.querySelectorAll('.gs-card').forEach(function(card) {
-            card?.addEventListener('click', function() {
-                fechar();
-                setTimeout(function() { navigate(card.dataset.type, card.dataset.id); }, 280);
-            });
-        });
-    }
-
-    // Helper: mostra/esconde overlay Sherlock
-    function gsNavShow(msg) {
-        var ov = document.getElementById('gsNavOverlay');
-        if (!ov) return;
-        var msgEl = document.getElementById('gsNavMsg');
-        if (msgEl) msgEl.textContent = msg || 'Encontrando...';
-        ov.style.display = 'flex';
-    }
-    function gsNavHide() {
-        var ov = document.getElementById('gsNavOverlay');
-        if (ov) { ov.style.opacity = '0'; ov.style.transition = 'opacity 0.3s'; setTimeout(function() { ov.style.display = 'none'; ov.style.opacity = '1'; ov.style.transition = ''; }, 320); }
-    }
-
-    function navigate(type, id) {
-
-        // Aplica glow no elemento encontrado
-        function applyGlow(el) {
-            if (!el) return;
-            el.classList.remove('gs-result-highlight');
-            void el.offsetWidth;
-            el.classList.add('gs-result-highlight');
-            setTimeout(function() { el.classList.remove('gs-result-highlight'); }, 5500);
-        }
-
-        if (type === 'cliente') {
-            gsNavShow('Abrindo cliente...');
-            if (typeof window.showMainSection === 'function') window.showMainSection('clients');
-            setTimeout(function() {
-                if (typeof window.editarCliente === 'function') window.editarCliente(id);
-                gsNavHide();
-            }, 500);
-
-        } else if (type === 'conserto') {
-            gsNavShow('Abrindo conserto...');
-            if (typeof window.showMainSection === 'function') window.showMainSection('repairs');
-            setTimeout(function() {
-                gsNavHide();
-                // Scroll to repair card if visible
-                var card = document.querySelector('[data-rep-id="' + id + '"]');
-                if (card) {
-                    card.closest('.rep-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-            }, 600);
-        } else if (type === 'bookip') {
-            gsNavShow('Encontrando garantia...');
-            if (typeof window.showMainSection === 'function') window.showMainSection('contract');
-            setTimeout(function() {
-                if (typeof window.openDocumentsSection === 'function') window.openDocumentsSection('bookip');
-                var t = document.getElementById('bookipModeToggle');
-                if (t && !t.checked) { t.checked = true; t.dispatchEvent(new Event('change')); }
-
-                // Aguarda histórico carregar, depois supera "Ver Mais" se necessário
-                var attempts = 0;
-                function tryFind() {
-                    attempts++;
-                    // Tenta suplantar barreira do ver mais
-                    if (typeof window._bookipNavigateTo === 'function') {
-                        window._bookipNavigateTo(id);
-                    }
-                    var collapseEl = document.getElementById('collapse-bk-' + id);
-                    if (collapseEl) {
-                        if (window.bootstrap) {
-                            bootstrap.Collapse.getOrCreateInstance(collapseEl, { toggle: false }).show();
-                            collapseEl?.addEventListener('shown.bs.collapse', function() {
-                                collapseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                setTimeout(function() { applyGlow(collapseEl.closest('.accordion-item') || collapseEl); }, 200);
-                            }, { once: true });
-                        } else {
-                            collapseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            applyGlow(collapseEl);
-                        }
-                        gsNavHide();
-                    } else if (attempts < 12) {
-                        setTimeout(tryFind, 300);
-                    } else {
-                        gsNavHide();
-                    }
-                }
-                setTimeout(tryFind, 500);
-            }, 300);
-
-        } else if (type === 'boleto') {
-            gsNavShow('Encontrando contrato...');
-            if (typeof window.showMainSection === 'function') window.showMainSection('contract');
-            setTimeout(function() {
-                if (typeof window.openDocumentsSection === 'function') window.openDocumentsSection('contrato');
-                var t = document.getElementById('boletoModeToggle');
-                if (t && !t.checked) { t.checked = true; t.dispatchEvent(new Event('change')); }
-
-                var attempts = 0;
-                function tryFindBoleto() {
-                    attempts++;
-                    var heading = document.getElementById('heading-' + id);
-                    var btn = heading ? heading.querySelector('button') : null;
-                    if (btn && window.bootstrap) {
-                        var target = btn.getAttribute('data-bs-target');
-                        if (target) {
-                            var el = document.querySelector(target);
-                            if (el) {
-                                bootstrap.Collapse.getOrCreateInstance(el, { toggle: false }).show();
-                                el?.addEventListener('shown.bs.collapse', function() {
-                                    heading.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                    setTimeout(function() { applyGlow(heading.closest('.accordion-item') || heading); }, 200);
-                                }, { once: true });
-                                gsNavHide();
-                                return;
-                            }
-                        }
-                    }
-                    if (attempts < 12) {
-                        setTimeout(tryFindBoleto, 300);
-                    } else {
-                        if (typeof window.verBoletoDeNotificacao === 'function') window.verBoletoDeNotificacao(id);
-                        gsNavHide();
-                    }
-                }
-                setTimeout(tryFindBoleto, 500);
-            }, 300);
-        }
-    }
-
-    // Expõe navigate para uso externo (notificações, etc.)
-    window._ctwNavigate = navigate;
-
-    function abrir() {
-        var o = document.getElementById('gsOverlay');
-        var i = document.getElementById('gsInput');
-        if (!o) return;
-        o.classList.remove('gs-hidden');
-        setTimeout(function() { if (i) i.focus(); }, 150);
-        setupCaches();
-    }
-
-    function fechar() {
-        var o = document.getElementById('gsOverlay');
-        if (!o) return;
-        o.classList.add('gs-hidden');
-        ['gsInput','gsResults','gsStatus','gsClearBtn'].forEach(function(id) {
-            var el = document.getElementById(id);
-            if (!el) return;
-            if (id === 'gsInput') el.value = '';
-            else if (id === 'gsResults') el.innerHTML = '';
-            else if (id === 'gsStatus') el.textContent = 'Digite para buscar';
-            else if (id === 'gsClearBtn') el.classList.add('gs-hidden');
-        });
-    }
-
-    function init() {
-        var btn = document.getElementById('globalSearchBtn');
-        var input = document.getElementById('gsInput');
-        if (btn) btn?.addEventListener('click', abrir);
-        var cancel = document.getElementById('gsCancelBtn');
-        if (cancel) cancel?.addEventListener('click', fechar);
-        var bd = document.getElementById('gsBackdrop');
-        if (bd) bd?.addEventListener('click', fechar);
-        var clearBtn = document.getElementById('gsClearBtn');
-        if (clearBtn) clearBtn?.addEventListener('click', function() {
-            if (input) { input.value = ''; input.focus(); }
-            clearBtn.classList.add('gs-hidden');
-            var r = document.getElementById('gsResults'); if (r) r.innerHTML = '';
-            var s = document.getElementById('gsStatus'); if (s) s.textContent = 'Digite para buscar';
-        });
-
-        document.querySelectorAll('.gs-filter').forEach(function(f) {
-            f?.addEventListener('click', function() {
-                document.querySelectorAll('.gs-filter').forEach(function(x) { x.classList.remove('active'); });
-                f.classList.add('active');
-                _activeFilter = f.dataset.filter;
-                var q = input ? input.value.trim() : '';
-                if (q.length >= 2) renderResults(search(q), q);
-            });
-        });
-
-        if (input) {
-            var timer;
-            input?.addEventListener('input', function() {
-                var q = input.value.trim();
-                var cb = document.getElementById('gsClearBtn');
-                if (cb) cb.classList.toggle('gs-hidden', !q);
-                clearTimeout(timer);
-                var s = document.getElementById('gsStatus');
-                var r = document.getElementById('gsResults');
-                if (q.length < 2) {
-                    if (r) r.innerHTML = '';
-                    if (s) s.textContent = q.length === 1 ? 'Continue digitando...' : 'Digite para buscar';
-                    return;
-                }
-                if (s) s.textContent = 'Buscando...';
-                timer = setTimeout(function() { renderResults(search(q), q); }, 280);
-            });
-        }
-
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') { var o = document.getElementById('gsOverlay'); if (o && !o.classList.contains('gs-hidden')) fechar(); }
-        });
-    }
-
-    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); } else { init(); }
-})();
+// BUSCA GLOBAL — REMOVIDA a pedido (não era usada, e desligar reduz
+// carga de JS/listeners rodando em background). O botão globalSearchBtn
+// também foi removido do HTML. O fallback de 'Ver contrato' das
+// notificações já cobre a navegação básica sem depender deste módulo.
+// ============================================================
 
 
 // ============================================================
 // BOTTOM NAV — Estilo 2.0
 // ============================================================
 (function() {
-    function isV2() { return localStorage.getItem('ctwMenuStyle') === 'v2'; }
+    function isV2() { return true; /* LAYOUT 1.0 DESATIVADO — sempre v2 */ }
 
     // Sincroniza o badge do sino com as notificações existentes
     function syncNavBadge() {
@@ -12724,8 +12390,17 @@ window.updateNotificationUI  = updateNotificationUI;
         }
     }
 
+    // Saudação dinâmica por horário do dia
+    function syncGreeting() {
+        var el = document.getElementById('ctwGreeting');
+        if (!el) return;
+        var h = new Date().getHours();
+        el.textContent = (h < 12) ? 'Bom dia' : (h < 18) ? 'Boa tarde' : 'Boa noite';
+    }
+
     // Atualiza nome no sheet
     function syncSheetProfile() {
+        syncGreeting();
         var nameEl  = document.getElementById('ctwSheetProfileName');
         var navLbl  = document.getElementById('ctwNavProfileLabel');
         var headEl  = document.getElementById('ctwTopHeaderName');
@@ -12836,15 +12511,6 @@ window.updateNotificationUI  = updateNotificationUI;
         if (_navInitialized) return;
         _navInitialized = true;
 
-        // Top pill busca → dispara o mesmo globalSearchBtn
-        var topSearch = document.getElementById('ctwTopSearchBtn');
-        if (topSearch) {
-            topSearch?.addEventListener('click', function() {
-                var gsBtn = document.getElementById('globalSearchBtn');
-                if (gsBtn) gsBtn.click();
-            });
-        }
-
         // Botão HOME
         var homeBtn = document.getElementById('ctwNavHome');
         if (homeBtn) {
@@ -12940,86 +12606,5 @@ window.updateNotificationUI  = updateNotificationUI;
     }
 })();
 
-// ============================================================
-// PROMO BANNER — Sugestão de migrar para o Layout 2.0
-// Lógica:
-//   · Sem registro  → aparece imediatamente (novo deploy / primeira vez)
-//   · "Sim"         → ativa v2, grava 'accepted', nunca mais aparece
-//   · "Não" (1ª vez)→ aguarda 3 dias
-//   · "Não" (2ª vez+)→ aguarda 4 dias (ciclo fixo)
-// ============================================================
-(function() {
-    var PROMO_STATUS_KEY  = 'ctwV2PromoStatus';   // 'accepted' | ausente
-    var PROMO_NEXT_KEY    = 'ctwV2PromoNext';      // timestamp ms | ausente
-    var PROMO_REFUSALS_KEY = 'ctwV2PromoRefusals'; // número inteiro
-
-    var DELAY_FIRST = 3 * 24 * 60 * 60 * 1000;  // 3 dias em ms
-    var DELAY_LOOP  = 4 * 24 * 60 * 60 * 1000;  // 4 dias em ms
-
-    function isV2Active() {
-        return localStorage.getItem('ctwMenuStyle') === 'v2';
-    }
-
-    function shouldShow() {
-        if (isV2Active())                                          return false;
-        if (localStorage.getItem(PROMO_STATUS_KEY) === 'accepted') return false;
-
-        var next = localStorage.getItem(PROMO_NEXT_KEY);
-        if (!next) return true;                    // sem registro = mostra agora
-        return Date.now() >= parseInt(next, 10);   // passou do prazo?
-    }
-
-    function showBanner() {
-        var banner = document.getElementById('v2PromoBanner');
-        if (!banner) return;
-        banner.style.display = 'flex';
-
-        var btnYes = document.getElementById('v2PromoBtnYes');
-        var btnNo  = document.getElementById('v2PromoBtnNo');
-
-        function closeBanner() {
-            banner.style.animation = 'v2PromoFadeIn .25s ease reverse forwards';
-            setTimeout(function() { banner.style.display = 'none'; banner.style.animation = ''; }, 260);
-        }
-
-        if (btnYes) {
-            btnYes.onclick = function() {
-                closeBanner();
-                // Marca como aceito
-                localStorage.setItem(PROMO_STATUS_KEY, 'accepted');
-                // Ativa layout 2.0 (usa a mesma função do app)
-                setTimeout(function() {
-                    if (typeof window.ativarEstilo20 === 'function') {
-                        // ativarEstilo20 é um toggle — garante que estamos ativando, não desativando
-                        if (!isV2Active()) window.ativarEstilo20();
-                    }
-                }, 300);
-            };
-        }
-
-        if (btnNo) {
-            btnNo.onclick = function() {
-                closeBanner();
-                var refusals = parseInt(localStorage.getItem(PROMO_REFUSALS_KEY) || '0', 10);
-                refusals += 1;
-                localStorage.setItem(PROMO_REFUSALS_KEY, String(refusals));
-                var delay = refusals === 1 ? DELAY_FIRST : DELAY_LOOP;
-                localStorage.setItem(PROMO_NEXT_KEY, String(Date.now() + delay));
-            };
-        }
-
-        // Toque no fundo escuro = mesmo que "Não"
-        banner?.addEventListener('click', function(e) {
-            if (e.target === banner && btnNo) btnNo.click();
-        }, { once: true });
-    }
-
-    // Aguarda um tick depois do login para não conflitar com animações do app
-    var _origConfirmed = window.setProfileConfirmed;
-    window.setProfileConfirmed = function(name) {
-        if (typeof _origConfirmed === 'function') _origConfirmed(name);
-        setTimeout(function() {
-            if (shouldShow()) showBanner();
-        }, 900); // pequeno delay para o usuário ver a tela principal primeiro
-    };
-})();
+// (Banner promocional "Layout 2.0" removido — layout 2.0 é o único
+// layout do app, o convite para experimentá-lo não faz mais sentido.)

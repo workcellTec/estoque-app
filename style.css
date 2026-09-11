@@ -1,27 +1,33 @@
 :root {
-    /* TEMA: CYBER BLUE */
-    --primary-color: #2979FF;       /* Azul Elétrico Brilhante */
-    --primary-color-rgb: 41, 121, 255;
-    --tertiary-color: #0B1120;      /* Azul Noturno Profundo (Fundo) */
-    --text-color: #E2E8F0;          /* Branco Suave */
+    /* TEMA ESCURO — cinza-carvão + verde pastel (referência: Inter, Claude).
+       Antes: fundo preto puro (#000) + verde neon (#30D158) muito saturado,
+       o que criava sensação de "brilho forte". Agora: fundo cinza-carvão
+       com profundidade sutil entre camadas, verde dessaturado sem glow. */
+    --primary-color: #6FBF8B;       /* Verde pastel/dessaturado (era #30D158, neon) */
+    --primary-color-rgb: 111, 191, 139;
+    --tertiary-color: #16171A;      /* Cinza-carvão (era #000000, preto puro) */
+    --text-color: #E8E9EB;          /* Branco suave, sem contraste extremo */
     --text-color-strong: #FFFFFF;
-    --text-secondary: #94A3B8;      /* Cinza Azulado */
-    --text-success: #00E676;        /* Verde Neon */
-    
-    /* Vidro mais azulado e moderno */
-    --glass-bg: rgba(30, 41, 59, 0.7); 
-    --glass-border: rgba(148, 163, 184, 0.1);
-    --shadow-color: rgba(0, 0, 0, 0.4);
-    
-    --input-bg: rgba(15, 23, 42, 0.6);
-    --input-border: rgba(56, 189, 248, 0.1); /* Borda sutil azul */
-    
+    --text-secondary: #9497A0;      /* Cinza neutro médio */
+    --text-success: #6FBF8B;
+
+    /* Vidro neutro, sem tingir de azul */
+    --glass-bg: rgba(38, 40, 45, 0.7);
+    --glass-border: rgba(148, 151, 160, 0.15);
+    --shadow-color: rgba(0, 0, 0, 0.35);
+
+    --input-bg: rgba(38, 40, 45, 0.6);
+    --input-border: rgba(148, 151, 160, 0.18);
+
     --border-radius: 16px;
     --transition-duration: 0.3s;
-    
-    /* Brilhos de fundo */
-    --glow-1: #00B0FF; /* Azul Claro */
-    --glow-2: #2979FF; /* Azul Escuro */
+    --card-bg: #202226;             /* Um tom acima do fundo — profundidade sutil (era #1c1c1e) */
+    --bg-color: var(--tertiary-color); /* usado por CreditoScan/Reposição/FecharVenda */
+
+    /* Glow removido do uso prático (mantido só por compatibilidade de
+       variável — nenhum brilho saturado por trás dos cards). */
+    --glow-1: #6FBF8B;
+    --glow-2: #4F9C6D;
 }
 
 
@@ -29,21 +35,23 @@
 
 
 [data-theme="light"] {
-    --primary-color: #B71C1C;
-    --primary-color-rgb: 183, 28, 28;
+    /* TEMA CLARO — mesmo espírito pastel do escuro, verde dessaturado */
+    --primary-color: #4F9C6D;       /* Verde pastel (era #248A3D, mais vívido) */
+    --primary-color-rgb: 79, 156, 109;
     --secondary-color: #f4f4f5;
-    --tertiary-color: #ffffff;
+    --tertiary-color: #F2F1EE;
     --text-color: #18181b;
     --text-color-strong: #000000;
     --text-secondary: #52525b;
-    --text-success: #16a34a;
+    --text-success: #4F9C6D;
     --glass-bg: rgba(255, 255, 255, 0.75);
     --glass-border: rgba(0, 0, 0, 0.1);
-    --shadow-color: rgba(183, 28, 28, 0.15);
+    --shadow-color: rgba(0, 0, 0, 0.1);
     --input-bg: #f4f4f5;
     --input-border: #d4d4d8;
-    --glow-1: #D1C4E9;
-    --glow-2: #FFCDD2;
+    --glow-1: #6FBF8B;
+    --glow-2: #4F9C6D;
+    --card-bg: #ffffff;
 }
 
 html { box-sizing: border-box; height: 100%; }
@@ -399,7 +407,7 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
 .content-card, .admin-section { animation: fadeInAndUp 0.5s ease-out forwards; }
 
 .btn:active, .btn-menu:active { transform: scale(0.97); transition: transform 0.1s ease; }
-.lucro-extra-valor { color: #0d6efd; font-weight: bold; text-shadow: 0 0 4px rgba(0, 217, 255, 0.7); }
+.lucro-extra-valor { color: #0d6efd; font-weight: bold; }
 [data-theme="light"] .lucro-extra-valor { color: #0056b3; text-shadow: none; }
 
 .product-data-row.is-active { background-color: rgba(var(--primary-color-rgb), 0.1); }
@@ -615,7 +623,6 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
 #top-right-controls .dropdown-menu .text-danger * {
     color: #ff4d4d !important;
     font-weight: 700 !important;
-    text-shadow: 0 0 8px rgba(255, 0, 0, 0.4);
 }
 
 /* Fundo suave para destacar o texto vermelho */
@@ -1336,17 +1343,9 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
     border: 1px solid var(--glass-border);
 }
 
-.stock-item-card.is-checked {
-    opacity: 1 !important; /* Remove a transparência antiga */
-    border-color: var(--text-success) !important; /* Borda verde */
-    background: linear-gradient(90deg, rgba(var(--text-success), 0.05) 0%, rgba(var(--primary-color-rgb), 0.05) 100%);
-    box-shadow: 0 0 15px rgba(22, 163, 74, 0.15); /* Brilho verde suave */
-}
-
-.stock-item-card.is-checked .product-name {
-    color: var(--text-success) !important; /* Nome fica verde */
-    text-decoration: none; /* Garante que não tenha risco */
-}
+/* NOTA: regra .stock-item-card.is-checked consolidada mais abaixo
+   (era duplicada aqui e na linha ~2538; a de baixo sempre vencia por
+   causa do !important, então esta cópia era código morto). */
 
 /* Ícone de check do switch mais evidente */
 .form-check-input:checked {
@@ -1355,79 +1354,7 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
     filter: drop-shadow(0 0 2px rgba(0,255,0,0.5));
 }
 
-    /* --- TEMAS DE CORES PERSONALIZADOS --- */
 
-/* 1. AZUL CYBER (Cyber Blue) */
-body[data-color="blue"] {
-    --primary-color: #2979FF;
-    --primary-color-rgb: 41, 121, 255;
-    --glow-1: #00B0FF; --glow-2: #2979FF;
-}
-/* Fundo especial azulado apenas no modo escuro */
-body[data-color="blue"][data-theme="dark"] {
-    --tertiary-color: #0B1120;
-    --glass-bg: rgba(30, 41, 59, 0.75);
-    --input-bg: rgba(15, 23, 42, 0.6);
-}
-
-/* 2. VERDE DINHEIRO (Emerald) */
-body[data-color="green"] {
-    --primary-color: #00C853;
-    --primary-color-rgb: 0, 200, 83;
-    --glow-1: #00E676; --glow-2: #FFD600;
-}
-body[data-color="green"][data-theme="dark"] {
-    --tertiary-color: #050505;
-    --glass-bg: rgba(20, 20, 20, 0.8);
-}
-
-/* 3. ROXO NUBANK (Deep Purple) */
-body[data-color="purple"] {
-    --primary-color: #8B5CF6;
-    --primary-color-rgb: 139, 92, 246;
-    --glow-1: #7C3AED; --glow-2: #EC4899;
-}
-body[data-color="purple"][data-theme="dark"] {
-    --tertiary-color: #0F0720;
-    --glass-bg: rgba(46, 16, 101, 0.5);
-    --input-bg: rgba(0, 0, 0, 0.3);
-}
-
-/* 4. LARANJA SUNSET (Orange) */
-body[data-color="orange"] {
-    --primary-color: #FF6D00;
-    --primary-color-rgb: 255, 109, 0;
-    --glow-1: #FFAB00; --glow-2: #FF3D00;
-}
-
-
-
-
-/* Botão do Pincel (Para abrir o menu) */
-#theme-palette-btn {
-    width: 45px; height: 45px;
-    border-radius: 50%;
-    background-color: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    color: var(--text-color);
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 4px 15px var(--shadow-color);
-    transition: transform 0.2s;
-    backdrop-filter: blur(5px);
-}
-#theme-palette-btn:hover { transform: scale(1.1); }
-
-/* Botões de escolha de cor no Modal */
-.theme-option-btn {
-    width: 50px; height: 50px; border-radius: 50%; border: 2px solid transparent;
-    cursor: pointer; transition: transform 0.2s;
-    display: flex; align-items: center; justify-content: center;
-    color: white; font-size: 1.2rem;
-}
-.theme-option-btn:hover { transform: scale(1.1); }
-.theme-option-btn.active { border-color: #FFF; box-shadow: 0 0 10px rgba(255,255,255,0.5); }
-    
     /* --- PACOTE DE ANIMAÇÕES PREMIUM (UI MOTION) --- */
 
 /* 1. Animação de Entrada de Tela (Slide Up Suave) */
@@ -1450,7 +1377,7 @@ body[data-color="orange"] {
 
 /* 2. Botões "Elásticos" (Clicky Buttons) */
 /* Dá sensação de clique físico */
-.btn:active, .btn-menu:active, .stock-qty-btn:active, .theme-option-btn:active {
+.btn:active, .btn-menu:active, .stock-qty-btn:active {
     transform: scale(0.92) !important; /* Encolhe mais ao clicar */
     transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -2173,19 +2100,17 @@ html, body {
     padding: 0;
     scroll-behavior: smooth;
 }
-/* --- SOLUÇÃO ANTI-ELÁSTICO (NUCLEAR) --- */
+/* --- FIX: a antiga "solução anti-elástico" usava overflow:hidden em
+   html/body inteiros, o que impedia QUALQUER rolagem da página assim que
+   o conteúdo interno (ex: grid de cards da home) ficava maior que a tela
+   — o app parecia "travado" ao tentar rolar. overscroll-behavior:none já
+   resolve o efeito elástico/bounce do iOS Safari sozinho, sem precisar
+   proibir o scroll de verdade. --- */
 
 html, body {
-    /* 1. Trava a página inteira na tela */
-    position: fixed !important;
-    width: 100% !important;
-    height: 100% !important;
-    
-    /* 2. Proíbe rolagem na raiz (mata o elástico do navegador) */
-    overflow: hidden !important;
+    width: 100%;
+    height: 100%;
     overscroll-behavior: none !important;
-    
-    /* 3. Garante que o fundo do "buraco" seja da cor do seu app */
     background-color: var(--tertiary-color) !important;
 }
 
@@ -2602,158 +2527,18 @@ tr, td, .card, .list-group-item {
 
 .stock-item-card.is-checked {
     opacity: 1 !important;
-    background: rgba(22, 163, 74, 0.1) !important;
-    border: 1px solid #4ade80 !important;
-    box-shadow: 0 0 15px rgba(74, 222, 128, 0.2) !important;
+    background: rgba(var(--primary-color-rgb), 0.1) !important;
+    border: 1px solid var(--primary-color) !important;
+    box-shadow: 0 0 8px rgba(var(--primary-color-rgb), 0.15) !important;
     transform: scale(1.01) !important;
 }
 
 .stock-item-card.is-checked .product-name {
-    color: #4ade80 !important;
+    color: var(--primary-color) !important;
     font-weight: 700 !important;
 }
 
-/* --- TEMAS DE CORES (Consolidado - Removendo duplicações) --- */
-:root {
-    --primary-color: #EF5350 !important;
-    --primary-color-rgb: 239, 83, 80 !important;
-    --glow-1: #8A2BE2 !important;
-    --glow-2: #B71C1C !important;
-    --tertiary-color: #0d0303 !important;
-    --glass-bg: rgba(28, 28, 28, 0.65) !important;
-    --input-bg: rgba(44, 44, 46, 0.7) !important;
-}
-
-body[data-color="blue"] {
-    --primary-color: #2979FF !important;
-    --primary-color-rgb: 41, 121, 255 !important;
-    --glow-1: #00B0FF !important;
-    --glow-2: #2979FF !important;
-}
-
-body[data-color="blue"][data-theme="dark"] {
-    --tertiary-color: #0B1120 !important;
-    --glass-bg: rgba(30, 41, 59, 0.85) !important;
-    --input-bg: rgba(15, 23, 42, 0.7) !important;
-}
-
-body[data-color="green"] {
-    --primary-color: #00C853 !important;
-    --primary-color-rgb: 0, 200, 83 !important;
-    --glow-1: #00E676 !important;
-    --glow-2: #FFD600 !important;
-}
-
-body[data-color="green"][data-theme="dark"] {
-    --tertiary-color: #030d05 !important;
-    --glass-bg: rgba(10, 30, 15, 0.85) !important;
-}
-
-body[data-color="purple"] {
-    --primary-color: #8B5CF6 !important;
-    --primary-color-rgb: 139, 92, 246 !important;
-    --glow-1: #7C3AED !important;
-    --glow-2: #EC4899 !important;
-}
-
-body[data-color="purple"][data-theme="dark"] {
-    --tertiary-color: #0F0720 !important;
-    --glass-bg: rgba(46, 16, 101, 0.6) !important;
-    --input-bg: rgba(0, 0, 0, 0.4) !important;
-}
-
-body[data-color="orange"] {
-    --primary-color: #FF6D00 !important;
-    --primary-color-rgb: 255, 109, 0 !important;
-    --glow-1: #FFAB00 !important;
-    --glow-2: #FF3D00 !important;
-}
-
-body[data-color="orange"][data-theme="dark"] {
-    --tertiary-color: #0f0600 !important;
-    --glass-bg: rgba(40, 18, 5, 0.85) !important;
-    --input-bg: rgba(25, 10, 0, 0.5) !important;
-}
-
-body[data-color="pink"] {
-    --primary-color: #FF4081 !important;
-    --primary-color-rgb: 255, 64, 129 !important;
-    --glow-1: #FF80AB !important;
-    --glow-2: #F50057 !important;
-    --text-success: #FF4081 !important;
-}
-
-body[data-color="pink"][data-theme="dark"] {
-    --tertiary-color: #1F0510 !important;
-    --glass-bg: rgba(60, 10, 30, 0.6) !important;
-    --input-bg: rgba(40, 5, 20, 0.4) !important;
-}
-
-body[data-color="cyan"] {
-    --primary-color: #00E5FF !important;
-    --primary-color-rgb: 0, 229, 255 !important;
-    --glow-1: #84FFFF !important;
-    --glow-2: #00B8D4 !important;
-    --text-success: #00E5FF !important;
-}
-
-body[data-color="cyan"][data-theme="dark"] {
-    --tertiary-color: #001515 !important;
-    --glass-bg: rgba(5, 40, 45, 0.6) !important;
-    --input-bg: rgba(0, 25, 30, 0.4) !important;
-}
-
-body[data-color="yellow"] {
-    --primary-color: #FFD740 !important;
-    --primary-color-rgb: 255, 215, 64 !important;
-    --glow-1: #FFE57F !important;
-    --glow-2: #FFAB00 !important;
-    --text-success: #FFD740 !important;
-}
-
-body[data-color="yellow"][data-theme="dark"] {
-    --tertiary-color: #151200 !important;
-    --glass-bg: rgba(45, 35, 5, 0.6) !important;
-    --input-bg: rgba(30, 25, 0, 0.4) !important;
-    --text-color-strong: #FFFFFF !important;
-}
-
-/* --- BOTÃO DE TEMA --- */
-#theme-palette-btn {
-    width: 45px;
-    height: 45px;
-    border-radius: 50%;
-    background-color: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    color: var(--text-color);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 4px 15px var(--shadow-color);
-    backdrop-filter: blur(5px);
-    margin-bottom: 10px;
-}
-
-.theme-option-btn {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    border: 2px solid transparent;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 1.4rem;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-}
-
-.theme-option-btn.active {
-    border-color: #FFF;
-    box-shadow: 0 0 15px rgba(255,255,255,0.6);
-    transform: scale(1.1);
-}
+/* Paleta única (verde), sem alternativas de cor. Ver bloco :root no topo do arquivo. */
 
 /* --- ANIMAÇÕES --- */
 .container:not(.hidden),
@@ -2775,8 +2560,7 @@ body[data-color="yellow"][data-theme="dark"] {
 
 .btn:active,
 .btn-menu:active,
-.stock-qty-btn:active,
-.theme-option-btn:active {
+.stock-qty-btn:active {
     transform: scale(0.90) !important;
     transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
@@ -3036,14 +2820,13 @@ body::after {
 .ctw-boot-central {
     font-size: 1.2rem;
     font-weight: 700;
-    color: #00e5ff;
-    text-shadow: 0 0 18px rgba(0,229,255,0.7);
+    color: var(--primary-color);
+    /* Sem glow/text-shadow — visual limpo em vez de neon */
 }
 .ctw-boot-workcell {
     font-size: 1.2rem;
     font-weight: 700;
-    color: #ff6d00;
-    text-shadow: 0 0 18px rgba(255,109,0,0.7);
+    color: var(--text-color);
 }
 
 /* ── CARROSSEL ── */
@@ -3063,18 +2846,19 @@ body::after {
     justify-content: center;
 }
 
-/* Borda giratória com gradiente */
+/* Borda giratória — antes usava gradiente multicolorido vívido
+   (azul/ciano/roxo/laranja); agora tons pastel discretos da própria marca. */
 .ctw-carousel-border {
     position: absolute;
     inset: 0;
     border-radius: 50%;
     background: conic-gradient(
         from 0deg,
-        #2979ff,
-        #00e5ff,
-        #8b5cf6,
-        #ff6d00,
-        #2979ff
+        var(--primary-color),
+        #9CCDB0,
+        #C9C9CE,
+        #9CCDB0,
+        var(--primary-color)
     );
     animation: ctw-border-spin 3s linear infinite;
     mask: radial-gradient(farthest-side, transparent calc(100% - 3px), white calc(100% - 3px));
@@ -3091,7 +2875,7 @@ body::after {
     height: 156px;
     border-radius: 50%;
     overflow: hidden;
-    background: #0a1628;
+    background: var(--tertiary-color);
     position: relative;
     z-index: 2;
     display: flex;
@@ -3110,11 +2894,11 @@ body::after {
 }
 .ctw-carousel-window::before {
     left: 0;
-    background: linear-gradient(90deg, #0a1628, transparent);
+    background: linear-gradient(90deg, var(--tertiary-color), transparent);
 }
 .ctw-carousel-window::after {
     right: 0;
-    background: linear-gradient(-90deg, #0a1628, transparent);
+    background: linear-gradient(-90deg, var(--tertiary-color), transparent);
 }
 
 /* Track horizontal que se move */
@@ -3131,7 +2915,7 @@ body::after {
     to   { transform: translateX(0);    opacity: 1; }
 }
 
-/* Cada item do carrossel */
+/* Cada item do carrossel — drop-shadow suavizado (era um glow azul forte) */
 .ctw-carousel-item {
     display: flex;
     flex-direction: column;
@@ -3140,7 +2924,7 @@ body::after {
     min-width: 156px;
     font-size: 3.2rem;
     line-height: 1;
-    filter: drop-shadow(0 0 12px rgba(41,121,255,0.5));
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
     transition: filter 0.3s;
 }
 
@@ -3230,9 +3014,9 @@ body::after {
 .profile-icon-online {
     width: 8px;
     height: 8px;
-    background: #00E676;
+    background: var(--primary-color);
     border-radius: 50%;
-    box-shadow: 0 0 10px #00E676;
+    box-shadow: 0 0 4px rgba(var(--primary-color-rgb), 0.5);
 }
 
 .text-color-custom {
@@ -3577,475 +3361,8 @@ body::after {
     50%       { opacity: 0.75; }
 }
 
-/* ============================================================
-   🔍 BUSCA GLOBAL
-   ============================================================ */
-
-/* Botão de busca no top bar */
-.global-search-trigger {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    font-size: 1.1rem;
-    cursor: pointer;
-    padding: 6px 10px;
-    border-radius: 10px;
-    transition: color 0.2s, background 0.2s;
-    display: flex;
-    align-items: center;
-}
-.global-search-trigger:hover {
-    color: var(--primary-color);
-    background: rgba(var(--primary-color-rgb), 0.1);
-}
-
-/* Overlay */
-.gs-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 20000;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    overflow: hidden;
-}
-.gs-overlay.hidden { display: none; }
-
-.gs-backdrop {
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(6px);
-    animation: notif-overlay-in 0.2s ease;
-}
-
-/* Painel */
-.gs-panel {
-    position: relative;
-    width: 100%;
-    max-width: min(560px, 100vw);
-    box-sizing: border-box;
-    background: var(--glass-bg);
-    backdrop-filter: blur(24px);
-    border-bottom: 1px solid var(--glass-border);
-    display: flex;
-    flex-direction: column;
-    max-height: 90vh;
-    animation: gs-slide-down 0.25s cubic-bezier(0.34,1.56,0.64,1);
-}
-
-@keyframes gs-slide-down {
-    from { transform: translateY(-20px); opacity: 0; }
-    to   { transform: translateY(0);     opacity: 1; }
-}
-
-/* Header com input */
-.gs-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 16px;
-    border-bottom: 1px solid var(--glass-border);
-    flex-shrink: 0;
-}
-
-.gs-input-wrap {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid var(--glass-border);
-    border-radius: 12px;
-    padding: 10px 14px;
-}
-
-.gs-input-wrap input {
-    min-width: 0;
-    width: 100%;
-}
-
-.gs-icon {
-    color: var(--text-secondary);
-    font-size: 1rem;
-    flex-shrink: 0;
-}
-
-#globalSearchInput {
-    flex: 1;
-    background: none;
-    border: none;
-    outline: none;
-    color: var(--text-color);
-    font-size: 1rem;
-    font-family: 'Poppins', sans-serif;
-    caret-color: var(--primary-color);
-}
-#globalSearchInput::placeholder { color: var(--text-secondary); opacity: 0.6; }
-
-.gs-clear {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 0;
-    font-size: 0.8rem;
-    flex-shrink: 0;
-}
-.gs-clear.hidden { display: none; }
-
-.gs-cancel {
-    background: none;
-    border: none;
-    color: var(--primary-color);
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    flex-shrink: 0;
-    padding: 0;
-    font-family: 'Poppins', sans-serif;
-}
-
-/* Status */
-.gs-status {
-    padding: 10px 16px 6px;
-    font-size: 0.72rem;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    font-family: 'Poppins', sans-serif;
-    flex-shrink: 0;
-}
-
-/* Resultados */
-.gs-results {
-    overflow-y: auto;
-    flex: 1;
-    padding: 4px 0 16px;
-    -webkit-overflow-scrolling: touch;
-}
-.gs-results::-webkit-scrollbar { width: 3px; }
-.gs-results::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
-
-/* Card de resultado */
-.gs-result-card {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
-    cursor: pointer;
-    transition: background 0.15s;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
-    -webkit-tap-highlight-color: transparent;
-}
-.gs-result-card:active, .gs-result-card:hover {
-    background: rgba(var(--primary-color-rgb), 0.08);
-}
-
-.gs-result-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.2rem;
-    flex-shrink: 0;
-}
-.gs-icon-cliente  { background: rgba(41,121,255,0.15); }
-.gs-icon-bookip   { background: rgba(0,200,83,0.15); }
-.gs-icon-boleto   { background: rgba(255,109,0,0.15); }
-
-.gs-result-body {
-    flex: 1;
-    min-width: 0;
-}
-.gs-result-title {
-    font-size: 0.88rem;
-    font-weight: 600;
-    color: var(--text-color-strong);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.gs-result-sub {
-    font-size: 0.72rem;
-    color: var(--text-secondary);
-    margin-top: 2px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.gs-result-tag {
-    font-size: 0.65rem;
-    font-weight: 600;
-    padding: 3px 8px;
-    border-radius: 20px;
-    flex-shrink: 0;
-    letter-spacing: 0.5px;
-}
-.gs-tag-cliente { background: rgba(41,121,255,0.15);  color: #2979ff; }
-.gs-tag-bookip  { background: rgba(0,200,83,0.15);   color: #00c853; }
-.gs-tag-boleto  { background: rgba(255,109,0,0.15);  color: #ff6d00; }
-
-/* highlight da busca */
-.gs-highlight {
-    background: rgba(var(--primary-color-rgb), 0.25);
-    border-radius: 2px;
-    padding: 0 1px;
-}
-
-.gs-empty {
-    text-align: center;
-    padding: 40px 20px;
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-}
-
-/* ============================================================
-   BUSCA GLOBAL
-   ============================================================ */
-.gs-trigger-btn {
-    background: none; border: none; cursor: pointer;
-    color: var(--text-secondary); font-size: 1.05rem;
-    padding: 6px 8px; border-radius: 10px;
-    transition: color .2s, background .2s;
-    display: flex; align-items: center;
-}
-.gs-trigger-btn:hover { color: var(--primary-color); background: rgba(var(--primary-color-rgb),.1); }
-
-.gs-overlay {
-    position: fixed; inset: 0; z-index: 20000;
-    display: flex; flex-direction: column; align-items: center;
-}
-.gs-hidden { display: none !important; }
-
-.gs-backdrop {
-    position: absolute; inset: 0;
-    background: rgba(0,0,0,.55);
-    backdrop-filter: blur(5px);
-    animation: gsOverlayIn .18s ease;
-}
-@keyframes gsOverlayIn { from{opacity:0} to{opacity:1} }
-
-.gs-panel {
-    position: relative; width: 100%; max-width: 560px;
-    background: var(--glass-bg); backdrop-filter: blur(24px);
-    border-bottom: 1px solid var(--glass-border);
-    display: flex; flex-direction: column;
-    max-height: 88vh;
-    animation: gsPanelIn .22s cubic-bezier(.34,1.56,.64,1);
-}
-@keyframes gsPanelIn { from{transform:translateY(-16px);opacity:0} to{transform:translateY(0);opacity:1} }
-
-.gs-header {
-    display: flex; align-items: center; gap: 10px;
-    padding: 13px 14px; border-bottom: 1px solid var(--glass-border);
-    flex-shrink: 0;
-}
-.gs-input-wrap {
-    flex: 1; display: flex; align-items: center; gap: 9px;
-    background: rgba(255,255,255,.06); border: 1px solid var(--glass-border);
-    border-radius: 11px; padding: 9px 13px;
-}
-.gs-icon-sm { color: var(--text-secondary); font-size: .95rem; flex-shrink: 0; }
-#gsInput {
-    flex: 1; background: none; border: none; outline: none;
-    color: var(--text-color); font-size: .97rem;
-    font-family: 'Poppins', sans-serif;
-    caret-color: var(--primary-color);
-}
-#gsInput::placeholder { color: var(--text-secondary); opacity: .55; }
-.gs-clear { background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: .78rem; padding: 0; }
-.gs-cancel-btn { background: none; border: none; color: var(--primary-color); font-size: .88rem; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: 'Poppins', sans-serif; flex-shrink: 0; }
-
-/* Filtros */
-.gs-filters {
-    display: flex; gap: 6px; padding: 10px 14px 8px;
-    overflow-x: auto; flex-shrink: 0;
-    scrollbar-width: none;
-}
-.gs-filters::-webkit-scrollbar { display: none; }
-.gs-filter {
-    background: rgba(255,255,255,.05); border: 1px solid var(--glass-border);
-    border-radius: 20px; padding: 5px 14px; font-size: .72rem;
-    font-weight: 600; cursor: pointer; white-space: nowrap;
-    color: var(--text-secondary); transition: all .15s;
-    font-family: 'Poppins', sans-serif;
-}
-.gs-filter.active {
-    background: rgba(var(--primary-color-rgb),.15);
-    border-color: var(--primary-color);
-    color: var(--primary-color);
-}
-
-.gs-status-bar {
-    padding: 7px 14px 4px; font-size: .7rem;
-    color: var(--text-secondary); text-transform: uppercase;
-    letter-spacing: .9px; flex-shrink: 0;
-    font-family: 'Poppins', sans-serif;
-}
-
-.gs-results { overflow-y: auto; flex: 1; padding-bottom: 16px; }
-.gs-results::-webkit-scrollbar { width: 3px; }
-.gs-results::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 3px; }
-
-.gs-card {
-    display: flex; align-items: center; gap: 12px;
-    padding: 11px 14px; cursor: pointer;
-    border-bottom: 1px solid rgba(255,255,255,.04);
-    transition: background .12s; -webkit-tap-highlight-color: transparent;
-}
-.gs-card:active, .gs-card:hover { background: rgba(var(--primary-color-rgb),.07); }
-
-.gs-card-icon {
-    width: 38px; height: 38px; border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.15rem; flex-shrink: 0;
-}
-.gs-ic-cliente { background: rgba(41,121,255,.15); }
-.gs-ic-bookip  { background: rgba(0,200,83,.15); }
-.gs-ic-boleto  { background: rgba(255,109,0,.15); }
-
-.gs-card-body { flex: 1; min-width: 0; }
-.gs-card-title {
-    font-size: .86rem; font-weight: 600; color: var(--text-color-strong);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.gs-card-sub {
-    font-size: .7rem; color: var(--text-secondary);
-    margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.gs-card-tag {
-    font-size: .62rem; font-weight: 600; padding: 3px 8px;
-    border-radius: 20px; flex-shrink: 0; letter-spacing: .4px;
-}
-.gs-tag-cliente { background: rgba(41,121,255,.13); color: #2979ff; }
-.gs-tag-bookip  { background: rgba(0,200,83,.13);  color: #00c853; }
-.gs-tag-boleto  { background: rgba(255,109,0,.13);  color: #ff6d00; }
-
-.gs-hl { background: rgba(var(--primary-color-rgb),.28); border-radius: 2px; padding: 0 1px; }
-.gs-empty { text-align: center; padding: 36px 20px; color: var(--text-secondary); font-size: .84rem; }
-
-
-/* ============================================================
-   FOTO DO PRODUTO — BOOKIP
-   ============================================================ */
-.bookip-photo-btn {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 14px 16px;
-    background: rgba(var(--primary-color-rgb), 0.06);
-    border: 1.5px dashed rgba(var(--primary-color-rgb), 0.35);
-    border-radius: 14px;
-    color: var(--text-color);
-    cursor: pointer;
-    transition: background .2s, border-color .2s, transform .15s;
-    text-align: left;
-    font-family: 'Poppins', sans-serif;
-    -webkit-tap-highlight-color: transparent;
-}
-.bookip-photo-btn:hover,
-.bookip-photo-btn:active {
-    background: rgba(var(--primary-color-rgb), 0.12);
-    border-color: var(--primary-color);
-    transform: scale(0.99);
-}
-.bookip-photo-btn:disabled { opacity: .55; cursor: default; transform: none; }
-
-.bookip-photo-btn-icon {
-    position: relative;
-    width: 42px;
-    height: 42px;
-    background: rgba(var(--primary-color-rgb), 0.12);
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.3rem;
-    color: var(--primary-color);
-    flex-shrink: 0;
-}
-
-.bookip-photo-btn-text {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    flex: 1;
-    min-width: 0;
-}
-.bookip-photo-btn-text span {
-    font-size: .9rem;
-    font-weight: 600;
-    color: var(--primary-color);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.bookip-photo-btn-text small {
-    font-size: .68rem;
-    color: var(--text-secondary);
-    font-weight: 400;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* Preview da foto */
-.bookip-photo-preview {
-    position: relative;
-    margin-bottom: 10px;
-    border-radius: 14px;
-    overflow: hidden;
-    border: 1px solid var(--glass-border);
-    background: var(--glass-bg);
-}
-.bookip-photo-preview img {
-    width: 100%;
-    max-height: 200px;
-    object-fit: contain;
-    display: block;
-}
-.bookip-photo-remove {
-    position: absolute;
-    top: 8px; right: 8px;
-    background: rgba(0,0,0,.65);
-    border: none; border-radius: 50%;
-    width: 30px; height: 30px;
-    color: #fff; font-size: 1rem;
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: background .2s;
-}
-.bookip-photo-remove:hover { background: rgba(239,68,68,.85); }
-.bookip-photo-preview-label {
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    background: linear-gradient(transparent, rgba(0,0,0,.55));
-    color: rgba(255,255,255,.7);
-    font-size: .68rem;
-    text-align: center;
-    padding: 12px 8px 6px;
-    font-family: 'Poppins', sans-serif;
-}
-
-/* Glow do resultado de busca */
-@keyframes gsResultGlow {
-    0%   { box-shadow: 0 0 0 0 rgba(var(--primary-color-rgb), 0); }
-    30%  { box-shadow: 0 0 0 6px rgba(var(--primary-color-rgb), 0.4); }
-    70%  { box-shadow: 0 0 0 10px rgba(var(--primary-color-rgb), 0.15); }
-    100% { box-shadow: 0 0 0 0 rgba(var(--primary-color-rgb), 0); }
-}
-.gs-result-highlight {
-    animation: gsResultGlow 1.8s ease 3;
-    border-radius: 8px;
-    outline: 2px solid rgba(var(--primary-color-rgb), 0.5);
-    outline-offset: 2px;
-    transition: outline .3s;
-}
+/* Busca global removida a pedido — CSS órfão (.global-search-trigger,
+   .gs-*) limpo junto com o HTML/JS correspondentes. */
 
 
 /* ============================================================
@@ -4056,7 +3373,7 @@ body::after {
 .ctw-card-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: 10px;
     width: 100%;
     max-width: 360px;
     margin: 0 auto;
@@ -4084,18 +3401,18 @@ body::after {
 .ctw-card {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
+    align-items: flex-start;
+    justify-content: flex-start;
     gap: 8px;
-    padding: 18px 10px 14px;
-    border-radius: 20px;
+    padding: 14px;
+    border-radius: 16px;
     border: 1px solid transparent;
     cursor: pointer;
     transition: all 0.22s cubic-bezier(.2,.8,.2,1);
     position: relative;
     overflow: hidden;
-    text-align: center;
-    min-height: 96px;
+    text-align: left;
+    min-height: 100px;
     -webkit-tap-highlight-color: transparent;
     background: none;
     font-family: 'Poppins', sans-serif;
@@ -4108,39 +3425,39 @@ body::after {
     border-radius: 16px;
 }
 
-.ctw-card:active { transform: scale(0.94); }
+.ctw-card:active { transform: scale(0.96); }
 
 .ctw-card-icon {
-    width: 48px; height: 48px;
-    border-radius: 15px;
+    width: 38px; height: 38px;
+    border-radius: 11px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 1.35rem;
+    font-size: 1.05rem;
     flex-shrink: 0;
     position: relative; z-index: 1;
     transition: transform 0.22s cubic-bezier(.2,.8,.2,1);
+    margin-bottom: 4px;
 }
 .ctw-grid-row3 .ctw-card-icon {
-    width: 40px; height: 40px;
-    border-radius: 12px;
-    font-size: 1.1rem;
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    font-size: .95rem;
 }
 .ctw-card:hover .ctw-card-icon,
-.ctw-card:focus .ctw-card-icon { transform: scale(1.15) rotate(-5deg); }
+.ctw-card:focus .ctw-card-icon { transform: scale(1.08); }
 .ctw-card:active .ctw-card-icon { transform: scale(0.95); }
 
 .ctw-card-title {
-    font-size: .78rem; font-weight: 700;
-    line-height: 1.2;
+    font-size: .85rem; font-weight: 700;
+    line-height: 1.25;
     position: relative; z-index: 1;
     white-space: nowrap;
 }
 .ctw-grid-row3 .ctw-card-title { font-size: .68rem; }
 
 .ctw-card-sub {
-    font-size: .62rem; font-weight: 400;
-    opacity: .65;
+    font-size: .68rem; font-weight: 400;
+    opacity: .85;
     position: relative; z-index: 1;
-    margin-top: -4px;
     white-space: nowrap;
 }
 
@@ -4152,78 +3469,84 @@ body::after {
     z-index: 2;
 }
 
-/* ── Cores por função ── */
+/* ── Cores por função — fundo sólido vívido, com texto escuro em cima
+   para contraste (design aprovado: cards de cor cheia, não translúcidos). ── */
 .ctw-card.c-blue {
-    background: rgba(41,121,255,.1);
-    border-color: rgba(41,121,255,.22);
+    background: #5B8CE8;
+    border-color: transparent;
 }
-.ctw-card.c-blue .ctw-card-icon { background: rgba(41,121,255,.18); color: #5b9bff; }
-.ctw-card.c-blue .ctw-card-title { color: #7eb3ff; }
-.ctw-card.c-blue .ctw-card-sub   { color: #7eb3ff; }
-.ctw-card.c-blue:hover { background: rgba(41,121,255,.16); border-color: rgba(41,121,255,.4); transform: translateY(-3px); }
+.ctw-card.c-blue .ctw-card-icon { background: rgba(11, 34, 71, .18); color: #0B2247; }
+.ctw-card.c-blue .ctw-card-title { color: #0B2247; }
+.ctw-card.c-blue .ctw-card-sub   { color: #17386E; }
+.ctw-card.c-blue:hover { filter: brightness(1.05); transform: translateY(-2px); }
 
 .ctw-card.c-cyan {
-    background: rgba(0,229,255,.09);
-    border-color: rgba(0,229,255,.2);
+    background: #4BC4D6;
+    border-color: transparent;
 }
-.ctw-card.c-cyan .ctw-card-icon { background: rgba(0,229,255,.15); color: #00e5ff; }
-.ctw-card.c-cyan .ctw-card-title { color: #6ee7f7; }
-.ctw-card.c-cyan .ctw-card-sub   { color: #6ee7f7; }
-.ctw-card.c-cyan:hover { background: rgba(0,229,255,.14); border-color: rgba(0,229,255,.38); transform: translateY(-3px); }
+.ctw-card.c-cyan .ctw-card-icon { background: rgba(7, 43, 49, .18); color: #072B31; }
+.ctw-card.c-cyan .ctw-card-title { color: #072B31; }
+.ctw-card.c-cyan .ctw-card-sub   { color: #124750; }
+.ctw-card.c-cyan:hover { filter: brightness(1.05); transform: translateY(-2px); }
 
 .ctw-card.c-orange {
-    background: rgba(255,109,0,.09);
-    border-color: rgba(255,109,0,.2);
+    background: #E8B04B;
+    border-color: transparent;
 }
-.ctw-card.c-orange .ctw-card-icon { background: rgba(255,109,0,.15); color: #ff9a50; }
-.ctw-card.c-orange .ctw-card-title { color: #ffb37a; }
-.ctw-card.c-orange .ctw-card-sub   { color: #ffb37a; }
-.ctw-card.c-orange:hover { background: rgba(255,109,0,.14); border-color: rgba(255,109,0,.38); transform: translateY(-3px); }
+.ctw-card.c-orange .ctw-card-icon { background: rgba(58, 42, 8, .18); color: #3A2A08; }
+.ctw-card.c-orange .ctw-card-title { color: #3A2A08; }
+.ctw-card.c-orange .ctw-card-sub   { color: #5C4110; }
+.ctw-card.c-orange:hover { filter: brightness(1.05); transform: translateY(-2px); }
 
 .ctw-card.c-purple {
-    background: rgba(139,92,246,.09);
-    border-color: rgba(139,92,246,.2);
+    background: #9B7BE8;
+    border-color: transparent;
 }
-.ctw-card.c-purple .ctw-card-icon { background: rgba(139,92,246,.15); color: #b08ff5; }
-.ctw-card.c-purple .ctw-card-title { color: #c4a8f8; }
-.ctw-card.c-purple .ctw-card-sub   { color: #c4a8f8; }
-.ctw-card.c-purple:hover { background: rgba(139,92,246,.14); border-color: rgba(139,92,246,.38); transform: translateY(-3px); }
+.ctw-card.c-purple .ctw-card-icon { background: rgba(36, 22, 69, .18); color: #241645; }
+.ctw-card.c-purple .ctw-card-title { color: #241645; }
+.ctw-card.c-purple .ctw-card-sub   { color: #3A2570; }
+.ctw-card.c-purple:hover { filter: brightness(1.05); transform: translateY(-2px); }
 
 .ctw-card.c-green {
-    background: rgba(16,185,129,.09);
-    border-color: rgba(16,185,129,.2);
+    background: var(--primary-color);
+    border-color: transparent;
 }
-.ctw-card.c-green .ctw-card-icon { background: rgba(16,185,129,.15); color: #4ade9b; }
-.ctw-card.c-green .ctw-card-title { color: #6ee7b7; }
-.ctw-card.c-green .ctw-card-sub   { color: #6ee7b7; }
-.ctw-card.c-green:hover { background: rgba(16,185,129,.14); border-color: rgba(16,185,129,.38); transform: translateY(-3px); }
+.ctw-card.c-green .ctw-card-icon { background: rgba(8, 36, 15, .18); color: #08240F; }
+.ctw-card.c-green .ctw-card-title { color: #08240F; }
+.ctw-card.c-green .ctw-card-sub   { color: #0F3A20; }
+.ctw-card.c-green:hover { filter: brightness(1.05); transform: translateY(-2px); }
 
 .ctw-card.c-rose {
-    background: rgba(225,29,72,.09); border-color: rgba(225,29,72,.22);
+    background: #E8785B;
+    border-color: transparent;
 }
-.ctw-card.c-rose .ctw-card-icon { background: rgba(225,29,72,.16); color: #fb7185; }
-.ctw-card.c-rose .ctw-card-title { color: #fca5a5; }
-.ctw-card.c-rose .ctw-card-sub   { color: #fca5a5; }
-.ctw-card.c-rose:hover { background: rgba(225,29,72,.16); border-color: rgba(225,29,72,.42); transform: translateY(-3px); }
+.ctw-card.c-rose .ctw-card-icon { background: rgba(58, 27, 15, .18); color: #3A1B0F; }
+.ctw-card.c-rose .ctw-card-title { color: #3A1B0F; }
+.ctw-card.c-rose .ctw-card-sub   { color: #5C2E1A; }
+.ctw-card.c-rose:hover { filter: brightness(1.05); transform: translateY(-2px); }
+
+.ctw-card.c-pink {
+    background: #E858A0;
+    border-color: transparent;
+}
+.ctw-card.c-pink .ctw-card-icon { background: rgba(61, 15, 38, .18); color: #3D0F26; }
+.ctw-card.c-pink .ctw-card-title { color: #3D0F26; }
+.ctw-card.c-pink .ctw-card-sub   { color: #601A3D; }
+.ctw-card.c-pink:hover { filter: brightness(1.05); transform: translateY(-2px); }
 
 .ctw-card.c-disabled {
-    background: rgba(255,255,255,.03);
-    border-color: rgba(255,255,255,.07);
-    opacity: .38;
+    background: var(--card-bg);
+    border-color: var(--glass-border);
+    opacity: .5;
     cursor: not-allowed;
 }
 .ctw-card.c-disabled .ctw-card-icon { background: rgba(255,255,255,.06); color: var(--text-secondary); }
 .ctw-card.c-disabled .ctw-card-title { color: var(--text-secondary); }
-.ctw-card.c-disabled:hover { transform: none; }
+.ctw-card.c-disabled:hover { transform: none; filter: none; }
 .ctw-card.c-disabled:hover .ctw-card-icon { transform: none; }
 
-/* Temas de cor do app aplicados nos cards — usa primary-color-rgb */
-[data-theme="light"] .ctw-card.c-blue  { background: rgba(41,121,255,.07); }
-[data-theme="light"] .ctw-card.c-cyan  { background: rgba(0,180,216,.07); }
-[data-theme="light"] .ctw-card.c-orange { background: rgba(255,109,0,.07); }
-[data-theme="light"] .ctw-card.c-purple { background: rgba(139,92,246,.07); }
-[data-theme="light"] .ctw-card.c-green  { background: rgba(16,185,129,.07); }
-[data-theme="light"] .ctw-card .ctw-card-title { filter: brightness(.8); }
+/* Tema claro usa as mesmas cores sólidas — o contraste do texto escuro
+   já funciona igual em ambos os temas, não precisa de ajuste separado. */
 
 
 /* ── Controle de visibilidade dos menus (sobrescreve Bootstrap .d-grid) ── */
@@ -4237,28 +3560,21 @@ body::after {
 
 .ctw-bottom-nav {
     position: fixed;
-    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-    left: 50%;
-    transform: translateX(-50%);
+    bottom: 0;
+    left: 0;
+    right: 0;
     z-index: 1060;
 
     display: flex;
     align-items: center;
     justify-content: space-around;
-    gap: 4px;
 
-    /* Pill flutuante */
-    background: rgba(15, 20, 40, 0.82);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 999px;
-    padding: 10px 28px;
-    width: min(320px, calc(100vw - 32px));
-    box-shadow:
-        0 8px 32px rgba(0,0,0,0.45),
-        0 2px 8px rgba(0,0,0,0.3),
-        inset 0 1px 0 rgba(255,255,255,0.07);
+    /* Barra fixa colada embaixo — sólida, sem vidro/blur/flutuação */
+    background: var(--card-bg);
+    border-top: 1px solid var(--glass-border);
+    padding: 10px 8px calc(10px + env(safe-area-inset-bottom, 0px));
+    width: 100%;
+    box-shadow: none;
 }
 
 /* Botão individual */
@@ -4266,39 +3582,32 @@ body::after {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 3px;
+    gap: 4px;
     background: none;
     border: none;
     cursor: pointer;
-    padding: 6px 16px;
-    border-radius: 999px;
-    transition: background 0.18s, transform 0.18s;
+    padding: 4px 8px;
+    border-radius: 12px;
+    transition: transform 0.18s;
     -webkit-tap-highlight-color: transparent;
-    min-width: 64px;
+    flex: 1;
+    max-width: 90px;
     position: relative;
 }
 .ctw-nav-btn:active {
-    transform: scale(0.88);
-    background: rgba(255,255,255,0.08);
-}
-.ctw-nav-btn.ctw-nav-active {
-    background: rgba(var(--primary-color-rgb), 0.15);
+    transform: scale(0.92);
 }
 
 /* Ícone */
 .ctw-nav-icon {
     position: relative;
-    font-size: 1.3rem;
-    color: rgba(255,255,255,0.55);
+    font-size: 1.25rem;
+    color: var(--text-secondary);
     line-height: 1;
-    transition: color 0.18s, transform 0.18s;
+    transition: color 0.18s;
 }
 .ctw-nav-btn.ctw-nav-active .ctw-nav-icon {
     color: var(--primary-color);
-}
-.ctw-nav-btn:hover .ctw-nav-icon {
-    color: rgba(255,255,255,0.9);
-    transform: translateY(-2px);
 }
 
 /* Badge de notificação */
@@ -4308,7 +3617,7 @@ body::after {
     min-width: 16px; height: 16px;
     background: #ef4444;
     border-radius: 999px;
-    border: 2px solid rgba(15,20,40,0.9);
+    border: 2px solid var(--card-bg);
     font-size: .55rem; font-weight: 700;
     color: #fff;
     display: flex; align-items: center; justify-content: center;
@@ -4316,17 +3625,17 @@ body::after {
     line-height: 1;
 }
 
-/* Label */
+/* Label — sempre visível (não só quando ativo) */
 .ctw-nav-label {
-    font-size: .58rem;
-    font-weight: 600;
-    letter-spacing: .5px;
-    color: rgba(255,255,255,0.4);
+    font-size: .6rem;
+    font-weight: 500;
+    color: var(--text-secondary);
     font-family: 'Poppins', sans-serif;
-    transition: color 0.18s;
+    transition: color 0.18s, font-weight 0.18s;
 }
 .ctw-nav-btn.ctw-nav-active .ctw-nav-label {
     color: var(--primary-color);
+    font-weight: 600;
 }
 
 /* Light theme adjustments */
@@ -4340,12 +3649,15 @@ body::after {
 [data-theme="light"] .ctw-nav-label { color: rgba(0,0,0,0.35); }
 [data-theme="light"] .ctw-nav-badge { border-color: rgba(255,255,255,0.9); }
 
-/* Espaçamento extra no conteúdo quando bottom nav está visível */
+/* Espaçamento extra no conteúdo quando bottom nav está visível.
+   Nav agora é uma barra fixa colada embaixo (não mais pill flutuante) —
+   folga recalculada para a nova altura, mantendo margem de segurança para
+   telas com safe-area maior (notch, gesture bar). */
 body.ctw-v2-active .container {
-    padding-bottom: 90px;
+    padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
 }
 body.ctw-v2-active #contractContainer {
-    padding-bottom: 100px;
+    padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px));
 }
 
 /* ── PROFILE SHEET ── */
@@ -4367,7 +3679,7 @@ body.ctw-v2-active #contractContainer {
     left: 50%;
     transform: translateX(-50%) translateY(20px);
     width: min(340px, calc(100vw - 32px));
-    background: rgba(15,20,40,0.96);
+    background: rgba(28,28,30,0.96);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid rgba(255,255,255,0.12);
@@ -4489,12 +3801,7 @@ body.ctw-v2-active .top-right-controls-pos .dropdown {
     display: none !important;
 }
 
-/* No v2, a lupa some do topo — vai pro pill integrado */
-body.ctw-v2-active #globalSearchBtn {
-    display: none !important;
-}
-
-/* Barra de topo v2: pill de busca + nome do usuário */
+/* Barra de topo v2: header com saudação e status de conexão */
 #ctwTopBar {
     display: none; /* Controlado via JS */
     position: absolute;
@@ -4506,68 +3813,20 @@ body.ctw-v2-active #globalSearchBtn {
     pointer-events: none; /* header não captura cliques */
 }
 
-#ctwTopBar .ctw-top-pill {
-    pointer-events: all; /* pill de busca captura cliques */
-}
-
-.ctw-top-pill {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: rgba(0, 0, 0, 0.28);
-    border: none;
-    border-radius: 999px;
-    padding: 10px 18px;
-    box-shadow: none;
-}
-[data-theme="light"] .ctw-top-pill {
-    background: rgba(0, 0, 0, 0.07);
-}
-
-.ctw-top-search {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    background: transparent;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-}
-.ctw-top-search:hover,
-.ctw-top-search:active {
-    background: transparent;
-}
-[data-theme="light"] .ctw-top-search {
-    background: transparent;
-}
-[data-theme="light"] .ctw-top-search:hover {
-    background: transparent;
-}
-.ctw-top-search i {
-    font-size: .9rem;
-    color: var(--text-secondary);
-    flex-shrink: 0;
-}
-.ctw-top-search span {
-    font-size: .75rem;
-    color: var(--text-secondary);
-    font-family: 'Poppins', sans-serif;
-    font-weight: 400;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 /* Balanceamento vertical do mainMenu no v2 */
 body.ctw-v2-active #mainMenu {
-    padding-top: 132px;
+    padding-top: 96px;
     padding-bottom: 0;
     justify-content: flex-start;
-    height: 100dvh !important;
-    overflow: hidden !important;
-    box-sizing: border-box !important;
+    /* FIX: height fixa + overflow:hidden travava a tela sem rolar assim
+       que o conteúdo (favoritos + grid de cards) passava da altura da
+       viewport — o usuário via a tela "congelada", sem conseguir ver o
+       resto. Agora a altura é só um mínimo e o scroll vertical é livre. */
+    min-height: 100dvh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    box-sizing: border-box;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* Remove o h2 de boas-vindas no v2 (o nome já está no top pill) */
@@ -4578,35 +3837,63 @@ body.ctw-v2-active #mainMenuTitle {
 
 /* Cabeçalho v2 dentro do top bar (acima da busca) */
 .ctw-top-header {
-    padding: 4px 6px 10px;
+    padding: 4px 6px 14px;
     text-align: left;
 }
-.ctw-top-header-eyebrow {
-    font-size: .58rem;
-    font-weight: 700;
-    letter-spacing: 2.5px;
-    text-transform: uppercase;
-    color: var(--primary-color);
-    font-family: 'Poppins', sans-serif;
-    opacity: .85;
-    margin-bottom: 3px;
+.ctw-top-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
 }
 .ctw-top-header-title {
-    font-size: 1.15rem;
+    font-size: 1.5rem;
     font-weight: 700;
-    line-height: 1.25;
+    line-height: 1.2;
     color: var(--text-color);
     font-family: 'Poppins', sans-serif;
 }
 .ctw-top-header-title span {
-    color: var(--primary-color);
+    color: var(--text-color);
 }
-.ctw-top-header-sub {
-    font-size: .72rem;
-    font-weight: 400;
+
+/* Indicador de status de conexão — pill com texto (não só bolinha) */
+.ctw-conn-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--card-bg);
+    border-radius: 999px;
+    padding: 6px 11px;
+    flex-shrink: 0;
+}
+.ctw-conn-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #94A3B8; /* cinza — verificando */
+}
+.ctw-conn-label {
+    font-size: .62rem;
+    font-weight: 500;
     color: var(--text-secondary);
     font-family: 'Poppins', sans-serif;
-    margin-top: 1px;
+}
+.ctw-conn-checking .ctw-conn-dot {
+    background: #94A3B8;
+    animation: ctwConnPulse 1.2s ease-in-out infinite;
+}
+.ctw-conn-online .ctw-conn-dot {
+    background: var(--primary-color);
+}
+.ctw-conn-offline .ctw-conn-dot {
+    background: #ef4444; /* vermelho — sem conexão */
+    animation: ctwConnPulse 1s ease-in-out infinite;
+}
+@keyframes ctwConnPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .35; }
 }
 
 /* Centraliza verticalmente os cards no espaço disponível */
@@ -5131,15 +4418,16 @@ body.ctw-v2-active #documentsHome {
 [data-theme="light"] .rep-filter-btn { background: rgba(0,0,0,.04); }
 [data-theme="light"] .rep-btn-ghost  { background: rgba(0,0,0,.04); color: #1a1a2e; }
 
-/* V2 card teal (consertos) */
+/* V2 card teal (consertos, creditoscan) */
 .ctw-card.c-teal {
-    background: rgba(6,182,212,.09);
-    border-color: rgba(6,182,212,.2);
+    background: rgba(110, 178, 175, .10);
+    border-color: rgba(110, 178, 175, .22);
 }
-.ctw-card.c-teal .ctw-card-icon { background: rgba(6,182,212,.15); color: #22d3ee; }
-.ctw-card.c-teal .ctw-card-title { color: #67e8f9; }
-.ctw-card.c-teal .ctw-card-sub   { color: #67e8f9; }
-.ctw-card.c-teal:hover { background: rgba(6,182,212,.15); border-color: rgba(6,182,212,.38); transform: translateY(-3px); }
+.ctw-card.c-teal .ctw-card-icon { background: rgba(110, 178, 175, .22); color: #9CCFC9; }
+.ctw-card.c-teal .ctw-card-title { color: var(--text-color); }
+.ctw-card.c-teal .ctw-card-sub   { color: var(--text-secondary); }
+.ctw-card.c-teal:hover { background: rgba(110, 178, 175, .16); border-color: rgba(110, 178, 175, .38); transform: translateY(-2px); }
+[data-theme="light"] .ctw-card.c-teal { background: rgba(110, 178, 175, .12); }
 
 /* Full width card (5th item in 2x2 grid) */
 .ctw-card-full {
@@ -5250,154 +4538,6 @@ body.ctw-v2-active #documentsHome {
     gap: 5px;
     min-height: 24px;
 }
-
-
-/* ============================================================
-   BANNER PROMO — Layout 2.0
-   ============================================================ */
-.v2-promo-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 99000;
-    background: rgba(0, 0, 0, 0.65);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    padding: 0 0 env(safe-area-inset-bottom, 0);
-    animation: v2PromoFadeIn .3s ease;
-}
-
-@keyframes v2PromoFadeIn {
-    from { opacity: 0; }
-    to   { opacity: 1; }
-}
-
-.v2-promo-card {
-    background: linear-gradient(160deg, #1a1f35 0%, #0f1220 100%);
-    border: 1px solid rgba(var(--primary-color-rgb, 255,107,107), .25);
-    border-bottom: none;
-    border-radius: 24px 24px 0 0;
-    padding: 28px 24px 32px;
-    width: 100%;
-    max-width: 480px;
-    text-align: center;
-    position: relative;
-    animation: v2PromoSlideUp .35s cubic-bezier(.2,.8,.3,1);
-    box-shadow: 0 -8px 40px rgba(0,0,0,.5);
-}
-
-@keyframes v2PromoSlideUp {
-    from { transform: translateY(100%); }
-    to   { transform: translateY(0); }
-}
-
-/* Ícone topo */
-.v2-promo-icon-wrap {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 14px;
-}
-
-.v2-promo-icon-ring {
-    width: 62px;
-    height: 62px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(var(--primary-color-rgb,255,107,107),.18) 0%, rgba(var(--primary-color-rgb,255,107,107),.05) 70%);
-    border: 1.5px solid rgba(var(--primary-color-rgb,255,107,107),.35);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.6rem;
-    color: var(--primary-color, #ff6b6b);
-    box-shadow: 0 0 24px rgba(var(--primary-color-rgb,255,107,107),.2);
-}
-
-/* Badge */
-.v2-promo-badge {
-    display: inline-block;
-    background: rgba(var(--primary-color-rgb,255,107,107),.15);
-    color: var(--primary-color, #ff6b6b);
-    border: 1px solid rgba(var(--primary-color-rgb,255,107,107),.3);
-    border-radius: 999px;
-    font-size: .7rem;
-    font-weight: 700;
-    letter-spacing: .05em;
-    padding: 3px 12px;
-    margin-bottom: 10px;
-    text-transform: uppercase;
-}
-
-/* Título */
-.v2-promo-title {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--text-color, #e2e8f0);
-    margin: 0 0 10px;
-    line-height: 1.3;
-}
-
-/* Descrição */
-.v2-promo-desc {
-    font-size: .88rem;
-    color: rgba(var(--text-color-rgb, 226,232,240), .72);
-    line-height: 1.6;
-    margin: 0 0 14px;
-}
-
-/* Nota rodapé */
-.v2-promo-note {
-    font-size: .75rem;
-    color: rgba(var(--text-color-rgb, 226,232,240), .45);
-    background: rgba(255,255,255,.04);
-    border-radius: 10px;
-    padding: 8px 12px;
-    margin: 0 0 22px;
-    line-height: 1.5;
-}
-.v2-promo-note i { opacity: .7; margin-right: 3px; }
-
-/* Botões */
-.v2-promo-actions {
-    display: flex;
-    gap: 10px;
-}
-
-.v2-promo-btn-no {
-    flex: 0 0 auto;
-    background: rgba(255,255,255,.06);
-    color: rgba(var(--text-color-rgb,226,232,240),.6);
-    border: 1px solid rgba(255,255,255,.1);
-    border-radius: 12px;
-    padding: 12px 18px;
-    font-size: .85rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background .15s;
-    white-space: nowrap;
-}
-.v2-promo-btn-no:hover { background: rgba(255,255,255,.1); }
-
-.v2-promo-btn-yes {
-    flex: 1;
-    background: var(--primary-color, #ff6b6b);
-    color: #fff;
-    border: none;
-    border-radius: 12px;
-    padding: 12px 20px;
-    font-size: .92rem;
-    font-weight: 700;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    transition: filter .15s, transform .1s;
-    box-shadow: 0 4px 18px rgba(var(--primary-color-rgb,255,107,107),.35);
-}
-.v2-promo-btn-yes:hover  { filter: brightness(1.1); }
-.v2-promo-btn-yes:active { transform: scale(.97); }
 
 
 
@@ -5922,9 +5062,12 @@ body.ctw-v2-active #documentsHome {
     width: 48px; height: 48px;
     border-radius: 10px;
     overflow: hidden;
-    pointer-events: none; /* não interfere no click de expansão */
+    /* FIX: pointer-events:none aqui bloqueava o clique na foto (o onclick
+       do <img> que abre a visualização ampliada nunca disparava). A foto
+       agora recebe o clique normalmente; o event.stopPropagation() no
+       onclick do <img> já evita que o clique "vaze" para a expansão do item. */
 }
-.repo-item-foto { width:100%; height:100%; object-fit:cover; }
+.repo-item-foto { width:100%; height:100%; object-fit:cover; cursor: zoom-in; }
 .repo-item-foto-placeholder {
     width:100%; height:100%;
     background: rgba(255,255,255,.06);
@@ -5949,8 +5092,15 @@ body.ctw-v2-active #documentsHome {
 /* Info */
 .repo-item-info { flex:1; min-width:0; pointer-events:none; }
 .repo-item-nome {
+    /* FIX: nowrap+ellipsis cortava nomes de produto longos ("...").
+       Agora quebra em até 2 linhas e mostra o nome completo. */
     font-size: .9rem; font-weight: 600; color: #e8eaf0;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    white-space: normal;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.25;
 }
 .repo-item-sub {
     font-size: .72rem; color: rgba(255,255,255,.3);
@@ -6608,145 +5758,6 @@ body.ctw-v2-active #documentsHome {
     text-overflow: ellipsis;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   MODO PERFORMANCE (body.perf-mode)
-   ══════════════════════════════════════════════════════════════ */
-
-/* 1. Mapeia --bg-color → --tertiary-color para Reposição e CreditoScan
-   ficarem com a cor do tema (ex: roxo usa #0F0720, pink usa #1F0510) */
-body.perf-mode {
-    --bg-color: var(--tertiary-color);
-}
-
-/* 2. Remove backdrop-filter em tudo — maior ganho de scroll (49 ocorrências) */
-body.perf-mode *,
-body.perf-mode *::before,
-body.perf-mode *::after {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-}
-
-/* 3. Libera camadas GPU e agiliza transições */
-body.perf-mode * {
-    will-change: auto !important;
-    transition-duration: 0.12s !important;
-}
-
-/* 4. Pausa gradiente rotativo e ambilight — cor permanece, animação para */
-body.perf-mode::before {
-    animation-play-state: paused !important;
-}
-body.perf-mode::after {
-    animation-play-state: paused !important;
-    opacity: 0.35 !important;
-}
-
-/* 5. Esconde orbs (blobs flutuantes) e shine dos botões */
-body.perf-mode .orb-1,
-body.perf-mode .orb-2,
-body.perf-mode .btn-menu::after {
-    display: none !important;
-}
-
-/* 6. Pausa animações infinitas decorativas sem tocar nas funcionais */
-body.perf-mode .ctw-carousel-border,
-body.perf-mode .ctw-boot-msg,
-body.perf-mode .fav-tr-ring1,
-body.perf-mode .fav-tr-ring2,
-body.perf-mode .fav-transition-emoji,
-body.perf-mode .fav-transition-label,
-body.perf-mode .ctw-sp-dot-loader span,
-body.perf-mode .scan-ai-pulse {
-    animation-play-state: paused !important;
-}
-
-/* 7. Estilo Terminal nos cards — só no perf-mode */
-body.perf-mode .ctw-card,
-body.perf-mode .ctw-card.c-blue,
-body.perf-mode .ctw-card.c-cyan,
-body.perf-mode .ctw-card.c-orange,
-body.perf-mode .ctw-card.c-purple,
-body.perf-mode .ctw-card.c-green,
-body.perf-mode .ctw-card.c-rose,
-body.perf-mode .ctw-card.c-teal {
-    background: rgba(255, 255, 255, .03) !important;
-    border-color: rgba(255, 255, 255, .09) !important;
-}
-body.perf-mode .ctw-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,.1), transparent);
-    pointer-events: none;
-}
-body.perf-mode .ctw-card-icon {
-    background: rgba(255, 255, 255, .06) !important;
-    color: rgba(255, 255, 255, .65) !important;
-}
-body.perf-mode .ctw-card-title {
-    color: rgba(255, 255, 255, .88) !important;
-}
-body.perf-mode .ctw-card-sub {
-    color: rgba(255, 255, 255, .3) !important;
-}
-
-/* 8. Nav + pill de busca — adaptam à cor do tema */
-body.perf-mode .ctw-bottom-nav {
-    background: rgba(var(--primary-color-rgb), 0.1) !important;
-    border-color: rgba(var(--primary-color-rgb), 0.2) !important;
-    box-shadow: 0 4px 20px rgba(0,0,0,.5) !important;
-}
-body.perf-mode .ctw-top-pill {
-    background: rgba(var(--primary-color-rgb), 0.08) !important;
-    border-color: rgba(var(--primary-color-rgb), 0.15) !important;
-    box-shadow: none !important;
-}
-
-/* Ring dos atalhos — tinta com a cor do tema */
-body.perf-mode .ctw-carousel-border {
-    background: rgba(var(--primary-color-rgb), 0.5) !important;
-}
-/* Círculo interno — usa a cor de fundo do tema */
-body.perf-mode .ctw-carousel-window {
-    background: var(--tertiary-color) !important;
-}
-body.perf-mode .ctw-carousel-window::before {
-    background: linear-gradient(90deg, var(--tertiary-color), transparent) !important;
-}
-body.perf-mode .ctw-carousel-window::after {
-    background: linear-gradient(-90deg, var(--tertiary-color), transparent) !important;
-}
-
-/* 9. Circles dos favoritos via JS — tinta com cor do tema */
-body.perf-mode #mainMenu [style*="gradient"],
-body.perf-mode #mainMenu [style*="conic"] {
-    background: rgba(var(--primary-color-rgb), 0.3) !important;
-    filter: none !important;
-}
-
-/* Botão toggle Modo Performance */
-.perf-toggle-btn {
-    width: 100%;
-    padding: 14px 16px;
-    border-radius: 12px;
-    border: 1.5px solid rgba(255, 255, 255, .1);
-    background: rgba(255, 255, 255, .04);
-    color: var(--text-color);
-    font-size: .9rem;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    transition: background .2s, border-color .2s;
-    margin-bottom: 12px;
-    -webkit-tap-highlight-color: transparent;
-}
-.perf-toggle-btn:active { opacity: .8; }
-.perf-toggle-btn.active {
-    background: rgba(234, 179, 8, .12);
-    border-color: rgba(234, 179, 8, .4);
-    color: #eab308;
-}
-.perf-toggle-btn i { font-size: 1rem; }
+/* Modo Performance removido a pedido — era um toggle opcional para
+   reduzir efeitos visuais em celulares fracos. O app mantém os efeitos
+   visuais completos sempre (sem opção de alternar). */
