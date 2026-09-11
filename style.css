@@ -150,27 +150,34 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
 
 
 /* ============================================================
-   ESTRUTURA DOS CONTAINERS PRINCIPAIS (GPU ACELERADO)
-   Define o comportamento de hardware antes do visual
+   ESTRUTURA DOS CONTAINERS PRINCIPAIS
    ============================================================ */
+/* FIX SCROLL ANDROID FRACO (11/2026): estes 7 seletores são o MESMO
+   elemento que tem overflow-y:auto (classe .container). A regra antiga
+   aplicava perspective + backface-visibility:hidden + will-change:transform
+   direto neles "pra otimizar GPU" — isso cria um contexto 3D permanente
+   em cima do próprio container que precisa rolar. Em Android com GPU
+   fraca/WebView antigo isso quebra o reconhecimento do gesto de toque
+   pra rolagem (funciona em topo de linha tipo S25 Ultra, trava em
+   aparelho fraco). Removido daqui; a animação de entrada (fadeInSlide)
+   já cuida do transform só durante os 0.3s de entrada. */
 #mainMenu, 
 #calculatorContainer, 
 #contractContainer, 
 #stockContainer, 
 #administracao, 
 #clientsContainer,
-#reposicaoContainer,
+#reposicaoContainer {
+    transition: opacity 0.3s ease-out;
+}
+
+/* #top-right-controls não é container de rolagem — mantém a otimização de GPU */
 #top-right-controls {
-    /* Força o uso da GPU para evitar engasgos */
     transform: translate3d(0, 0, 0); 
     will-change: opacity, transform;
-    
-    /* Suavidade e Anti-serrilhado */
     -webkit-backface-visibility: hidden;
     backface-visibility: hidden;
     perspective: 1000px;
-
-    /* A transição deve estar na raiz do elemento */
     transition: opacity 0.3s ease-out, transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -1974,103 +1981,6 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
    /* =========================================
    ESTILO DA LISTA DE PRODUTOS (CORRIGIDO VERTICAL)
    ========================================= */
-/* ============================================================
-   BOOKIP — Botões "Colar do Zap" / "Zap IA" (chips discretos)
-   ============================================================ */
-.bookip-zap-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 13px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    border-radius: 20px;
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    color: var(--text-secondary);
-    transition: all var(--transition-duration) ease;
-    cursor: pointer;
-    white-space: nowrap;
-}
-
-.bookip-zap-btn i {
-    font-size: 0.85rem;
-}
-
-.bookip-zap-btn:hover,
-.bookip-zap-btn:active {
-    color: var(--text-color);
-    transform: translateY(-1px);
-}
-
-.bookip-zap-btn.zap-regular i { color: var(--primary-color); }
-.bookip-zap-btn.zap-regular:hover {
-    background: rgba(111, 191, 139, 0.08);
-    border-color: rgba(111, 191, 139, 0.35);
-}
-
-.bookip-zap-btn.zap-ia i { color: #7FB8C4; }
-.bookip-zap-btn.zap-ia:hover {
-    background: rgba(127, 184, 196, 0.08);
-    border-color: rgba(127, 184, 196, 0.35);
-}
-
-/* ============================================================
-   BOOKIP — Botões de foto (Tirar foto / Da galeria)
-   ============================================================ */
-.bookip-photo-btn {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 11px 13px;
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    border-radius: 14px;
-    cursor: pointer;
-    transition: all var(--transition-duration) ease;
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-}
-
-.bookip-photo-btn:hover,
-.bookip-photo-btn:active {
-    background: rgba(111, 191, 139, 0.08);
-    border-color: rgba(111, 191, 139, 0.35);
-    transform: translateY(-1px);
-}
-
-.bookip-photo-btn-icon {
-    width: 36px;
-    height: 36px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 10px;
-    background: rgba(var(--primary-color-rgb), 0.12);
-    color: var(--primary-color);
-    font-size: 1rem;
-}
-
-.bookip-photo-btn-text {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    text-align: left;
-    line-height: 1.25;
-}
-
-.bookip-photo-btn-text span {
-    font-size: 0.83rem;
-    font-weight: 600;
-    color: var(--text-color);
-}
-
-.bookip-photo-btn-text small {
-    font-size: 0.66rem;
-    color: var(--text-secondary);
-}
-
 .bookip-item-card {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--glass-border);
