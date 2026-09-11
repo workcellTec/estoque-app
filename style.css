@@ -140,6 +140,7 @@ body::before {
     overflow-y: auto;
     justify-content: flex-start;
     position: relative; z-index: 1;
+    will-change: transform, opacity;
 }
 
 h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color); }
@@ -160,20 +161,26 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
 #clientsContainer,
 #reposicaoContainer,
 #top-right-controls {
-    /* FIX: transform/will-change/perspective/backface-visibility fixos
-       aqui foram removidos de propósito. Esses elementos têm
-       overflow-y:auto (rolam por dentro) — promovê-los a uma camada de
-       GPU própria quebra a rolagem por toque em Android com GPU fraca
-       (fica travado até algo forçar um recálculo de camadas, como abrir
-       e fechar um modal por cima). A transição abaixo continua suave
-       sem precisar dessas propriedades. */
+    /* FIX: transform/will-change/perspective removidos daqui.
+       Esses containers são os mesmos que têm overflow-y:auto (rolam a tela).
+       Aplicar transform + will-change:transform + perspective direto no
+       elemento que precisa rolar promove ele pra própria camada de
+       composição de forma permanente (o will-change ficava ligado pra
+       sempre, não só durante a animação). Em Chrome/WebView antigos de
+       celular fraco isso quebra a detecção de touch-scroll nativo — a
+       tela trava e não rola. Em aparelho topo de linha (GPU/engine mais
+       novo) isso não acontece, por isso rolava só no seu S25 Ultra. Com
+       um banner/modal na frente, quem recebe o toque é o banner (que não
+       tem esse transform), por isso rolava nesse caso. A animação de
+       entrada (fadeInSlide, logo abaixo) continua funcionando normal —
+       ela seta o transform sozinha via keyframe, só durante os 0.3s. */
     transition: opacity 0.3s ease-out, transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 /* Animação de Entrada */
 @keyframes fadeInSlide {
     0% { opacity: 0; transform: translate3d(0, 15px, 0); }
-    100% { opacity: 1; transform: none; }
+    100% { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
 #mainMenu:not(.hidden), 
@@ -1361,9 +1368,24 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
 
 
     /* --- PACOTE DE ANIMAÇÕES PREMIUM (UI MOTION) --- */
-/* A animação de entrada (slideUpFade) real está definida mais abaixo,
-   junto com a regra que a aplica (usa !important e por isso é ela quem
-   sempre vencia mesmo com essa duplicada aqui antes). */
+
+/* 1. Animação de Entrada de Tela (Slide Up Suave) */
+/* Aplica em todas as seções principais quando aparecem */
+.container:not(.hidden), .content-card, .admin-section {
+    animation: slideUpFade 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes slideUpFade {
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.98); /* Começa um pouco menor e mais baixo */
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
 
 /* 2. Botões "Elásticos" (Clicky Buttons) */
 /* Dá sensação de clique físico */
@@ -2544,7 +2566,7 @@ tr, td, .card, .list-group-item {
     }
     to {
         opacity: 1;
-        transform: none;
+        transform: translateY(0) scale(1);
     }
 }
 
