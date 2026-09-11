@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-189'; // Subiu de ctw-188 — força invalidar cache antigo e baixar os arquivos atualizados
+const CACHE = 'ctw-190'; // 
 
 self.addEventListener('install', e => {
     self.skipWaiting();

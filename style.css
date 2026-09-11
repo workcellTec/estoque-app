@@ -3,6 +3,14 @@
        Antes: fundo preto puro (#000) + verde neon (#30D158) muito saturado,
        o que criava sensação de "brilho forte". Agora: fundo cinza-carvão
        com profundidade sutil entre camadas, verde dessaturado sem glow. */
+
+    /* FIX CHECKBOX SEM ESTILO: sem isso, alguns Android (tema escuro
+       automático do navegador em páginas sem essa declaração) reinterpretam
+       sozinhos a cor de controles nativos como checkbox/select, ignorando
+       o ícone/cor que o Bootstrap desenha e mostrando um quadrado liso.
+       Declarar o esquema explicitamente impede essa reinterpretação. */
+    color-scheme: dark;
+
     --primary-color: #6FBF8B;       /* Verde pastel/dessaturado (era #30D158, neon) */
     --primary-color-rgb: 111, 191, 139;
     --tertiary-color: #16171A;      /* Cinza-carvão (era #000000, preto puro) */
@@ -36,6 +44,7 @@
 
 [data-theme="light"] {
     /* TEMA CLARO — mesmo espírito pastel do escuro, verde dessaturado */
+    color-scheme: light;
     --primary-color: #4F9C6D;       /* Verde pastel (era #248A3D, mais vívido) */
     --primary-color-rgb: 79, 156, 109;
     --secondary-color: #f4f4f5;
@@ -2120,15 +2129,7 @@ html, body {
     /* Ocupa todo o espaço disponível */
     height: 100% !important;
     width: 100% !important;
-
-    /* FIX: .container é item flex direto do body (display:flex;flex-direction:column).
-       Sem min-height:0, alguns motores de navegador (variam por aparelho/versão de
-       WebView) usam min-height:auto por padrão num item flex, que impede o item de
-       encolher para caber na tela — o overflow-y:auto abaixo nunca chega a ativar
-       e a tela fica "travada" sem rolar. Isso explica funcionar em uns celulares e
-       não em outros: é uma área cinzenta do spec que cada motor resolve diferente. */
-    min-height: 0 !important;
-
+    
     /* Habilita rolagem interna */
     overflow-y: auto !important;
     overflow-x: hidden !important;
@@ -2211,12 +2212,16 @@ html, body {
     }
 }
 
-/* REMOVIDO: bloco duplicado que contradizia o fix "quem rola é só o
-   container" logo acima (recolocava html/body em height:auto e o
-   .container em overflow-y:visible). Duas regras opostas para o mesmo
-   seletor, sem !important, dependiam da ordem de resolução do motor do
-   navegador — exatamente por isso o app rolava em uns celulares e travava
-   em outros. Mantido só o fix oficial (bloco acima). */
+.container {
+    min-height: 100vh;
+    height: auto;
+    overflow-y: visible;
+}
+html, body {
+    height: auto;
+    min-height: 100%;
+    overflow-y: auto;
+}
 #documentsHome {
     min-height: 100vh;
 }
