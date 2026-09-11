@@ -2120,7 +2120,15 @@ html, body {
     /* Ocupa todo o espaço disponível */
     height: 100% !important;
     width: 100% !important;
-    
+
+    /* FIX: .container é item flex direto do body (display:flex;flex-direction:column).
+       Sem min-height:0, alguns motores de navegador (variam por aparelho/versão de
+       WebView) usam min-height:auto por padrão num item flex, que impede o item de
+       encolher para caber na tela — o overflow-y:auto abaixo nunca chega a ativar
+       e a tela fica "travada" sem rolar. Isso explica funcionar em uns celulares e
+       não em outros: é uma área cinzenta do spec que cada motor resolve diferente. */
+    min-height: 0 !important;
+
     /* Habilita rolagem interna */
     overflow-y: auto !important;
     overflow-x: hidden !important;
@@ -2203,16 +2211,12 @@ html, body {
     }
 }
 
-.container {
-    min-height: 100vh;
-    height: auto;
-    overflow-y: visible;
-}
-html, body {
-    height: auto;
-    min-height: 100%;
-    overflow-y: auto;
-}
+/* REMOVIDO: bloco duplicado que contradizia o fix "quem rola é só o
+   container" logo acima (recolocava html/body em height:auto e o
+   .container em overflow-y:visible). Duas regras opostas para o mesmo
+   seletor, sem !important, dependiam da ordem de resolução do motor do
+   navegador — exatamente por isso o app rolava em uns celulares e travava
+   em outros. Mantido só o fix oficial (bloco acima). */
 #documentsHome {
     min-height: 100vh;
 }
