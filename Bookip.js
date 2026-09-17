@@ -222,6 +222,12 @@ function initBookipPhoto() {
     inputCamera.addEventListener('change',  () => { handleFile(inputCamera.files[0]);  inputCamera.value  = ''; });
     inputGallery.addEventListener('change', () => { handleFile(inputGallery.files[0]); inputGallery.value = ''; });
 
+    // Expõe para reaproveitamento: o "Colar do Zap (IA)" já pede uma foto
+    // do produto para a IA ler nome/cor/IMEI — em vez de o usuário ter
+    // que anexar a MESMA foto de novo manualmente aqui, o preenchimento
+    // automático chama esta mesma função com a foto já em mãos.
+    window._bookipHandlePhotoFile = handleFile;
+
     if (removeBtn) {
         removeBtn.addEventListener('click', (e) => {
             e.stopPropagation();

@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-194'; // FIX SCROLL v8: reflow forçado (offsetHeight + scrollTop=0) no #contractContainer após trocar Contrato/Garantia de hidden para visível — bug conhecido de WebView Android que não recalcula altura rolável do pai automaticamente
+const CACHE = 'ctw-197'; // Removida animação slideUpFade duplicada (2 declarações, uma com !important) que causava efeito de "tudo expandindo" ao abrir/editar Garantia e Contrato — nunca tinha sido tratada nesses containers antes
 
 self.addEventListener('install', e => {
     self.skipWaiting();

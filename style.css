@@ -169,19 +169,28 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
 #administracao, 
 #clientsContainer,
 #reposicaoContainer,
+#repairsContainer,
+#areaBookipWrapper,
+#areaContratoWrapper,
+#documentsHome,
 #top-right-controls {
-    /* FIX DEFINITIVO: animação de entrada (fadeInSlide) removida por
-       completo destes containers. Ela aplicava transform via keyframe
-       ao entrar na tela — em WebView Android mais antigo/fraco, esse
-       transform podia ficar residual (uma matriz de escala fracionária,
-       tipo 0.978, mesmo depois da animação "terminar"), o que é um bug
-       conhecido do Chromium: elementos com transform residual quebram a
-       detecção nativa de touch-scroll. Tentamos corrigir via JS (zerar
-       depois que a animação termina), mas isso dependia de timing de
-       evento que nem sempre disparava de forma confiável. Eliminar a
-       animação elimina a causa, não só o sintoma — custo é perder o
-       efeito visual sutil de entrada, ganho é o scroll funcionar sempre,
-       em qualquer aparelho. */
+    /* FIX DEFINITIVO: animação de entrada removida por completo destes
+       containers. Existe (em duplicidade) uma regra genérica
+       ".container:not(.hidden) { animation: slideUpFade ... !important; }"
+       que também se aplica a QUALQUER elemento com classe .container —
+       incluindo #areaBookipWrapper e #areaContratoWrapper, que nunca
+       tinham sido tratados aqui antes. Essa animação começa em
+       scale(0.95/0.98) e cresce até scale(1) em 0.5-0.6s — em telas com
+       pouco conteúdo isso passa despercebido, mas na Garantia/Contrato
+       (com muitos campos preenchidos ao mesmo tempo, ex: ao abrir ou
+       editar um registro existente) o crescimento simultâneo de tudo
+       fica visualmente óbvio ("tudo expande"). Além disso, transform
+       via @keyframes SEMPRE vence uma propriedade transform estática,
+       não importa a especificidade — por isso só "transform:none" (sem
+       cancelar a animation em si) nunca resolvia de vez. Precisa
+       cancelar a ANIMATION diretamente, com !important para vencer a
+       regra genérica que também usa !important. */
+    animation: none !important;
     opacity: 1;
     transform: none;
 }
@@ -1486,10 +1495,15 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
 
     /* --- PACOTE DE ANIMAÇÕES PREMIUM (UI MOTION) --- */
 
-/* 1. Animação de Entrada de Tela (Slide Up Suave) */
-/* Aplica em todas as seções principais quando aparecem */
+/* 1. Animação de Entrada de Tela — REMOVIDA.
+   Aplicava scale(0.95-0.98)→scale(1) incondicionalmente a QUALQUER
+   .container, .content-card ou .admin-section — inclusive elementos
+   dentro de formulários (Garantia/Contrato) preenchidos dinamicamente
+   com muitos campos ao mesmo tempo (ao abrir ou editar um registro).
+   O "crescimento" simultâneo de tudo nesse momento ficava visualmente
+   óbvio e incômodo ("tudo expande"). Removida a origem em vez de só
+   tentar neutralizar o efeito em containers específicos depois. */
 .container:not(.hidden), .content-card, .admin-section {
-    animation: slideUpFade 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
 @keyframes slideUpFade {
@@ -2239,6 +2253,7 @@ html, body {
 html, body {
     width: 100%;
     height: 100%;
+    overflow-x: hidden !important;
     overscroll-behavior: none !important;
     background-color: var(--tertiary-color) !important;
 }
@@ -2679,11 +2694,14 @@ tr, td, .card, .list-group-item {
 
 /* Paleta única (verde), sem alternativas de cor. Ver bloco :root no topo do arquivo. */
 
-/* --- ANIMAÇÕES --- */
+/* --- ANIMAÇÕES ---
+   Entrada com scale (slideUpFade) removida — ver explicação detalhada
+   na primeira declaração desta mesma regra, mais acima no arquivo. Esta
+   segunda cópia (duplicada, com !important) era a que realmente vencia
+   por cascata. */
 .container:not(.hidden),
 .content-card,
 .admin-section {
-    animation: slideUpFade 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards !important;
 }
 
 @keyframes slideUpFade {

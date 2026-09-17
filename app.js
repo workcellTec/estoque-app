@@ -10326,7 +10326,21 @@ window.processarTextoZapIA = async function() {
 
         _preencherFormularioComDadosIA(dados);
 
-        document.getElementById('containerModalZapIA').remove();
+        // FIX: fechar o modal (que tinha um textarea com foco e o teclado
+        // aberto) podia deixar a tela com um deslocamento horizontal
+        // residual em alguns WebViews Android, cortando o início de
+        // labels/textos longos. Tira o foco antes de remover o modal
+        // (fecha o teclado de forma mais limpa) e reseta qualquer scroll
+        // horizontal residual na tela e no container rolável da garantia.
+        document.activeElement?.blur();
+        const modalZapIA = document.getElementById('containerModalZapIA');
+        if (modalZapIA) modalZapIA.remove();
+        window.scrollTo(0, window.scrollY);
+        const areaBookipScroll = document.getElementById('areaBookipWrapper');
+        if (areaBookipScroll) areaBookipScroll.scrollLeft = 0;
+        document.documentElement.scrollLeft = 0;
+        document.body.scrollLeft = 0;
+
         if (typeof showCustomModal === 'function') showCustomModal({ message: 'Dados preenchidos pela IA! Confira antes de salvar. ✅' });
     } catch (err) {
         console.error('Erro no Colar do Zap (IA):', err);
@@ -10398,6 +10412,26 @@ function _preencherFormularioComDadosIA(d) {
     if (d.produtoNome) {
         const btnAdd = document.getElementById('btnAdicionarItemLista');
         if (btnAdd) btnAdd.click();
+    }
+
+    // --- Anexa automaticamente a foto usada na IA como foto do produto ---
+    // Evita o usuário ter que subir a MESMA foto duas vezes (uma para a
+    // IA ler, outra manualmente no botão de anexar foto da garantia).
+    // Só faz isso se ainda não houver foto anexada, para não sobrescrever
+    // algo que o usuário já tenha colocado manualmente.
+    if (window._zapIaFotoBase64 && !window._bookipFotoBlob && !window._bookipFotoUrl) {
+        if (typeof window._bookipHandlePhotoFile === 'function') {
+            try {
+                const byteChars = atob(window._zapIaFotoBase64);
+                const byteNumbers = new Array(byteChars.length);
+                for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], { type: 'image/jpeg' });
+                window._bookipHandlePhotoFile(blob);
+            } catch (e) {
+                console.error('Erro ao anexar foto automaticamente:', e);
+            }
+        }
     }
 }
 
