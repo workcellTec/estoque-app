@@ -78,7 +78,6 @@ body {
 
     /* --- CORREÇÃO DE ALTURA --- */
     width: 100%;
-    height: 100%;           /* Base */
     min-height: 100vh;      /* Fallback para navegadores antigos */
     min-height: 100dvh;     /* A MÁGICA: Altura Dinâmica que ignora o teclado */
     
@@ -140,7 +139,18 @@ body::before {
     overflow-y: auto;
     justify-content: flex-start;
     position: relative; z-index: 1;
-    will-change: transform, opacity;
+    /* FIX SCROLL: will-change:transform/opacity removido daqui também.
+       O fix anterior (ver comentário acima, nas regras por #ID de cada
+       container) só tirou essa promoção de camada do bloco por ID —
+       mas .container é a classe aplicada em TODOS os containers
+       roláveis do app (mainMenu, calculatorHome, stockContainer,
+       clientsContainer, repairsContainer etc.), então essa regra
+       genérica continuava promovendo o elemento pra camada de
+       composição própria e quebrando o touch-scroll nativo em
+       Chrome/WebView de celular fraco — exatamente o mesmo problema,
+       só que voltando por outra porta. A animação fadeInSlide (poucos
+       ms, via @keyframes) não precisa de will-change permanente pra
+       rodar bem; o navegador otimiza sozinho durante os 0.3s. */
 }
 
 h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color); }
@@ -150,8 +160,7 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
 
 
 /* ============================================================
-   ESTRUTURA DOS CONTAINERS PRINCIPAIS (GPU ACELERADO)
-   Define o comportamento de hardware antes do visual
+   ESTRUTURA DOS CONTAINERS PRINCIPAIS
    ============================================================ */
 #mainMenu, 
 #calculatorContainer, 
@@ -161,37 +170,22 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
 #clientsContainer,
 #reposicaoContainer,
 #top-right-controls {
-    /* FIX: transform/will-change/perspective removidos daqui.
-       Esses containers são os mesmos que têm overflow-y:auto (rolam a tela).
-       Aplicar transform + will-change:transform + perspective direto no
-       elemento que precisa rolar promove ele pra própria camada de
-       composição de forma permanente (o will-change ficava ligado pra
-       sempre, não só durante a animação). Em Chrome/WebView antigos de
-       celular fraco isso quebra a detecção de touch-scroll nativo — a
-       tela trava e não rola. Em aparelho topo de linha (GPU/engine mais
-       novo) isso não acontece, por isso rolava só no seu S25 Ultra. Com
-       um banner/modal na frente, quem recebe o toque é o banner (que não
-       tem esse transform), por isso rolava nesse caso. A animação de
-       entrada (fadeInSlide, logo abaixo) continua funcionando normal —
-       ela seta o transform sozinha via keyframe, só durante os 0.3s. */
-    transition: opacity 0.3s ease-out, transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+    /* FIX DEFINITIVO: animação de entrada (fadeInSlide) removida por
+       completo destes containers. Ela aplicava transform via keyframe
+       ao entrar na tela — em WebView Android mais antigo/fraco, esse
+       transform podia ficar residual (uma matriz de escala fracionária,
+       tipo 0.978, mesmo depois da animação "terminar"), o que é um bug
+       conhecido do Chromium: elementos com transform residual quebram a
+       detecção nativa de touch-scroll. Tentamos corrigir via JS (zerar
+       depois que a animação termina), mas isso dependia de timing de
+       evento que nem sempre disparava de forma confiável. Eliminar a
+       animação elimina a causa, não só o sintoma — custo é perder o
+       efeito visual sutil de entrada, ganho é o scroll funcionar sempre,
+       em qualquer aparelho. */
+    opacity: 1;
+    transform: none;
 }
 
-/* Animação de Entrada */
-@keyframes fadeInSlide {
-    0% { opacity: 0; transform: translate3d(0, 15px, 0); }
-    100% { opacity: 1; transform: translate3d(0, 0, 0); }
-}
-
-#mainMenu:not(.hidden), 
-#calculatorContainer:not(.hidden), 
-#contractContainer:not(.hidden), 
-#stockContainer:not(.hidden), 
-#administracao:not(.hidden), 
-#clientsContainer:not(.hidden),
-#reposicaoContainer:not(.hidden) {
-    animation: fadeInSlide 0.3s forwards;
-}
 
 
 
@@ -397,6 +391,130 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
 #contractContainer .content-card { max-width: 800px; margin: 0 auto; }
 .form-section-title { color: var(--primary-color); border-bottom: 1px solid var(--glass-border); }
 
+/* ── Botões "Colar do Zap" — compactos, numa linha só ── */
+.zap-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: .74rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: transform .15s, opacity .15s;
+    -webkit-tap-highlight-color: transparent;
+}
+.zap-btn:active { transform: scale(0.94); }
+.zap-btn i { font-size: .8rem; }
+
+/* Tradicional — preenchido, é a opção principal */
+.zap-btn-primary {
+    background: var(--primary-color);
+    color: #08240F;
+    border: none;
+}
+
+/* IA — discreta, só contorno fino (opção secundária/experimental) */
+.zap-btn-ia {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--glass-border);
+    padding: 6px 10px;
+}
+.zap-btn-ia:hover, .zap-btn-ia:active {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+/* ── Foto do produto (Garantia/Bookip) ──
+   Antes sem nenhum CSS: botões com aparência padrão do navegador e a
+   imagem de preview sem limite de tamanho (aparecia em resolução nativa,
+   gigante na tela). */
+.bookip-photo-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin: 0 auto;
+    max-width: 360px;
+}
+
+.bookip-photo-preview {
+    position: relative;
+    width: 100%;
+    max-width: 220px;
+    border-radius: 16px;
+    overflow: hidden;
+    background: var(--card-bg);
+    border: 1px solid var(--glass-border);
+}
+.bookip-photo-preview img {
+    display: block;
+    width: 100%;
+    height: 180px;
+    object-fit: cover;
+}
+.bookip-photo-preview-label {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 6px;
+    text-align: center;
+    font-size: .68rem;
+    color: #fff;
+    background: rgba(0,0,0,.55);
+}
+.bookip-photo-remove {
+    position: absolute;
+    top: 6px; right: 6px;
+    background: rgba(0,0,0,.6);
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .85rem;
+    cursor: pointer;
+}
+
+.bookip-photo-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    border: 1px solid var(--glass-border);
+    background: var(--card-bg);
+    color: var(--text-color);
+    cursor: pointer;
+    transition: background .18s, transform .15s;
+    -webkit-tap-highlight-color: transparent;
+}
+.bookip-photo-btn:active { transform: scale(0.96); }
+.bookip-photo-btn-icon {
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    background: rgba(var(--primary-color-rgb), .15);
+    color: var(--primary-color);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+.bookip-photo-btn-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.25;
+}
+.bookip-photo-btn-text span {
+    font-size: .8rem;
+    font-weight: 600;
+}
+.bookip-photo-btn-text small {
+    font-size: .62rem;
+    color: var(--text-secondary);
+}
+
 #contractPreview { position: absolute; left: -9999px; top: auto; font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.5; color: #000; background: #FFF; padding: 1cm; width: 21cm; box-sizing: border-box; }
 #contractPreview h4 { font-size: 14pt; text-align: center; margin-bottom: 24pt; font-weight: bold; color: #000; }
 #contractPreview p, #contractPreview div { margin-bottom: 12pt; text-align: justify; color: #000;}
@@ -546,7 +664,6 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
     color: var(--text-color);
 }
 .history-accordion .accordion-collapse {
-    border-top: 1px solid var(--glass-border);
 }
 .history-accordion .accordion-button::after {
     filter: brightness(0) invert(1);
@@ -2129,12 +2246,22 @@ html, body {
 
 /* Agora, quem rola é SÓ o container, não a página */
 .container {
-    /* Ocupa todo o espaço disponível */
-    height: 100% !important;
+    /* FIX DEFINITIVO DE SCROLL (v3): min-height:100dvh forçava TODO
+       container a ter o tamanho exato de uma tela inteira — inclusive
+       containers que já vivem DENTRO de outro pai com seu próprio scroll
+       (ex: #contractContainer, usado por Contrato e Garantia, que já tem
+       overflow-y:auto e height:100%). Como o filho e o pai ficavam do
+       mesmo tamanho exato (100dvh = altura da tela), o conteúdo nunca
+       "vazava" para criar overflow de verdade — a rolagem simplesmente
+       não tinha o que rolar, em NENHUMA tela dessa família.
+       Removido o mínimo de tela inteira: o container agora cresce
+       naturalmente conforme o conteúdo, e quem quer que garanta o mínimo
+       de uma tela cheia (a home, #mainMenu) faz isso na própria regra por
+       ID, não aqui na classe genérica usada por todo mundo. */
     width: 100% !important;
     
     /* Habilita rolagem interna */
-    overflow-y: auto !important;
+    overflow-y: visible !important;
     overflow-x: hidden !important;
     
     /* Rolagem macia no iOS */
@@ -3827,18 +3954,62 @@ body.ctw-v2-active .top-right-controls-pos .dropdown {
 
 /* Balanceamento vertical do mainMenu no v2 */
 body.ctw-v2-active #mainMenu {
+    /* FIX DEFINITIVO (v6): réplica exata do padrão comprovado de
+       #contractContainer (usado por Documentos/Garantia, que o usuário
+       confirmou estar rolando corretamente). Tentativas anteriores
+       deixavam o mainMenu no fluxo normal do documento com overflow
+       próprio — na prática, isso não fazia o touch-scroll funcionar
+       neste WebView. position:fixed + overflow-y:auto direto no
+       elemento é o único padrão que comprovadamente funciona aqui. */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    z-index: 50;
     padding-top: 96px;
-    padding-bottom: 0;
+    padding-bottom: 120px;
     justify-content: flex-start;
-    /* FIX: height fixa + overflow:hidden travava a tela sem rolar assim
-       que o conteúdo (favoritos + grid de cards) passava da altura da
-       viewport — o usuário via a tela "congelada", sem conseguir ver o
-       resto. Agora a altura é só um mínimo e o scroll vertical é livre. */
-    min-height: 100dvh;
-    overflow-y: auto;
-    overflow-x: hidden;
     box-sizing: border-box;
     -webkit-overflow-scrolling: touch;
+}
+
+/* #stockContainer, #clientsContainer, #administracao e #repairsContainer:
+   mesmo padrão comprovado (ver comentário acima no #mainMenu). */
+#stockContainer,
+#clientsContainer,
+#administracao,
+#repairsContainer {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    z-index: 50;
+    padding-bottom: 120px;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* #calculatorContainer é só um wrapper vazio ao redor de #calculatorHome —
+   o padrão fixo precisa estar nele (o wrapper), não no filho, senão o
+   filho fica "preso" dentro de um pai sem altura/overflow definidos. */
+#calculatorContainer:not(.hidden) {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    z-index: 50;
+    -webkit-overflow-scrolling: touch;
+}
+#calculatorHome {
+    min-height: 100%;
 }
 
 /* Remove o h2 de boas-vindas no v2 (o nome já está no top pill) */
@@ -3914,7 +4085,11 @@ body.ctw-v2-active #menuCards {
     padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
 }
 
-/* Top bar do cálculo e documentos no v2 */
+/* Top bar do cálculo e documentos no v2.
+   #calculatorHome vive dentro de #calculatorContainer e #documentsHome
+   dentro de #contractContainer — ambos os PAIS já são position:fixed com
+   overflow-y:auto próprio (padrão comprovado). O filho aqui só cuida do
+   espaçamento, sem competir com scroll próprio. */
 body.ctw-v2-active #calculatorHome,
 body.ctw-v2-active #documentsHome {
     padding-top: 76px;
@@ -5773,3 +5948,47 @@ body.ctw-v2-active #documentsHome {
 /* Modo Performance removido a pedido — era um toggle opcional para
    reduzir efeitos visuais em celulares fracos. O app mantém os efeitos
    visuais completos sempre (sem opção de alternar). */
+
+
+/* ============================================================
+   FIX SCROLL — DOCUMENTOS / GARANTIA (17/09/2026)
+   #contractContainer é o único scroll owner destas telas.
+   Os filhos não devem criar uma segunda área de rolagem sem
+   overflow real, pois o WebView Android pode capturar o gesto
+   no filho e impedir o pai de receber o pan vertical.
+   ============================================================ */
+#contractContainer > #areaBookipWrapper,
+#contractContainer > #areaContratoWrapper {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-y: visible !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: auto !important;
+    touch-action: pan-y;
+}
+
+/* ============================================================
+   FIX SCROLL v9 — DOCUMENTOS / GARANTIA
+   O WebView Android desta versão do app funciona corretamente quando
+   o próprio .container da tela é o viewport rolável. O pai #contractContainer
+   deve apenas ocupar a tela e não disputar o gesto vertical com o filho.
+   ============================================================ */
+#contractContainer {
+    overflow: hidden !important;
+    overflow-x: hidden !important;
+    overflow-y: hidden !important;
+}
+
+#contractContainer > #areaBookipWrapper,
+#contractContainer > #areaContratoWrapper {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y !important;
+}

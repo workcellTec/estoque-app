@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-189'; // Subiu de ctw-188 — força invalidar cache antigo e baixar os arquivos atualizados
+const CACHE = 'ctw-194'; // FIX SCROLL v8: reflow forçado (offsetHeight + scrollTop=0) no #contractContainer após trocar Contrato/Garantia de hidden para visível — bug conhecido de WebView Android que não recalcula altura rolável do pai automaticamente
 
 self.addEventListener('install', e => {
     self.skipWaiting();
@@ -30,10 +30,25 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
+    // FIX: estratégia antiga era "Cache First" (caches.match → só busca a
+    // rede se NÃO tiver no cache) — isso significa que, uma vez que um
+    // arquivo é cacheado, o Service Worker NUNCA MAIS busca a versão nova
+    // dele, mesmo trocando o CACHE_NAME manualmente em alguns cenários de
+    // navegador. Trocado para "Network First": sempre tenta buscar a
+    // versão mais recente da rede primeiro (e atualiza o cache com ela);
+    // só usa o cache salvo como fallback se estiver sem internet. Isso
+    // garante que correções de código sempre cheguem ao usuário assim que
+    // ele recarrega a página, mantendo o funcionamento offline como rede
+    // de segurança (não como comportamento padrão).
     e.respondWith(
-        caches.match(e.request)
-            .then(r => r || fetch(e.request))
-            .catch(() => caches.match('./index.html'))
+        fetch(e.request)
+            .then(resposta => {
+                // Atualiza o cache com a versão fresca, para uso offline futuro
+                const respostaClone = resposta.clone();
+                caches.open(CACHE).then(c => c.put(e.request, respostaClone));
+                return resposta;
+            })
+            .catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
     );
 });
 

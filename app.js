@@ -2,6 +2,19 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebas
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
 import { getDatabase, ref, push, update, remove, onValue, off, get, set, runTransaction } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
 
+// ============================================================
+// 🩹 FIX SCROLL DEFINITIVO (celular fraco não rolava a tela)
+// Causa raiz encontrada e eliminada: os containers principais
+// (#mainMenu, #stockContainer, etc.) usavam uma animação de entrada
+// (fadeInSlide) com "forwards", que aplicava um transform via keyframe
+// e nunca soltava o elemento da camada de composição própria de verdade.
+// Em WebView Android mais antigo/fraco isso deixava um transform residual
+// (matriz de escala fracionária) que quebra a detecção nativa de
+// touch-scroll — bug conhecido do Chromium. A animação foi removida por
+// completo desses containers (ver style.css); não há mais nada para
+// "consertar" via JS depois que ela roda, porque ela não roda mais.
+// ============================================================
+
 const firebaseConfig = {
     apiKey: "AIzaSyANdJzvmHr8JVqrjveXbP_ZV6ZRR6fcVQk",
     authDomain: "ctwbybrendon.firebaseapp.com",
@@ -9257,6 +9270,7 @@ setupProductTags();
         const docHome = document.getElementById('documentsHome');
         const areaContrato = document.getElementById('areaContratoWrapper');
         const areaBookip = document.getElementById('areaBookipWrapper');
+        const paiScroll = document.getElementById('contractContainer');
 
         // Esconde tudo (adiciona hidden E zera style)
         [docHome, areaContrato, areaBookip].forEach(el => {
@@ -9269,7 +9283,14 @@ setupProductTags();
         else if (subSectionId === 'contrato') {
             if (areaContrato) {
                 areaContrato.classList.remove('hidden');
-                areaContrato.style.display = 'block';
+                // FIX: a classe .container (usada por esta tela) é definida
+                // como display:flex — usar 'block' aqui sobrescrevia isso
+                // via inline style, quebrando o layout flex esperado pela
+                // CSS (e o cálculo de altura/overflow que depende dele).
+                areaContrato.style.display = 'flex';
+                // Esta tela é o viewport rolável dentro do wrapper de Documentos.
+                areaContrato.style.height = '100%';
+                areaContrato.style.overflowY = 'auto';
                 // Pré-carrega as libs de PDF em background para que o share funcione na hora H
                 if (typeof garantirPdfLibs === 'function') garantirPdfLibs();
             }
@@ -9277,8 +9298,26 @@ setupProductTags();
         else if (subSectionId === 'bookip') {
             if (areaBookip) {
                 areaBookip.classList.remove('hidden');
-                areaBookip.style.display = 'block';
+                // FIX: mesmo motivo do Contrato acima — .container é
+                // display:flex, 'block' quebrava o layout e o scroll.
+                areaBookip.style.display = 'flex';
+                // A área da Garantia é o viewport rolável. O pai fica
+                // estático para não criar duas áreas de scroll aninhadas.
+                areaBookip.style.height = '100%';
+                areaBookip.style.overflowY = 'auto';
             }
+        }
+
+        // FIX SCROLL: bug conhecido de WebView Android — ao trocar um
+        // elemento de display:none para visível via JS, a altura rolável
+        // do PAI (#contractContainer, que tem overflow-y:auto) às vezes
+        // não é recalculada automaticamente até acontecer um "reflow"
+        // forçado. Ler offsetHeight força o navegador a recalcular layout
+        // agora; resetar scrollTop garante que a tela abre do topo, sem
+        // ficar "presa" numa posição de rolagem antiga de outra tela.
+        if (paiScroll) {
+            void paiScroll.offsetHeight; // força o reflow
+            paiScroll.scrollTop = 0;
         }
     };
 
@@ -10236,16 +10275,24 @@ window.abrirModalColarZapIA = function() {
 function _buildPromptZapIA() {
     return 'Você é um assistente que lê uma mensagem de WhatsApp de venda (e opcionalmente uma foto do produto) e extrai dados estruturados para preencher um formulário de garantia.\n\n' +
         'A mensagem pode conter, em qualquer ordem: nome do cliente, CPF, telefone, endereço, data de nascimento, nome do produto, cor, forma(s) de pagamento e valores.\n\n' +
+        'REGRA DE FORMATO NUMÉRICO (muito importante, fonte comum de erro):\n' +
+        'Os valores estão em formato brasileiro: PONTO separa milhar, VÍRGULA separa decimal. ' +
+        'Exemplos de conversão correta: "2.337,93" = 2337.93 (dois mil trezentos e trinta e sete reais e noventa e três centavos, NÃO 233793). ' +
+        '"1.250,00" = 1250.00. "199,00" = 199.00. "50" = 50.00. ' +
+        'O campo valorTotal do JSON deve ser sempre um número no padrão americano (ponto decimal, sem separador de milhar) — nunca copie os pontos/vírgulas do texto original diretamente.\n\n' +
         'REGRA DE VALOR TOTAL — muito importante:\n' +
-        'Se a mensagem tiver um valor à vista (Pix/Dinheiro) SEPARADO de um valor parcelado no cartão (ex: "200 a vista no pix" + "12x de 199,00" com um "Total: 2388,00"), ' +
+        'Se a mensagem tiver um valor à vista (Pix/Dinheiro) SEPARADO de um valor parcelado no cartão (ex: "200 a vista no pix" + "12x de 199,00" com um "Total: 2.388,00"), ' +
         'o "Total" informado geralmente é APENAS a soma das parcelas do cartão. Nesse caso, some o valor à vista + esse total do cartão para chegar no valorTotal final. ' +
-        'Exemplo: 200 (pix) + 2388 (total do cartão) = valorTotal 2588.00. ' +
-        'Se só houver um valor mencionado (sem separação pix+cartão), use esse valor direto.\n\n' +
+        'Exemplo: 200 (pix) + 2388.00 (total do cartão, já convertido do formato brasileiro) = valorTotal 2588.00. ' +
+        'Se só houver um valor mencionado (sem separação pix+cartão), use esse valor direto, já convertido para o padrão americano.\n\n' +
         'REGRA DE FORMA DE PAGAMENTO:\n' +
         'Identifique todas as formas de pagamento mencionadas. Valores possíveis: "pix" (inclui dinheiro/pix), "credito", "debito", "boleto", "troca". Pode haver mais de uma.\n\n' +
         'REGRA DA FOTO (se houver foto do produto):\n' +
-        'Olhe a foto e tente identificar o nome/modelo do produto, a cor, e um número de série/IMEI visível (em etiqueta, caixa ou tela de configurações). ' +
-        'Priorize o que estiver escrito no texto da mensagem; use a foto para completar o que faltar ou confirmar.\n\n' +
+        'Olhe a foto e tente identificar o nome/modelo do produto, a cor, um número de série/IMEI visível (em etiqueta, caixa ou tela de configurações), e a CAPACIDADE DE ARMAZENAMENTO + RAM se estiverem escritas na caixa/etiqueta. ' +
+        'Muitas caixas de celular trazem uma linha como "12GB RAM 512GB ROM" ou "RAM 12GB | ROM 512GB" — quando encontrar isso, acrescente ao final do produtoNome no formato "<Modelo> <ArmazenamentoGB>/<RAMGB>" (armazenamento primeiro, depois RAM, separados por barra, SEM a cor — cor sempre vai no campo produtoCor separado). ' +
+        'Exemplo: etiqueta diz "REDMI Note 15 Pro+ 5G Glacier Blue" + "12GB RAM 512GB ROM" → produtoNome = "REDMI Note 15 Pro+ 5G 512GB/12GB", produtoCor = "Glacier Blue". ' +
+        'Se a foto não tiver essa informação de armazenamento/RAM legível, não invente — use só o nome/modelo que conseguir ler. ' +
+        'Priorize o que estiver escrito no texto da mensagem para nome/cor; use a foto para completar o que faltar (principalmente armazenamento, RAM e IMEI, que raramente vêm no texto) ou confirmar.\n\n' +
         'REGRA MASTER DE OBSERVAÇÃO (campo obs): só coloque o IMEI/Serial nesse campo. Se não houver IMEI/Serial identificável em nenhuma fonte, deixe o campo obs vazio ("").\n\n' +
         'Retorne APENAS um JSON válido, sem texto extra, sem markdown, no formato exato:\n' +
         '{"nome":"","cpf":"","telefone":"","endereco":"","email":"","dataNascimento":"","produtoNome":"","produtoCor":"","imei":"","valorTotal":0,"pagamento":{"pix":false,"credito":false,"debito":false,"boleto":false,"troca":false}}\n\n' +
@@ -10319,7 +10366,23 @@ function _preencherFormularioComDadosIA(d) {
     document.getElementById('bookipProdObsTemp').value = d.imei ? d.imei : '';
 
     const valorInput = document.getElementById('bookipProdValorTemp');
-    if (valorInput && d.valorTotal) valorInput.value = Number(d.valorTotal).toFixed(2);
+    if (valorInput && d.valorTotal) {
+        let valor = Number(d.valorTotal);
+        // Rede de segurança: se a IA não converteu corretamente o formato
+        // brasileiro (ex: leu "2.337,93" como 233793 em vez de 2337.93),
+        // o valor fica 100x maior que o esperado. Preço de aparelho acima
+        // de R$100.000 é praticamente impossível — nesse caso, assume erro
+        // de conversão e corrige dividindo por 100.
+        if (valor > 100000) valor = valor / 100;
+        // FIX: o campo espera formato BRASILEIRO (vírgula decimal), lido
+        // depois por uma função que trata todo "." como separador de
+        // milhar. Preencher com toFixed(2) (formato americano, ex:
+        // "2699.00") fazia essa função ler "269900" — 100x maior. Usa
+        // toLocaleString('pt-BR') como o resto do código já faz, e
+        // dispara o evento 'input' para "acordar" a máscara do campo.
+        valorInput.value = valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        valorInput.dispatchEvent(new Event('input'));
+    }
     const qtdInput = document.getElementById('bookipProdQtdTemp');
     if (qtdInput && !qtdInput.value) qtdInput.value = 1;
 
