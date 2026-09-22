@@ -1495,15 +1495,15 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
 
     /* --- PACOTE DE ANIMAÇÕES PREMIUM (UI MOTION) --- */
 
-/* 1. Animação de Entrada de Tela — REMOVIDA.
-   Aplicava scale(0.95-0.98)→scale(1) incondicionalmente a QUALQUER
-   .container, .content-card ou .admin-section — inclusive elementos
-   dentro de formulários (Garantia/Contrato) preenchidos dinamicamente
-   com muitos campos ao mesmo tempo (ao abrir ou editar um registro).
-   O "crescimento" simultâneo de tudo nesse momento ficava visualmente
-   óbvio e incômodo ("tudo expande"). Removida a origem em vez de só
-   tentar neutralizar o efeito em containers específicos depois. */
+/* 1. Animação de Entrada de Tela (Slide Up Suave) — RESTAURADA.
+   Tinha sido removida daqui (na regra genérica) para corrigir o efeito
+   de "tudo expande" na Garantia/Contrato — mas a calculadora parou de
+   responder a qualquer toque logo depois (botão voltar, digitar, tudo).
+   Restaurando aqui como teste controlado para isolar a causa; a correção
+   da Garantia/Contrato continua de pé via override específico por ID
+   (#areaBookipWrapper, #areaContratoWrapper, mais abaixo no arquivo). */
 .container:not(.hidden), .content-card, .admin-section {
+    animation: slideUpFade 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
 @keyframes slideUpFade {
@@ -2695,13 +2695,15 @@ tr, td, .card, .list-group-item {
 /* Paleta única (verde), sem alternativas de cor. Ver bloco :root no topo do arquivo. */
 
 /* --- ANIMAÇÕES ---
-   Entrada com scale (slideUpFade) removida — ver explicação detalhada
-   na primeira declaração desta mesma regra, mais acima no arquivo. Esta
-   segunda cópia (duplicada, com !important) era a que realmente vencia
-   por cascata. */
+/* --- ANIMAÇÕES ---
+   RESTAURADA (era a que realmente vencia por cascata, com !important) —
+   ver explicação completa na primeira declaração desta mesma regra, mais
+   acima no arquivo. Teste controlado: isolar se essa animação era a
+   causa do travamento total da calculadora. */
 .container:not(.hidden),
 .content-card,
 .admin-section {
+    animation: slideUpFade 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards !important;
 }
 
 @keyframes slideUpFade {
@@ -4012,6 +4014,29 @@ body.ctw-v2-active #mainMenu {
     -webkit-overflow-scrolling: touch;
 }
 
+/* #fecharVenda, #repassarValores, #calcularEmprestimo, #calcularPorAparelho:
+   mesmo padrão comprovado — elas são IRMÃS de #calculatorContainer no
+   HTML, não filhas (a correção do clique fantasma passou a esconder o
+   #calculatorContainer sempre que uma dessas está ativa, então agora
+   elas ficam "soltas" no documento quando visíveis, sem nenhum pai
+   cuidando do próprio scroll — precisam do mesmo tratamento do #mainMenu). */
+#fecharVenda,
+#repassarValores,
+#calcularEmprestimo,
+#calcularPorAparelho {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    z-index: 50;
+    padding-bottom: 120px;
+    box-sizing: border-box;
+    -webkit-overflow-scrolling: touch;
+}
+
 /* #calculatorContainer é só um wrapper vazio ao redor de #calculatorHome —
    o padrão fixo precisa estar nele (o wrapper), não no filho, senão o
    filho fica "preso" dentro de um pai sem altura/overflow definidos. */
@@ -4021,9 +4046,25 @@ body.ctw-v2-active #mainMenu {
     left: 0;
     width: 100%;
     height: 100%;
-    overflow-y: auto !important;
+    /* FIX: overflow-y mudou de auto para hidden — mesma causa raiz do
+       fix vencedor da Garantia/Contrato (ver comentário na regra
+       #calculatorContainer > #calculatorHome, ... mais abaixo). O PAI
+       não deve mais competir pelo scroll/hit-testing com o filho —
+       agora o filho (com height:100%+min-height:0 explícitos) é quem
+       realmente rola e recebe os cliques. */
+    overflow-y: hidden !important;
     overflow-x: hidden !important;
-    z-index: 50;
+    /* FIX: z-index subiu de 50 para 5000 — existem vários outros
+       elementos no app com z-index muito mais alto (9500 a 99999,
+       modais/backdrops/overlays diversos). Se qualquer um deles ficar
+       "preso" aberto por engano em algum outro fluxo (mesmo invisível,
+       ex: fundo transparente), ele bloquearia TODO toque na calculadora,
+       já que teria prioridade de camada maior — apareceria como
+       "travado, tela estática" exatamente como reportado. Isso garante
+       que a calculadora sempre responde ao toque, sem interferir com
+       modais legitimamente prioritários (que continuam acima, com
+       z-index 9500+). */
+    z-index: 5000;
     -webkit-overflow-scrolling: touch;
 }
 #calculatorHome {
@@ -6000,6 +6041,35 @@ body.ctw-v2-active #documentsHome {
 
 #contractContainer > #areaBookipWrapper,
 #contractContainer > #areaContratoWrapper {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y !important;
+}
+
+/* ============================================================
+   FIX CLIQUE FANTASMA — CALCULADORA (mesma causa raiz da v9 acima)
+   Diagnóstico real confirmou: TODO clique dentro da calculadora era
+   capturado pelo #calculatorContainer (o pai), nunca pelos botões/
+   campos realmente visíveis — sintoma clássico do bug de flexbox onde
+   um .container (display:flex;flex-direction:column) dentro de um
+   ancestral com overflow-y:auto não calcula min-height corretamente
+   em alguns WebView Android: o filho "colapsa" para altura ~0, o
+   conteúdo continua sendo PINTADO na tela normalmente, mas a área
+   real de clique deixa de existir ali — o toque "cai" direto no pai.
+   A correção da Garantia/Contrato (acima) já contornava isso com
+   height:100%+min-height:0 explícitos; a calculadora nunca tinha
+   recebido o mesmo tratamento. */
+#calculatorContainer > #calculatorHome,
+#calculatorContainer > #fecharVenda,
+#calculatorContainer > #repassarValores,
+#calculatorContainer > #calcularEmprestimo,
+#calculatorContainer > #calcularPorAparelho {
     height: 100% !important;
     min-height: 0 !important;
     max-height: none !important;

@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-197'; // Removida animação slideUpFade duplicada (2 declarações, uma com !important) que causava efeito de "tudo expandindo" ao abrir/editar Garantia e Contrato — nunca tinha sido tratada nesses containers antes
+const CACHE = 'ctw-205'; // Clique corrigido, mas escondendo o calculatorContainer as sub-telas (fecharVenda/repassarValores/calcularEmprestimo/calcularPorAparelho) ficaram soltas no documento sem ninguém cuidando do próprio scroll. Aplicado nelas o mesmo padrão position:fixed+overflow-y:auto que já funciona no mainMenu.
 
 self.addEventListener('install', e => {
     self.skipWaiting();

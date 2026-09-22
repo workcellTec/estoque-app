@@ -919,6 +919,25 @@ function openCalculatorSection(sectionId) {
         if(el) el.style.display = 'none';
     });
 
+    // FIX CAUSA RAIZ (clique fantasma na calculadora): #calculatorContainer
+    // é position:fixed cobrindo a tela inteira, mas SÓ #calculatorHome é
+    // filho de verdade dele no HTML — as outras sub-telas são IRMÃS,
+    // declaradas depois do fechamento de #calculatorContainer. Ele só era
+    // escondido ao SAIR da calculadora inteira, nunca ao trocar de
+    // sub-tela — ficava ativo (vazio) por cima de tudo, roubando o clique.
+    // Agora: só fica visível quando a sub-tela é calculatorHome (a única
+    // que realmente vive dentro dele); nas demais, sai do caminho.
+    const calcContainerEl = document.getElementById('calculatorContainer');
+    if (calcContainerEl) {
+        if (sectionId === 'calculatorHome') {
+            calcContainerEl.classList.remove('hidden');
+            calcContainerEl.style.display = 'block';
+        } else {
+            calcContainerEl.classList.add('hidden');
+            calcContainerEl.style.display = 'none';
+        }
+    }
+
     if (sectionId !== 'calcularPorAparelho') {
         currentlySelectedProductForCalc = null;
     }
