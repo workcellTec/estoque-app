@@ -112,23 +112,13 @@ body::before {
     z-index: -1;
     pointer-events: none;
 
-    /* A MÁGICA DE PERFORMANCE (GPU) */
-    transform: translate3d(0, 0, 0); 
-    will-change: transform; 
+    /* FIX: animação de rotação infinita (20s, para sempre, em todas as
+       telas) removida — mantinha uma camada de composição ativa na GPU
+       continuamente, contribuindo para travamentos em celulares fracos.
+       O glow permanece visível, só estático em vez de girando. */
+    transform: translate3d(0, 0, 0) rotate(20deg);
     -webkit-backface-visibility: hidden;
     backface-visibility: hidden;
-
-    /* Animação leve de rotação */
-    animation: gpuRotate 20s infinite linear;
-}
-
-@keyframes gpuRotate {
-    0% {
-        transform: translate3d(0, 0, 0) rotate(0deg);
-    }
-    100% {
-        transform: translate3d(0, 0, 0) rotate(360deg);
-    }
 }
 
 
@@ -219,8 +209,6 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
     background-color: var(--glass-bg);
     color: var(--text-color);
     border: 1px solid var(--glass-border);
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
     box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
     transition: all var(--transition-duration) ease;
     width: 100%; max-width: 320px;
@@ -243,8 +231,6 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
     box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
     
     /* Vidro otimizado (Blur um pouco maior fica mais bonito e o GPU aguenta agora) */
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
     
     /* --- COMANDOS DE PERFORMANCE (MODO JOGO) --- */
     transform: translate3d(0,0,0); /* Força o uso da Placa de Vídeo */
@@ -268,7 +254,6 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
     background-color: var(--input-bg); color: var(--text-color);
     border: 1px solid var(--input-border); border-radius: 12px !important;
     padding: 12px 15px; transition: all var(--transition-duration) ease;
-    backdrop-filter: blur(2px);
 }
 
 .form-control::placeholder { color: var(--text-secondary); opacity: 0.7; }
@@ -368,7 +353,7 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
 
 .hidden { display: none !important; }
 
-.custom-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); display: flex; justify-content: center; align-items: center; z-index: 1056; opacity: 0; visibility: hidden; transition: opacity var(--transition-duration) ease, visibility var(--transition-duration) ease; }
+.custom-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 1056; opacity: 0; visibility: hidden; transition: opacity var(--transition-duration) ease, visibility var(--transition-duration) ease; }
 .custom-modal-overlay.active { opacity: 1; visibility: visible; }
 .custom-modal-content { background-color: var(--secondary-color); color: var(--text-color); padding: 30px; border-radius: var(--border-radius); text-align: center; max-width: 400px; width: 90%; box-shadow: 0 10px 40px var(--shadow-color); transform: scale(0.9); transition: transform var(--transition-duration) ease; border: 1px solid var(--glass-border); }
 .custom-modal-overlay.active .custom-modal-content { transform: scale(1); }
@@ -384,7 +369,6 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
     border-radius: var(--border-radius);
     z-index: 10001;
     border: 1px solid var(--glass-border);
-    backdrop-filter: blur(5px);
     box-shadow: 0 4px 15px var(--shadow-color);
     transition: top 0.4s ease-in-out, opacity 0.4s ease-in-out;
     opacity: 0;
@@ -531,9 +515,9 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
 #contractPreview .signature-line { border-bottom: 1px solid #000; width: 80%; margin: 40px auto 5px auto; }
 
 #administracao { max-width: 900px; }
-#administracao .admin-section { margin-bottom: 30px; padding: 25px; background-color: var(--glass-bg); border-radius: var(--border-radius); border: 1px solid var(--glass-border); backdrop-filter: blur(5px); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37); }
+#administracao .admin-section { margin-bottom: 30px; padding: 25px; background-color: var(--glass-bg); border-radius: var(--border-radius); border: 1px solid var(--glass-border); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37); }
 
-.user-id-display { position: fixed; bottom: 15px; left: 15px; background-color: var(--glass-bg); color: var(--text-secondary); padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; z-index: 1000; backdrop-filter: blur(5px); border: 1px solid var(--glass-border); }
+.user-id-display { position: fixed; bottom: 15px; left: 15px; background-color: var(--glass-bg); color: var(--text-secondary); padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; z-index: 1000; border: 1px solid var(--glass-border); }
 .spinner-border.text-primary { color: var(--primary-color) !important; }
 
 .results-table { --bs-table-color: var(--text-color); --bs-table-bg: transparent; --bs-table-border-color: var(--glass-border); --bs-table-hover-bg: rgba(var(--primary-color-rgb), 0.1); --bs-table-hover-color: var(--text-color); }
@@ -649,7 +633,6 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
 }
 .history-accordion .accordion-header button {
     background-color: var(--glass-bg);
-    backdrop-filter: blur(5px);
     color: var(--text-color);
     font-weight: 500;
     border-radius: 0 !important;
@@ -703,7 +686,6 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
 #notification-bell {
     position: relative; cursor: pointer;
     background-color: var(--glass-bg);
-    backdrop-filter: blur(5px);
     width: 45px; height: 45px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     font-size: 1.2rem;
@@ -726,7 +708,6 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
     
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 16px;
-    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
     box-shadow: 0 10px 40px rgba(0,0,0,0.8);
     padding: 0; overflow: hidden; contain: content;
 }
@@ -860,7 +841,6 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
     position: relative;
     cursor: pointer;
     background-color: var(--glass-bg);
-    backdrop-filter: blur(5px);
     border: 1px solid var(--glass-border); color: var(--text-color);
     width: 45px; height: 45px; border-radius: 50%; display: flex;
     align-items: center; justify-content: center; font-size: 1.2rem;
@@ -887,7 +867,6 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
     color: var(--text-color);
     border-left: 1px solid var(--glass-border);
     box-shadow: -10px 0 30px var(--shadow-color);
-    backdrop-filter: blur(10px);
     background-color: var(--glass-bg);
 }
 .offcanvas-header {
@@ -1124,7 +1103,6 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
 #switch-user-button {
     cursor: pointer;
     background-color: var(--glass-bg);
-    backdrop-filter: blur(5px);
     border: 1px solid var(--glass-border);
     color: var(--text-color);
     min-width: 45px;
@@ -1297,7 +1275,6 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
     padding: 15px;
     margin: 15px auto;
     max-width: 450px;
-    backdrop-filter: blur(10px);
     box-shadow: 0 4px 20px var(--shadow-color);
     animation: fadeInAndUp 0.4s ease-out forwards;
     display: flex;
@@ -1495,15 +1472,18 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
 
     /* --- PACOTE DE ANIMAÇÕES PREMIUM (UI MOTION) --- */
 
-/* 1. Animação de Entrada de Tela (Slide Up Suave) — RESTAURADA.
-   Tinha sido removida daqui (na regra genérica) para corrigir o efeito
-   de "tudo expande" na Garantia/Contrato — mas a calculadora parou de
-   responder a qualquer toque logo depois (botão voltar, digitar, tudo).
-   Restaurando aqui como teste controlado para isolar a causa; a correção
-   da Garantia/Contrato continua de pé via override específico por ID
-   (#areaBookipWrapper, #areaContratoWrapper, mais abaixo no arquivo). */
+/* 1. Animação de Entrada de Tela — REMOVIDA (de vez).
+   Um teste controlado anterior chegou a restaurar esta regra pra
+   verificar se ela era a causa do travamento de toque na calculadora —
+   NÃO era (a causa real era o #calculatorContainer ficando ativo por
+   cima das sub-telas irmãs, já corrigido em openCalculatorSection()).
+   Sem motivo pra manter esta animação ativa: ela aplicava
+   scale(0.95-0.98)→scale(1) incondicionalmente a QUALQUER .container,
+   .content-card ou .admin-section — inclusive formulários preenchidos
+   dinamicamente com muitos campos ao mesmo tempo (Garantia/Contrato ao
+   abrir ou editar um registro), causando um "crescimento" simultâneo de
+   tudo visualmente óbvio e incômodo ("tudo expande"). */
 .container:not(.hidden), .content-card, .admin-section {
-    animation: slideUpFade 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
 @keyframes slideUpFade {
@@ -1598,7 +1578,6 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
     border-radius: 50px; /* Pílula perfeita */
     padding: 12px 24px;
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(10px);
     
     /* Layout Interno */
     display: flex;
@@ -1963,8 +1942,6 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
 
 /* 1. Remove o efeito de vidro dos inputs (Isso pesa muito no scroll) */
 .form-control, .form-select {
-    backdrop-filter: none !important; 
-    -webkit-backdrop-filter: none !important;
     /* Usa uma cor sólida levemente transparente em vez de calcular o blur */
     background-color: var(--input-bg) !important; 
     /* Força o celular a usar a placa de vídeo (GPU) para desenhar */
@@ -2023,8 +2000,7 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.85); /* Bem escuro para focar */
-    backdrop-filter: blur(5px); /* Desfoque no fundo */
+    background-color: rgba(0, 0, 0, 0.85); /* Bem escuro para focar */ /* Desfoque no fundo */
     z-index: 1;
     animation: fadeIn 0.3s ease;
 }
@@ -2197,9 +2173,7 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
 
 /* 1. O Container (A "Cápsula" de Vidro) */
 #bookipSearchContainer .input-group {
-    background: rgba(0, 0, 0, 0.25) !important; /* Fundo escuro transparente */
-    backdrop-filter: blur(10px) !important;      /* Desfoque de vidro */
-    -webkit-backdrop-filter: blur(10px) !important;
+    background: rgba(0, 0, 0, 0.25) !important; /* Fundo escuro transparente */      /* Desfoque de vidro */
     border: 1px solid rgba(255, 255, 255, 0.1) !important; /* Borda fina */
     border-radius: 15px !important;              /* Bem redondo */
     box-shadow: 0 4px 6px rgba(0,0,0,0.05);
@@ -2305,23 +2279,17 @@ html, body {
 .light-orb {
     position: absolute;
     border-radius: 50%;
-    filter: blur(80px); /* Aumentei o blur pra ficar mais suave */
-    opacity: 0.4;
-    
-    /* Aceleração de Hardware ativada */
-    will-change: transform; 
+    filter: blur(50px); /* Reduzido de 80px — ainda suave, bem mais leve para a GPU */
+    opacity: 0.35;
 }
 
-/* Luz 1: A Principal (Mais agitada) */
+/* Luz 1: A Principal */
 .orb-1 {
     top: -20%;
     left: -20%;
     width: 100vw; /* Bem grande pra cobrir a tela */
     height: 100vw;
     background: var(--primary-color);
-    
-    /* Mudei para 8s (mais rápido) e movimento complexo */
-    animation: orbMove1 12s infinite alternate ease-in-out;
 }
 
 /* Luz 2: A Secundária (Contraste) */
@@ -2331,31 +2299,12 @@ html, body {
     width: 90vw;
     height: 90vw;
     background: radial-gradient(circle, #4f46e5 0%, transparent 70%);
-    
-    /* Tempo diferente pra não ficarem sincronizadas */
-    animation: orbMove2 15s infinite alternate ease-in-out;
 }
 
-/* AQUI ESTÁ A MUDANÇA:
-   Antes andava 30px. Agora anda 150px a 200px (bastante chão!)
-*/
-@keyframes orbMove1 {
-    0% {
-        transform: translate3d(0, 0, 0) scale(1);
-    }
-    100% {
-        transform: translate3d(150px, 100px, 0) scale(1.1);
-    }
-}
-
-@keyframes orbMove2 {
-    0% {
-        transform: translate3d(0, 0, 0) scale(1);
-    }
-    100% {
-        transform: translate3d(-150px, -80px, 0) scale(1.2);
-    }
-}
+/* FIX: animações infinitas de movimento (orbMove1/orbMove2) removidas —
+   dois elementos do tamanho da tela com blur pesado, se movendo para
+   sempre, era uma combinação muito cara para GPU em celular fraco. O
+   visual do glow permanece, só estático em vez de flutuando. */
 
 .container {
     min-height: 100vh;
@@ -2473,28 +2422,11 @@ html, body {
     }
     /* ... */
 }
-/* ============================================================
-   🚀 TURBO GPU (MANTÉM O VISUAL, ACELERA O MOTOR)
-   Força o uso da placa de vídeo para os efeitos de vidro e luz
-   ============================================================ */
+/* Bloco de otimização GPU para efeito de vidro (backdrop-filter) removido
+   — sem o blur, promover .content-card/.btn-menu/.stock-item-card/etc
+   (usadas em massa, ex: cada item da lista de estoque) para camadas de
+   GPU próprias era custo puro sem benefício visual algum. */
 
-/* 1. Otimiza os elementos de Vidro (Cards e Menu) */
-.content-card, 
-.btn-menu, 
-.admin-section, 
-.stock-item-card,
-.custom-modal-content {
-    /* Cria uma camada exclusiva na GPU para cada vidro */
-    transform: translate3d(0, 0, 0); 
-    -webkit-transform: translate3d(0, 0, 0);
-    
-    /* Avisa o navegador que esses itens são complexos */
-    will-change: backdrop-filter, transform; 
-    
-    /* Estabiliza a pintura do elemento */
-    backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
-}
 
 /* 2. Otimiza a Luz de Fundo (Para ela girar sem travar a digitação) */
 body::before {
@@ -2695,15 +2627,13 @@ tr, td, .card, .list-group-item {
 /* Paleta única (verde), sem alternativas de cor. Ver bloco :root no topo do arquivo. */
 
 /* --- ANIMAÇÕES ---
-/* --- ANIMAÇÕES ---
-   RESTAURADA (era a que realmente vencia por cascata, com !important) —
-   ver explicação completa na primeira declaração desta mesma regra, mais
-   acima no arquivo. Teste controlado: isolar se essa animação era a
-   causa do travamento total da calculadora. */
+   Entrada com scale (slideUpFade) removida de vez — ver explicação
+   completa na primeira declaração desta mesma regra, mais acima no
+   arquivo. Esta segunda cópia (duplicada, com !important) era a que
+   realmente vencia por cascata. */
 .container:not(.hidden),
 .content-card,
 .admin-section {
-    animation: slideUpFade 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards !important;
 }
 
 @keyframes slideUpFade {
@@ -2804,8 +2734,6 @@ tr, td, .card, .list-group-item {
     justify-content: center !important;
     padding: 0 !important;
     background-color: rgba(255, 255, 255, 0.03) !important;
-    backdrop-filter: blur(8px) !important;
-    -webkit-backdrop-filter: blur(8px) !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
     box-shadow: 0 4px 6px rgba(0,0,0,0.05) !important;
     color: var(--text-secondary) !important;
@@ -2827,41 +2755,9 @@ tr, td, .card, .list-group-item {
     margin-right: 2px !important;
 }
 
-/* --- BRILHO DE FUNDO (AMBIENT LIGHT) --- */
-body::after {
-    content: "";
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 120px;
-    background: linear-gradient(
-        to top,
-        rgba(var(--primary-color-rgb), 0.6) 0%,
-        rgba(var(--primary-color-rgb), 0.2) 50%,
-        transparent 100%
-    );
-    filter: blur(25px);
-    z-index: -1;
-    pointer-events: none;
-    animation: ambilightPulse 6s infinite alternate ease-in-out;
-}
-
-@keyframes ambilightPulse {
-    0% {
-        opacity: 0.6;
-        height: 100px;
-    }
-    100% {
-        opacity: 0.9;
-        height: 140px;
-    }
-}
-
-[data-theme="light"] body::after {
-    opacity: 0.4;
-    filter: blur(30px);
-}
+/* Efeito "Ambient Light" removido a pedido (era um elemento fixo em toda
+   tela, com blur pesado e animação de pulso infinita — contribuía para
+   travamentos em celular fraco). */
 
 /* --- CHIPS DE FILTRO --- */
 .chip-scroll-container {
@@ -3320,47 +3216,9 @@ body::after {
 .btn-back-custom-border {
     border-color: rgba(255,255,255,0.2) !important;
 }
-/* ============================================================
-   EFEITO AMBILIGHT (LUZ NA BARRA DE NAVEGAÇÃO)
-   ============================================================ */
-body::after {
-    content: "";
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 100px; /* Altura do brilho subindo */
-    
-    /* O Segredo: Gradiente da cor do tema para transparente */
-    background: linear-gradient(
-        to top, 
-        rgba(var(--primary-color-rgb), 0.55) 0%, 
-        rgba(var(--primary-color-rgb), 0.1) 40%, 
-        transparent 100%
-    );
-    
-    /* Desfoque para parecer luz de LED */
-    filter: blur(15px);
-    
-    z-index: -1; /* Fica atrás do texto, mas na frente do fundo preto */
-    pointer-events: none; /* Não atrapalha o clique */
-    
-    /* Animação suave "respirando" */
-    animation: ambilightPulse 5s infinite alternate ease-in-out;
-    will-change: opacity, height;
-}
-
-/* Animação para a luz não ficar estática */
-@keyframes ambilightPulse {
-    0% { opacity: 0.5; height: 90px; }
-    100% { opacity: 0.8; height: 130px; }
-}
-
-/* Ajuste para o Modo Claro (para não ficar estranho) */
-[data-theme="light"] body::after {
-    opacity: 0.3; /* Brilho mais fraco no claro */
-    filter: blur(20px);
-}
+/* Efeito Ambilight (luz pulsante na barra de navegação) removido a pedido
+   — mesma razão da declaração acima. Esta era a que realmente valia por
+   cascata (última do arquivo), rodando sem parar em toda tela do app. */
 /* ============================================================
    PAINEL DE EDIÇÃO RETRÁTIL (ZONA DE PERIGO)
    ============================================================ */
@@ -3829,7 +3687,6 @@ body.ctw-v2-active #contractContainer {
 }
 .ctw-sheet-backdrop.ctw-sheet-open {
     background: rgba(0,0,0,0.65);
-    backdrop-filter: blur(4px);
 }
 
 .ctw-sheet {
@@ -3839,8 +3696,6 @@ body.ctw-v2-active #contractContainer {
     transform: translateX(-50%) translateY(20px);
     width: min(340px, calc(100vw - 32px));
     background: rgba(28,28,30,0.96);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
     border: 1px solid rgba(255,255,255,0.12);
     border-radius: 24px;
     padding: 10px 0 16px;
@@ -4200,7 +4055,6 @@ body.ctw-v2-active #documentsHome {
     border-radius: 14px;
     padding: 10px 4px;
     text-align: center;
-    backdrop-filter: blur(5px);
     min-width: 0;        /* permite shrink no grid */
     overflow: hidden;
 }
@@ -4296,7 +4150,6 @@ body.ctw-v2-active #documentsHome {
     border: 1px solid var(--glass-border);
     border-radius: 18px;
     overflow: hidden;
-    backdrop-filter: blur(5px);
     transition: box-shadow .2s;
 }
 .rep-card-vencido  { border-color: rgba(239,68,68,.4);   background: rgba(239,68,68,.05); }
@@ -4571,7 +4424,6 @@ body.ctw-v2-active #documentsHome {
     inset: 0;
     z-index: 15000;
     background: rgba(0,0,0,0.7);
-    backdrop-filter: blur(4px);
     align-items: flex-end;
     justify-content: center;
     padding: 0;
@@ -4820,8 +4672,6 @@ body.ctw-v2-active #documentsHome {
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.75);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
 }
 
 .ctw-sp-panel {
@@ -5056,7 +4906,7 @@ body.ctw-v2-active #documentsHome {
    ========================================= */
 .scan-ia-overlay {
     position: fixed; inset: 0; z-index: 99998;
-    background: rgba(0,0,0,0.88); backdrop-filter: blur(8px);
+    background: rgba(0,0,0,0.88);
     display: flex; align-items: flex-end; justify-content: center;
     opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
 }
@@ -5429,8 +5279,6 @@ body.ctw-v2-active #documentsHome {
     inset: 0;
     z-index: 99990;
     background: rgba(0,0,0,.55);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
     display: flex;
     align-items: flex-start;   /* TOPO */
     justify-content: center;
@@ -5570,7 +5418,7 @@ body.ctw-v2-active #documentsHome {
     background:rgba(0,0,0,.65); border:none; border-radius:50%;
     color:#fff; font-size:1rem; width:27px; height:27px;
     display:flex; align-items:center; justify-content:center;
-    cursor:pointer; backdrop-filter:blur(4px);
+    cursor:pointer;
 }
 
 /* ============================================================

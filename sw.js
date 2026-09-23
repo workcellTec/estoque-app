@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-205'; // Clique corrigido, mas escondendo o calculatorContainer as sub-telas (fecharVenda/repassarValores/calcularEmprestimo/calcularPorAparelho) ficaram soltas no documento sem ninguém cuidando do próprio scroll. Aplicado nelas o mesmo padrão position:fixed+overflow-y:auto que já funciona no mainMenu.
+const CACHE = 'ctw-206'; // Achado: uma versão mais antiga do style.css tinha voltado (de algum merge/edição anterior), desfazendo 3 correções de performance desta sessão: backdrop-filter (38 ocorrências), animações infinitas de glow (orbs/ambilight), e a animação slideUpFade que causava "tudo expande" na Garantia. Tudo reaplicado. Também removido bloco de GPU-layer para efeito de vidro que não existe mais.
 
 self.addEventListener('install', e => {
     self.skipWaiting();
