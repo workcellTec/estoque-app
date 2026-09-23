@@ -580,6 +580,13 @@ const topRightControls = document.getElementById('top-right-controls');
 
 
 function showMainSection(sectionId) {
+    // DIAGNÓSTICO TEMPORÁRIO: registra cada chamada pra investigar por
+    // que a barra de saudação não aparece em produção (localhost funciona).
+    try {
+        window.__ctwNavLog = window.__ctwNavLog || [];
+        window.__ctwNavLog.push('[' + new Date().toLocaleTimeString('pt-BR') + '] showMainSection("' + sectionId + '") | isAuthReady=' + isAuthReady + ' | auth.currentUser=' + (auth && auth.currentUser ? auth.currentUser.uid : 'null'));
+    } catch (e) {}
+
     if (!isAuthReady) return;
 
     // Hook v2: controla visibilidade do top bar (busca global)
@@ -4030,6 +4037,10 @@ async function main() {
         });
 
         onAuthStateChanged(auth, async (user) => {
+            try {
+                window.__ctwNavLog = window.__ctwNavLog || [];
+                window.__ctwNavLog.push('[' + new Date().toLocaleTimeString('pt-BR') + '] onAuthStateChanged disparou | user=' + (user ? user.uid : 'NULL (sem usuário!)'));
+            } catch (e) {}
             if (user) {
                 userId = user.uid;
                 isAuthReady = true;

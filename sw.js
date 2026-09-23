@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-207'; // Corrigido: botão Início inclicável na calculadora (z-index 5000 sobrepunha a bottom nav, revertido pra 50); removido "lembrar última tela" a pedido do usuário (app sempre abre na tela inicial). Performance: removido will-change:transform redundante em .form-control/.form-select e .content-card (2 declarações, usados em massa por todo o app), e will-change órfão no glow de fundo.
+const CACHE = 'ctw-208'; // Investigando bug da saudação em branco na produção: adicionado diagnóstico de boot (botão 🧭 canto superior direito) que registra cada chamada de showMainSection() + estado de autenticação + qualquer erro JS, e abre sozinho se houver erro
 
 self.addEventListener('install', e => {
     self.skipWaiting();

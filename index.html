@@ -3248,6 +3248,47 @@ window.addEventListener('load', function() {
 })();
 </script>
 
+
+<script>
+(function() {
+    try {
+        var painel = document.getElementById('ctwBootDiagPanel');
+        var toggle = document.getElementById('ctwBootDiagToggle');
+        var erros = [];
+
+        function render() {
+            var navLog = (window.__ctwNavLog || []).join('\n');
+            var errLog = erros.length ? ('\n\n=== ERROS ===\n' + erros.join('\n\n')) : '';
+            painel.textContent = '=== NAV/AUTH LOG ===\n' + (navLog || '(vazio ainda)') + errLog;
+        }
+
+        toggle.addEventListener('click', function() {
+            var visivel = painel.style.display === 'block';
+            painel.style.display = visivel ? 'none' : 'block';
+            if (!visivel) render();
+        });
+
+        window.addEventListener('error', function(e) {
+            erros.push('[' + new Date().toLocaleTimeString('pt-BR') + '] ' + e.message + ' (' + e.filename + ':' + e.lineno + ')');
+            painel.style.display = 'block'; // abre sozinho, sem precisar tocar
+            render();
+        });
+        window.addEventListener('unhandledrejection', function(e) {
+            erros.push('[' + new Date().toLocaleTimeString('pt-BR') + '] Promise rejeitada: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+            painel.style.display = 'block';
+            render();
+        });
+
+        // Atualiza o conteúdo periodicamente enquanto estiver aberto
+        setInterval(function() {
+            if (painel.style.display === 'block') render();
+        }, 1000);
+    } catch (err) {
+        console.error('Erro no diagnóstico de boot:', err);
+    }
+})();
+</script>
+
 </body>
 </html>
 
