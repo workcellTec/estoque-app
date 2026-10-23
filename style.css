@@ -2134,7 +2134,7 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
    "encolhe para o conteúdo". Um IMEI ou texto longo sem espaço esticava a lista
    além da tela (visual "largão", cortado). Aqui tudo é limitado à largura da tela. */
 #areaBookipWrapper > *,
-#areaContratoWrapper > * { max-width: 100%; min-width: 0; box-sizing: border-box; }
+#areaContratoWrapper > * { max-width: 100%; min-width: 0; box-sizing: border-box; flex-shrink: 0; } /* flex-shrink:0: filhos com overflow:auto (barra de filtros) não podem ser espremidos pela coluna flex de altura fixa */
 #bookipListaItens { width: 100%; }
 .accordion-body { overflow-wrap: anywhere; } /* histórico: IMEI/endereço longo não estica a tela */
 .bookip-item-card { max-width: 100%; min-width: 0; box-sizing: border-box; }
@@ -3847,7 +3847,8 @@ body.ctw-v2-active .top-right-controls-pos .dropdown {
 }
 
 #ctwVersaoApp {
-    margin-top: 18px;
+    grid-column: 1 / -1; /* último item da grade de cards, colado logo abaixo da última linha */
+    margin-top: 2px;
     font-size: 10px;
     opacity: .4;
     text-align: center;
@@ -5960,3 +5961,36 @@ body.ctw-v2-active #documentsHome {
     content-visibility: auto;
     contain-intrinsic-size: auto 56px;
 }
+
+/* ── Senha do aparelho (Consertos): grade 3x3 do desenho + exibição no card ── */
+.rep-senha-pad {
+    width: min(240px, 100%);
+    aspect-ratio: 1;
+    margin: 4px auto 0;
+    border-radius: 16px;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.1);
+    touch-action: none;           /* o dedo desenha, não rola a tela */
+    user-select: none;
+    -webkit-user-select: none;
+}
+.rep-senha-pad svg, .rep-senha-svg svg { width: 100%; height: 100%; display: block; }
+.rep-senha-barra { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.rep-senha-barra small { opacity: .6; font-size: .72rem; }
+.rep-pat-line  { stroke: #6dbf8b; stroke-width: 5; stroke-linecap: round; opacity: .85; }
+.rep-pat-rubber { stroke: #6dbf8b; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 2 9; opacity: .7; }
+.rep-pat-seta  { fill: #6dbf8b; }
+.rep-pat-on    { fill: #6dbf8b; }
+.rep-pat-ring  { fill: none; stroke: #6dbf8b; stroke-width: 3; }
+.rep-pat-off   { fill: currentColor; opacity: .3; }
+.rep-pat-num   { fill: #0b1a10; font: 700 20px 'Poppins', sans-serif; text-anchor: middle; dominant-baseline: central; }
+.rep-senha {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin: 4px 0 10px; padding: 8px 10px;
+    border-radius: 10px; background: rgba(255,255,255,.05);
+}
+.rep-senha-label { font-size: .75rem; font-weight: 600; opacity: .75; display: flex; align-items: center; gap: 5px; }
+.rep-senha-valor { font-size: .95rem; letter-spacing: .5px; user-select: text; -webkit-user-select: text; color: inherit; overflow-wrap: anywhere; }
+.rep-senha-svg { width: 96px; height: 96px; flex-shrink: 0; }
+.rep-senha-seq { font-size: .72rem; opacity: .6; }
+.rep-senha-info { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }

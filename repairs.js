@@ -562,6 +562,8 @@ function buildCard(r) {
                 ${r.numeroCliente ? `<span><i class="bi bi-whatsapp" style="color:#25d366;"></i> ${escHtml(r.numeroCliente)}</span>` : ''}
             </div>
 
+            ${senhaCardHtml(r)}
+
             <!-- Galeria de fotos do cadastro -->
             ${todasFotos.length > 0 ? `
             <div class="rep-foto-galeria">
@@ -713,6 +715,186 @@ function confirmDelete(id) {
 // ============================================================
 // FORMULÁRIO DE CADASTRO / EDIÇÃO
 // ============================================================
+// ============================================================
+// SENHA DO APARELHO — PIN, texto ou desenho (grade 3x3)
+// Salva em senhaTipo ('pin' | 'texto' | 'desenho') e senhaValor (string).
+// Desenho = pontos 1..9 (linha a linha) na ordem do traçado, ex.: "1-2-5-8".
+// ============================================================
+const SENHA_MIN_PONTOS = 4;
+let repSenhaSeq = [];
+
+function _senhaPt(n) { const i = n - 1; return { x: 50 + (i % 3) * 100, y: 50 + Math.floor(i / 3) * 100 }; }
+
+// Converte o valor salvo em sequência válida (1..9, sem repetição).
+function _senhaParseSeq(valor) {
+    const seq = [];
+    String(valor || '').split('-').forEach(t => {
+        const n = parseInt(t, 10);
+        if (n >= 1 && n <= 9 && !seq.includes(n)) seq.push(n);
+    });
+    return seq;
+}
+
+// SVG do desenho (viewBox 300x300). Usado ao vivo no formulário e no card.
+// Setas no sentido do traçado; números = ordem; anel = ponto inicial.
+function senhaDesenhoSvg(seq, rubber) {
+    const f = v => v.toFixed(1);
+    let linhas = '', setas = '', pontos = '';
+    for (let i = 1; i < seq.length; i++) {
+        const a = _senhaPt(seq[i - 1]), b = _senhaPt(seq[i]);
+        const len = Math.hypot(b.x - a.x, b.y - a.y), ux = (b.x - a.x) / len, uy = (b.y - a.y) / len;
+        linhas += `<line class="rep-pat-line" x1="${f(a.x)}" y1="${f(a.y)}" x2="${f(b.x)}" y2="${f(b.y)}"/>`;
+        const tip  = { x: b.x - ux * 26, y: b.y - uy * 26 };
+        const base = { x: tip.x - ux * 18, y: tip.y - uy * 18 };
+        setas += `<polygon class="rep-pat-seta" points="${f(tip.x)},${f(tip.y)} ${f(base.x - uy * 10)},${f(base.y + ux * 10)} ${f(base.x + uy * 10)},${f(base.y - ux * 10)}"/>`;
+    }
+    if (rubber && seq.length) {
+        const a = _senhaPt(seq[seq.length - 1]);
+        linhas += `<line class="rep-pat-rubber" x1="${f(a.x)}" y1="${f(a.y)}" x2="${f(rubber.x)}" y2="${f(rubber.y)}"/>`;
+    }
+    for (let n = 1; n <= 9; n++) {
+        const p = _senhaPt(n), idx = seq.indexOf(n);
+        if (idx < 0) { pontos += `<circle class="rep-pat-off" cx="${p.x}" cy="${p.y}" r="8"/>`; continue; }
+        if (idx === 0) pontos += `<circle class="rep-pat-ring" cx="${p.x}" cy="${p.y}" r="27"/>`;
+        pontos += `<circle class="rep-pat-on" cx="${p.x}" cy="${p.y}" r="19"/><text class="rep-pat-num" x="${p.x}" y="${p.y + 1}">${idx + 1}</text>`;
+    }
+    return `<svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${linhas}${setas}${pontos}</svg>`;
+}
+
+// Bloco exibido no card expandido (vazio quando o conserto não tem senha).
+function senhaCardHtml(r) {
+    if (!r.senhaTipo || !r.senhaValor) return '';
+    if (r.senhaTipo === 'desenho') {
+        const seq = _senhaParseSeq(r.senhaValor);
+        if (seq.length < 2) return '';
+        return `<div class="rep-senha"><div class="rep-senha-info"><span class="rep-senha-label"><i class="bi bi-key-fill"></i> Senha (desenho)</span>
+            <span class="rep-senha-seq">${seq.join(' → ')}</span></div>
+            <div class="rep-senha-svg">${senhaDesenhoSvg(seq)}</div></div>`;
+    }
+    const rotulo = r.senhaTipo === 'pin' ? 'PIN' : 'Senha';
+    return `<div class="rep-senha"><span class="rep-senha-label"><i class="bi bi-key-fill"></i> ${rotulo}</span>
+        <code class="rep-senha-valor">${escHtml(r.senhaValor)}</code></div>`;
+}
+
+function _senhaAtualizarUI() {
+    const tipo  = document.getElementById('repFormSenhaTipo')?.value || '';
+    const txt   = document.getElementById('repFormSenhaTexto');
+    const draw  = document.getElementById('repFormSenhaDesenho');
+    if (txt) {
+        txt.style.display = (tipo === 'pin' || tipo === 'texto') ? '' : 'none';
+        txt.inputMode   = tipo === 'pin' ? 'numeric' : 'text';
+        txt.placeholder = tipo === 'pin' ? 'Ex: 1234' : 'Senha do aparelho';
+    }
+    if (draw) draw.style.display = tipo === 'desenho' ? '' : 'none';
+    _senhaDesenharPad();
+}
+
+function _senhaDesenharPad(rubber) {
+    const pad = document.getElementById('repSenhaPad');
+    if (pad) pad.innerHTML = senhaDesenhoSvg(repSenhaSeq, rubber);
+    const dica = document.getElementById('repSenhaDica');
+    if (dica) dica.textContent = repSenhaSeq.length
+        ? `Padrão: ${repSenhaSeq.join(' → ')}`
+        : `Arraste o dedo pelos pontos (mínimo ${SENHA_MIN_PONTOS}).`;
+}
+
+// Liga os eventos uma única vez (o formulário é reaproveitado a cada abertura).
+function _senhaWire() {
+    const pad = document.getElementById('repSenhaPad');
+    if (!pad || pad.dataset.wired) return;
+    pad.dataset.wired = '1';
+    let desenhando = false;
+
+    const ponto = e => {
+        const r = pad.getBoundingClientRect();
+        return { x: (e.clientX - r.left) / r.width * 300, y: (e.clientY - r.top) / r.height * 300 };
+    };
+    // Ponto mais próximo dentro do raio de captura (38 de 100 de espaçamento: sem sobreposição).
+    const alvo = pt => {
+        for (let n = 1; n <= 9; n++) {
+            const c = _senhaPt(n);
+            if (Math.hypot(pt.x - c.x, pt.y - c.y) <= 38) return n;
+        }
+        return 0;
+    };
+    const adicionar = n => {
+        if (!n || repSenhaSeq.includes(n)) return;
+        if (repSenhaSeq.length) {
+            // Como no Android: passar por cima de um ponto intermediário livre o inclui.
+            const l = repSenhaSeq[repSenhaSeq.length - 1] - 1, m = n - 1;
+            const r1 = Math.floor(l / 3), c1 = l % 3, r2 = Math.floor(m / 3), c2 = m % 3;
+            if ((r1 + r2) % 2 === 0 && (c1 + c2) % 2 === 0) {
+                const meio = ((r1 + r2) / 2) * 3 + (c1 + c2) / 2 + 1;
+                if (meio !== l + 1 && meio !== n && !repSenhaSeq.includes(meio)) repSenhaSeq.push(meio);
+            }
+        }
+        repSenhaSeq.push(n);
+    };
+
+    pad.addEventListener('pointerdown', e => {
+        const pt = ponto(e), n = alvo(pt);
+        if (!n) return;                       // toque fora dos pontos não apaga o desenho
+        e.preventDefault();
+        try { pad.setPointerCapture(e.pointerId); } catch (_) {}
+        desenhando = true;
+        repSenhaSeq = [];
+        adicionar(n);
+        _senhaDesenharPad(pt);
+    });
+    pad.addEventListener('pointermove', e => {
+        if (!desenhando) return;
+        e.preventDefault();
+        const pt = ponto(e);
+        adicionar(alvo(pt));
+        _senhaDesenharPad(pt);
+    });
+    const fim = () => {
+        if (!desenhando) return;
+        desenhando = false;
+        if (repSenhaSeq.length < SENHA_MIN_PONTOS) {
+            repSenhaSeq = [];
+            showToast(`⚠️ O padrão precisa de pelo menos ${SENHA_MIN_PONTOS} pontos.`);
+        }
+        _senhaDesenharPad();
+    };
+    pad.addEventListener('pointerup', fim);
+    pad.addEventListener('pointercancel', fim);
+
+    document.getElementById('repSenhaRefazer')?.addEventListener('click', () => { repSenhaSeq = []; _senhaDesenharPad(); });
+    document.getElementById('repFormSenhaTipo')?.addEventListener('change', _senhaAtualizarUI);
+    document.getElementById('repFormSenhaTexto')?.addEventListener('input', e => {
+        if (document.getElementById('repFormSenhaTipo')?.value === 'pin') e.target.value = e.target.value.replace(/\D/g, '');
+    });
+}
+
+// Preenche o formulário com a senha salva (ou limpa, em conserto novo).
+function _senhaCarregar(repair) {
+    _senhaWire();
+    const tipo = repair?.senhaTipo || '';
+    repSenhaSeq = tipo === 'desenho' ? _senhaParseSeq(repair.senhaValor) : [];
+    const sel = document.getElementById('repFormSenhaTipo');
+    const txt = document.getElementById('repFormSenhaTexto');
+    if (sel) sel.value = tipo;
+    if (txt) txt.value = (tipo === 'pin' || tipo === 'texto') ? (repair.senhaValor || '') : '';
+    _senhaAtualizarUI();
+}
+
+// Lê e valida a senha do formulário → { tipo, valor } ou { erro }.
+function _senhaLer() {
+    const tipo = document.getElementById('repFormSenhaTipo')?.value || '';
+    if (!tipo) return { tipo: null, valor: null };
+    if (tipo === 'desenho') {
+        return repSenhaSeq.length >= SENHA_MIN_PONTOS
+            ? { tipo, valor: repSenhaSeq.join('-') }
+            : { erro: `⚠️ Desenhe o padrão (mínimo ${SENHA_MIN_PONTOS} pontos) ou escolha "Sem senha".` };
+    }
+    let valor = (document.getElementById('repFormSenhaTexto')?.value || '').trim();
+    if (tipo === 'pin') valor = valor.replace(/\D/g, '');
+    return valor
+        ? { tipo, valor: valor.slice(0, 64) }
+        : { erro: `⚠️ Informe ${tipo === 'pin' ? 'o PIN' : 'a senha'} do aparelho ou escolha "Sem senha".` };
+}
+
 function openRepairForm(repair = null) {
     repairPhotoBlob = null;
     repairPhotoUrl  = repair?.fotoUrl || '';
@@ -772,6 +954,7 @@ function openRepairForm(repair = null) {
     tel.value          = repair?.numeroCliente || '';
     if (modelo)  modelo.value  = repair?.modeloAparelho || '';
     defeito.value      = repair?.descricaoDefeito || '';
+    _senhaCarregar(repair);
     // Monta valor datetime-local a partir dos campos separados salvos no Firebase
     if (prazo) {
         if (repair?.dataMaxima) {
@@ -821,6 +1004,8 @@ async function submitRepairForm() {
     if (!nome || !defeito) {
         showToast('⚠️ Nome do cliente e defeito são obrigatórios.'); return;
     }
+    const senha = _senhaLer();
+    if (senha.erro) { showToast(senha.erro); return; }
 
     const btn = document.getElementById('repFormSaveBtn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Salvando...'; }
@@ -841,6 +1026,8 @@ async function submitRepairForm() {
             numeroCliente:    tel,
             modeloAparelho:   modelo || null,
             descricaoDefeito: defeito,
+            senhaTipo:        senha.tipo,   // null remove a senha antiga ao editar
+            senhaValor:       senha.valor,
             dataMaxima:       prazo || null,
             horaMaxima:       hora || null,
             valorCobrado:     valor,
