@@ -45,13 +45,15 @@ async function lazyLoadScript(url) {
     });
 }
 
-// Contrato: só html2canvas + jsPDF (leves). Garantia/recibo: também html2pdf.
+// Contrato: só jsPDF (texto vetorial, leve). Garantia/recibo: também html2canvas + html2pdf.
 async function garantirPdfLibs({ soContrato = false } = {}) {
     const libs = [
-        lazyLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
         lazyLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'),
     ];
-    if (!soContrato) libs.push(lazyLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'));
+    if (!soContrato) {
+        libs.push(lazyLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'));
+        libs.push(lazyLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'));
+    }
     await Promise.all(libs);
 }
 
@@ -483,6 +485,116 @@ let activeTagFilter = null; // Guarda a etiqueta selecionada (ex: 'Xiaomi')
 let bookipCartList = []; 
 // --- CORREÇÃO: ADICIONE ESTA LINHA ---
 let bookipListener = null; 
+
+// onValue() devolve a função que cancela o listener (off(ref,'value',fn) não cancela com ela).
+// Trocar de modo sem cancelar deixaria o listener da outra coleção redesenhando o histórico errado.
+function ctwDesligarListenerHistorico() {
+    if (typeof bookipListener === 'function') { try { bookipListener(); } catch (e) {} }
+    bookipListener = null;
+}
+
+// ============================================================
+// MODO DO DOCUMENTO — a tela "Garantia (Bookip)" também atende o Orçamento.
+// O modo troca: coleção no Firebase, lixeira, rascunho, numeração (ORC-001),
+// títulos, campo de validade (no lugar da garantia) e o layout do PDF.
+// Garantia é o padrão; deep links (banner VIP, busca) sempre abrem em Garantia.
+// ============================================================
+window.ctwDocModo = 'garantia';
+const ctwEhOrcamento = () => window.ctwDocModo === 'orcamento';
+const ctwDocCol = () => ctwEhOrcamento() ? 'orcamentos' : 'bookips';
+const ctwDocLixeira = () => ctwEhOrcamento() ? 'trash_orcamentos' : 'trash_bookips';
+const ctwDocRascunhoKey = () => ctwEhOrcamento() ? 'ctwOrcamentoDraft_v1' : 'ctwBookipDraft_Smart_v2';
+// Coleção de um documento já salvo (não depende de qual tela está aberta agora).
+const ctwColDoDoc = (d) => (d && d.type === 'orcamento') ? 'orcamentos' : 'bookips';
+// "ORC-001" para orçamento; garantia/recibo continuam "001".
+const ctwNumDocFmt = (d) => (d && d.type === 'orcamento' && d.docNumber) ? 'ORC-' + d.docNumber : ((d && d.docNumber) || '---');
+
+// Hoje como YYYY-MM-DD no fuso do aparelho (toISOString usa UTC e vira "amanhã" à noite no Brasil).
+function ctwHojeISO() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// Data base (dataVenda ou criadoEm) como Date local à meia-noite.
+function ctwDataBaseDoc(d) {
+    let base;
+    if (d && d.dataVenda && /^\d{4}-\d{2}-\d{2}$/.test(d.dataVenda)) {
+        const p = d.dataVenda.split('-');
+        base = new Date(+p[0], +p[1] - 1, +p[2]);
+    } else {
+        base = d && d.criadoEm ? new Date(d.criadoEm) : new Date();
+        if (isNaN(base)) base = new Date();
+        base = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+    }
+    return base;
+}
+
+// Validade do orçamento: { dias, ate:Date, restantes } (restantes < 0 = expirado).
+function ctwValidadeOrcamento(d) {
+    const dias = parseInt(d && d.validadeDias, 10) || 7;
+    const ate = ctwDataBaseDoc(d);
+    ate.setDate(ate.getDate() + dias);
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    return { dias, ate, restantes: Math.round((ate - hoje) / 86400000) };
+}
+
+// Entra no modo pedido. Se for outro modo, o formulário (compartilhado) é esvaziado — o que estava
+// sendo digitado vai antes para o rascunho do modo antigo, então nada se perde nem vaza de um para o outro.
+function ctwTrocarModoDoc(novo) {
+    const alvo = novo === 'orcamento' ? 'orcamento' : 'garantia';
+    if (alvo === window.ctwDocModo) { ctwAplicarModoDoc(alvo); return; }
+    ctwDesligarListenerHistorico();
+    // grava já o que estava sendo digitado (no rascunho do modo antigo) e cancela o salvamento pendente
+    try { if (typeof window.ctwSalvarRascunhoAgora === 'function') window.ctwSalvarRascunhoAgora(); } catch (e) { console.warn('rascunho ao trocar de modo:', e); }
+    ctwAplicarModoDoc(alvo);
+    window.isSimpleReceiptMode = false;
+    if (typeof window.resetFormulariosBookip === 'function') window.resetFormulariosBookip({ manterRascunho: true });
+    // volta para a aba "Novo" sem disparar o reset do toggle (ele apagaria o rascunho do modo novo)
+    const t = document.getElementById('bookipModeToggle');
+    if (t) t.checked = false;
+    document.getElementById('newBookipContent')?.classList.remove('hidden');
+    ['historyBookipContent', 'bookipSearchContainer', 'filterBarProfiles'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
+}
+window.ctwTrocarModoDoc = ctwTrocarModoDoc;
+
+// Lê a validade (em dias) escolhida no formulário do orçamento; 7 se vazio/inválido.
+function ctwLerValidadeOrcamentoDoForm() {
+    const sel = document.getElementById('orcValidadeSelect')?.value;
+    const dias = sel === 'custom'
+        ? parseInt(document.getElementById('orcValidadeCustomInput')?.value, 10)
+        : parseInt(sel, 10);
+    return dias >= 1 && dias <= 365 ? dias : 7;
+}
+
+// Coloca uma validade (dias) no formulário: padrão se for 3/7/15/30, senão "Manual".
+function ctwSetValidadeOrcamentoNoForm(dias) {
+    const sel = document.getElementById('orcValidadeSelect');
+    const inp = document.getElementById('orcValidadeCustomInput');
+    if (!sel) return;
+    const d = parseInt(dias, 10) || 7;
+    if ([3, 7, 15, 30].includes(d)) { sel.value = String(d); if (inp) { inp.value = ''; inp.classList.add('hidden'); } }
+    else { sel.value = 'custom'; if (inp) { inp.value = d; inp.classList.remove('hidden'); } }
+}
+
+// Ajusta títulos/campos da tela compartilhada para o modo ('garantia' | 'orcamento').
+function ctwAplicarModoDoc(modo) {
+    window.ctwDocModo = modo === 'orcamento' ? 'orcamento' : 'garantia';
+    const orc = ctwEhOrcamento();
+    const setTxt = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+    const titulo = document.querySelector('#areaBookipWrapper h3');
+    if (titulo) titulo.innerText = orc ? 'Orçamento' : 'Garantia (Bookip)';
+    setTxt('txtToggleNovo', orc ? '<i class="bi bi-plus-lg"></i> Novo Orçamento' : '<i class="bi bi-plus-lg"></i> Nova Garantia');
+    setTxt('txtNovoCiclo', orc ? 'Começar um Novo Orçamento' : 'Começar um Novo Recibo');
+    setTxt('txtResetSuccess', orc ? 'Sair e Começar Novo Orçamento' : 'Sair e Começar Nova Garantia');
+    setTxt('postSaveMsg', orc ? 'Orçamento já salvo na Nuvem.' : 'Garantia já salva na Nuvem.');
+    setTxt('bookipDataManualLabel', orc ? 'Data do Orçamento (vazio = hoje)' : 'Data da Venda (Para Garantias anteriores)');
+    setTxt('bookipItensLabel', orc ? 'Itens do Orçamento:' : 'Itens no Recibo:');
+    setTxt('bookipPagamentoLabel', orc ? 'Formas de Pagamento aceitas (opcional)' : 'Forma(s) de Pagamento');
+    document.getElementById('blocoGarantia')?.classList.toggle('hidden', orc);
+    document.getElementById('blocoValidadeOrc')?.classList.toggle('hidden', !orc);
+    const busca = document.getElementById('bookipHistorySearch');
+    if (busca) busca.placeholder = orc ? 'Nome, CPF ou ORC...' : 'Nome, CPF ou Doc...';
+}
 
 // ADICIONE ESTA LINHA NOVA:
 let editingItemIndex = null; // Controla qual item está sendo editado (null = nenhum)
@@ -2968,89 +3080,296 @@ function populatePreview() {
 }
 
 // ------------------------------------------------------------
-// PDF PAGINADO — uma página A4 por vez (leve para celular fraco)
-// Antes: UM canvas de ~750×7000px com o contrato inteiro. Em celular com
-// pouca memória o navegador falha ou desenha cortado, sem dar erro.
-// Agora: fragmentos são medidos, agrupados em páginas inteiras (nenhuma
-// cláusula é cortada) e cada página vira um canvas pequeno (~750×1024px).
+// PDF DO CONTRATO — texto VETORIAL em folha A4 (jsPDF), sem imagem.
+// Antes: cada página era uma foto (html2canvas) montada com cláusulas
+// inteiras, o que deixava grandes espaços vazios, pulava de página e
+// deixava as letras serrilhadas. Agora o MESMO texto do contrato
+// (CTW_CONTRATO_FRAGMENTOS, que também alimenta a prévia) é lido e
+// diagramado linha a linha: margens fixas, justificado, quebra de
+// página só entre linhas (sem viúva/órfã), título nunca sozinho no fim
+// da folha e assinaturas sempre juntas. Letras ficam nítidas e o
+// arquivo fica pequeno (~20 KB).
 // ------------------------------------------------------------
-const CTW_PDF_LARGURA = 750;      // px (A4 = 210mm)
-const CTW_PDF_ALTURA_UTIL = 1000; // px de conteúdo por página (sobra topo + rodapé "Página X de N")
-const CTW_PDF_MARGEM_TOPO = 24;   // px
+const CTW_PDF = {
+    fonte: 'helvetica',                  // sans padrão (Arial/Google Sans-like), embutida no jsPDF
+    larg: 210, alt: 297,                 // mm (A4)
+    mEsq: 20, mDir: 20, mTopo: 20, mBase: 22,
+    corpoPt: 10, corpoLh: 4.8,           // texto: corpo e altura da linha (mm)
+    tituloPt: 11, tituloLh: 5.4,         // títulos de cláusula e do contrato
+    contorno: 0.04,                      // mm: contorno fino no texto normal = peso "médio" (a fonte padrão é fina demais)
+    pxMm: 0.2646
+};
+
+// Largura (mm) SEM kerning: é assim que o jsPDF desenha; getTextWidth() aplica kerning e subestima (palavras coladas).
+function ctwPdfW(pdf, txt) {
+    return pdf.getStringUnitWidth(txt, { doKerning: false }) * pdf.getFontSize() / pdf.internal.scaleFactor;
+}
+
+// Fontes padrão do PDF só desenham Latin-1/Windows-1252; o resto vira letra base (ou "?"), nunca quadrado/corte.
+const CTW_PDF_CP1252_EXTRA = '€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ';
+function ctwPdfTexto(s) {
+    let out = '';
+    const base = String(s).replace(/[   ]/g, ' ').replace(/[​-‍⁠﻿­]/g, '');
+    for (const ch of base) {
+        const c = ch.codePointAt(0);
+        if (c < 32) out += ' ';
+        else if (c < 127 || (c >= 160 && c <= 255) || CTW_PDF_CP1252_EXTRA.includes(ch)) out += ch;
+        else if (c < 160) out += '';
+        else { const b = ch.normalize('NFD').replace(/[̀-ͯ]/g, ''); out += (b && b.charCodeAt(0) < 127) ? b : '?'; }
+    }
+    return out;
+}
+
+// HTML do fragmento → blocos { logicas:[[{t,b}]], alinhar, pt, lh, mt, mb, manter }
+// Reconhece só o que os fragmentos usam: h4, p, div.section-title, <br>, <strong>, text-align:center, margin-top.
+function ctwPdfBlocosDoFragmento(html) {
+    const C = CTW_PDF;
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html;
+    const blocos = [];
+    tpl.content.childNodes.forEach(no => {
+        if (no.nodeType !== 1) return;
+        const estilo = (no.getAttribute('style') || '').toLowerCase();
+        const h4 = no.tagName === 'H4';
+        const titulo = no.classList.contains('section-title');
+        const mtPx = /margin-top:\s*(\d+(?:\.\d+)?)px/.exec(estilo);
+        const bloco = {
+            alinhar: h4 || /text-align:\s*center/.test(estilo) ? 'centro' : (titulo ? 'esq' : 'justificar'),
+            pt: h4 || titulo ? C.tituloPt : C.corpoPt,
+            lh: h4 || titulo ? C.tituloLh : C.corpoLh,
+            mt: titulo ? 3.2 : (mtPx ? parseFloat(mtPx[1]) * C.pxMm : 0),
+            mb: h4 ? 4.2 : (titulo ? 1.1 : 2.1),
+            manter: titulo,
+            logicas: []
+        };
+        const negrito = h4 || titulo || /font-weight:\s*bold/.test(estilo);
+        const linhas = [[]];
+        (function andar(n, b) {
+            n.childNodes.forEach(c => {
+                if (c.nodeType === 3) linhas[linhas.length - 1].push({ t: ctwPdfTexto(c.nodeValue.replace(/\s+/g, ' ')), b });
+                else if (c.nodeType === 1) {
+                    if (c.tagName === 'BR') linhas.push([]);
+                    else andar(c, b || c.tagName === 'STRONG' || c.tagName === 'B');
+                }
+            });
+        })(no, negrito);
+        linhas.forEach(runs => {
+            while (runs.length && !runs[0].t.replace(/^ +/, '')) runs.shift();
+            if (runs.length) runs[0].t = runs[0].t.replace(/^ +/, '');
+            while (runs.length && !runs[runs.length - 1].t.replace(/ +$/, '')) runs.pop();
+            if (runs.length) runs[runs.length - 1].t = runs[runs.length - 1].t.replace(/ +$/, '');
+            if (runs.length) bloco.logicas.push(runs);
+        });
+        if (bloco.logicas.length) blocos.push(bloco);
+    });
+    return blocos;
+}
+
+// Largura (mm) de um trecho com o estilo (normal/negrito) atual.
+function ctwPdfLarg(pdf, pecas) {
+    let w = 0;
+    for (const s of pecas) { pdf.setFont(CTW_PDF.fonte, s.b ? 'bold' : 'normal'); w += ctwPdfW(pdf, s.t); }
+    return w;
+}
+
+// Linha lógica → palavras (cada palavra = lista de peças com o mesmo negrito; "R$ <b>1</b>." vira 2 palavras, "<b>x</b>." fica 1).
+function ctwPdfPalavras(runs) {
+    const palavras = []; let atual = [];
+    for (const r of runs) {
+        let buf = '';
+        for (const ch of r.t) {
+            if (ch === ' ') {
+                if (buf) { atual.push({ t: buf, b: r.b }); buf = ''; }
+                if (atual.length) { palavras.push(atual); atual = []; }
+            } else buf += ch;
+        }
+        if (buf) atual.push({ t: buf, b: r.b });
+    }
+    if (atual.length) palavras.push(atual);
+    return palavras;
+}
+
+// Palavra maior que a linha inteira (ex.: endereço/IMEI sem espaços): corta em [cabe, resto] sem perder nenhuma letra.
+function ctwPdfCortarPalavra(pdf, pal, max) {
+    const cabe = []; let w = 0;
+    for (let i = 0; i < pal.length; i++) {
+        const s = pal[i];
+        pdf.setFont(CTW_PDF.fonte, s.b ? 'bold' : 'normal');
+        const chars = Array.from(s.t);
+        for (let j = 0; j < chars.length; j++) {
+            const cw = ctwPdfW(pdf, chars[j]);
+            if (w + cw > max && (cabe.length || j > 0)) {
+                const headT = chars.slice(0, j).join('');
+                const head = cabe.concat(headT ? [{ t: headT, b: s.b }] : []);
+                const resto = [{ t: chars.slice(j).join(''), b: s.b }].concat(pal.slice(i + 1));
+                return [head, resto];
+            }
+            w += cw;
+        }
+        cabe.push(s);
+    }
+    return [pal, []];
+}
+
+// Quebra de linha gulosa; devolve linhas visuais { palavras, larg, dura }.
+function ctwPdfQuebrar(pdf, palavras, max, pt) {
+    pdf.setFontSize(pt);
+    pdf.setFont(CTW_PDF.fonte, 'normal');
+    const esp = ctwPdfW(pdf, ' ');
+    const lim = max + 0.01;
+    const linhas = []; let atual = [], w = 0;
+    const fechar = () => { if (atual.length) linhas.push({ palavras: atual, larg: w }); atual = []; w = 0; };
+    for (const pal of palavras) {
+        let p = pal, pw = ctwPdfLarg(pdf, p);
+        if (pw > lim) {
+            fechar();
+            while (pw > lim) {
+                const [h, resto] = ctwPdfCortarPalavra(pdf, p, max);
+                if (!resto.length) break;
+                linhas.push({ palavras: [h], larg: ctwPdfLarg(pdf, h), dura: true });
+                p = resto; pw = ctwPdfLarg(pdf, p);
+            }
+        }
+        const novo = atual.length ? w + esp + pw : pw;
+        if (atual.length && novo > lim) { fechar(); atual = [p]; w = pw; }
+        else { atual.push(p); w = novo; }
+    }
+    fechar();
+    return linhas;
+}
+
+function ctwPdfMedirBlocos(pdf, blocos, larguraUtil) {
+    return blocos.map(b => {
+        const linhas = [];
+        b.logicas.forEach(runs => {
+            if (/^_{5,}$/.test(runs.map(r => r.t).join(''))) { linhas.push({ regra: true, ultima: true }); return; }
+            const vis = ctwPdfQuebrar(pdf, ctwPdfPalavras(runs), larguraUtil, b.pt);
+            vis.forEach((l, i) => { l.ultima = i === vis.length - 1; linhas.push(l); });
+        });
+        const ptMm = b.pt * 0.3528;
+        return Object.assign({}, b, { linhas, base: (b.lh - ptMm) / 2 + ptMm * 0.78 });
+    });
+}
+
+// Distribui as linhas pelas folhas. Regras:
+//  - quebra só entre linhas; nunca deixa 1 linha sozinha no fim ou no começo de folha;
+//  - título de cláusula sempre acompanhado das 2 primeiras linhas do texto;
+//  - grupo "juntar" (declaração final + assinaturas) não se parte.
+function ctwPdfPaginar(grupos) {
+    const C = CTW_PDF, limite = C.alt - C.mBase;
+    const paginas = [[]]; let y = C.mTopo;
+    const nova = () => { paginas.push([]); y = C.mTopo; };
+    const noTopo = () => y <= C.mTopo + 0.01;
+    const colocar = (b, ini, qtd) => {
+        for (let k = 0; k < qtd; k++) { paginas[paginas.length - 1].push({ y, linha: b.linhas[ini + k], bloco: b }); y += b.lh; }
+    };
+    for (const g of grupos) {
+        if (g.juntar && !noTopo()) {
+            const total = g.blocos.reduce((s, b) => s + b.mt + b.linhas.length * b.lh + b.mb, 0);
+            if (total > limite - y) nova();
+        }
+        g.blocos.forEach((b, bi) => {
+            const prox = g.blocos[bi + 1];
+            let i = 0;
+            while (i < b.linhas.length) {
+                const mt = noTopo() ? 0 : b.mt;
+                const livre = limite - y - mt + 0.01;
+                const resta = b.linhas.length - i;
+                const cabem = Math.floor(livre / b.lh);
+                if (b.manter) {
+                    const extra = prox ? b.mb + Math.min(2, prox.linhas.length) * prox.lh : 0;
+                    if (!noTopo() && resta * b.lh + extra > livre) { nova(); continue; }
+                    y += mt; colocar(b, i, resta); i += resta;
+                } else if (resta <= cabem) {
+                    y += mt; colocar(b, i, resta); i += resta;
+                } else {
+                    let qtd = cabem;
+                    if (resta - qtd < 2) qtd = resta - 2;          // não deixa linha órfã na folha seguinte
+                    if (qtd < 2 && !noTopo()) { nova(); continue; } // não começa com 1 linha só no fim da folha
+                    qtd = Math.max(qtd, 1);
+                    y += mt; colocar(b, i, qtd); i += qtd; nova();
+                }
+            }
+            y += b.mb;
+        });
+    }
+    return paginas.filter(p => p.length);
+}
+
+// Escreve um trecho; o texto normal ganha contorno fino (peso médio), o negrito já é encorpado.
+function ctwPdfEscrever(pdf, txt, x, y, negrito) {
+    if (negrito) { pdf.text(txt, x, y); return; }
+    pdf.setDrawColor(0);
+    pdf.setLineWidth(CTW_PDF.contorno);
+    pdf.text(txt, x, y, { renderingMode: 'fillThenStroke' });
+}
+
+// Desenha uma linha visual (justificada, centralizada ou à esquerda) na posição calculada.
+function ctwPdfDesenharLinha(pdf, op) {
+    const C = CTW_PDF, b = op.bloco, l = op.linha;
+    const max = C.larg - C.mEsq - C.mDir;
+    if (l.regra) {
+        const meio = C.larg / 2, yy = op.y + b.lh * 0.72;
+        pdf.setDrawColor(0); pdf.setLineWidth(0.25);
+        pdf.line(meio - 55, yy, meio + 55, yy);
+        return;
+    }
+    pdf.setFontSize(b.pt);
+    pdf.setTextColor(0);
+    const yb = op.y + b.base;
+    pdf.setFont(CTW_PDF.fonte, 'normal');
+    const esp = ctwPdfW(pdf, ' ');
+    const n = l.palavras.length;
+    const justificar = b.alinhar === 'justificar' && !l.ultima && !l.dura && n > 1;
+    let gap = esp;
+    if (justificar) { const g = esp + (max - l.larg) / (n - 1); if (g <= esp * 3) gap = g; }
+    let x = b.alinhar === 'centro' ? C.mEsq + (max - l.larg) / 2 : C.mEsq;
+    if (justificar && gap !== esp) {
+        // palavra a palavra, com o espaço esticado
+        l.palavras.forEach((pal, k) => {
+            pal.forEach(s => { pdf.setFont(CTW_PDF.fonte, s.b ? 'bold' : 'normal'); ctwPdfEscrever(pdf, s.t, x, yb, s.b); x += ctwPdfW(pdf, s.t); });
+            if (k < n - 1) x += gap;
+        });
+        return;
+    }
+    // espaçamento natural: junta trechos de mesmo estilo (texto selecionável/copiável sem cortes)
+    const segs = [];
+    l.palavras.forEach((pal, k) => {
+        pal.forEach(s => {
+            const ult = segs[segs.length - 1];
+            if (ult && ult.b === s.b) ult.t += s.t; else segs.push({ t: s.t, b: s.b });
+        });
+        if (k < n - 1) { if (segs.length) segs[segs.length - 1].t += ' '; }
+    });
+    segs.forEach(s => { pdf.setFont(CTW_PDF.fonte, s.b ? 'bold' : 'normal'); ctwPdfEscrever(pdf, s.t, x, yb, s.b); x += ctwPdfW(pdf, s.t); });
+}
 
 async function ctwGerarPdfContratoPaginado(dados) {
     await garantirPdfLibs({ soContrato: true });
-    if (typeof window.html2canvas !== 'function' || !window.jspdf || !window.jspdf.jsPDF) {
-        throw new Error('as bibliotecas de PDF não carregaram (verifique a internet)');
-    }
-    const fragmentos = montarContratoFragmentosResolvidos(dados);
-
-    const host = document.createElement('div');
-    host.setAttribute('aria-hidden', 'true');
-    host.style.cssText = 'position:absolute;left:-10000px;top:0;width:750px;pointer-events:none;';
-    document.body.appendChild(host);
-
-    try {
-        // 1) Mede cada fragmento (display:flow-root contém as margens internas).
-        host.innerHTML = ctwEnvolverPapelContrato(fragmentos.map(f => `<div class="ctw-frag" style="display:flow-root;">${f}</div>`).join(''));
-        const alturas = Array.from(host.querySelectorAll('.ctw-frag')).map(el => Math.ceil(el.getBoundingClientRect().height));
-        if (alturas.length !== fragmentos.length || alturas.some(h => !(h > 0))) {
-            throw new Error('falha ao medir o contrato');
-        }
-
-        // 2) Agrupa em páginas (um fragmento maior que a página ocupa uma página só, escalada depois).
-        const paginas = [];
-        let atual = [], soma = 0;
-        fragmentos.forEach((f, i) => {
-            if (atual.length && soma + alturas[i] > CTW_PDF_ALTURA_UTIL) { paginas.push(atual); atual = []; soma = 0; }
-            atual.push(f); soma += alturas[i];
-        });
-        if (atual.length) paginas.push(atual);
-        if (paginas.reduce((n, p) => n + p.length, 0) !== fragmentos.length) {
-            throw new Error('falha ao paginar o contrato');
-        }
-
-        // 3) Renderiza página por página; se faltar memória, repete com qualidade menor.
-        const escalaBase = (navigator.deviceMemory || 4) <= 2 ? 1.5 : 2;
-        const tentativas = [escalaBase, 1.25, 1].filter((e, i, a) => e <= escalaBase && a.indexOf(e) === i);
-        let ultimoErro = null;
-        for (const escala of tentativas) {
-            try {
-                return await ctwRenderizarPaginasPdf(host, paginas, escala);
-            } catch (e) {
-                ultimoErro = e;
-                console.warn('PDF contrato: falha com escala', escala, e);
-            }
-        }
-        throw ultimoErro || new Error('falha ao gerar as páginas');
-    } finally {
-        host.remove();
-    }
-}
-
-async function ctwRenderizarPaginasPdf(host, paginas, escala) {
+    if (!window.jspdf || !window.jspdf.jsPDF) throw new Error('as bibliotecas de PDF não carregaram (verifique a internet)');
+    const C = CTW_PDF;
     const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
-    const LARG_MM = 210, ALT_MM = 297, MAX_MM = 288;
-    for (let i = 0; i < paginas.length; i++) {
-        host.innerHTML = ctwEnvolverPapelContrato(paginas[i].join(''), `padding-top:${CTW_PDF_MARGEM_TOPO}px;`);
-        const el = host.firstElementChild;
-        const canvas = await window.html2canvas(el, {
-            scale: escala, backgroundColor: '#ffffff', useCORS: true, logging: false,
-            width: CTW_PDF_LARGURA, windowWidth: CTW_PDF_LARGURA
-        });
-        if (!canvas || canvas.width < 10 || canvas.height < 10) throw new Error('página ' + (i + 1) + ' saiu em branco');
+    pdf.setProperties({ title: 'Contrato de locação', creator: 'Central Workcell' });
 
-        let w = LARG_MM, h = canvas.height * LARG_MM / canvas.width;
-        if (h > MAX_MM) { w = w * MAX_MM / h; h = MAX_MM; }   // fragmento gigante: reduz para caber, sem cortar
+    const fragmentos = montarContratoFragmentosResolvidos(dados);
+    const larguraUtil = C.larg - C.mEsq - C.mDir;
+    const grupos = fragmentos.map((f, i) => ({
+        blocos: ctwPdfMedirBlocos(pdf, ctwPdfBlocosDoFragmento(f), larguraUtil),
+        juntar: i === fragmentos.length - 1      // declaração final + data + assinaturas
+    }));
+    const esperadas = grupos.reduce((s, g) => s + g.blocos.reduce((t, b) => t + b.linhas.length, 0), 0);
+    const paginas = ctwPdfPaginar(grupos);
+    if (!esperadas || paginas.reduce((s, p) => s + p.length, 0) !== esperadas) throw new Error('falha ao paginar o contrato');
+
+    paginas.forEach((ops, i) => {
         if (i > 0) pdf.addPage();
-        pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', (LARG_MM - w) / 2, 0, w, h, undefined, 'FAST');
+        ops.forEach(op => ctwPdfDesenharLinha(pdf, op));
+        pdf.setFont(CTW_PDF.fonte, 'normal');
         pdf.setFontSize(8);
         pdf.setTextColor(120);
-        pdf.text(`Página ${i + 1} de ${paginas.length}`, LARG_MM / 2, ALT_MM - 5, { align: 'center' });
-
-        canvas.width = canvas.height = 0;                      // libera memória do bitmap
-        await new Promise(r => setTimeout(r, 0));              // deixa o celular respirar entre páginas
-    }
+        pdf.text(`Página ${i + 1} de ${paginas.length}`, C.larg / 2, C.alt - 10, { align: 'center' });
+        pdf.setTextColor(0);
+    });
     return pdf.output('blob');
 }
 
@@ -7064,7 +7383,9 @@ function loadBookipHistory() {
     
     // NOTA: Se o seu banco for separado por usuário, lembre-se de usar 'bookips/' + userId
     // Mas mantive exatamente como você mandou:
-    const bookipsRef = ref(db, 'bookips'); 
+    const colDoc = ctwDocCol();            // 'bookips' (Garantia) ou 'orcamentos'
+    const ehOrc = colDoc === 'orcamentos';
+    const bookipsRef = ref(db, colDoc);
     const container = document.getElementById('historyBookipContent');
     
     // Variáveis de controle
@@ -7127,9 +7448,7 @@ function loadBookipHistory() {
 
 
     // Remove listener antigo para não duplicar
-    if (typeof bookipListener !== 'undefined' && bookipListener) {
-        off(bookipsRef, 'value', bookipListener);
-    }
+    ctwDesligarListenerHistorico();
 
     // Novo Listener do Firebase
     bookipListener = onValue(bookipsRef, (snapshot) => {
@@ -7137,8 +7456,8 @@ function loadBookipHistory() {
             const data = snapshot.val();
             // 1. Transforma em lista
             listaCompletaCache = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-            window._bookipsCache = listaCompletaCache;
-            window._bookipsCache = listaCompletaCache; // para VIP e Zelador
+            // VIP, ranking e Zelador leem só as garantias: orçamento nunca entra nessa conta.
+            if (!ehOrc) window._bookipsCache = listaCompletaCache;
             
             // ==========================================================
             // 2. ORDENAÇÃO INTELIGENTE (MODIFICADO AQUI)
@@ -7172,7 +7491,7 @@ function loadBookipHistory() {
             configurarFiltros();
             aplicarFiltrosCombinados();
         } else {
-            container.innerHTML = '<p class="text-center text-secondary mt-4">Nenhum recibo salvo.</p>';
+            container.innerHTML = `<p class="text-center text-secondary mt-4">${ehOrc ? 'Nenhum orçamento salvo.' : 'Nenhum recibo salvo.'}</p>`;
         }
 
 
@@ -7219,7 +7538,7 @@ function loadBookipHistory() {
 
         // Lógica de Filtragem CORRIGIDA
         listaFiltradaCache = listaCompletaCache.filter(item => {
-            const nDoc = (item.docNumber || '').toLowerCase();
+            const nDoc = ((item.docNumber || '') + ' ' + ctwNumDocFmt(item)).toLowerCase();
             const nome = (item.nome || '').toLowerCase();
             const cpf = (item.cpf || '').toLowerCase();
             const email = (item.email || '').toLowerCase(); 
@@ -7301,7 +7620,7 @@ function loadBookipHistory() {
             // ------------------------------
 
             
-            const docNum = item.docNumber || '---';
+            const docNum = ctwNumDocFmt(item);
 
             // --- 2. SEMÁFORO INTELIGENTE (Separação Recibo vs Garantia) ---
             const diasGarantia = parseInt(item.diasGarantia) || 0;
@@ -7325,7 +7644,23 @@ function loadBookipHistory() {
             const isSituacao = (item.type === 'situacao') || (item.items && item.items[0] && item.items[0].isSituation);
             const isRecibo = (item.type === 'recibo');
 
-            if (isSituacao) {
+            const isOrc = (item.type === 'orcamento');
+
+            if (isOrc) {
+                // ORÇAMENTO: semáforo pela validade (verde / laranja ≤2 dias / vermelho expirado)
+                const v = ctwValidadeOrcamento(item);
+                if (v.restantes < 0) {
+                    corStatus = '#dc3545'; textoCor = '#dc3545';
+                    textoStatus = `Expirado há ${Math.abs(v.restantes)} dia${Math.abs(v.restantes) === 1 ? '' : 's'}`;
+                } else if (v.restantes <= 2) {
+                    corStatus = '#fd7e14'; textoCor = '#fd7e14';
+                    textoStatus = v.restantes === 0 ? 'Vence hoje!' : `Vence em ${v.restantes} dia${v.restantes === 1 ? '' : 's'}!`;
+                } else {
+                    corStatus = '#198754'; textoCor = '#198754';
+                    textoStatus = `Válido até ${ctwFmtData(v.ate).slice(0, 5)}`;   // sem o ano: cabe na linha do cartão
+                }
+            }
+            else if (isSituacao) {
                 // SITUAÇÃO: Amarelo
                 corStatus = '#ffc107'; 
                 textoStatus = 'Situação';
@@ -7419,7 +7754,7 @@ function loadBookipHistory() {
                                 return ''; 
                             })()}
 
-                            <button class="btn btn-sm btn-dark btn-copy-nf" data-id="${item.id}" title="Copiar dados para NF" style="font-weight: bold;">NF</button>
+                            ${isOrc ? '' : `<button class="btn btn-sm btn-dark btn-copy-nf" data-id="${item.id}" title="Copiar dados para NF" style="font-weight: bold;">NF</button>`}
 
                             <button class="btn btn-sm btn-info edit-bookip-btn" data-id="${item.id}" title="Editar"><i class="bi bi-pencil-square"></i></button>
 
@@ -7574,7 +7909,7 @@ function carregarDadosParaEdicao(item) {
     if (!item) return;
 
     // 1. Mata o rascunho antigo
-    localStorage.removeItem('ctwBookipDraft_Smart_v2');
+    localStorage.removeItem(ctwDocRascunhoKey());
 
     // 2. PRIMEIRO: Troca a aba e deixa o sistema limpar o que quiser
     const toggle = document.getElementById('bookipModeToggle');
@@ -7628,10 +7963,12 @@ function carregarDadosParaEdicao(item) {
             });
         }
 
-        // F. Restaura Garantia
+        // F. Restaura Garantia (ou Validade, no Orçamento)
         const selectGarantia = document.getElementById('bookipGarantiaSelect');
         const inputGarantia = document.getElementById('bookipGarantiaCustomInput');
-        if (selectGarantia) {
+        if (ctwEhOrcamento()) {
+            ctwSetValidadeOrcamentoNoForm(item.validadeDias);
+        } else if (selectGarantia) {
             const dias = parseInt(item.diasGarantia);
             const isPadrao = [30, 120, 180, 365].includes(dias);
             if (isPadrao) {
@@ -7707,18 +8044,23 @@ if (btnSave) {
             cpf:         document.getElementById('bookipCpf')?.value  || '',
             tel:         document.getElementById('bookipTelefone')?.value || '',
             items:       bookipCartList,
-            diasGarantia: parseInt(document.getElementById('bookipGarantiaSelect')?.value) || 365,
-            dataVenda:   document.getElementById('bookipDataManual')?.value || new Date().toISOString().split('T')[0],
+            diasGarantia: ctwEhOrcamento() ? 0 : (parseInt(document.getElementById('bookipGarantiaSelect')?.value) || 365),
+            dataVenda:   document.getElementById('bookipDataManual')?.value || (ctwEhOrcamento() ? ctwHojeISO() : new Date().toISOString().split('T')[0]),
             criadoEm:    new Date().toISOString(),
-            type:        bookipCartList.some(i => i.isSituation) ? 'situacao' : (window.isSimpleReceiptMode ? 'recibo' : 'garantia'),
+            type:        ctwEhOrcamento() ? 'orcamento' : (bookipCartList.some(i => i.isSituation) ? 'situacao' : (window.isSimpleReceiptMode ? 'recibo' : 'garantia')),
             fotoUrl:     window._bookipFotoUrl || '',
         };
+        if (ctwEhOrcamento()) {
+            previewDadosTemp.pagamento = [...document.querySelectorAll('.check-pagamento:checked')].map(c => c.value).join(', ');
+            previewDadosTemp.validadeDias = ctwLerValidadeOrcamentoDoForm();
+            previewDadosTemp.docNumber = '';   // o número só é definido ao salvar
+        }
         const _rawHtml = (typeof getReciboHTML === 'function') ? getReciboHTML(previewDadosTemp) : '<p style="color:#000;padding:20px">Prévia indisponível</p>';
         const previewHtmlTemp = `<div style="width:750px;overflow:hidden;background:#fff;color:#000;">${_rawHtml}</div>`;
 
         const docInfoHtml = `
             <strong style="color:var(--text-color)">${previewDadosTemp.nome}</strong><br>
-            ${previewDadosTemp.items.length} ${previewDadosTemp.items.length === 1 ? 'item' : 'itens'} · Garantia: ${previewDadosTemp.diasGarantia} dias
+            ${previewDadosTemp.items.length} ${previewDadosTemp.items.length === 1 ? 'item' : 'itens'} · ${ctwEhOrcamento() ? 'Validade: ' + previewDadosTemp.validadeDias : 'Garantia: ' + previewDadosTemp.diasGarantia} dias
         `;
 
         const confirmed = await ctwSavePreview.show({
@@ -7739,16 +8081,22 @@ if (btnSave) {
             // --- BLOCO CIRÚRGICO: CAPTURAR PAGAMENTO ---
             const pags = [];
             document.querySelectorAll('.check-pagamento:checked').forEach(c => pags.push(c.value));
-            const txtPag = pags.length > 0 ? pags.join(', ') : 'Não informado';
+            const txtPag = pags.length > 0 ? pags.join(', ') : (ctwEhOrcamento() ? '' : 'Não informado');
             // --------------------------------------------
 
+            const modoOrc = ctwEhOrcamento();      // fixa o modo desta gravação (não muda se a tela mudar no meio)
+            const colSalvar = ctwDocCol();
             let dias = 365;
-            const sel = document.getElementById('bookipGarantiaSelect').value;
-            if (sel === 'custom') dias = parseInt(document.getElementById('bookipGarantiaCustomInput').value) || 0;
-            else dias = parseInt(sel);
+            if (modoOrc) {
+                dias = 0;
+            } else {
+                const sel = document.getElementById('bookipGarantiaSelect').value;
+                if (sel === 'custom') dias = parseInt(document.getElementById('bookipGarantiaCustomInput').value) || 0;
+                else dias = parseInt(sel);
+            }
 
             const dataManualInput = document.getElementById('bookipDataManual').value;
-            const dataFinalVenda = dataManualInput ? dataManualInput : new Date().toISOString().split('T')[0];
+            const dataFinalVenda = dataManualInput ? dataManualInput : (modoOrc ? ctwHojeISO() : new Date().toISOString().split('T')[0]);
 
             // =========================================================
             // 🧠 NOVIDADE: DETECTA O TIPO DO DOCUMENTO PARA A COR
@@ -7758,7 +8106,9 @@ if (btnSave) {
             // 1. Se tiver qualquer item marcado como "Situação", vira Situação (Amarelo)
             const temSituacao = bookipCartList.some(i => i.isSituation === true);
             
-            if (temSituacao) {
+            if (modoOrc) {
+                docType = 'orcamento';
+            } else if (temSituacao) {
                 docType = 'situacao';
             } 
             // 2. Se não for situação e a chave "Modo Simples" estiver ligada, vira Recibo (Verde)
@@ -7770,7 +8120,7 @@ if (btnSave) {
             // ---------------------------------------------------------
             // CORREÇÃO: GERAÇÃO DO NÚMERO DOC (EVITA DUPLICIDADE)
             // ---------------------------------------------------------
-            const snapshot = await get(ref(db, 'bookips'));
+            const snapshot = await get(ref(db, colSalvar));
             let docNumberFormatted = '001';
 
             if (currentEditingBookipId) {
@@ -7796,7 +8146,18 @@ if (btnSave) {
                     });
                 }
                 
-                docNumberFormatted = String(maiorNumero + 1).padStart(3, '0');
+                if (modoOrc) {
+                    // Orçamento: contador atômico (dois celulares salvando juntos nunca repetem o número).
+                    // Se o contador estiver indisponível, cai no "maior + 1" (mesmo critério da Garantia).
+                    let proximo = maiorNumero + 1;
+                    try {
+                        const r = await runTransaction(ref(db, 'contadores/orcamentoSeq'), (atual) => Math.max(atual || 0, maiorNumero) + 1);
+                        if (r.committed && r.snapshot.val() > 0) proximo = r.snapshot.val();
+                    } catch (e) { console.warn('Contador de orçamento indisponível, usando maior+1:', e); }
+                    docNumberFormatted = String(proximo).padStart(3, '0');
+                } else {
+                    docNumberFormatted = String(maiorNumero + 1).padStart(3, '0');
+                }
             }
             // ---------------------------------------------------------
 
@@ -7819,15 +8180,16 @@ if (btnSave) {
 criadoPor: currentUserProfile || "Desconhecido",
                 fotoUrl: window._bookipFotoUrl || "",
             };
+            if (modoOrc) dados.validadeDias = ctwLerValidadeOrcamentoDoForm();
 
             // SALVA NO FIREBASE
             if (currentEditingBookipId) {
                 // Atualiza existente
-                await update(ref(db, `bookips/${currentEditingBookipId}`), dados);
+                await update(ref(db, `${colSalvar}/${currentEditingBookipId}`), dados);
                 dados.id = currentEditingBookipId;
             } else {
                 // Cria novo
-                const newRef = await push(ref(db, 'bookips'), dados);
+                const newRef = await push(ref(db, colSalvar), dados);
                 dados.id = newRef.key;
             }
 
@@ -7837,15 +8199,17 @@ criadoPor: currentUserProfile || "Desconhecido",
                 if (fotoUrl) {
                     dados.fotoUrl = fotoUrl;
                     window._bookipFotoUrl = fotoUrl;
-                    await update(ref(db, 'bookips/' + dados.id), { fotoUrl });
+                    await update(ref(db, colSalvar + '/' + dados.id), { fotoUrl });
                 }
                 window._bookipFotoBlob = null;
             }
 
-            // SALVA CLIENTE (ROBÔ)
-            await salvarClienteAutomatico({
-                nome: dados.nome, cpf: dados.cpf, tel: dados.tel, end: dados.end, email: dados.email
-            });
+            // SALVA CLIENTE (ROBÔ) — orçamento é só uma proposta: não cria cliente no cadastro
+            if (!modoOrc) {
+                await salvarClienteAutomatico({
+                    nome: dados.nome, cpf: dados.cpf, tel: dados.tel, end: dados.end, email: dados.email
+                });
+            }
 
             // SUCESSO!
             lastSavedBookipData = dados; // Guarda na memória
@@ -9465,7 +9829,7 @@ setupProductTags();
     // ============================================================
 
     // 1. Função que troca as telas (Menu -> Contrato -> Garantia)
-    window.openDocumentsSection = function(subSectionId) {
+    window.openDocumentsSection = function(subSectionId, modoDoc) {
         const docHome = document.getElementById('documentsHome');
         const areaContrato = document.getElementById('areaContratoWrapper');
         const areaBookip = document.getElementById('areaBookipWrapper');
@@ -9496,6 +9860,8 @@ setupProductTags();
             }
         } 
         else if (subSectionId === 'bookip') {
+            // Sem modo explícito (deep links do banner VIP, busca, favoritos) = Garantia.
+            ctwTrocarModoDoc(modoDoc);
             if (areaBookip) {
                 areaBookip.classList.remove('hidden');
                 // FIX: mesmo motivo do Contrato acima — .container é
@@ -9545,6 +9911,9 @@ setupProductTags();
         btnOpenBookip.onclick = function() { 
             console.log("Abrindo Garantia (Modo Inteligente)...");
 
+            // Se estava no Orçamento, volta ao modo Garantia ANTES de mexer em abas/formulário
+            ctwTrocarModoDoc('garantia');
+
             // --- A. CONFIGURAÇÃO VISUAL (Que estava no código antigo) ---
             window.isSimpleReceiptMode = false;
             window.currentEditingBookipId = null;
@@ -9581,6 +9950,34 @@ setupProductTags();
                     // Fallback: Se não tiver rascunho pra checar, ativa o monitoramento agora
                     if(typeof ativarSalvamentoAutomatico === 'function') window.ativarSalvamentoAutomatico();
                 }
+            }, 300);
+        };
+    }
+
+    // 1b. Botão "Orçamento" — mesma tela da Garantia, em modo Orçamento
+    const btnOpenOrcamento = document.getElementById('openOrcamentoView');
+    if (btnOpenOrcamento) {
+        btnOpenOrcamento.onclick = function() {
+            ctwTrocarModoDoc('orcamento');        // troca coleção/títulos/validade e limpa o formulário se vinha da Garantia
+            window.isSimpleReceiptMode = false;
+            window.currentEditingBookipId = null;
+
+            const toggleSimples = document.getElementById('toggleModoInputContainer');
+            if (toggleSimples) toggleSimples.style.display = 'none';
+            document.querySelector('#camposProduto .search-wrapper')?.classList.remove('hidden');
+
+            // Abre em "Novo" (sem apagar o que já está sendo digitado neste modo)
+            const tabToggle = document.getElementById('bookipModeToggle');
+            if (tabToggle && tabToggle.checked) {
+                tabToggle.checked = false;
+                tabToggle.dispatchEvent(new Event('change'));
+            }
+
+            window.openDocumentsSection('bookip', 'orcamento');
+
+            setTimeout(() => {
+                if (typeof checarRascunhoAoAbrir === 'function') checarRascunhoAoAbrir();
+                else if (typeof ativarSalvamentoAutomatico === 'function') window.ativarSalvamentoAutomatico();
             }, 300);
         };
     }
@@ -9638,7 +10035,8 @@ window.cancelarEdicaoBoleto = function() {
 function getReciboHTML(dados) {
     // 1. VERIFICAÇÕES DE MODO (RECIBO vs GARANTIA vs SITUAÇÃO)
     const isSimple = (window.isSimpleReceiptMode === true);
-    const isSituation = (dados.type === 'situacao') || (dados.items && dados.items[0] && dados.items[0].isSituation);
+    const isOrc = (dados.type === 'orcamento');
+    const isSituation = !isOrc && ((dados.type === 'situacao') || (dados.items && dados.items[0] && dados.items[0].isSituation));
 
     // 2. CONFIGURAÇÕES (Design Mantido)
     const settings = (typeof receiptSettings !== 'undefined' && receiptSettings) ? receiptSettings : {};
@@ -9683,7 +10081,15 @@ function getReciboHTML(dados) {
         else if (dias === 30) txtGarantia = "30 Dias";
         else txtGarantia = `${dias} Dias`;
     }
-    const docNum = dados.docNumber || '---';
+    const docNum = ctwNumDocFmt(dados);
+
+    // 4b. ORÇAMENTO: validade no lugar da garantia
+    let txtValidade = '', dataValidade = '';
+    if (isOrc) {
+        const v = ctwValidadeOrcamento(dados);
+        txtValidade = v.dias === 1 ? '1 Dia' : `${v.dias} Dias`;
+        dataValidade = ctwFmtData(v.ate);
+    }
 
     // 5. LÓGICA DA TABELA
     let tableHeaderHTML = '';
@@ -9719,15 +10125,21 @@ function getReciboHTML(dados) {
             </tr>`).join('');
     }
 
-    const tituloLinha1 = isSituation ? "RELATÓRIO DE" : (isSimple ? "RECIBO DE" : "Comprovante de");
-    const tituloLinha2 = isSituation ? "SITUAÇÃO" : (isSimple ? "VENDA / PEDIDO" : "compra / Garantia");
+    const tituloLinha1 = isOrc ? "Proposta de" : (isSituation ? "RELATÓRIO DE" : (isSimple ? "RECIBO DE" : "Comprovante de"));
+    const tituloLinha2 = isOrc ? "Orçamento" : (isSituation ? "SITUAÇÃO" : (isSimple ? "VENDA / PEDIDO" : "compra / Garantia"));
     
     const showTotal = !isSituation;
-    const showGarantiaRow = !isSituation;
-    const showVenceRow = !isSituation && !isSimple;
+    const showGarantiaRow = !isSituation && !isOrc;
+    const showVenceRow = !isSituation && !isSimple && !isOrc;
 
     // CORREÇÃO: FONTE SEGURA E SEM JUSTIFICAR (RESOLVE O AMONTOADO E O CORTE)
-    const sectionTermos = (isSimple || isSituation) ? "" : `
+    // Orçamento: sem termos de garantia — só o aviso de que não é comprovante de compra e até quando vale.
+    const sectionOrcamento = isOrc ? `
+        <div style="margin-top: 15px; border-top: 1px solid #000; padding-top: 10px; font-family: Arial, Helvetica, sans-serif; font-size: 9pt; color: #000; line-height: 1.5;">
+            Este documento é um <strong>orçamento</strong> e não vale como comprovante de compra. Valores e disponibilidade dos itens são válidos até <strong>${dataValidade}</strong>; depois dessa data podem ser alterados sem aviso.
+        </div>` : "";
+
+    const sectionTermos = (isSimple || isSituation || isOrc) ? "" : `
         <style>
             .termos-wrapper {
                 page-break-inside: avoid;
@@ -9807,6 +10219,8 @@ Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750
                             <tr><td style="text-align: right; font-weight: bold; padding-bottom:4px;">Doc Nº:</td><td style="padding-left:10px; padding-bottom:4px;">${docNum}</td></tr>
                             <tr><td style="text-align: right; padding-bottom:4px;">Data:</td><td style="padding-left:10px; padding-bottom:4px;">${dataCompra}</td></tr>
                             ${showGarantiaRow ? `<tr><td style="text-align: right; padding-bottom:4px;">Garantia:</td><td style="padding-left:10px; padding-bottom:4px;">${txtGarantia}</td></tr>` : ''}
+                            ${isOrc ? `<tr><td style="text-align: right; padding-bottom:4px;">Validade:</td><td style="padding-left:10px; padding-bottom:4px;">${txtValidade}</td></tr>
+                            <tr><td style="text-align: right; padding-bottom:4px;">Válido até:</td><td style="padding-left:10px; padding-bottom:4px;">${dataValidade}</td></tr>` : ''}
                             ${showVenceRow ? `<tr><td style="text-align: right; padding-left:10px; padding-bottom:4px;">Vence:</td><td style="padding-left:10px; padding-bottom:4px;">${dataVencimento}</td></tr>` : ''}
                         </table>
                     </td>
@@ -9827,7 +10241,9 @@ Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
                         <td style="text-align: left; vertical-align: middle; font-size: 10pt; color: #444;">
-                            <strong>Forma de Pagamento:</strong> <span style="color: #000; font-weight: 500;">${dados.pagamento || 'Não informado'}</span>
+                            ${isOrc
+                                ? (dados.pagamento ? `<strong>Formas de pagamento aceitas:</strong> <span style="color: #000; font-weight: 500;">${dados.pagamento}</span>` : '')
+                                : `<strong>Forma de Pagamento:</strong> <span style="color: #000; font-weight: 500;">${dados.pagamento || 'Não informado'}</span>`}
                         </td>
                         
                         <td style="text-align: right; vertical-align: middle;">
@@ -9840,6 +10256,7 @@ Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750
             </div>` : '<div style="height:30px;"></div>'}
 
             ${sectionTermos}
+            ${sectionOrcamento}
 
             <div style="width: 100%; text-align: right; margin-top: 40px; page-break-inside: avoid;">
                 <img src="${signatureUrl}" style="width: 200px; height: auto; display: inline-block;">
@@ -10024,7 +10441,9 @@ async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
 
         // --- D. GERA O ARQUIVO PDF ---
         const nomeClienteLimpo = (dados.nome || 'Cliente').replace(/[^a-z0-9]/gi, '_');
-        const nomeFinalArquivo = `Doc_${nomeClienteLimpo}_${dados.docNumber || '000'}.pdf`;
+        const nomeFinalArquivo = dados.type === 'orcamento'
+            ? `Orcamento_${nomeClienteLimpo}_${dados.docNumber || '000'}.pdf`
+            : `Doc_${nomeClienteLimpo}_${dados.docNumber || '000'}.pdf`;
 
         // Substitua o bloco const opt por este:
 const opt = {
@@ -10084,7 +10503,7 @@ const opt = {
                 try {
                     await navigator.share({
                         files: [file],
-                        title: "Documento Workcell Tecnologia",
+                        title: dados.type === 'orcamento' ? "Orçamento Workcell Tecnologia" : "Documento Workcell Tecnologia",
                         text: textoCompleto
                     });
                     
@@ -10096,7 +10515,7 @@ const opt = {
                     if(card) { card.style.borderLeft = "6px solid #28a745"; card.style.backgroundColor = "#f0fff4"; }
                     
                     if((dados.id || dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') {
-                        marcarComoEnviadoNoBanco(dados.id || dados.docId);
+                        marcarComoEnviadoNoBanco(dados.id || dados.docId, ctwColDoDoc(dados));
                     }
                 } catch (err) {
                     console.log("Compartilhamento cancelado", err);
@@ -10638,7 +11057,7 @@ function _preencherFormularioComDadosIA(d) {
 // ============================================================
 // FUNÇÃO DE FAXINA (LIMPA TUDO: DADOS, VISUAL E RASCUNHO)
 // ============================================================
-window.resetFormulariosBookip = function() {
+window.resetFormulariosBookip = function(opcoes) {
     console.log("🧹 Executando faxina completa...");
 
     // 👇 CORREÇÃO CRÍTICA AQUI 👇
@@ -10647,7 +11066,7 @@ window.resetFormulariosBookip = function() {
     // 👆 AGORA ELE LIMPA DE VERDADE 👆
 
     // Garante que o rascunho velho morra quando você pede um novo.
-    if(typeof limparRascunhoBookipDefinitivo === 'function') {
+    if (!(opcoes && opcoes.manterRascunho) && typeof limparRascunhoBookipDefinitivo === 'function') {
         limparRascunhoBookipDefinitivo();
     }
 
@@ -10683,8 +11102,9 @@ window.resetFormulariosBookip = function() {
     const sit = document.getElementById('sitDescricao');
     if (sit) sit.value = '';
 
-    // 4. Reseta Checkboxes de Pagamento
+    // 4. Reseta Checkboxes de Pagamento (e a validade do orçamento para 7 dias)
     document.querySelectorAll('.check-pagamento').forEach(c => c.checked = false);
+    ctwSetValidadeOrcamentoNoForm(7);
 
     // 5. Restaura o Botão de Salvar (Verde)
     const btnSave = document.getElementById('btnSaveBookip');
@@ -10805,14 +11225,14 @@ window.resetFormulariosBookip = function() {
 // ============================================================
 // CORREÇÃO: SALVAR NO REALTIME DATABASE (Compatível com seu histórico)
 // ============================================================
-async function marcarComoEnviadoNoBanco(idDocumento) {
+async function marcarComoEnviadoNoBanco(idDocumento, colecao = 'bookips') {
     if (!idDocumento) return;
 
     try {
         // 1. Cria a referência para o item específico dentro da pasta 'bookips'
         // ATENÇÃO: O 'db' aqui deve ser o mesmo objeto que você usa no loadBookipHistory
         // Se der erro de 'ref is not defined', certifique-se que importou { ref, update } do firebase
-        const itemRef = ref(db, `bookips/${idDocumento}`);
+        const itemRef = ref(db, `${colecao}/${idDocumento}`);
         
         // 2. Atualiza apenas o status
         await update(itemRef, {
@@ -11067,7 +11487,6 @@ document.addEventListener('click', function(e) {
 // ============================================================
 // 🧠 NOVO SISTEMA DE RASCUNHO (OPÇÃO 1: DESCARTÁVEL)
 // ============================================================
-const BOOKIP_DRAFT_KEY = 'ctwBookipDraft_Smart_v2';
 let timerRascunhoBookip = null;
 
 // 1. MONITORAMENTO (Salva sozinho quando para de digitar)
@@ -11131,6 +11550,8 @@ function executarSalvamentoReal() {
         dataManual: document.getElementById('bookipDataManual')?.value || '',
         garantia: document.getElementById('bookipGarantiaSelect')?.value,
         garantiaCustom: document.getElementById('bookipGarantiaCustomInput')?.value,
+        validade: document.getElementById('orcValidadeSelect')?.value,
+        validadeCustom: document.getElementById('orcValidadeCustomInput')?.value,
         pagamentos: pags,
         
         // 👇 CORREÇÃO 2: LISTA DE PRODUTOS
@@ -11145,7 +11566,7 @@ function executarSalvamentoReal() {
     const temAlgumDado = dados.nome || dados.cpf || dados.tel || dados.email || dados.listaProdutos.length > 0;
 
     if (temAlgumDado) {
-        localStorage.setItem(BOOKIP_DRAFT_KEY, JSON.stringify(dados));
+        localStorage.setItem(ctwDocRascunhoKey(), JSON.stringify(dados));
         
         const badge = document.getElementById('badgeRascunhoStatus');
         if(badge) {
@@ -11155,9 +11576,15 @@ function executarSalvamentoReal() {
     }
 }
 
+// Usado ao trocar Garantia <-> Orçamento: salva agora o formulário no rascunho do modo atual.
+window.ctwSalvarRascunhoAgora = function() {
+    clearTimeout(timerRascunhoBookip);
+    executarSalvamentoReal();
+};
+
 // 3. VERIFICAR AO ABRIR (A Lógica Inteligente - Mensagem Limpa)
 window.checarRascunhoAoAbrir = function() {
-    const salvo = localStorage.getItem(BOOKIP_DRAFT_KEY);
+    const salvo = localStorage.getItem(ctwDocRascunhoKey());
     
     // Se não tem nada salvo, só liga o monitoramento e sai
     if (!salvo) {
@@ -11182,8 +11609,19 @@ window.checarRascunhoAoAbrir = function() {
             if(document.getElementById('bookipEmail')) document.getElementById('bookipEmail').value = dados.email;
             if(document.getElementById('bookipDataManual')) document.getElementById('bookipDataManual').value = dados.dataManual;
 
-            // Recupera Garantia
-            const selGar = document.getElementById('bookipGarantiaSelect');
+            // Recupera Validade (Orçamento) ou Garantia
+            if (ctwEhOrcamento()) {
+                const selVal = document.getElementById('orcValidadeSelect');
+                if (selVal && dados.validade) {
+                    selVal.value = dados.validade;
+                    const inputVal = document.getElementById('orcValidadeCustomInput');
+                    if (inputVal) {
+                        inputVal.value = dados.validadeCustom || '';
+                        inputVal.classList.toggle('hidden', dados.validade !== 'custom');
+                    }
+                }
+            }
+            const selGar = ctwEhOrcamento() ? null : document.getElementById('bookipGarantiaSelect');
             if(selGar) {
                 selGar.value = dados.garantia || '365';
                 const inputGar = document.getElementById('bookipGarantiaCustomInput');
@@ -11211,7 +11649,7 @@ window.checarRascunhoAoAbrir = function() {
         },
         onCancel: () => {
             // --- DESTRUIÇÃO ---
-            localStorage.removeItem(BOOKIP_DRAFT_KEY);
+            localStorage.removeItem(ctwDocRascunhoKey());
             
             if(typeof resetFormulariosBookip === 'function') resetFormulariosBookip();
             
@@ -11225,7 +11663,7 @@ window.checarRascunhoAoAbrir = function() {
 
 // 4. LIMPEZA FINAL (Chamar após salvar no Firebase)
 window.limparRascunhoBookipDefinitivo = function() {
-    localStorage.removeItem(BOOKIP_DRAFT_KEY);
+    localStorage.removeItem(ctwDocRascunhoKey());
     const badge = document.getElementById('badgeRascunhoStatus');
     if(badge) badge.innerHTML = ''; 
 };
@@ -11502,7 +11940,8 @@ window.copiarItemHistorico = function(id) {
 async function moverParaLixeira(id) {
     try {
         // Pega o item original
-        const snapshot = await get(ref(db, `bookips/${id}`));
+        const colAtual = ctwDocCol(), lixeira = ctwDocLixeira();
+        const snapshot = await get(ref(db, `${colAtual}/${id}`));
         if (snapshot.exists()) {
             const dados = snapshot.val();
             
@@ -11511,10 +11950,10 @@ async function moverParaLixeira(id) {
             dados.originalId = id; // Guarda o ID original por segurança
 
             // 1. Salva na pasta de lixo
-            await set(ref(db, `trash_bookips/${id}`), dados);
+            await set(ref(db, `${lixeira}/${id}`), dados);
             
             // 2. Remove da pasta principal
-            await remove(ref(db, `bookips/${id}`));
+            await remove(ref(db, `${colAtual}/${id}`));
             
             showCustomModal({ message: "Item movido para a lixeira! 🗑️" });
         }
@@ -11531,7 +11970,8 @@ async function moverParaLixeira(id) {
 // 2. RESTAURAR DA LIXEIRA (Agora visível para o botão)
 window.restaurarDaLixeira = async function(id) {
     try {
-        const snapshot = await get(ref(db, `trash_bookips/${id}`));
+        const colAtual = ctwDocCol(), lixeira = ctwDocLixeira();
+        const snapshot = await get(ref(db, `${lixeira}/${id}`));
         if (snapshot.exists()) {
             const dados = snapshot.val();
             
@@ -11539,11 +11979,11 @@ window.restaurarDaLixeira = async function(id) {
             if(dados.deletedAt) delete dados.deletedAt;
             if(dados.originalId) delete dados.originalId;
 
-            // 1. Devolve para pasta principal (bookips)
-            await set(ref(db, `bookips/${id}`), dados);
+            // 1. Devolve para pasta principal (bookips ou orcamentos, conforme a tela)
+            await set(ref(db, `${colAtual}/${id}`), dados);
             
             // 2. Remove da lixeira
-            await remove(ref(db, `trash_bookips/${id}`));
+            await remove(ref(db, `${lixeira}/${id}`));
             
             // Recarrega a lista para sumir o item restaurado
             abrirLixeiraModal(); 
@@ -11584,7 +12024,7 @@ window.excluirPermanente = async function(id) {
         onConfirm: async () => {
             try {
                 // Deleta do Firebase usando o caminho que está no seu app.js
-                await remove(ref(db, `trash_bookips/${id}`));
+                await remove(ref(db, `${ctwDocLixeira()}/${id}`));
                 
                 // Recarrega a lixeira para mostrar que o item sumiu
                 abrirLixeiraModal();
@@ -11607,23 +12047,25 @@ window.excluirPermanente = async function(id) {
 
 // 4. LIMPEZA AUTOMÁTICA (15 DIAS)
 async function limparLixeiraAutomatico() {
-    const snapshot = await get(ref(db, 'trash_bookips'));
-    if (!snapshot.exists()) return;
-
-    const lixo = snapshot.val();
     const agora = Date.now();
     const DIAS_EM_MS = 15 * 24 * 60 * 60 * 1000; // 15 dias em milissegundos
 
     const updates = {};
     let count = 0;
 
-    Object.keys(lixo).forEach(key => {
-        const item = lixo[key];
-        if (item.deletedAt && (agora - item.deletedAt > DIAS_EM_MS)) {
-            updates[`trash_bookips/${key}`] = null; // Marca para deletar
-            count++;
-        }
-    });
+    for (const pasta of ['trash_bookips', 'trash_orcamentos']) {
+        let snapshot;
+        try { snapshot = await get(ref(db, pasta)); } catch (e) { continue; }   // pasta sem permissão/vazia não derruba a faxina da outra
+        if (!snapshot.exists()) continue;
+        const lixo = snapshot.val();
+        Object.keys(lixo).forEach(key => {
+            const item = lixo[key];
+            if (item.deletedAt && (agora - item.deletedAt > DIAS_EM_MS)) {
+                updates[`${pasta}/${key}`] = null; // Marca para deletar
+                count++;
+            }
+        });
+    }
 
     if (count > 0) {
         await update(ref(db), updates);
@@ -11671,9 +12113,9 @@ window.abrirLixeiraModal = function() {
     div.innerHTML = modalHtml;
     document.body.appendChild(div.firstElementChild);
 
-    // 2. Carrega os dados do Firebase (Pasta trash_bookips)
+    // 2. Carrega os dados do Firebase (trash_bookips na Garantia, trash_orcamentos no Orçamento)
     // ATENÇÃO: Certifique-se que 'db', 'ref' e 'onValue' estão importados/disponíveis
-    const trashRef = ref(db, 'trash_bookips');
+    const trashRef = ref(db, ctwDocLixeira());
     
     onValue(trashRef, (snapshot) => {
         const container = document.getElementById('listaLixeiraContent');
@@ -11706,7 +12148,7 @@ window.abrirLixeiraModal = function() {
                 
                 <div class="text-start">
                     <div class="fw-bold text-light">${item.nome || 'Sem Nome'}</div>
-                    <div class="small text-secondary">Doc: ${item.docNumber || '---'} • R$ ${totalDoc.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
+                    <div class="small text-secondary">Doc: ${ctwNumDocFmt(item)} • R$ ${totalDoc.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
                     <div class="small text-danger" style="font-size: 0.75rem;">
                         Apagado em: ${dataDel} (Expira em ${diasRestantes} dias)
                     </div>
@@ -11728,6 +12170,16 @@ window.abrirLixeiraModal = function() {
 // ============================================================
 // CORREÇÃO: LÓGICA DO SELECT DE GARANTIA (Manual vs Padrão)
 // ============================================================
+const selectValidadeOrc = document.getElementById('orcValidadeSelect');
+const inputValidadeOrc = document.getElementById('orcValidadeCustomInput');
+if (selectValidadeOrc && inputValidadeOrc) {
+    selectValidadeOrc.addEventListener('change', function() {
+        const manual = this.value === 'custom';
+        inputValidadeOrc.classList.toggle('hidden', !manual);
+        if (manual) inputValidadeOrc.focus(); else inputValidadeOrc.value = '';
+    });
+}
+
 const selectGarantia = document.getElementById('bookipGarantiaSelect');
 const inputGarantiaManual = document.getElementById('bookipGarantiaCustomInput');
 
@@ -12389,6 +12841,10 @@ window.updateNotificationUI  = updateNotificationUI;
                 // 2. Lixeira de Bookips — criadoPor (cópia do bookip, mesmo campo)
                 await marcarNo('trash_bookips', ['criadoPor']);
 
+                // 2b. Orçamentos (e a lixeira deles) — criadoPor
+                await marcarNo('orcamentos', ['criadoPor']);
+                await marcarNo('trash_orcamentos', ['criadoPor']);
+
                 // 3. Contratos / Boletos — criadoPor
                 await marcarNo('boletos', ['criadoPor']);
 
@@ -12572,6 +13028,7 @@ window.updateNotificationUI  = updateNotificationUI;
             'openCalcularPorAparelho2':'openCalcularPorAparelho',
             'openContratoView2':      'openContratoView',
             'openBookipView2':        'openBookipView',
+            'openOrcamentoView2':     'openOrcamentoView',
         };
 
         Object.keys(map).forEach(function(v2Id) {

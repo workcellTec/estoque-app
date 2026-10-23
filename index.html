@@ -402,7 +402,7 @@ class="dropdown-menu-custom">
                 <span class="ctw-card-sub">Lista de compras</span>
                 <span id="repoBadge2" class="repo-badge-card hidden">0</span>
             </button>
-            <div id="ctwVersaoApp">Central Workcell · versão ctw-215</div>
+            <div id="ctwVersaoApp">Central Workcell · versão ctw-217</div>
         </div>
     </div>
     
@@ -960,10 +960,7 @@ do que você precisa??</h2>
             <div class="d-grid gap-2" id="docsMenuClassic">
                 <button class="btn-menu" id="openContratoView"><i class="bi bi-file-text-fill"></i> Contratos P/Boleto </button>
                 <button class="btn-menu" id="openBookipView"><i class="bi bi-receipt"></i> Garantias (Bookip)</button>
-                <button class="btn-menu" disabled style="opacity: 0.5; cursor: not-allowed; filter: grayscale(100%); background-color: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1);">
-                    <i class="bi bi-clipboard-check-fill"></i> Ord. Serviços
-                    <span style="font-size: 0.75rem; margin-left: auto; color: var(--text-secondary);">(Em breve)</span>
-                </button>
+                <button class="btn-menu" id="openOrcamentoView"><i class="bi bi-clipboard-check-fill"></i> Orçamento</button>
             </div>
             <!-- ESTILO 2.0 -->
             <div class="ctw-card-grid ctw-menu-hide" id="docsMenuCards">
@@ -977,11 +974,10 @@ do que você precisa??</h2>
                     <span class="ctw-card-title">Garantia</span>
                     <span class="ctw-card-sub">Bookip</span>
                 </button>
-                <button class="ctw-card c-disabled" disabled>
-                    <span class="ctw-card-soon">Em breve</span>
+                <button class="ctw-card c-orange" id="openOrcamentoView2">
                     <div class="ctw-card-icon"><i class="bi bi-clipboard-check-fill"></i></div>
-                    <span class="ctw-card-title">Ord.</span>
-                    <span class="ctw-card-sub">Serviços</span>
+                    <span class="ctw-card-title">Orçamento</span>
+                    <span class="ctw-card-sub">Proposta</span>
                 </button>
             </div>
 
@@ -1121,7 +1117,7 @@ do que você precisa??</h2>
             <div class="toggle-switch">
                 <input type="checkbox" id="bookipModeToggle">
                 <label for="bookipModeToggle">
-                    <span><i class="bi bi-plus-lg"></i> Nova Garantia</span>
+                    <span id="txtToggleNovo"><i class="bi bi-plus-lg"></i> Nova Garantia</span>
                     <span><i class="bi bi-clock-history"></i> Histórico</span>
                 </label>
             </div>
@@ -1242,7 +1238,7 @@ do que você precisa??</h2>
 
 
 
-                    <h6 class="text-secondary small mb-2">Itens no Recibo:</h6>
+                    <h6 class="text-secondary small mb-2" id="bookipItensLabel">Itens no Recibo:</h6>
                     <ul class="list-group mb-3" id="bookipListaItens">
                         <li class="list-group-item text-center text-muted small bg-transparent">Nenhum item adicionado.</li>
                     </ul>
@@ -1252,11 +1248,23 @@ do que você precisa??</h2>
 
                     <h5 class="form-section-title mb-3 mt-4"><i class="bi bi-sliders"></i> Detalhes Finais</h5>
                     <div class="mb-3">
-                        <label class="form-label">Data da Venda (Para Garantias anteriores)</label>
+                        <label class="form-label" id="bookipDataManualLabel">Data da Venda (Para Garantias anteriores)</label>
                         <input type="date" class="form-control" id="bookipDataManual">
                     </div>
 
-                    <div class="mb-3">
+                    <div class="mb-3 hidden" id="blocoValidadeOrc">
+                        <label class="form-label">Validade do Orçamento</label>
+                        <select class="form-select" id="orcValidadeSelect">
+                            <option value="3">3 Dias</option>
+                            <option value="7" selected>7 Dias (Padrão)</option>
+                            <option value="15">15 Dias</option>
+                            <option value="30">30 Dias</option>
+                            <option value="custom">Manual (Digitar Dias)</option>
+                        </select>
+                        <input type="number" min="1" max="365" class="form-control mt-2 hidden" id="orcValidadeCustomInput" placeholder="Digite a quantidade de dias (Ex: 10)">
+                    </div>
+
+                    <div class="mb-3" id="blocoGarantia">
                         <label class="form-label">Tempo de Garantia</label>
                         <select class="form-select" id="bookipGarantiaSelect">
                             <option value="365" selected>1 Ano (Padrão)</option>
@@ -1269,7 +1277,7 @@ do que você precisa??</h2>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label d-block">Forma(s) de Pagamento</label>
+                        <label class="form-label d-block" id="bookipPagamentoLabel">Forma(s) de Pagamento</label>
                         <div class="d-flex flex-wrap gap-3 p-2 rounded" style="background: rgba(0,0,0,0.2);">
                             <div class="form-check">
                                 <input class="form-check-input check-pagamento" type="checkbox" value="Dinheiro/Pix" id="pagPix">
@@ -1345,7 +1353,7 @@ do que você precisa??</h2>
                                 </button>
                             </div>
                             <button id="btnNewBookipCycle" class="btn btn-link text-secondary mt-3 text-decoration-none" style="font-size: 0.9rem;">
-                                <i class="bi bi-plus-circle"></i> Começar um Novo Recibo
+                                <i class="bi bi-plus-circle"></i> <span id="txtNovoCiclo">Começar um Novo Recibo</span>
                             </button>
                         </div>
                     </div>
@@ -1708,7 +1716,7 @@ do que você precisa??</h2>
         <div class="popup-backdrop"></div> <div class="popup-card">           <div class="mb-4">
                 <i class="bi bi-check-circle-fill text-success" style="font-size: 3.5rem;"></i>
                 <h4 class="mt-2 fw-bold text-light">Sucesso!</h4>
-                <p class="text-secondary small">Garantia já salva na Nuvem.</p>
+                <p class="text-secondary small" id="postSaveMsg">Garantia já salva na Nuvem.</p>
             </div>
 
             <div class="row g-2 mb-3">
@@ -1722,7 +1730,7 @@ do que você precisa??</h2>
 
 
         <button id="btnResetSuccess" class="btn btn-outline-light w-100 py-2 rounded-pill mt-2">
-    <i class="bi bi-plus-lg"></i>  Sair e Começar Nova Garantia
+    <i class="bi bi-plus-lg"></i> <span id="txtResetSuccess">Sair e Começar Nova Garantia</span>
 </button>
 
         </div>
@@ -3302,7 +3310,7 @@ window.addEventListener('load', function() {
                 sonda.remove();
                 var selo = document.createElement('div');
                 selo.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;font:10px/1.3 monospace;background:rgba(0,0,0,.8);color:#0f0;padding:3px 6px;pointer-events:none;';
-                selo.textContent = 'ctw-215 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
+                selo.textContent = 'ctw-217 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
                     ' | modo=' + (matchMedia('(display-mode: standalone)').matches ? 'app instalado' : 'navegador') + ' | tela=' + innerWidth + 'x' + innerHeight;
                 document.body.appendChild(selo);
             }, 2500);

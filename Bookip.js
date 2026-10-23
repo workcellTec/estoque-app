@@ -16,6 +16,9 @@ window._bookipFotoBlob = null;
 // ABRIR RECIBO SIMPLES
 // ============================================================
 window.abrirReciboSimples = function() {
+    // 0. Recibo simples é sempre Garantia/Recibo (nunca Orçamento)
+    if (typeof window.ctwTrocarModoDoc === 'function') window.ctwTrocarModoDoc('garantia');
+
     // 1. Configura variáveis globais
     window.isSimpleReceiptMode = true;
     window.currentEditingBookipId = null;
