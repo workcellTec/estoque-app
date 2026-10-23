@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-213'; // CreditoScan novo: análise em segundo plano, aviso, resultado e cálculo do aparelho (juros 8%), menu inferior visível
+const CACHE = 'ctw-214'; // CreditoScan: retentativas de rede com diagnóstico, nome do titular pelo extrato, comprometimento derruba a nota
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

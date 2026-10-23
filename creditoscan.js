@@ -164,31 +164,65 @@
         });
         return linhasFiltradas.join('\n');
     }
+    // ── OpenRouter API: chamada generica ──
+    // Celular em rede movel derruba envios grandes ("Failed to fetch"): por isso ha
+    // 3 tentativas, espera o app voltar ao primeiro plano/rede e um limite de tempo.
+    var OR_TENTATIVAS = 3;
+    var OR_TIMEOUT_MS = 180000;
 
-    // OpenRouter API
-    // ── OpenRouter API: chamada genérica ──
+    function pausa(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+    function aguardarAppPronto(maxMs) {
+        return new Promise(function (resolve) {
+            var fim = Date.now() + maxMs;
+            (function tick() {
+                var pronto = navigator.onLine !== false && !document.hidden;
+                if (pronto || Date.now() >= fim) return resolve();
+                setTimeout(tick, 700);
+            })();
+        });
+    }
+
+    function fmtMB(chars) { return chars < 1048576 ? Math.round(chars / 1024) + ' KB' : (chars / 1048576).toFixed(1).replace('.', ',') + ' MB'; }
+
     async function openRouterCall(model, messages) {
         var key = await getApiKey();
         if (!key) throw new Error('Chave OpenRouter nao configurada. Salve em Firebase > settings/openrouterKey');
-        var resp = await fetch(OR_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + key
-            },
-            body: JSON.stringify({
-                model: model,
-                max_tokens: 6000,
-                temperature: 0,
-                messages: messages
-            })
-        });
-        if (!resp.ok) {
-            var e = await resp.json().catch(function(){ return {}; });
-            throw new Error((e.error && e.error.message) || 'HTTP ' + resp.status);
+        var corpo = JSON.stringify({ model: model, max_tokens: 6000, temperature: 0, messages: messages });
+        var erroRede = null, t0 = Date.now(), tent = 0;
+        while (tent < OR_TENTATIVAS) {
+            tent++;
+            var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+            var timer = ctl ? setTimeout(function () { ctl.abort(); }, OR_TIMEOUT_MS) : null;
+            try {
+                var resp = await fetch(OR_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+                    body: corpo,
+                    signal: ctl ? ctl.signal : undefined
+                });
+                if (timer) clearTimeout(timer);
+                if (!resp.ok) {
+                    var e = await resp.json().catch(function () { return {}; });
+                    var msg = (e.error && e.error.message) || 'HTTP ' + resp.status;
+                    // sobrecarga temporaria do provedor: vale tentar de novo
+                    if ([429, 502, 503, 504, 524].indexOf(resp.status) !== -1 && tent < OR_TENTATIVAS) { erroRede = new Error(msg); await pausa(2500 * tent); continue; }
+                    throw new Error(msg);
+                }
+                var d = await resp.json();
+                return ((d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '').trim();
+            } catch (err) {
+                if (timer) clearTimeout(timer);
+                var ehRede = err && (err.name === 'TypeError' || err.name === 'AbortError');
+                if (!ehRede) throw err;
+                erroRede = err;
+                console.warn('[CreditoScan] falha de rede ' + tent + '/' + OR_TENTATIVAS, err && err.message, '| envio', fmtMB(corpo.length), '| online', navigator.onLine, '| oculto', document.hidden);
+                if (tent < OR_TENTATIVAS) { await aguardarAppPronto(120000); await pausa(1500 * tent); }
+            }
         }
-        var d = await resp.json();
-        return ((d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '').trim();
+        var motivo = (erroRede && erroRede.name === 'AbortError') ? 'sem resposta em ' + Math.round(OR_TIMEOUT_MS / 1000) + 's' : ((erroRede && erroRede.message) || 'falha de rede');
+        throw new Error(motivo + ' [envio ' + fmtMB(corpo.length) + ' · ' + tent + ' tentativas · ' + Math.round((Date.now() - t0) / 1000) + 's · ' +
+            (navigator.onLine === false ? 'sem internet' : 'online') + (document.hidden ? ' · app em segundo plano' : '') + ']');
     }
 
     // Motor Vision: manda imagens + texto pro Qwen-VL via OpenRouter
@@ -244,7 +278,8 @@
 
 '=== TITULARIDADE ===\n'+
 'Se houver RG/CNH: extraia o nome (IGNORE filiacao/mae/pai) e compare com o nome do extrato.\n'+
-'Nomes diferentes = fraude = nota 0 REPROVADO. Sem documento pessoal: nomesBatem null.\n\n'+
+'Nomes diferentes = fraude = nota 0 REPROVADO. Sem documento pessoal: nomesBatem null.\n'+
+'SEMPRE preencha nomeComprovanteRenda com o nome do TITULAR da conta/holerite (fica no cabecalho do extrato, perto do CPF). So deixe vazio se realmente nao aparecer.\n\n'+
 
 '=== RENDA ===\n'+
 '- Extrato: some APENAS entradas de terceiros. Pix do proprio CPF/nome = autotransferencia, ignore.\n'+
@@ -1279,43 +1314,33 @@
         }
     }
 
-    // ── VALIDADOR POS-IA: comprometimento em 2 niveis (-10 >80%, -20 >95%) ──
+    // ── VALIDADOR POS-IA: comprometimento da renda derruba a nota ──
+    // Usa o mesmo % que aparece na tela (secao COMPROMETIMENTO). Total de desconto:
+    // -10 acima de 80% e -30 acima de 95%. O que a IA ja descontou por comprometimento
+    // no calculo da nota e abatido, para nao penalizar duas vezes.
     function validarComprometimento(d) {
         if (d.reprovado) return;
-        var textoIA = [d.analise || '', d.perfil || ''].join(' ').toLowerCase();
-        var critico = [
-            /comprometimento.*(100|9[5-9])\s*%/,
-            /gasto\s+total\s+da\s+renda/,
-            /toda[s]?\s+as\s+entradas.*despendidas/,
-            /saldo\s+(final|fim).*(r\$\s*0|zero|zerado)/,
-            /(fim|final)\s+d[eo]\s+m[eê]s.*(zero|zerado|r\$\s*0)/
-        ].some(function(re){ return re.test(textoIA); });
-        var alto = critico || [
-            /comprometimento.*(100|9\d|8[0-9])\s*%/,
-            /gast(a|ou|ando).*(tudo|toda|integralmente)/,
-            /(100|9\d|8[0-9])\s*%.*renda/
-        ].some(function(re){ return re.test(textoIA); });
-        if (!alto && !critico) return;
-        var jaAlto    = /comprometimento.*>80%|comprometimento alto/i.test(d.calculo || '');
-        var jaCritico = /comprometimento.*>95%|comprometimento critico/i.test(d.calculo || '');
-        var desconto = 0, linhas = '';
-        if (critico && !jaCritico) {
-            if (!jaAlto) { desconto += 10; linhas += '\nComprometimento >80% da renda: -10'; }
-            desconto += 20; linhas += '\nComprometimento critico >95% da renda: -20';
-        } else if (alto && !jaAlto) {
-            desconto += 10; linhas += '\nComprometimento >80% da renda: -10';
-        }
-        if (desconto === 0) return;
-        d.nota = Math.max(0, d.nota - desconto);
-        d.calculo = (d.calculo || '') + linhas +
-            '\n\n⚠️ CORRECAO JS: comprometimento detectado — ' + desconto + ' pts descontados automaticamente.';
+        var sec = parsearSecoes(d.analise || '')['COMPROMETIMENTO'] || '';
+        var m = sec.match(/(\d{1,3})\s*%/);
+        if (!m) return;
+        var pct = parseInt(m[1], 10);
+        var alvo = pct > 95 ? 30 : pct > 80 ? 10 : 0;
+        if (!alvo) return;
+        var jaDescontado = 0;
+        String(d.calculo || '').split('|').forEach(function (parte) {
+            var mm = parte.match(/comprom[^\d\-+]*.*?[-−–]\s*(\d{1,2})\b/i);
+            if (mm) jaDescontado += parseInt(mm[1], 10);
+        });
+        var extra = Math.max(0, alvo - jaDescontado);
+        if (!extra) return;
+        d.nota = Math.max(0, d.nota - extra);
+        d.calculo = (d.calculo || '') + '\n\nAjuste do sistema: comprometimento de ' + pct + '% da renda — ' + extra + ' pts a menos na nota.';
         if (d.nota < 40) {
             d.aprov = false; d.reprovado = true; d.risco = 'REPROVADO'; d.entradaPct = 0.60;
-            d.motivos = (d.motivos ? d.motivos + '\n' : '') + 'Comprometimento elevado — nota abaixo de 40, REPROVADO automatico.';
-        } else if (d.nota < 60) { d.entradaPct = 0.60; }
-        else if (d.nota < 85)   { d.entradaPct = 0.35; }
+            d.motivos = (d.motivos ? d.motivos + '\n' : '') + 'Comprometimento de ' + pct + '% da renda — nota abaixo de 40.';
+        } else if (d.nota < 60) { d.risco = 'FRACO'; d.entradaPct = 0.60; }
+        else if (d.nota < 85)   { d.risco = 'MEDIO'; d.entradaPct = 0.35; }
     }
-
     // ── VALIDADOR POS-IA: emprestimo/financiamento no texto do PDF ──────────
     function validarEmprestimo(d, textoLocal) {
         if (d.reprovado) return;
@@ -1750,6 +1775,39 @@
         el('cs_btn_refazer').onclick = function () { fechar('refazer'); };
     }
 
+    // Nome do titular lido direto do texto do extrato (plano B quando a IA nao devolve o nome).
+    var NOME_PROIBIDO = /\b(extrato|banco|conta|agencia|ag[eê]ncia|saldo|per[ií]odo|pix|ltda|s\.?a|pagamentos|institui[cç][aã]o|emitido|data|cpf|cnpj|documento|movimenta[cç][aã]o|mercado|nubank|inter|caixa|bradesco|santander|ita[uú])\b/i;
+    function nomeValido(n) {
+        n = String(n || '').replace(/[^A-Za-zÀ-ÿ'. -]/g, ' ').replace(/\s+/g, ' ').trim();
+        if (n.length < 6 || n.length > 60 || NOME_PROIBIDO.test(n)) return '';
+        var pal = n.split(' ').filter(Boolean);
+        var reais = pal.filter(function (w) { return !/^(d[eao]s?|e)$/i.test(w); });
+        return (reais.length >= 2 && pal.length <= 7 && reais.every(function (w) { return w.length >= 2; })) ? n : '';
+    }
+    function nomeNoTexto(texto) {
+        var linhas = String(texto || '').split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean).slice(0, 80);
+        var m, i, n;
+        for (i = 0; i < linhas.length; i++) {
+            m = linhas[i].match(/(?:^|\s)(?:nome(?:\s+completo|\s+do\s+titular|\s+do\s+cliente)?|titular(?:\s+da\s+conta)?|cliente|correntista)\s*[:\-–]\s*(.+)$/i);
+            if (m) { n = nomeValido(m[1].split(/\s{2,}|\bCPF\b|\bCNPJ\b|\bAg[eê]ncia\b|\bConta\b|\d/i)[0]); if (n) return n; }
+        }
+        for (i = 0; i < linhas.length; i++) {
+            if (!/\bCPF\b/i.test(linhas[i])) continue;
+            n = nomeValido(linhas[i].split(/\bCPF\b/i)[0]);
+            if (!n && i > 0) n = nomeValido(linhas[i - 1]);
+            if (n) return n;
+        }
+        return '';
+    }
+    // Sem nome vindo da IA: usa o do extrato, depois o do RG/CNH.
+    function completarNome(d, job, textoLocal) {
+        if (d.nomeRenda || d.nomeDocPessoal) return;
+        var n = nomeNoTexto(textoLocal) || String(job.nome || '').trim();
+        if (!n) return;
+        d.nomeCompleto = capNome(n);
+        d.nomeCliente = d.nomeCompleto.split(' ')[0];
+    }
+
     async function executarJob(job) {
         var fb = null;
         var textosLocais = [];
@@ -1823,7 +1881,7 @@
         var apostas = detectarApostas(textoParaApostas);
         if (apostas.gatilho) {
             andamento(job, 'Reprovado automaticamente', 90, 3);
-            var dAposta = resultadoApostasReprovado('', job.nome, apostas);
+            var dAposta = resultadoApostasReprovado('', job.nome || nomeNoTexto(textoParaApostas), apostas);
             dAposta.nomeCliente = String(dAposta.nomeCompleto || 'Cliente').split(' ')[0];
             dAposta.casasJogo = apostas.casas || [];
             prepararDados(dAposta);
@@ -1897,6 +1955,8 @@
         d._produto = '';
 
         validarApostasNaResposta(d);
+        validarComprometimento(d);
+        completarNome(d, job, textoParaApostas);
 
         if (d.rendaEstimada > 0 && d.rendaEstimada < 1000 && !d.reprovado) {
             d.aprov = false; d.reprovado = true; d.nota = Math.min(d.nota, 30);
