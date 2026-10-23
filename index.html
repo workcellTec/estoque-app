@@ -8,7 +8,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=overlays-content">
 
 
-    <title>Central Workcell'</title>
+    <title>Central Workcell</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" id="status-bar-color" content="#000000"/>
@@ -45,7 +45,7 @@
          para a 1ª pintura, mas funciona igual em qualquer aparelho. -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=100">
+    <link rel="stylesheet" href="style.css?v=102">
 
 
 
@@ -122,24 +122,6 @@
 
 
 
-
-<!-- TOP BAR v2 — header (só no estilo 2.0) -->
-<div id="ctwTopBar">
-    <!-- Cabeçalho: saudação dinâmica + status de conexão -->
-    <div class="ctw-top-header">
-        <div class="ctw-top-header-row">
-            <div class="ctw-top-header-title">
-                <span id="ctwGreeting">Olá</span>, <span id="ctwTopHeaderName">visitante</span>
-            </div>
-            <span id="ctwConnStatus" class="ctw-conn-status ctw-conn-checking" title="Verificando conexão...">
-                <span class="ctw-conn-dot"></span>
-                <span class="ctw-conn-label">Verificando</span>
-            </span>
-        </div>
-    </div>
-    <!-- Busca global removida a pedido — buscas locais (dentro de
-         Contratos, Garantias, etc.) continuam funcionando normalmente. -->
-</div>
 
 <div id="top-right-controls" class="top-right-controls-pos">
     <div class="dropdown">
@@ -333,6 +315,21 @@ class="dropdown-menu-custom">
 
  
     <div class="container text-center" id="mainMenu">
+        <!-- Saudação + status de conexão: fica DENTRO do #mainMenu, então aparece sempre que a tela inicial aparece
+             (antes era um irmão no <body> ligado/desligado por JS, e sumia em produção). -->
+        <div id="ctwTopBar">
+            <div class="ctw-top-header">
+                <div class="ctw-top-header-row">
+                    <div class="ctw-top-header-title">
+                        <span id="ctwGreeting">Olá</span>, <span id="ctwTopHeaderName">visitante</span>
+                    </div>
+                    <span id="ctwConnStatus" class="ctw-conn-status ctw-conn-checking" title="Verificando conexão...">
+                        <span class="ctw-conn-dot"></span>
+                        <span class="ctw-conn-label">Verificando</span>
+                    </span>
+                </div>
+            </div>
+        </div>
         <h2 class="mb-4" id="mainMenuTitle">Bem-vindo(a) à Central Workcell,<br/>O que você quer fazer?</h2>
 
         <!-- ⭐ FAVORITOS -->
@@ -406,6 +403,7 @@ class="dropdown-menu-custom">
                 <span id="repoBadge2" class="repo-badge-card hidden">0</span>
             </button>
         </div>
+        <div id="ctwVersaoApp">Central Workcell · versão ctw-210</div>
     </div>
     
     <div id="calculatorContainer" class="hidden">
@@ -1014,6 +1012,9 @@ do que você precisa??</h2>
             
             <div id="newBoletoContent">
                 <div class="content-card w-100">
+                    <div class="d-flex justify-content-end mb-2">
+                        <button type="button" id="btnLimparContrato" class="btn btn-sm btn-outline-danger"><i class="bi bi-eraser-fill"></i> Limpar campos</button>
+                    </div>
                     <form id="contractForm">
                         
                         <h5 class="form-section-title">Dados do Cliente (Locatário)</h5>
@@ -1063,7 +1064,7 @@ do que você precisa??</h2>
 
                             <div class="col-12 mb-3">
                                 <label for="primeiroVencimento" class="form-label">Data 1º Vencimento</label>
-                                <input type="date" class="form-control" id="primeiroVencimento">
+                                <input type="date" class="form-control" id="primeiroVencimento" required>
                             </div>
 
                             <!-- Prazo calculado automaticamente — readonly -->
@@ -1811,7 +1812,7 @@ do que você precisa??</h2>
 
 
 
-<script src="app.js?v=1001" type="module" defer></script>
+<script src="app.js?v=1002" type="module" defer></script>
 <script>
 window.addEventListener('load', function() {
     var s = document.createElement('script');
@@ -3217,71 +3218,28 @@ window.addEventListener('load', function() {
 
 
 <script>
-(function() {
+/* Suporte: abrir o app com ?diag=1 mostra um selo discreto no rodapé (não cobre a tela) com
+   versão, área segura do topo, posição da saudação e modo de exibição. */
+(function () {
     try {
-        var ativo = false;
-        var logs = [];
-        var toggle = document.getElementById('ctwClickDiagToggle');
-        var painel = document.getElementById('ctwClickDiagPanel');
-        toggle.addEventListener('click', function() {
-            ativo = !ativo;
-            painel.style.display = ativo ? 'block' : 'none';
-            toggle.style.background = ativo ? '#0a6' : '#333';
+        if (!/[?&]diag=1/.test(location.search)) return;
+        window.addEventListener('load', function () {
+            setTimeout(function () {
+                var barra = document.getElementById('ctwTopBar');
+                var r = barra ? barra.getBoundingClientRect() : null;
+                var sonda = document.createElement('div');
+                sonda.style.cssText = 'position:fixed;top:0;height:env(safe-area-inset-top,0px);width:1px;';
+                document.body.appendChild(sonda);
+                var topo = Math.round(sonda.getBoundingClientRect().height);
+                sonda.remove();
+                var selo = document.createElement('div');
+                selo.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;font:10px/1.3 monospace;background:rgba(0,0,0,.8);color:#0f0;padding:3px 6px;pointer-events:none;';
+                selo.textContent = 'ctw-210 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
+                    ' | modo=' + (matchMedia('(display-mode: standalone)').matches ? 'app instalado' : 'navegador') + ' | tela=' + innerWidth + 'x' + innerHeight;
+                document.body.appendChild(selo);
+            }, 2500);
         });
-        document.addEventListener('click', function(e) {
-            if (!ativo) return;
-            var t = e.target;
-            var desc = t.tagName + (t.id ? '#' + t.id : '') + (t.className && typeof t.className === 'string' ? '.' + t.className.trim().split(/\s+/).join('.') : '');
-            var cs = getComputedStyle(t);
-            var linha = '[' + new Date().toLocaleTimeString('pt-BR') + '] ALVO: ' + desc + ' | pointer-events:' + cs.pointerEvents + ' | z-index:' + cs.zIndex + ' | display:' + cs.display;
-            logs.unshift(linha);
-            logs = logs.slice(0, 15);
-            painel.textContent = logs.join('\n\n');
-        }, true);
-    } catch (err) {
-        console.error('Erro no diagnóstico de clique:', err);
-    }
-})();
-</script>
-
-
-<script>
-(function() {
-    try {
-        var painel = document.getElementById('ctwBootDiagPanel');
-        var toggle = document.getElementById('ctwBootDiagToggle');
-        var erros = [];
-
-        function render() {
-            var navLog = (window.__ctwNavLog || []).join('\n');
-            var errLog = erros.length ? ('\n\n=== ERROS ===\n' + erros.join('\n\n')) : '';
-            painel.textContent = '=== NAV/AUTH LOG ===\n' + (navLog || '(vazio ainda)') + errLog;
-        }
-
-        toggle.addEventListener('click', function() {
-            var visivel = painel.style.display === 'block';
-            painel.style.display = visivel ? 'none' : 'block';
-            if (!visivel) render();
-        });
-
-        window.addEventListener('error', function(e) {
-            erros.push('[' + new Date().toLocaleTimeString('pt-BR') + '] ' + e.message + ' (' + e.filename + ':' + e.lineno + ')');
-            painel.style.display = 'block'; // abre sozinho, sem precisar tocar
-            render();
-        });
-        window.addEventListener('unhandledrejection', function(e) {
-            erros.push('[' + new Date().toLocaleTimeString('pt-BR') + '] Promise rejeitada: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
-            painel.style.display = 'block';
-            render();
-        });
-
-        // Atualiza o conteúdo periodicamente enquanto estiver aberto
-        setInterval(function() {
-            if (painel.style.display === 'block') render();
-        }, 1000);
-    } catch (err) {
-        console.error('Erro no diagnóstico de boot:', err);
-    }
+    } catch (e) { /* diagnóstico opcional */ }
 })();
 </script>
 

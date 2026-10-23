@@ -2120,14 +2120,24 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
     color: var(--text-color);
     margin-bottom: 4px;
     line-height: 1.2;
-    word-wrap: break-word; /* Quebra nomes muito longos */
+    overflow-wrap: anywhere; /* Quebra nomes muito longos */
 }
 
 .bk-details {
     font-size: 0.8rem;
     color: var(--text-secondary);
     opacity: 0.8;
+    overflow-wrap: anywhere; /* IMEI/observação sem espaço não pode esticar o card */
 }
+
+/* Garantia/Contrato: o .container é flex com align-items:center, então cada filho
+   "encolhe para o conteúdo". Um IMEI ou texto longo sem espaço esticava a lista
+   além da tela (visual "largão", cortado). Aqui tudo é limitado à largura da tela. */
+#areaBookipWrapper > *,
+#areaContratoWrapper > * { max-width: 100%; min-width: 0; box-sizing: border-box; }
+#bookipListaItens { width: 100%; }
+.accordion-body { overflow-wrap: anywhere; } /* histórico: IMEI/endereço longo não estica a tela */
+.bookip-item-card { max-width: 100%; min-width: 0; box-sizing: border-box; }
 
 /* --- MUDANÇA AQUI: Lado Direito Vertical --- */
 .bk-actions-area {
@@ -3826,14 +3836,21 @@ body.ctw-v2-active .top-right-controls-pos .dropdown {
 
 /* Barra de topo v2: header com saudação e status de conexão */
 #ctwTopBar {
-    display: none; /* Controlado via JS */
-    position: absolute;
-    top: 16px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: min(380px, calc(100vw - 24px));
-    z-index: 1050;
+    /* Fica DENTRO do #mainMenu e NO FLUXO normal (primeiro item da coluna): sem position:absolute
+       nem transform, não depende de coordenadas — não há como ficar por baixo de outra coisa
+       nem fora da tela em nenhum aparelho. */
+    position: relative;
+    width: min(380px, calc(100% - 24px));
+    margin: 0 auto 14px;
+    z-index: 2;
     pointer-events: none; /* header não captura cliques */
+}
+
+#ctwVersaoApp {
+    margin-top: 18px;
+    font-size: 10px;
+    opacity: .4;
+    text-align: center;
 }
 
 /* Balanceamento vertical do mainMenu no v2 */
@@ -3853,7 +3870,7 @@ body.ctw-v2-active #mainMenu {
     overflow-y: auto !important;
     overflow-x: hidden !important;
     z-index: 50;
-    padding-top: 96px;
+    padding-top: calc(20px + env(safe-area-inset-top, 0px));
     padding-bottom: 120px;
     justify-content: flex-start;
     box-sizing: border-box;
@@ -5935,4 +5952,11 @@ body.ctw-v2-active #documentsHome {
     -webkit-overflow-scrolling: touch !important;
     overscroll-behavior-y: contain;
     touch-action: pan-y !important;
+}
+
+/* Listas longas (histórico de contratos/garantias): itens fora da tela não são desenhados.
+   Em celular fraco isso evita montar centenas de cards de uma vez. */
+.history-accordion > .accordion-item {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 56px;
 }

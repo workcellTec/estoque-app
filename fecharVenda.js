@@ -823,16 +823,24 @@
     window._fvOnRatesLoaded = function() { calculate(); };
 
     // ── Compatibilidade: precoBase externo ───────────────────────
+    // O app.js entrega o preço atribuindo window._fecharVendaPrecoBase. Antes um setInterval
+    // conferia isso a cada 500 ms para sempre; agora a própria atribuição dispara a atualização.
     function watchPrecoBase() {
+        let valor = window._fecharVendaPrecoBase || 0;
         let last = 0;
-        setInterval(() => {
-            const ext = window._fecharVendaPrecoBase || 0;
-            if (ext !== last) {
-                last = ext; precoBase = ext;
-                el('fv_entrada_wrap')?.classList.remove('fv-h');
-                calculate();
-            }
-        }, 500);
+        const aplicar = () => {
+            const ext = valor || 0;
+            if (ext === last) return;
+            last = ext; precoBase = ext;
+            el('fv_entrada_wrap')?.classList.remove('fv-h');
+            calculate();
+        };
+        Object.defineProperty(window, '_fecharVendaPrecoBase', {
+            configurable: true,
+            get() { return valor; },
+            set(v) { valor = v; aplicar(); }
+        });
+        aplicar();
     }
 
     // ── Init ─────────────────────────────────────────────────────

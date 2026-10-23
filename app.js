@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
-import { getDatabase, ref, push, update, remove, onValue, off, get, set, runTransaction } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
+import { getDatabase, ref, push, update, remove, onValue, off, get, set, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
 
 // ============================================================
 // 🩹 FIX SCROLL DEFINITIVO (celular fraco não rolava a tela)
@@ -45,11 +45,14 @@ async function lazyLoadScript(url) {
     });
 }
 
-async function garantirPdfLibs() {
-    await Promise.all([
+// Contrato: só html2canvas + jsPDF (leves). Garantia/recibo: também html2pdf.
+async function garantirPdfLibs({ soContrato = false } = {}) {
+    const libs = [
         lazyLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
-        lazyLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'),
-    ]);
+        lazyLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'),
+    ];
+    if (!soContrato) libs.push(lazyLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'));
+    await Promise.all(libs);
 }
 
 
@@ -580,26 +583,9 @@ const topRightControls = document.getElementById('top-right-controls');
 
 
 function showMainSection(sectionId) {
-    // DIAGNÓSTICO TEMPORÁRIO: registra cada chamada pra investigar por
-    // que a barra de saudação não aparece em produção (localhost funciona).
-    try {
-        window.__ctwNavLog = window.__ctwNavLog || [];
-        window.__ctwNavLog.push('[' + new Date().toLocaleTimeString('pt-BR') + '] showMainSection("' + sectionId + '") | isAuthReady=' + isAuthReady + ' | auth.currentUser=' + (auth && auth.currentUser ? auth.currentUser.uid : 'null'));
-    } catch (e) {}
-
     if (!isAuthReady) return;
-
-    // Hook v2: controla visibilidade do top bar (busca global)
-    // Roda aqui dentro pois os listeners chamam esta função diretamente,
-    // não window.showMainSection — então o interceptor externo não basta.
-    // OBS: não depende mais de localStorage('ctwMenuStyle'), pois o
-    // Layout 1.0 foi desativado e o app agora é sempre v2 — o topo deve
-    // sumir em qualquer seção que não seja a tela inicial ('main').
-    (function() {
-        var topBar = document.getElementById('ctwTopBar');
-        if (!topBar) return;
-        topBar.style.display = (sectionId === 'main') ? 'block' : 'none';
-    })();
+    // (A saudação #ctwTopBar vive dentro do #mainMenu: aparece e some junto com a tela inicial,
+    //  sem nenhum controle de display por JS.)
 
     // Desliga ouvintes antigos
     if (productsListener) { off(getProductsRef(), 'value', productsListener); productsListener = null; }
@@ -2697,211 +2683,664 @@ function numeroPorExtenso(numero, tipo = 'normal') {
     }
 }
 
-// Sistema de rascunho de contrato removido (salvava formulário no
-// localStorage). Foi a causa raiz do bug de contratos sobrepondo uns aos
-// outros e foi removido a pedido, junto com os botões "Limpar Campos" e
-// "Apagar Rascunho" no HTML.
+// ============================================================
+// 📄 CONTRATO DE LOCAÇÃO — construtor ÚNICO
+// A prévia, o PDF e o "Reenviar" usam exatamente o mesmo texto, montado
+// por montarContratoHtml(). Antes havia um template com <strong id="prevX">
+// preenchido depois por getElementById (frágil: campo opcional vazio,
+// IDs duplicados e o conteúdo dependendo do DOM do formulário).
+// ============================================================
 
+// Converte "1.592,00", "1592.00", "R$ 300,00" ou número em Number (0 se inválido).
+function ctwNumeroBR(v) {
+    if (typeof v === 'number') return isFinite(v) ? v : 0;
+    let s = String(v == null ? '' : v).replace(/R\$|\s/g, '');
+    if (!s) return 0;
+    if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+    const n = parseFloat(s);
+    return isFinite(n) ? n : 0;
+}
+
+// Moeda pt-BR sem depender do ICU do aparelho (WebViews antigos formatam diferente).
+function ctwFmtMoeda(v) {
+    const [int, dec] = ctwNumeroBR(v).toFixed(2).split('.');
+    return int.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + dec;
+}
+
+function ctwFmtData(d) {
+    if (!(d instanceof Date) || isNaN(d)) return '';
+    return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+}
+
+// "5 meses", "8 semanas", "2,5 meses" (quinzenais). Vazio se não houver parcelas.
+function ctwPrazoContrato(tipoParcela, numeroParcelas) {
+    const n = parseInt(numeroParcelas, 10) || 0;
+    if (n <= 0) return '';
+    if (tipoParcela === 'semanais') return n === 1 ? '1 semana' : `${n} semanas`;
+    if (tipoParcela === 'quinzenais') {
+        const m = Math.round(n * 0.5 * 10) / 10;
+        return m === 1 ? '1 mês' : `${String(m).replace('.', ',')} meses`;
+    }
+    return n === 1 ? '1 mês' : `${n} meses`;
+}
+
+// Lê o formulário aberto → objeto simples (mesmos nomes do registro salvo no Firebase).
+function ctwDadosContratoDoFormulario() {
+    const val = (id) => (document.getElementById(id)?.value ?? '').toString().trim();
+    const num = (id) => parseFloat(document.getElementById(id)?.value) || 0;
+    const numeroParcelas = parseInt(document.getElementById('numeroParcelas')?.value, 10) || 0;
+    const valorEntrada = num('valorEntrada');
+    const valorParcela = num('valorParcela');
+    return {
+        compradorNome: val('compradorNome'),
+        compradorCpf: val('compradorCpf'),
+        compradorRg: val('compradorRg'),
+        compradorTelefone: val('compradorTelefone'),
+        compradorEndereco: val('compradorEndereco'),
+        produtoModelo: val('produtoModelo'),
+        produtoImei: val('produtoImei'),
+        aparelhoEstado: val('aparelhoEstado') || 'Novo',
+        aparelhoAcessorios: val('aparelhoAcessorios'),
+        tipoParcela: val('tipoParcela') || 'mensais',
+        numeroParcelas,
+        valorEntrada,
+        valorParcela,
+        saldoRestante: valorParcela * numeroParcelas,
+        valorTotal: valorEntrada + valorParcela * numeroParcelas,
+        primeiroVencimento: val('primeiroVencimento'),
+        dataContrato: new Date()
+    };
+}
+
+// Lê um registro salvo (histórico) → mesmo formato. A data do contrato é a ORIGINAL.
+function ctwDadosContratoDoRegistro(b) {
+    const numeroParcelas = parseInt(b.numeroParcelas, 10) || 0;
+    const valorParcela = ctwNumeroBR(b.valorParcela);
+    const valorEntrada = ctwNumeroBR(b.valorEntrada);
+    const saldoRestante = valorParcela * numeroParcelas;
+    let data = new Date(Number(b.criadoEmTs) || Date.parse(b.criadoEm));
+    if (isNaN(data)) data = new Date();
+    return {
+        compradorNome: b.compradorNome || '',
+        compradorCpf: b.compradorCpf || '',
+        compradorRg: b.compradorRg || '',
+        compradorTelefone: b.compradorTelefone || '',
+        compradorEndereco: b.compradorEndereco || '',
+        produtoModelo: b.produtoModelo || '',
+        produtoImei: b.produtoImei || '',
+        aparelhoEstado: b.aparelhoEstado || 'Novo',
+        aparelhoAcessorios: b.aparelhoAcessorios || '',
+        tipoParcela: b.tipoParcela || 'mensais',
+        numeroParcelas,
+        valorEntrada,
+        valorParcela,
+        saldoRestante,
+        valorTotal: ctwNumeroBR(b.valorTotal) || (valorEntrada + saldoRestante),
+        primeiroVencimento: b.primeiroVencimento || '',
+        dataContrato: data
+    };
+}
+
+// Todo texto do cliente passa por escapeHtml; campo opcional vazio nunca deixa buraco.
+function ctwResolverCamposContrato(d) {
+    const txt = (v, vazio) => escapeHtml((v == null ? '' : String(v)).trim() || vazio || '');
+    let diaVenc = '—', dataVenc = '—';
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d.primeiroVencimento || '');
+    if (m) { diaVenc = m[3]; dataVenc = `${m[3]}/${m[2]}/${m[1]}`; }
+    return {
+        prevNome: txt(d.compradorNome, '—'),
+        prevCPF: txt(d.compradorCpf, '—'),
+        prevRG: txt(d.compradorRg, 'Não informado'),
+        prevEndereco: txt(d.compradorEndereco, '—'),
+        prevTelefone: txt(d.compradorTelefone, 'Não informado'),
+        prevModelo: txt(d.produtoModelo, '—'),
+        prevIMEI: txt(d.produtoImei, '—'),
+        prevEstado: txt(d.aparelhoEstado, 'Novo'),
+        prevAcessorios: txt(d.aparelhoAcessorios, 'Nenhum'),
+        prevPrazo: txt(ctwPrazoContrato(d.tipoParcela, d.numeroParcelas), '—'),
+        prevValorTotal: ctwFmtMoeda(d.valorTotal),
+        prevEntrada: ctwFmtMoeda(d.valorEntrada),
+        prevSaldoRestante: ctwFmtMoeda(d.saldoRestante),
+        prevQtdParcelas: String(parseInt(d.numeroParcelas, 10) || 0),
+        prevTipoParcela: txt(d.tipoParcela, 'mensais'),
+        prevValorParcela: ctwFmtMoeda(d.valorParcela),
+        prevVencimento: diaVenc,
+        prevDataVencimento: dataVenc,
+        prevDataAtual: ctwFmtData(d.dataContrato) || ctwFmtData(new Date()),
+        prevAssinaturaNome: txt(d.compradorNome, '—'),
+        prevAssinaturaCPF: txt(d.compradorCpf, '—')
+    };
+}
+
+const CTW_CT_TITULO = 'font-weight:bold;margin:12px 0 4px;text-transform:uppercase;';
+
+// Cada item é um bloco que NUNCA é cortado ao meio na paginação do PDF.
+const CTW_CONTRATO_FRAGMENTOS = [
+    (V) => `
+<h4 style="text-align:center;font-weight:bold;font-size:10.5pt;line-height:1.4;margin:0 0 16px;">CONTRATO PARTICULAR DE LOCAÇÃO DE BEM MÓVEL (SMARTPHONE)<br>COM OPÇÃO DE AQUISIÇÃO, GARANTIAS E CONFISSÃO DE DÍVIDA</h4>
+<p>Pelo presente instrumento particular, as partes abaixo identificadas:</p>
+<p><strong>LOCADORA:</strong><br>
+WHORKCELL TECNOLOGIA E SERVIÇOS LTDA, pessoa jurídica de direito privado, inscrita no CNPJ nº 50.299.715/0001-65, com sede em Av. Goiás, nº 4118, sala 05, St. Crimeia Oeste, Goiânia – GO, doravante denominada simplesmente LOCADORA.</p>
+<p><strong>LOCATÁRIO:</strong><br>
+Nome: <strong>${V.prevNome}</strong><br>
+CPF: <strong>${V.prevCPF}</strong><br>
+RG: <strong>${V.prevRG}</strong><br>
+Endereço: <strong>${V.prevEndereco}</strong><br>
+Telefone/WhatsApp: <strong>${V.prevTelefone}</strong><br>
+Doravante denominado simplesmente LOCATÁRIO.</p>
+<p>As partes têm entre si justo e contratado o que segue:</p>`,
+
+    (V) => `
+<div class="section-title" style="${CTW_CT_TITULO}">CLÁUSULA 1 – DO OBJETO</div>
+<p>1.1. O presente contrato tem por objeto a locação de bem móvel consistente em aparelho celular com as seguintes características:<br>
+Marca/Modelo: <strong>${V.prevModelo}</strong><br>
+IMEI: <strong>${V.prevIMEI}</strong><br>
+Estado: <strong>${V.prevEstado}</strong><br>
+Acessórios inclusos: <strong>${V.prevAcessorios}</strong></p>
+<p>1.2. O bem permanecerá, durante toda a vigência contratual, como propriedade exclusiva da LOCADORA, não se operando qualquer transferência dominial até eventual aquisição final.</p>`,
+
+    () => `
+<div class="section-title" style="${CTW_CT_TITULO}">CLÁUSULA 2 – DA NATUREZA JURÍDICA</div>
+<p>2.1. As partes reconhecem expressamente que o presente instrumento configura contrato de locação de bem móvel, nos termos dos artigos 565 e seguintes do Código Civil Brasileiro.<br>
+2.2. O presente contrato não constitui compra e venda parcelada, financiamento ou operação de crédito.<br>
+2.3. A eventual transferência de propriedade somente ocorrerá após a quitação integral das obrigações assumidas pelo LOCATÁRIO.</p>`,
+
+    (V) => `
+<div class="section-title" style="${CTW_CT_TITULO}">CLÁUSULA 3 – DO PRAZO</div>
+<p>3.1. O prazo da locação é de <strong>${V.prevPrazo}</strong>, iniciando-se na data de assinatura deste instrumento.<br>
+3.2. O contrato poderá ser rescindido antecipadamente nas hipóteses previstas neste instrumento.</p>`,
+
+    (V) => `
+<div class="section-title" style="${CTW_CT_TITULO}">CLÁUSULA 4 – DO PREÇO E FORMA DE PAGAMENTO</div>
+<p>4.1. Pela locação do bem, o LOCATÁRIO pagará à LOCADORA:<br>
+Valor total: R$ <strong>${V.prevValorTotal}</strong><br>
+Entrada: R$ <strong>${V.prevEntrada}</strong><br>
+Saldo restante: R$ <strong>${V.prevSaldoRestante}</strong><br>
+Parcelado em: <strong>${V.prevQtdParcelas}</strong> parcelas <strong>${V.prevTipoParcela}</strong> de R$ <strong>${V.prevValorParcela}</strong>.<br>
+4.2. O pagamento será realizado mediante boleto bancário com vencimento todo dia <strong>${V.prevVencimento}</strong> do período, com início em <strong>${V.prevDataVencimento}</strong>.<br>
+4.3. O não recebimento do boleto não exime o LOCATÁRIO da obrigação de pagamento na data de vencimento.<br>
+4.4. O atraso implicará incidência de multa, juros e correção monetária conforme legislação vigente.</p>`,
+
+    () => `
+<div class="section-title" style="${CTW_CT_TITULO}">CLÁUSULA 5 – DA POSSE E CONDIÇÃO DE FIEL DEPOSITÁRIO</div>
+<p>5.1. O LOCATÁRIO recebe o bem na qualidade de possuidor direto e fiel depositário, obrigando-se a zelar pela sua guarda, conservação e integridade.<br>
+5.2. O LOCATÁRIO compromete-se a restituir o bem sempre que solicitado pela LOCADORA nas hipóteses previstas neste contrato.<br>
+5.3. A não devolução injustificada do bem poderá caracterizar ilícito civil e, quando cabível, ilícito penal.</p>`,
+
+    () => `
+<div class="section-title" style="${CTW_CT_TITULO}">CLÁUSULA 6 – DAS OBRIGAÇÕES DO LOCATÁRIO</div>
+<p>O LOCATÁRIO obriga-se a:<br>
+I – Utilizar o aparelho de forma adequada e exclusivamente para fins lícitos;<br>
+II – Não alienar, ceder, emprestar, sublocar ou transferir o bem a terceiros;<br>
+III – Não oferecer o bem em garantia ou penhor;<br>
+IV – Não adulterar IMEI, hardware ou software para ocultar identificação;<br>
+V – Comunicar imediatamente à LOCADORA qualquer perda, furto, roubo ou dano relevante;<br>
+VI – Manter seus dados cadastrais atualizados.</p>`,
+
+    () => `
+<div class="section-title" style="${CTW_CT_TITULO}">CLÁUSULA 7 – RESPONSABILIDADE POR PERDA, ROUBO OU DANOS</div>
+<p>7.1. O LOCATÁRIO responderá integralmente pela perda, furto, roubo ou danos ao aparelho.<br>
+7.2. Tais eventos não extinguem a obrigação de pagamento das parcelas restantes.</p>`,
+
+    () => `
+<div class="section-title" style="${CTW_CT_TITULO}">CLÁUSULA 8 – DO BLOQUEIO REMOTO E MONITORAMENTO</div>
+<p>8.1. O LOCATÁRIO autoriza expressamente a instalação e utilização de sistemas de segurança, rastreamento e bloqueio remoto do aparelho.<br>
+8.2. Em caso de inadimplência, a LOCADORA poderá restringir funcionalidades do dispositivo, independentemente de autorização judicial.</p>`,
+
+    () => `
+<div class="section-title" style="${CTW_CT_TITULO}">CLÁUSULA 9 – DA INADIMPLÊNCIA</div>
+<p>9.1. O atraso superior a 1 dia implicará mora automática do LOCATÁRIO.<br>
+9.2. Em caso de inadimplemento, a LOCADORA poderá:<br>
+I – Considerar rescindido o contrato;<br>
+II – Exigir a devolução imediata do bem;<br>
+III – Realizar bloqueio remoto do aparelho;<br>
+IV – Promover a inscrição do nome do LOCATÁRIO nos órgãos de proteção ao crédito;<br>
+V – Protestar o débito;<br>
+VI – Promover cobrança judicial ou extrajudicial.<br>
+9.3. As parcelas pagas não serão devolvidas, por corresponderem à contraprestação pelo uso do bem.</p>`,
+
+    () => `
+<div class="section-title" style="${CTW_CT_TITULO}">CLÁUSULA 10 – DA CONFISSÃO DE DÍVIDA</div>
+<p>10.1. O LOCATÁRIO reconhece a certeza, liquidez e exigibilidade das obrigações financeiras decorrentes deste contrato.<br>
+10.2. O presente instrumento constitui título executivo extrajudicial, nos termos do artigo 784 do Código de Processo Civil.</p>`,
+
+    () => `
+<div class="section-title" style="${CTW_CT_TITULO}">CLÁUSULA 11 – DA BUSCA E APREENSÃO</div>
+<p>11.1. Em caso de inadimplemento e não devolução voluntária do bem, a LOCADORA poderá promover a retomada do aparelho pelas vias judiciais cabíveis.<br>
+11.2. O LOCATÁRIO compromete-se a informar a localização do bem sempre que solicitado.</p>`,
+
+    () => `
+<div class="section-title" style="${CTW_CT_TITULO}">CLÁUSULA 12 – DA OPÇÃO DE AQUISIÇÃO</div>
+<p>12.1. Após a quitação integral de todas as parcelas, o LOCATÁRIO poderá exercer a opção de aquisição definitiva do bem.<br>
+12.2. A transferência da propriedade será formalizada mediante termo de quitação emitido pela LOCADORA.</p>`,
+
+    () => `
+<div class="section-title" style="${CTW_CT_TITULO}">CLÁUSULA 13 – DA PROTEÇÃO DE DADOS (LGPD)</div>
+<p>13.1. O LOCATÁRIO autoriza o tratamento de seus dados pessoais pela LOCADORA para execução deste contrato, análise de crédito e cobrança, nos termos da Lei nº 13.709/2018.</p>`,
+
+    () => `
+<div class="section-title" style="${CTW_CT_TITULO}">CLÁUSULA 14 – DA IRREVOGABILIDADE E IRRETRATABILIDADE</div>
+<p>14.1. O presente contrato é celebrado em caráter irrevogável e irretratável, obrigando as partes e seus sucessores.</p>`,
+
+    () => `
+<div class="section-title" style="${CTW_CT_TITULO}">CLÁUSULA 15 – DA ASSINATURA DIGITAL</div>
+<p>15.1. As partes reconhecem como válida a assinatura eletrônica ou digital realizada por plataformas certificadas, produzindo os mesmos efeitos jurídicos da assinatura manuscrita.</p>`,
+
+    () => `
+<div class="section-title" style="${CTW_CT_TITULO}">CLÁUSULA 16 – DO FORO</div>
+<p>16.1. Fica eleito o foro da comarca de Goiânia - Goiás, renunciando a qualquer outro por mais privilegiado que seja.</p>`,
+
+    (V) => `
+<p style="font-weight:bold;">DECLARAÇÃO FINAL</p>
+<p>O LOCATÁRIO declara ter recebido o aparelho em perfeito estado de funcionamento, com todos os acessórios informados, e que leu, compreendeu e concorda integralmente com todas as cláusulas deste contrato.</p>
+<p style="text-align:center;margin-top:18px;">Goiânia - GO, <strong>${V.prevDataAtual}</strong></p>
+<p style="text-align:center;margin-top:34px;">_________________________________________________________________<br>
+<strong>LOCADORA:</strong> WORKCELL TECNOLOGIA E SERVIÇOS LTDA – CNPJ: 50.299.715/0001-65</p>
+<p style="text-align:center;margin-top:34px;">_________________________________________________________________<br>
+<strong>LOCATÁRIO:</strong> <strong>${V.prevAssinaturaNome}</strong><br>
+CPF: <strong>${V.prevAssinaturaCPF}</strong></p>`
+];
+
+// Estilo do "papel": largura fixa de 750px (= A4 a 96dpi), independente do tema do app.
+const CTW_CT_ESTILO_PAPEL = 'width:750px;box-sizing:border-box;padding:0 28px;background:#fff;color:#000;' +
+    "font-family:'Times New Roman',Times,serif;font-size:10pt;line-height:1.5;text-align:justify;" +
+    'overflow-wrap:anywhere;word-break:normal;';
+// !important: o tema escuro do app define cor/fonte em p, div, strong...; o "papel" do contrato é sempre preto sobre branco.
+const CTW_CT_CSS = '.ctw-ct p{margin:0 0 8px}.ctw-ct,.ctw-ct *{color:#000!important;font-family:\'Times New Roman\',Times,serif!important;letter-spacing:normal!important;text-shadow:none!important}';
+
+function ctwEnvolverPapelContrato(innerHtml, estiloExtra = '') {
+    return `<div class="ctw-ct" style="${CTW_CT_ESTILO_PAPEL}${estiloExtra}"><style>${CTW_CT_CSS}</style>${innerHtml}</div>`;
+}
+
+function montarContratoFragmentosResolvidos(d) {
+    const V = ctwResolverCamposContrato(d);
+    return CTW_CONTRATO_FRAGMENTOS.map(f => f(V));
+}
+
+function montarContratoHtml(d) {
+    return ctwEnvolverPapelContrato(montarContratoFragmentosResolvidos(d).join(''));
+}
+
+// Mantém #contractPreview (usado por imprimirUniversal) coerente com o formulário.
 function populatePreview() {
+    const previewContainer = document.getElementById('contractPreview');
+    if (previewContainer) previewContainer.innerHTML = montarContratoHtml(ctwDadosContratoDoFormulario());
+}
+
+// ------------------------------------------------------------
+// PDF PAGINADO — uma página A4 por vez (leve para celular fraco)
+// Antes: UM canvas de ~750×7000px com o contrato inteiro. Em celular com
+// pouca memória o navegador falha ou desenha cortado, sem dar erro.
+// Agora: fragmentos são medidos, agrupados em páginas inteiras (nenhuma
+// cláusula é cortada) e cada página vira um canvas pequeno (~750×1024px).
+// ------------------------------------------------------------
+const CTW_PDF_LARGURA = 750;      // px (A4 = 210mm)
+const CTW_PDF_ALTURA_UTIL = 1000; // px de conteúdo por página (sobra topo + rodapé "Página X de N")
+const CTW_PDF_MARGEM_TOPO = 24;   // px
+
+async function ctwGerarPdfContratoPaginado(dados) {
+    await garantirPdfLibs({ soContrato: true });
+    if (typeof window.html2canvas !== 'function' || !window.jspdf || !window.jspdf.jsPDF) {
+        throw new Error('as bibliotecas de PDF não carregaram (verifique a internet)');
+    }
+    const fragmentos = montarContratoFragmentosResolvidos(dados);
+
+    const host = document.createElement('div');
+    host.setAttribute('aria-hidden', 'true');
+    host.style.cssText = 'position:absolute;left:-10000px;top:0;width:750px;pointer-events:none;';
+    document.body.appendChild(host);
+
     try {
-        const previewContainer = document.getElementById('contractPreview');
-        if (!previewContainer) return; 
-
-        // 1. MONTA O TEXTO DO CONTRATO
-        previewContainer.innerHTML = `
-            <h4 style="text-align: center; font-weight: bold;">CONTRATO PARTICULAR DE LOCAÇÃO DE BEM MÓVEL (SMARTPHONE)<br>COM OPÇÃO DE AQUISIÇÃO, GARANTIAS E CONFISSÃO DE DÍVIDA</h4>
-
-            <p>Pelo presente instrumento particular, as partes abaixo identificadas:</p>
-
-            <p><strong>LOCADORA:</strong><br>
-            WHORKCELL TECNOLOGIA E SERVIÇOS LTDA, pessoa jurídica de direito privado, inscrita no CNPJ nº 50.299.715/0001-65, com sede em Av. Goiás, nº 4118, sala 05, St. Crimeia Oeste, Goiânia – GO, doravante denominada simplesmente LOCADORA.</p>
-
-            <p><strong>LOCATÁRIO:</strong><br>
-            Nome: <strong id="prevNome"></strong><br>
-            CPF: <strong id="prevCPF"></strong><br>
-            RG: <strong id="prevRG"></strong><br>
-            Endereço: <strong id="prevEndereco"></strong><br>
-            Telefone/WhatsApp: <strong id="prevTelefone"></strong><br>
-            Doravante denominado simplesmente LOCATÁRIO.</p>
-
-            <p>As partes têm entre si justo e contratado o que segue:</p>
-
-            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 1 – DO OBJETO</div>
-            <p>1.1. O presente contrato tem por objeto a locação de bem móvel consistente em aparelho celular com as seguintes características:<br>
-            Marca/Modelo: <strong id="prevModelo"></strong><br>
-            IMEI: <strong id="prevIMEI"></strong><br>
-            Estado: <strong id="prevEstado"></strong><br>
-            Acessórios inclusos: <strong id="prevAcessorios"></strong></p>
-            <p>1.2. O bem permanecerá, durante toda a vigência contratual, como propriedade exclusiva da LOCADORA, não se operando qualquer transferência dominial até eventual aquisição final.</p>
-
-            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 2 – DA NATUREZA JURÍDICA</div>
-            <p>2.1. As partes reconhecem expressamente que o presente instrumento configura contrato de locação de bem móvel, nos termos dos artigos 565 e seguintes do Código Civil Brasileiro.<br>
-            2.2. O presente contrato não constitui compra e venda parcelada, financiamento ou operação de crédito.<br>
-            2.3. A eventual transferência de propriedade somente ocorrerá após a quitação integral das obrigações assumidas pelo LOCATÁRIO.</p>
-
-            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 3 – DO PRAZO</div>
-            <p>3.1. O prazo da locação é de <strong id="prevPrazo"></strong> meses, iniciando-se na data de assinatura deste instrumento.<br>
-            3.2. O contrato poderá ser rescindido antecipadamente nas hipóteses previstas neste instrumento.</p>
-
-            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 4 – DO PREÇO E FORMA DE PAGAMENTO</div>
-            <p>4.1. Pela locação do bem, o LOCATÁRIO pagará à LOCADORA:<br>
-            Valor total: R$ <strong id="prevValorTotal"></strong><br>
-            Entrada: R$ <strong id="prevEntrada"></strong><br>
-            Saldo restante: R$ <strong id="prevSaldoRestante"></strong><br>
-            Parcelado em: <strong id="prevQtdParcelas"></strong> parcelas <strong id="prevTipoParcela"></strong> de R$ <strong id="prevValorParcela"></strong>.<br>
-            4.2. O pagamento será realizado mediante boleto bancário com vencimento todo dia <strong id="prevVencimento"></strong> do período, com início em <strong id="prevDataVencimento"></strong>.<br>
-            4.3. O não recebimento do boleto não exime o LOCATÁRIO da obrigação de pagamento na data de vencimento.<br>
-            4.4. O atraso implicará incidência de multa, juros e correção monetária conforme legislação vigente.</p>
-
-            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 5 – DA POSSE E CONDIÇÃO DE FIEL DEPOSITÁRIO</div>
-            <p>5.1. O LOCATÁRIO recebe o bem na qualidade de possuidor direto e fiel depositário, obrigando-se a zelar pela sua guarda, conservação e integridade.<br>
-            5.2. O LOCATÁRIO compromete-se a restituir o bem sempre que solicitado pela LOCADORA nas hipóteses previstas neste contrato.<br>
-            5.3. A não devolução injustificada do bem poderá caracterizar ilícito civil e, quando cabível, ilícito penal.</p>
-
-            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 6 – DAS OBRIGAÇÕES DO LOCATÁRIO</div>
-            <p>O LOCATÁRIO obriga-se a:<br>
-            I – Utilizar o aparelho de forma adequada e exclusivamente para fins lícitos;<br>
-            II – Não alienar, ceder, emprestar, sublocar ou transferir o bem a terceiros;<br>
-            III – Não oferecer o bem em garantia ou penhor;<br>
-            IV – Não adulterar IMEI, hardware ou software para ocultar identificação;<br>
-            V – Comunicar imediatamente à LOCADORA qualquer perda, furto, roubo ou dano relevante;<br>
-            VI – Manter seus dados cadastrais atualizados.</p>
-
-            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 7 – RESPONSABILIDADE POR PERDA, ROUBO OU DANOS</div>
-            <p>7.1. O LOCATÁRIO responderá integralmente pela perda, furto, roubo ou danos ao aparelho.<br>
-            7.2. Tais eventos não extinguem a obrigação de pagamento das parcelas restantes.</p>
-
-            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 8 – DO BLOQUEIO REMOTO E MONITORAMENTO</div>
-            <p>8.1. O LOCATÁRIO autoriza expressamente a instalação e utilização de sistemas de segurança, rastreamento e bloqueio remoto do aparelho.<br>
-            8.2. Em caso de inadimplência, a LOCADORA poderá restringir funcionalidades do dispositivo, independentemente de autorização judicial.</p>
-
-            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 9 – DA INADIMPLÊNCIA</div>
-            <p>9.1. O atraso superior a 1 dia implicará mora automática do LOCATÁRIO.<br>
-            9.2. Em caso de inadimplemento, a LOCADORA poderá:<br>
-            I – Considerar rescindido o contrato;<br>
-            II – Exigir a devolução imediata do bem;<br>
-            III – Realizar bloqueio remoto do aparelho;<br>
-            IV – Promover a inscrição do nome do LOCATÁRIO nos órgãos de proteção ao crédito;<br>
-            V – Protestar o débito;<br>
-            VI – Promover cobrança judicial ou extrajudicial.<br>
-            9.3. As parcelas pagas não serão devolvidas, por corresponderem à contraprestação pelo uso do bem.</p>
-
-            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 10 – DA CONFISSÃO DE DÍVIDA</div>
-            <p>10.1. O LOCATÁRIO reconhece a certeza, liquidez e exigibilidade das obrigações financeiras decorrentes deste contrato.<br>
-            10.2. O presente instrumento constitui título executivo extrajudicial, nos termos do artigo 784 do Código de Processo Civil.</p>
-
-            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 11 – DA BUSCA E APREENSÃO</div>
-            <p>11.1. Em caso de inadimplemento e não devolução voluntária do bem, a LOCADORA poderá promover a retomada do aparelho pelas vias judiciais cabíveis.<br>
-            11.2. O LOCATÁRIO compromete-se a informar a localização do bem sempre que solicitado.</p>
-
-            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 12 – DA OPÇÃO DE AQUISIÇÃO</div>
-            <p>12.1. Após a quitação integral de todas as parcelas, o LOCATÁRIO poderá exercer a opção de aquisição <br> definitiva do bem.<br>
-            12.2. A transferência da propriedade será formalizada mediante termo de quitação emitido pela LOCADORA.</p>
-
-            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 13 – DA PROTEÇÃO DE DADOS (LGPD)</div>
-            <p>13.1. O LOCATÁRIO autoriza o tratamento de seus dados pessoais pela LOCADORA para execução deste contrato, análise de crédito e cobrança, nos termos da Lei nº 13.709/2018.</p>
-
-            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 14 – DA IRREVOGABILIDADE E IRRETRATABILIDADE</div>
-            <p>14.1. O presente contrato é celebrado em caráter irrevogável e irretratável, obrigando as partes e seus sucessores.</p>
-
-            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 15 – DA ASSINATURA DIGITAL</div>
-            <p>15.1. As partes reconhecem como válida a assinatura eletrônica ou digital realizada por plataformas certificadas, produzindo os mesmos efeitos jurídicos da assinatura manuscrita.</p>
-
-            <div class="section-title" style="font-weight: bold; margin-top: 15px;">CLÁUSULA 16 – DO FORO</div>
-            <p>16.1. Fica eleito o foro da comarca de Goiânia - Goiás, renunciando a qualquer outro  por mais <br> privilegiado que seja.</p>
-
-            <p style="font-weight: bold;">DECLARAÇÃO FINAL</p>
-            <p>O LOCATÁRIO declara ter recebido o aparelho em perfeito estado de funcionamento, com todos os acessórios informados, e que leu, compreendeu e concorda integralmente com todas as cláusulas deste contrato.</p>
-
-            <br>
-            <p style="text-align: center;">Goiânia - GO, <strong id="prevDataAtual"></strong></p>
-
-            <br><br>
-            <p style="text-align: center;">_________________________________________________________________<br>
-            <strong>LOCADORA:</strong> WORKCELL TECNOLOGIA E SERVIÇOS LTDA – CNPJ: 50.299.715/0001-65</p>
-
-            <br><br>
-            <p style="text-align: center;">_________________________________________________________________<br>
-            <strong>LOCATÁRIO:</strong> <strong id="prevAssinaturaNome"></strong><br>
-            CPF: <strong id="prevAssinaturaCPF"></strong></p>
-        `;
-
-        // 2. CONECTA O QUE FOI DIGITADO COM OS "IDs ORIGINAIS"
-        const safeSet = (idSpan, idInput) => {
-            const span = document.getElementById(idSpan);
-            const input = document.getElementById(idInput);
-            if (span && input) span.textContent = input.value;
-        };
-        // Para campos de moeda: formata como R$ 1.500,00
-        const safeSetCurrency = (idSpan, idInput) => {
-            const span = document.getElementById(idSpan);
-            const input = document.getElementById(idInput);
-            if (span && input) {
-                const v = parseFloat(String(input.value).replace(',', '.')) || 0;
-                span.textContent = v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            }
-        };
-
-        const dataDeHoje = new Date().toLocaleDateString('pt-BR');
-        const spanData = document.getElementById('prevDataAtual');
-        if (spanData) spanData.textContent = dataDeHoje;
-
-        // Dados do cliente
-        safeSet('prevNome', 'compradorNome');
-        safeSet('prevAssinaturaNome', 'compradorNome');
-        safeSet('prevCPF', 'compradorCpf');
-        safeSet('prevAssinaturaCPF', 'compradorCpf');
-        safeSet('prevRG', 'compradorRg');
-        safeSet('prevEndereco', 'compradorEndereco');
-        safeSet('prevTelefone', 'compradorTelefone');
-
-        // Dados do aparelho
-        safeSet('prevModelo', 'produtoModelo');
-        safeSet('prevIMEI', 'produtoImei');
-        safeSet('prevEstado', 'aparelhoEstado');
-        safeSet('prevAcessorios', 'aparelhoAcessorios');
-
-        // Condições do contrato
-        safeSet('prevPrazo', 'contratoPrazo');
-        safeSet('prevQtdParcelas', 'numeroParcelas');
-
-        // Valores financeiros — formatados como moeda
-        safeSetCurrency('prevValorTotal', 'valorTotal');
-        safeSetCurrency('prevEntrada', 'valorEntrada');
-        safeSet('prevSaldoRestante', 'saldoRestante'); // já formatado pelo calculateContractPayments
-        // valorParcela agora é input numérico — formata na hora
-        const elParcela = document.getElementById('valorParcela');
-        const spanParcela = document.getElementById('prevValorParcela');
-        if (elParcela && spanParcela) {
-            const vp = parseFloat(elParcela.value) || 0;
-            spanParcela.textContent = formatCurrency(vp);
+        // 1) Mede cada fragmento (display:flow-root contém as margens internas).
+        host.innerHTML = ctwEnvolverPapelContrato(fragmentos.map(f => `<div class="ctw-frag" style="display:flow-root;">${f}</div>`).join(''));
+        const alturas = Array.from(host.querySelectorAll('.ctw-frag')).map(el => Math.ceil(el.getBoundingClientRect().height));
+        if (alturas.length !== fragmentos.length || alturas.some(h => !(h > 0))) {
+            throw new Error('falha ao medir o contrato');
         }
 
-        // Tipo de parcela (mensal/semanal)
-        const tipoParcelaEl = document.getElementById('tipoParcela');
-        const spanTipo = document.getElementById('prevTipoParcela');
-        if (tipoParcelaEl && spanTipo) spanTipo.textContent = tipoParcelaEl.value || 'mensais';
+        // 2) Agrupa em páginas (um fragmento maior que a página ocupa uma página só, escalada depois).
+        const paginas = [];
+        let atual = [], soma = 0;
+        fragmentos.forEach((f, i) => {
+            if (atual.length && soma + alturas[i] > CTW_PDF_ALTURA_UTIL) { paginas.push(atual); atual = []; soma = 0; }
+            atual.push(f); soma += alturas[i];
+        });
+        if (atual.length) paginas.push(atual);
+        if (paginas.reduce((n, p) => n + p.length, 0) !== fragmentos.length) {
+            throw new Error('falha ao paginar o contrato');
+        }
 
-        // Data 1º vencimento — exibe dia E data completa
-        const dataVenc = document.getElementById('primeiroVencimento')?.value;
-        let diaVenc = '', dataVencFormatada = '';
-        if (dataVenc) {
-            const parts = dataVenc.split('-');
-            if (parts.length === 3) {
-                diaVenc = parts[2];
-                const d = new Date(dataVenc + 'T00:00:00');
-                dataVencFormatada = d.toLocaleDateString('pt-BR');
+        // 3) Renderiza página por página; se faltar memória, repete com qualidade menor.
+        const escalaBase = (navigator.deviceMemory || 4) <= 2 ? 1.5 : 2;
+        const tentativas = [escalaBase, 1.25, 1].filter((e, i, a) => e <= escalaBase && a.indexOf(e) === i);
+        let ultimoErro = null;
+        for (const escala of tentativas) {
+            try {
+                return await ctwRenderizarPaginasPdf(host, paginas, escala);
+            } catch (e) {
+                ultimoErro = e;
+                console.warn('PDF contrato: falha com escala', escala, e);
             }
         }
-        const spanVenc = document.getElementById('prevVencimento');
-        if (spanVenc) spanVenc.textContent = diaVenc;
-        const spanDataVenc = document.getElementById('prevDataVencimento');
-        if (spanDataVenc) spanDataVenc.textContent = dataVencFormatada;
-
-    } catch (error) {
-        console.error("Erro no contrato:", error);
+        throw ultimoErro || new Error('falha ao gerar as páginas');
+    } finally {
+        host.remove();
     }
 }
+
+async function ctwRenderizarPaginasPdf(host, paginas, escala) {
+    const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+    const LARG_MM = 210, ALT_MM = 297, MAX_MM = 288;
+    for (let i = 0; i < paginas.length; i++) {
+        host.innerHTML = ctwEnvolverPapelContrato(paginas[i].join(''), `padding-top:${CTW_PDF_MARGEM_TOPO}px;`);
+        const el = host.firstElementChild;
+        const canvas = await window.html2canvas(el, {
+            scale: escala, backgroundColor: '#ffffff', useCORS: true, logging: false,
+            width: CTW_PDF_LARGURA, windowWidth: CTW_PDF_LARGURA
+        });
+        if (!canvas || canvas.width < 10 || canvas.height < 10) throw new Error('página ' + (i + 1) + ' saiu em branco');
+
+        let w = LARG_MM, h = canvas.height * LARG_MM / canvas.width;
+        if (h > MAX_MM) { w = w * MAX_MM / h; h = MAX_MM; }   // fragmento gigante: reduz para caber, sem cortar
+        if (i > 0) pdf.addPage();
+        pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', (LARG_MM - w) / 2, 0, w, h, undefined, 'FAST');
+        pdf.setFontSize(8);
+        pdf.setTextColor(120);
+        pdf.text(`Página ${i + 1} de ${paginas.length}`, LARG_MM / 2, ALT_MM - 5, { align: 'center' });
+
+        canvas.width = canvas.height = 0;                      // libera memória do bitmap
+        await new Promise(r => setTimeout(r, 0));              // deixa o celular respirar entre páginas
+    }
+    return pdf.output('blob');
+}
+
+
+// ------------------------------------------------------------
+// SALVAR + ENTREGAR O CONTRATO (seguro para internet ruim e celular fraco)
+// Regra de ouro: o PDF só é entregue ao cliente DEPOIS do contrato estar
+// confirmado no Firebase (histórico). Se a nuvem falhar, nada de PDF e o
+// contrato fica guardado no celular (ctw_contrato_pendente) para reenvio —
+// sem duplicar, porque a chave do registro é criada uma vez e reaproveitada.
+// ------------------------------------------------------------
+const CTW_CT_PENDENTE_KEY = 'ctw_contrato_pendente';
+let _contratoEmAndamento = false;   // trava de duplo clique (salvar ou reenviar)
+let _ultimoContratoSalvo = null;    // { sig, codigo } do último salvo nesta sessão
+
+function ctwLerPendente() {
+    try { return JSON.parse(localStorage.getItem(CTW_CT_PENDENTE_KEY) || 'null'); } catch (e) { return null; }
+}
+function ctwGravarPendente(r) {
+    try { localStorage.setItem(CTW_CT_PENDENTE_KEY, JSON.stringify(r)); } catch (e) { /* armazenamento cheio/bloqueado: segue sem rascunho */ }
+}
+function ctwLimparPendente() {
+    try { localStorage.removeItem(CTW_CT_PENDENTE_KEY); } catch (e) {}
+}
+
+function ctwComTimeout(promessa, ms, mensagem) {
+    let t;
+    const limite = new Promise((_, rej) => { t = setTimeout(() => rej(new Error(mensagem)), ms); });
+    return Promise.race([promessa, limite]).finally(() => clearTimeout(t));
+}
+
+// Aviso que fica na tela até ser trocado/removido (o toast comum some em 2,5s).
+function ctwProgresso(msg) {
+    let el = document.getElementById('ctwProgressoContrato');
+    if (!msg) { if (el) el.remove(); return; }
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'ctwProgressoContrato';
+        el.setAttribute('role', 'status');
+        el.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:100000;max-width:90vw;' +
+            'padding:12px 18px;border-radius:14px;background:#111827;color:#fff;font-size:.95rem;display:flex;gap:10px;' +
+            'align-items:center;box-shadow:0 6px 24px rgba(0,0,0,.45);';
+        el.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span></span>';
+        document.body.appendChild(el);
+    }
+    el.lastElementChild.textContent = msg;
+}
+
+// Mensagem que exige um toque em OK (não some sozinha).
+function ctwAviso(message) {
+    return new Promise(res => showCustomModal({ message, onConfirm: () => res() }));
+}
+function ctwConfirmar(message, confirmText, cancelText) {
+    return new Promise(res => showCustomModal({
+        message, confirmText, cancelText, onConfirm: () => res(true), onCancel: () => res(false)
+    }));
+}
+
+// Registro como vai para o Firebase (campos de criação ficam de fora na edição).
+function ctwRegistroParaFirebase(d) {
+    return {
+        compradorNome: d.compradorNome,
+        compradorCpf: d.compradorCpf,
+        compradorRg: d.compradorRg,
+        compradorTelefone: d.compradorTelefone,
+        compradorEndereco: d.compradorEndereco,
+        produtoModelo: d.produtoModelo,
+        produtoImei: d.produtoImei,
+        aparelhoEstado: d.aparelhoEstado,
+        aparelhoAcessorios: d.aparelhoAcessorios,
+        contratoPrazo: document.getElementById('contratoPrazo')?.value || '',
+        valorTotal: d.valorTotal,
+        valorEntrada: d.valorEntrada,
+        saldoRestante: ctwFmtMoeda(d.saldoRestante),
+        numeroParcelas: d.numeroParcelas,
+        valorParcela: ctwFmtMoeda(d.valorParcela),
+        tipoParcela: d.tipoParcela,
+        primeiroVencimento: d.primeiroVencimento
+    };
+}
+
+// Grava (ou regrava) no Firebase. Idempotente: a mesma chave nunca gera dois contratos.
+async function ctwGravarContratoNuvem(r) {
+    const alvo = ref(db, 'boletos/' + r.key);
+    if (r.editId) {
+        const existe = await get(alvo);
+        if (!existe.exists()) {
+            const err = new Error('este contrato foi excluído por outra pessoa');
+            err.definitivo = true;   // repetir não resolve
+            throw err;
+        }
+        await update(alvo, { ...r.dados, editadoEm: new Date().toISOString(), editadoPor: currentUserProfile || 'Desconhecido' });
+        return;
+    }
+    if (!r.codigoInterno) {
+        r.codigoInterno = await gerarCodigoContrato();
+        ctwGravarPendente(r);
+    }
+    await set(alvo, {
+        ...r.dados,
+        codigoInterno: r.codigoInterno,
+        criadoEm: new Date().toISOString(),
+        criadoEmTs: serverTimestamp(),   // hora do SERVIDOR: relógio errado do celular não esconde o contrato
+        criadoPor: currentUserProfile || 'Desconhecido'
+    });
+}
+
+async function ctwSalvarContratoComSeguranca(r) {
+    if (navigator.onLine === false) throw new Error('o celular está sem internet');
+    await ctwComTimeout(ctwGravarContratoNuvem(r), 20000, 'a internet está lenta demais (sem resposta em 20 segundos)');
+}
+
+// Entrega o PDF: compartilhar (WhatsApp etc.); se o celular recusar, pede um toque novo; senão baixa.
+async function ctwEntregarPdf(blob, nomeArq, nomeCliente) {
+    const file = new File([blob], nomeArq, { type: 'application/pdf' });
+    const baixar = () => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = nomeArq;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);   // revogar já causava download vazio em alguns Android
+    };
+    const dadosShare = { files: [file], title: 'Contrato Workcell Tecnologia', text: 'Olá ' + (nomeCliente || 'Cliente') + ', segue seu contrato em anexo.' };
+    if (!(navigator.canShare && navigator.canShare({ files: [file] }))) { baixar(); return 'baixado'; }
+    try {
+        await navigator.share(dadosShare);
+        return 'compartilhado';
+    } catch (e) {
+        if (e && e.name === 'AbortError') return 'cancelado';
+        // Gerar o PDF em celular lento gasta o "toque" do usuário; um novo toque libera o compartilhamento.
+        const compartilhar = await ctwConfirmar('PDF pronto! Toque em "Compartilhar" para enviar ao cliente.', 'Compartilhar', 'Só baixar');
+        if (!compartilhar) { baixar(); return 'baixado'; }
+        try { await navigator.share(dadosShare); return 'compartilhado'; }
+        catch (e2) { if (!e2 || e2.name !== 'AbortError') baixar(); return 'baixado'; }
+    }
+}
+
+function ctwNomeArquivoContrato(nome) {
+    const primeiro = String(nome || 'cliente').trim().split(/\s+/)[0]
+        .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9_-]/g, '') || 'cliente';
+    return 'Contrato-' + primeiro + '.pdf';
+}
+
+async function ctwFinalizarContrato() {
+    if (_contratoEmAndamento) return;
+    const form = document.getElementById('contractForm');
+    const btn = document.getElementById('btnImprimir');
+    if (!form.checkValidity()) {
+        showCustomModal({ message: 'Por favor, preencha todos os campos obrigatórios.' });
+        form.reportValidity();
+        return;
+    }
+    calculateContractPayments();   // saldo/total/prazo sempre frescos antes de ler o formulário
+    const dados = ctwDadosContratoDoFormulario();
+    if (dados.valorParcela <= 0 || dados.numeroParcelas <= 0) {
+        showCustomModal({ message: 'Preencha o Valor da Parcela e o Nº de Parcelas.' });
+        return;
+    }
+
+    const hiddenIdEl = document.getElementById('editingBoletoId');
+    const editId = (hiddenIdEl && hiddenIdEl.value) ? hiddenIdEl.value : (window.currentEditingBoletoId || null);
+    if (editId) {
+        // Editar não muda a data do contrato: o PDF sai com a data em que ele foi criado.
+        const original = _boletosHistoryCache.find(b => b.id === editId);
+        if (original) dados.dataContrato = ctwDadosContratoDoRegistro(original).dataContrato;
+    }
+
+    _contratoEmAndamento = true;
+    if (btn) btn.disabled = true;
+    try {
+        const registro = ctwRegistroParaFirebase(dados);
+        const sig = JSON.stringify([editId || null, registro]);
+
+        // Mesmo contrato salvo de novo sem querer (duplo toque / voltar e clicar)?
+        if (!editId && _ultimoContratoSalvo && _ultimoContratoSalvo.sig === sig) {
+            const outro = await ctwConfirmar('Este contrato (#' + _ultimoContratoSalvo.codigo + ') acabou de ser salvo com os mesmos dados. Salvar OUTRO contrato igual?', 'Sim, salvar outro', 'Cancelar');
+            if (!outro) return;
+            _ultimoContratoSalvo = null;
+        }
+
+        const docInfo = '<strong style="color:#000">' + escapeHtml(dados.compradorNome) + '</strong><br>' +
+            escapeHtml(dados.produtoModelo) + (dados.valorTotal > 0 ? ' · R$ ' + ctwFmtMoeda(dados.valorTotal) : '') +
+            ' · ' + escapeHtml(ctwPrazoContrato(dados.tipoParcela, dados.numeroParcelas));
+        const confirmado = await ctwSavePreview.show({ type: 'boleto', previewHtml: montarContratoHtml(dados), docInfo });
+        if (!confirmado) return;
+
+        // Rascunho no celular ANTES de falar com a nuvem; reaproveita a chave se for o mesmo contrato.
+        let r = ctwLerPendente();
+        if (!r || r.sig !== sig) {
+            r = { sig, editId: editId || null, key: editId || push(ref(db, 'boletos')).key, codigoInterno: null, dados: registro, nome: dados.compradorNome, ts: Date.now() };
+        }
+        ctwGravarPendente(r);
+
+        ctwProgresso('Salvando contrato no histórico...');
+        try {
+            await ctwSalvarContratoComSeguranca(r);
+        } catch (err) {
+            console.error('Erro ao salvar contrato na nuvem:', err);
+            ctwProgresso();
+            if (err.definitivo) {
+                // Contrato original não existe mais: sai do modo edição e mantém os dados para salvar como NOVO.
+                ctwLimparPendente();
+                if (typeof window.cancelarEdicaoBoleto === 'function') window.cancelarEdicaoBoleto();
+                await ctwAviso('⚠️ Não foi salvo: ' + err.message + '. O formulário foi mantido e saiu do modo edição — toque em "Finalizar" para salvar como um contrato NOVO.');
+                return;
+            }
+            await ctwAviso('⚠️ O contrato NÃO foi salvo no histórico: ' + (err.message || err) + '. Nenhum PDF foi gerado. Seus dados continuam na tela e ficaram guardados no celular — confira a internet e toque em "Finalizar" de novo (não duplica).');
+            return;
+        }
+        ctwLimparPendente();
+        if (!editId) {
+            _ultimoContratoSalvo = { sig, codigo: r.codigoInterno || '' };
+            // O PDF sai com a MESMA data que o histórico mostra (hora do servidor, não a do celular).
+            try {
+                const salvo = (await ctwComTimeout(get(ref(db, 'boletos/' + r.key)), 8000, 'sem resposta')).val();
+                const quando = new Date(Number(salvo && salvo.criadoEmTs));
+                if (!isNaN(quando)) dados.dataContrato = quando;
+            } catch (e) { /* mantém a data do celular */ }
+        }
+        if (editId && typeof window.cancelarEdicaoBoleto === 'function') window.cancelarEdicaoBoleto();
+
+        ctwProgresso('Contrato salvo ✅ Gerando o PDF...');
+        let blob;
+        try {
+            blob = await ctwGerarPdfContratoPaginado(dados);
+        } catch (err) {
+            console.error('Erro ao gerar PDF do contrato:', err);
+            ctwProgresso();
+            await ctwAviso('✅ O contrato JÁ ESTÁ SALVO no histórico, mas o PDF não saiu: ' + (err.message || err) + '. Abra Histórico → Reenviar para gerar o PDF de novo.');
+            return;
+        }
+        ctwProgresso();
+        const resultado = await ctwEntregarPdf(blob, ctwNomeArquivoContrato(dados.compradorNome), dados.compradorNome);
+        showCustomModal({ message: resultado === 'cancelado' ? 'Contrato salvo! O PDF não foi enviado — use Histórico → Reenviar quando quiser. ✅' : 'Contrato salvo! ✅' });
+    } finally {
+        ctwProgresso();
+        _contratoEmAndamento = false;
+        if (btn) btn.disabled = false;
+    }
+}
+
+// Ao abrir a tela de Contratos: se sobrou um contrato que não chegou à nuvem, oferece enviar.
+async function ctwOferecerContratoPendente() {
+    const r = ctwLerPendente();
+    if (!r || !r.dados || _contratoEmAndamento) return;
+    const enviar = await ctwConfirmar('O contrato de ' + (r.nome || 'um cliente') + ' foi preenchido mas não chegou ao histórico. Enviar agora?', 'Enviar agora', 'Agora não');
+    if (!enviar) {
+        if (await ctwConfirmar('Descartar de vez o contrato guardado de ' + (r.nome || 'cliente') + '? Ele não poderá ser recuperado.', 'Descartar', 'Manter')) ctwLimparPendente();
+        return;
+    }
+    _contratoEmAndamento = true;
+    try {
+        ctwProgresso('Enviando contrato guardado...');
+        await ctwSalvarContratoComSeguranca(r);
+        ctwLimparPendente();
+        ctwProgresso();
+        showCustomModal({ message: 'Contrato de ' + (r.nome || 'cliente') + ' salvo no histórico! ✅' });
+    } catch (err) {
+        ctwProgresso();
+        if (err.definitivo) { ctwLimparPendente(); await ctwAviso('Contrato guardado descartado: ' + err.message + '.'); return; }
+        await ctwAviso('Não consegui enviar ainda: ' + (err.message || err) + '. Ele continua guardado; tente de novo ao reabrir esta tela.');
+    } finally {
+        ctwProgresso();
+        _contratoEmAndamento = false;
+    }
+}
+
+// Botão "Limpar campos": zera o formulário e sai do modo edição.
+window.ctwLimparFormularioContrato = function (pedirConfirmacao) {
+    if (_contratoEmAndamento) { showCustomModal({ message: 'Aguarde o contrato terminar de salvar antes de limpar.' }); return; }
+    const limpar = () => {
+        const form = document.getElementById('contractForm');
+        if (form) form.reset();
+        ['valorTotal', 'saldoRestante', 'contratoPrazo', 'valorTotalDisplay', 'contratoPrazoDisplay'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        if (typeof window.cancelarEdicaoBoleto === 'function') window.cancelarEdicaoBoleto();
+        const prev = document.getElementById('contractPreview');
+        if (prev) prev.innerHTML = '';
+        document.getElementById('compradorNome')?.focus();
+        showCustomModal({ message: 'Campos limpos.' });
+    };
+    if (!pedirConfirmacao) { limpar(); return; }
+    showCustomModal({
+        message: 'Apagar tudo o que está digitado neste formulário? Esta ação não pode ser desfeita.',
+        confirmText: 'Sim, limpar', cancelText: 'Cancelar',
+        onConfirm: limpar, onCancel: () => {}
+    });
+};
 
 
 // --- CARREGAR CONFIGURAÇÕES (ATUALIZADO) ---
@@ -2968,7 +3407,9 @@ function loadBoletosHistory() {
 
 function renderBoletosHistory(data) {
     const boletosArray = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-    boletosArray.sort((a, b) => new Date(b.criadoEm) - new Date(a.criadoEm));
+    // Ordena pela hora do SERVIDOR (criadoEmTs); contratos antigos usam criadoEm.
+    const quando = (b) => Number(b.criadoEmTs) || Date.parse(b.criadoEm) || 0;
+    boletosArray.sort((a, b) => quando(b) - quando(a));
     _boletosHistoryCache = boletosArray; // guarda o array completo para a busca reutilizar
 
     // Preserva o que já estiver digitado na busca ao re-renderizar (ex: novo dado chegou do Firebase)
@@ -3032,7 +3473,7 @@ function renderBoletosHistoryFiltrado(termoBusca) {
         <div class="accordion-item">
             <h2 class="accordion-header" id="heading-${boleto.id}">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${boleto.id}" aria-expanded="false" aria-controls="collapse-${boleto.id}">
-                    ${codigoTag}${escapeHtml(boleto.compradorNome)} — ${new Date(boleto.criadoEm).toLocaleDateString('pt-BR')}
+                    ${codigoTag}${escapeHtml(boleto.compradorNome)} — ${ctwFmtData(new Date(Number(boleto.criadoEmTs) || Date.parse(boleto.criadoEm)))}
                 </button>
             </h2>
             <div id="collapse-${boleto.id}" class="accordion-collapse collapse" aria-labelledby="heading-${boleto.id}" data-bs-parent="#boletosAccordion">
@@ -3133,8 +3574,9 @@ function acaoEditarBoleto(boletoId, boletosArray) {
         if (form) form.parentNode.insertBefore(banner, form);
     }
     banner.innerHTML = '<span>✏️ Editando contrato de <strong>' + escapeHtml(boleto.compradorNome || '') + '</strong></span>' +
-        '<button type="button" onclick="cancelarEdicaoBoleto()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;">✕</button>';
+        '<button type="button" onclick="ctwLimparFormularioContrato(true)" title="Cancelar edição e limpar" style="background:none;border:none;font-size:1.2rem;cursor:pointer;">✕</button>';
     banner.style.display = 'flex';
+    document.getElementById('areaContratoWrapper')?.scrollTo(0, 0);   // a tela de contrato é o container rolável
 }
 
 // Ação de Duplicar um contrato existente: aproveita os dados do CLIENTE
@@ -3193,99 +3635,26 @@ function acaoDuplicarBoleto(boletoId, boletosArray) {
     document.getElementById('produtoModelo')?.focus();
 }
 
-// Ação de Reenviar um contrato existente: gera o PDF a partir dos dados salvos e compartilha.
+// Ação de Reenviar: refaz o PDF a partir do registro salvo, com a data ORIGINAL do contrato.
+// Não mexe no formulário (antes sobrescrevia o que estava digitado).
 async function acaoReenviarBoleto(boletoId, boletosArray) {
     const boleto = boletosArray.find(b => b.id === boletoId);
     if (!boleto) return;
-
-    // FIX: "Reenviar" só gera um PDF a partir dos dados existentes e
-    // não deve herdar um editingBoletoId de uma edição anterior não
-    // cancelada — senão um "Salvar" feito logo depois sobrescreveria
-    // o contrato errado.
-    if (typeof window.cancelarEdicaoBoleto === 'function') window.cancelarEdicaoBoleto();
-
-    // Preenche o preview com os dados do boleto
-    document.getElementById('compradorNome').value = boleto.compradorNome || '';
-    document.getElementById('compradorCpf').value = boleto.compradorCpf || '';
-    document.getElementById('compradorRg').value = boleto.compradorRg || '';
-    document.getElementById('compradorTelefone').value = boleto.compradorTelefone || '';
-    document.getElementById('compradorEndereco').value = boleto.compradorEndereco || '';
-    document.getElementById('produtoModelo').value = boleto.produtoModelo || '';
-    document.getElementById('produtoImei').value = boleto.produtoImei || '';
-    if (document.getElementById('aparelhoEstado')) {
-        if (boleto.aparelhoEstado !== undefined) document.getElementById('aparelhoEstado').value = boleto.aparelhoEstado;
-        else document.getElementById('aparelhoEstado').value = 'Novo';
+    if (_contratoEmAndamento) { showCustomModal({ message: 'Aguarde: outro contrato ainda está sendo processado.' }); return; }
+    _contratoEmAndamento = true;
+    try {
+        ctwProgresso('Gerando o PDF, aguarde...');
+        const blob = await ctwGerarPdfContratoPaginado(ctwDadosContratoDoRegistro(boleto));
+        ctwProgresso();
+        await ctwEntregarPdf(blob, ctwNomeArquivoContrato(boleto.compradorNome), boleto.compradorNome);
+    } catch (err) {
+        console.error('Erro ao reenviar contrato:', err);
+        ctwProgresso();
+        await ctwAviso('Não foi possível gerar o PDF: ' + (err.message || err));
+    } finally {
+        ctwProgresso();
+        _contratoEmAndamento = false;
     }
-    if (document.getElementById('aparelhoAcessorios')) document.getElementById('aparelhoAcessorios').value = boleto.aparelhoAcessorios || '';
-    if (document.getElementById('contratoPrazo')) document.getElementById('contratoPrazo').value = boleto.contratoPrazo || '';
-    // valorTotal → campo hidden
-    document.getElementById('valorTotal').value = boleto.valorTotal || '';
-    document.getElementById('valorEntrada').value = boleto.valorEntrada || '';
-    document.getElementById('numeroParcelas').value = boleto.numeroParcelas || '';
-    document.getElementById('tipoParcela').value = boleto.tipoParcela || 'mensais';
-    // valorParcela salvo como "R$ X,XX" — extrai o número para o input numérico
-    if (boleto.valorParcela) {
-        const vpNum = parseBrazilianCurrencyToFloat(String(boleto.valorParcela));
-        if (!isNaN(vpNum)) document.getElementById('valorParcela').value = vpNum.toFixed(2);
-    }
-    // Recalcula todos os campos derivados (prazo display, total display, saldo)
-    calculateContractPayments();
-    document.getElementById('primeiroVencimento').value = boleto.primeiroVencimento || '';
-    // Recalcula saldo e parcela
-    calculateContractPayments();
-    populatePreview();
-
-    const tempDiv = document.createElement('div');
-    tempDiv.style.cssText = 'font-family: Times New Roman, serif; font-size: 10pt; line-height: 1.5; color: #000; background: #fff; padding: 20px; width: 750px; box-sizing: border-box;';
-    tempDiv.innerHTML = document.getElementById('contractPreview').innerHTML;
-
-    const titulo = tempDiv.querySelector('h4');
-    if (titulo) titulo.style.cssText = 'font-size: 10.5pt; font-weight: bold; color: #000; text-align: center; margin-bottom: 16pt; line-height: 1.4;';
-
-    tempDiv.querySelectorAll('p, div, strong, span').forEach(el => {
-        el.style.wordBreak = 'keep-all';
-        el.style.overflowWrap = 'break-word';
-        el.style.pageBreakInside = 'avoid';
-    });
-
-    const nomeArq = 'Contrato-' + (boleto.compradorNome || 'cliente').split(' ')[0] + '.pdf';
-    const opt = {
-        margin: [10, 10, 10, 10],
-        filename: nomeArq,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-
-    showCustomModal({ message: 'Gerando PDF, aguarde...' });
-
-    // Aguarda libs, depois gera PDF e compartilha — tudo na mesma chain de Promise
-    garantirPdfLibs().then(() => {
-        return html2pdf().set(opt).from(tempDiv).output('blob');
-    }).then(async function(pdfBlob) {
-        const file = new File([pdfBlob], nomeArq, { type: 'application/pdf' });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            try {
-                await navigator.share({
-                    files: [file],
-                    title: 'Contrato Workcell Tecnologia',
-                    text: 'Olá ' + (boleto.compradorNome || 'Cliente') + ', segue seu contrato em anexo.'
-                });
-            } catch(err) {
-                if (err.name !== 'AbortError') {
-                    const url = URL.createObjectURL(pdfBlob);
-                    const a = document.createElement('a');
-                    a.href = url; a.download = nomeArq; a.click();
-                    URL.revokeObjectURL(url);
-                }
-            }
-        } else {
-            const url = URL.createObjectURL(pdfBlob);
-            const a = document.createElement('a');
-            a.href = url; a.download = nomeArq; a.click();
-            URL.revokeObjectURL(url);
-        }
-    }).catch(err => showCustomModal({ message: 'Erro ao gerar PDF: ' + err.message }));
 }
 
 // Ação de Excluir um contrato existente, com dupla confirmação.
@@ -4037,10 +4406,6 @@ async function main() {
         });
 
         onAuthStateChanged(auth, async (user) => {
-            try {
-                window.__ctwNavLog = window.__ctwNavLog || [];
-                window.__ctwNavLog.push('[' + new Date().toLocaleTimeString('pt-BR') + '] onAuthStateChanged disparou | user=' + (user ? user.uid : 'NULL (sem usuário!)'));
-            } catch (e) {}
             if (user) {
                 userId = user.uid;
                 isAuthReady = true;
@@ -4050,12 +4415,15 @@ async function main() {
                 window._dbRef    = ref;    // expõe ref() para módulos IIFE
                 window._dbUpdate = update; // expõe update() para módulos IIFE
 
-                // Cache bookips para VIP/Ranking — carrega independente da aba aberta
+                // Cache bookips para VIP/Ranking — carrega independente da aba aberta, mas só depois
+                // que a tela inicial já respondeu (baixar todas as garantias no boot pesava em celular fraco).
                 window._bookipsCache = [];
-                onValue(ref(db, 'bookips'), snap => {
+                const iniciarCacheBookips = () => onValue(ref(db, 'bookips'), snap => {
                     const v = snap.val();
                     window._bookipsCache = v ? Object.values(v) : [];
                 });
+                if (typeof requestIdleCallback === 'function') requestIdleCallback(iniciarCacheBookips, { timeout: 4000 });
+                else setTimeout(iniciarCacheBookips, 2500);
 
                 // PERFORMANCE: esconde loading IMEDIATAMENTE após auth
                 // dados carregam em background sem bloquear a UI
@@ -6116,212 +6484,8 @@ Se não houver smartphones: []`;
     document.getElementById('contractForm')?.addEventListener('input', () => {
         calculateContractPayments();
     });
-    document.getElementById('btnImprimir')?.addEventListener('click', async () => {
-        const contractForm = document.getElementById('contractForm');
-        if (!contractForm.checkValidity()) {
-            showCustomModal({ message: "Por favor, preencha todos os campos obrigatórios." });
-            contractForm.reportValidity();
-            return;
-        }
-
-        // Garante que saldo e parcela estejam calculados antes de tudo
-        calculateContractPayments();
-
-        // Validação extra dos campos calculados
-        const _vp = parseFloat(document.getElementById('valorParcela')?.value) || 0;
-        const _np = parseInt(document.getElementById('numeroParcelas')?.value, 10) || 0;
-        if (_vp <= 0 || _np <= 0) {
-            showCustomModal({ message: 'Preencha o Valor da Parcela e o Nº de Parcelas.' });
-            return;
-        }
-
-        // ── CAPCUT PREVIEW ──────────────────────────────────
-        // Usa o contractPreview já populado pelo populatePreview()
-        populatePreview();
-        const contractPreviewEl = document.getElementById('contractPreview');
-        const _rawBoleto = contractPreviewEl ? contractPreviewEl.innerHTML : '<p style="color:#000;padding:20px">Prévia indisponível</p>';
-        // Adiciona um reset inline de cores para o contrato que não tem color definido
-        const previewHtmlBoleto = `<div style="width:750px;overflow:hidden;background:#fff;color:#000;font-family:Times New Roman,serif;font-size:10pt;line-height:1.5;">${_rawBoleto}</div>`;
-
-        const nomeClientePreview = document.getElementById('compradorNome')?.value || 'Cliente';
-        const modeloPreview      = document.getElementById('produtoModelo')?.value  || '';
-        const valorTotalPreview  = parseFloat(document.getElementById('valorTotal')?.value) || 0;
-        const prazoDisplay       = document.getElementById('contratoPrazoDisplay')?.value || '';
-        const docInfoBoleto = `
-            <strong style="color:var(--text-color,#e2e8f0)">${nomeClientePreview}</strong><br>
-            ${modeloPreview}${valorTotalPreview > 0 ? ' · R$ ' + valorTotalPreview.toLocaleString('pt-BR', {minimumFractionDigits:2}) : ''}
-            ${prazoDisplay ? ' · ' + prazoDisplay : ''}
-        `;
-
-        const confirmedBoleto = await ctwSavePreview.show({
-            type: 'boleto',
-            previewHtml: previewHtmlBoleto,
-            docInfo: docInfoBoleto,
-        });
-
-        if (!confirmedBoleto) return; // usuário cancelou
-        // ────────────────────────────────────────────────────
-
-        const boletosRef = ref(db, 'boletos');
-        const boletoData = {
-            compradorNome: document.getElementById('compradorNome').value,
-            compradorCpf: document.getElementById('compradorCpf').value,
-            compradorRg: document.getElementById('compradorRg').value,
-            compradorTelefone: document.getElementById('compradorTelefone').value,
-            compradorEndereco: document.getElementById('compradorEndereco').value,
-            produtoModelo: document.getElementById('produtoModelo').value,
-            produtoImei: document.getElementById('produtoImei').value,
-            aparelhoEstado: document.getElementById('aparelhoEstado')?.value || 'Novo',
-            aparelhoAcessorios: document.getElementById('aparelhoAcessorios')?.value || '',
-            contratoPrazo: document.getElementById('contratoPrazo').value,
-            valorTotal: parseFloat(document.getElementById('valorTotal').value) || 0,
-            valorEntrada: parseFloat(document.getElementById('valorEntrada').value) || 0,
-            saldoRestante: document.getElementById('saldoRestante').value,
-            numeroParcelas: parseInt(document.getElementById('numeroParcelas').value, 10) || 0,
-            valorParcela: formatCurrency(parseFloat(document.getElementById('valorParcela').value) || 0),
-            tipoParcela: document.getElementById('tipoParcela').value,
-            primeiroVencimento: document.getElementById('primeiroVencimento').value,
-            criadoEm: new Date().toISOString(),
-            criadoPor: currentUserProfile || 'Desconhecido'
-        };
-
-        // ── FIX CRASH/PERDA DE DADOS ──────────────────────────
-        // Antes, o contrato só era salvo no Firebase DEPOIS do PDF ser
-        // gerado (html2canvas/html2pdf). Se a geração do PDF travasse ou
-        // o app crashasse nesse meio tempo (comum em documentos longos),
-        // o contrato preenchido se perdia — nada ia pra nuvem.
-        // Agora: salva na nuvem PRIMEIRO. O PDF é gerado só depois, e se
-        // ele falhar o contrato já está seguro e pode gerar o PDF de novo
-        // mais tarde pela lista de contratos.
-        showCustomModal({ message: 'Salvando contrato na nuvem...' });
-
-        const hiddenIdEl = document.getElementById('editingBoletoId');
-        const editId = (hiddenIdEl && hiddenIdEl.value) ? hiddenIdEl.value : window.currentEditingBoletoId;
-
-        try {
-            if (editId) {
-                await update(ref(db, 'boletos/' + editId), boletoData);
-            } else {
-                // Código interno (DDMM-XXX) gerado só na criação — nunca muda depois.
-                // Não aparece no PDF, serve só para busca/organização interna.
-                const codigoInterno = await gerarCodigoContrato();
-                boletoData.codigoInterno = codigoInterno;
-                await push(boletosRef, boletoData);
-            }
-        } catch (error) {
-            console.error("Erro ao salvar contrato na nuvem: ", error);
-            showCustomModal({ message: 'Não foi possível salvar o contrato na nuvem. Verifique sua conexão e tente novamente — nenhum dado foi perdido, o formulário continua preenchido.' });
-            return; // não tenta gerar PDF se nem salvou
-        }
-
-        // A partir daqui o contrato já está seguro no Firebase.
-        if (editId) {
-            if (hiddenIdEl) hiddenIdEl.value = '';
-            window.currentEditingBoletoId = null;
-            const btnImprimir2 = document.getElementById('btnImprimir');
-            if (btnImprimir2) {
-                btnImprimir2.innerHTML = '<i class="bi bi-printer"></i> Imprimir e Salvar';
-                btnImprimir2.classList.remove('btn-warning');
-                btnImprimir2.classList.add('btn-primary');
-            }
-            const banner2 = document.getElementById('editingBannerBoleto');
-            if (banner2) banner2.style.display = 'none';
-        }
-
-        // Popula o conteúdo do contrato
-        populatePreview();
-
-        // Cria um elemento temporário com o HTML do contrato estilizado
-        const tempDiv = document.createElement('div');
-        tempDiv.style.cssText = 'font-family: Times New Roman, serif; font-size: 10pt; line-height: 1.5; color: #000; background: #fff; padding: 20px; width: 750px; box-sizing: border-box;';
-        tempDiv.innerHTML = document.getElementById('contractPreview').innerHTML;
-
-        // Corrige o título
-        const titulo = tempDiv.querySelector('h4');
-        if (titulo) {
-            titulo.style.cssText = 'font-size: 10.5pt; font-weight: bold; color: #000; text-align: center; margin-bottom: 16pt; line-height: 1.4;';
-        }
-
-        // Evita corte de palavras E de página no meio de um elemento.
-        // FIX letra cortada entre páginas: setamos as duas grafias da
-        // propriedade (a antiga "page-break-inside" e a atual "break-inside")
-        // pois dependendo do motor do WebView só uma delas é respeitada,
-        // e ampliamos para li/tr também (linhas de tabela e listas).
-        tempDiv.querySelectorAll('p, div, strong, span, li, tr').forEach(el => {
-            el.style.wordBreak = 'keep-all';
-            el.style.overflowWrap = 'break-word';
-            el.style.pageBreakInside = 'avoid';
-            el.style.breakInside = 'avoid';
-        });
-
-        // Garante que os campos strong tenham o valor correto
-        tempDiv.querySelectorAll('strong[id]').forEach(el => {
-            const original = document.getElementById(el.id);
-            if (original) el.textContent = original.textContent;
-        });
-
-        const nomeCliente = document.getElementById('compradorNome').value || 'contrato';
-        const nomeArquivo = 'Contrato-' + nomeCliente.split(' ')[0] + '.pdf';
-
-        const opt = {
-            margin: [10, 10, 12, 10],
-            filename: nomeArquivo,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-            // FIX letra cortada entre páginas: combina os 3 modos de quebra
-            // do html2pdf.js. 'css'/'legacy' respeitam o break-inside:avoid
-            // que acabamos de setar em cada parágrafo/linha; 'avoid-all' é
-            // uma segunda camada que evita cortar qualquer elemento sempre
-            // que existir espaço pra empurrá-lo pra próxima página.
-            pagebreak: { mode: ['css', 'legacy', 'avoid-all'] }
-        };
-
-        showCustomModal({ message: 'Contrato salvo! Gerando PDF, aguarde...' });
-
-        try {
-            // ✅ await garantirPdfLibs — garante que html2pdf e html2canvas estejam carregados
-            await garantirPdfLibs();
-
-            // ✅ await aqui dentro de handler async — preserva o user gesture para navigator.share
-            const pdfBlob = await html2pdf().set(opt).from(tempDiv).output('blob');
-
-            const nomeCliente2 = document.getElementById('compradorNome').value || 'Cliente';
-            const file = new File([pdfBlob], nomeArquivo, { type: 'application/pdf' });
-
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                try {
-                    await navigator.share({
-                        files: [file],
-                        title: 'Contrato Workcell Tecnologia',
-                        text: 'Olá ' + nomeCliente2 + ', segue seu contrato em anexo.'
-                    });
-                    showCustomModal({ message: 'Contrato compartilhado e salvo! ✅' });
-                } catch(e) {
-                    if (e.name !== 'AbortError') {
-                        const url = URL.createObjectURL(pdfBlob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = nomeArquivo;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                        showCustomModal({ message: 'Contrato salvo! ✅' });
-                    }
-                }
-            } else {
-                const url = URL.createObjectURL(pdfBlob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = nomeArquivo;
-                a.click();
-                URL.revokeObjectURL(url);
-                showCustomModal({ message: 'Contrato salvo! ✅' });
-            }
-        } catch(error) {
-            console.error("Erro ao gerar PDF:", error);
-            showCustomModal({ message: 'O contrato já está salvo com segurança na nuvem ✅, mas houve um erro ao gerar o PDF: ' + error.message + '. Você pode gerar o PDF de novo mais tarde pela lista de contratos.' });
-        }
-    });
+    document.getElementById('btnImprimir')?.addEventListener('click', ctwFinalizarContrato);
+    document.getElementById('btnLimparContrato')?.addEventListener('click', () => window.ctwLimparFormularioContrato(true));
 
     document.getElementById('exportRepassarBtn')?.addEventListener('click', () => {
         exportResultsToImage('resultRepassarValores', 'repassar-valores.png');
@@ -6789,8 +6953,8 @@ if (inputValorBookip) {
 
                 li.innerHTML = `
                     <div class="bk-info">
-                        <div class="bk-title">${item.nome}</div>
-                        <div class="bk-details">${detalhesTexto}</div>
+                        <div class="bk-title">${escapeHtml(item.nome)}</div>
+                        <div class="bk-details">${escapeHtml(detalhesTexto)}</div>
                     </div>
 
                     <div class="bk-actions-area">
@@ -7229,12 +7393,12 @@ function loadBookipHistory() {
                     <div class="accordion-body">
                         
                         <div class="mb-2">
-                            <strong>Cliente:</strong> ${item.nome}<br>
-                            ${item.tel ? `<small class="text-secondary"><i class="bi bi-whatsapp text-success me-1"></i> ${item.tel}</small>` : ''}
+                            <strong>Cliente:</strong> ${escapeHtml(item.nome)}<br>
+                            ${item.tel ? `<small class="text-secondary"><i class="bi bi-whatsapp text-success me-1"></i> ${escapeHtml(item.tel)}</small>` : ''}
                         </div>
 
                         <ul class="list-unstyled small mb-3">
-                            ${(item.items || []).map(i => `<li>${i.qtd}x ${i.nome} - R$ ${parseFloat(i.valor).toFixed(2)}</li>`).join('')}
+                            ${(item.items || []).map(i => `<li>${escapeHtml(i.qtd)}x ${escapeHtml(i.nome)} - R$ ${parseFloat(i.valor).toFixed(2)}</li>`).join('')}
                         </ul>
                         
                         <div class="d-flex justify-content-end gap-2 mt-2 flex-wrap">
@@ -7256,8 +7420,8 @@ function loadBookipHistory() {
 
                             ${item.fotoUrl ? `
                             <button class="btn btn-sm btn-outline-info btn-ver-foto" 
-                                data-foto="${item.fotoUrl}" 
-                                data-nome="${item.nome || 'Cliente'}"
+                                data-foto="${escapeHtml(item.fotoUrl)}" 
+                                data-nome="${escapeHtml(item.nome || 'Cliente')}"
                                 title="Ver foto do produto">
                                 <i class="bi bi-image"></i>
                             </button>` : ''}
@@ -7501,7 +7665,9 @@ function carregarDadosParaEdicao(item) {
         }
 
         // I. Finalização
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // O rolável desta tela é o #areaBookipWrapper (window.scrollTo não tinha efeito aqui):
+        // sem isto o formulário editado abria no meio da página, onde estava a lista.
+        document.getElementById('areaBookipWrapper')?.scrollTo({ top: 0, behavior: 'smooth' });
         window.isSystemSwitching = false; // Destrava
 
         console.log("✅ Edição carregada. ID Interno:", currentEditingBookipId);
@@ -9318,7 +9484,8 @@ setupProductTags();
                 areaContrato.style.height = '100%';
                 areaContrato.style.overflowY = 'auto';
                 // Pré-carrega as libs de PDF em background para que o share funcione na hora H
-                if (typeof garantirPdfLibs === 'function') garantirPdfLibs();
+                garantirPdfLibs({ soContrato: true }).catch(() => {});
+                ctwOferecerContratoPendente();
             }
         } 
         else if (subSectionId === 'bookip') {
@@ -12581,16 +12748,9 @@ window.updateNotificationUI  = updateNotificationUI;
 
     // Mostra/oculta a barra
     window.setCtwNavVisible = function(visible) {
-        var nav    = document.getElementById('ctwBottomNav');
-        var topBar = document.getElementById('ctwTopBar');
+        var nav = document.getElementById('ctwBottomNav');
         if (!nav) return;
-        if (visible) {
-            nav.classList.remove('ctw-menu-hide');
-            if (topBar) topBar.style.display = 'block';
-        } else {
-            nav.classList.add('ctw-menu-hide');
-            if (topBar) topBar.style.display = 'none';
-        }
+        nav.classList.toggle('ctw-menu-hide', !visible);
         // Aplica padding e esconde elementos duplicados do topo
         document.body.classList.toggle('ctw-v2-active', visible);
     };
@@ -12699,13 +12859,11 @@ window.updateNotificationUI  = updateNotificationUI;
         if (typeof _origShow === 'function') _origShow(sectionId);
         if (!isV2()) return;
 
-        var topBar = document.getElementById('ctwTopBar');
         if (sectionId === 'main') {
             setNavActive('ctwNavHome');
-            if (topBar) topBar.style.display = 'block';
+            syncGreeting();   // bom dia/boa tarde/boa noite acompanha o horário
         } else {
             setNavActive('');
-            if (topBar) topBar.style.display = 'none';
         }
     };
 
