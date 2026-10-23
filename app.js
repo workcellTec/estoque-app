@@ -502,7 +502,10 @@ function ctwDesligarListenerHistorico() {
 window.ctwDocModo = 'garantia';
 const ctwEhOrcamento = () => window.ctwDocModo === 'orcamento';
 const ctwDocCol = () => ctwEhOrcamento() ? 'orcamentos' : 'bookips';
-const ctwDocLixeira = () => ctwEhOrcamento() ? 'trash_orcamentos' : 'trash_bookips';
+// Lixeira única (trash_bookips): as regras do Firebase só liberam esse caminho. Orçamentos entram nela
+// com type:'orcamento' e cada tela mostra só os seus (ctwDocDaTelaAtual).
+const ctwDocLixeira = () => 'trash_bookips';
+const ctwDocDaTelaAtual = (d) => ctwEhOrcamento() ? (d && d.type === 'orcamento') : !(d && d.type === 'orcamento');
 const ctwDocRascunhoKey = () => ctwEhOrcamento() ? 'ctwOrcamentoDraft_v1' : 'ctwBookipDraft_Smart_v2';
 // Coleção de um documento já salvo (não depende de qual tela está aberta agora).
 const ctwColDoDoc = (d) => (d && d.type === 'orcamento') ? 'orcamentos' : 'bookips';
@@ -3096,7 +3099,6 @@ const CTW_PDF = {
     mEsq: 20, mDir: 20, mTopo: 20, mBase: 22,
     corpoPt: 10, corpoLh: 4.8,           // texto: corpo e altura da linha (mm)
     tituloPt: 11, tituloLh: 5.4,         // títulos de cláusula e do contrato
-    contorno: 0.04,                      // mm: contorno fino no texto normal = peso "médio" (a fonte padrão é fina demais)
     pxMm: 0.2646
 };
 
@@ -3296,14 +3298,6 @@ function ctwPdfPaginar(grupos) {
     return paginas.filter(p => p.length);
 }
 
-// Escreve um trecho; o texto normal ganha contorno fino (peso médio), o negrito já é encorpado.
-function ctwPdfEscrever(pdf, txt, x, y, negrito) {
-    if (negrito) { pdf.text(txt, x, y); return; }
-    pdf.setDrawColor(0);
-    pdf.setLineWidth(CTW_PDF.contorno);
-    pdf.text(txt, x, y, { renderingMode: 'fillThenStroke' });
-}
-
 // Desenha uma linha visual (justificada, centralizada ou à esquerda) na posição calculada.
 function ctwPdfDesenharLinha(pdf, op) {
     const C = CTW_PDF, b = op.bloco, l = op.linha;
@@ -3327,7 +3321,7 @@ function ctwPdfDesenharLinha(pdf, op) {
     if (justificar && gap !== esp) {
         // palavra a palavra, com o espaço esticado
         l.palavras.forEach((pal, k) => {
-            pal.forEach(s => { pdf.setFont(CTW_PDF.fonte, s.b ? 'bold' : 'normal'); ctwPdfEscrever(pdf, s.t, x, yb, s.b); x += ctwPdfW(pdf, s.t); });
+            pal.forEach(s => { pdf.setFont(CTW_PDF.fonte, s.b ? 'bold' : 'normal'); pdf.text(s.t, x, yb); x += ctwPdfW(pdf, s.t); });
             if (k < n - 1) x += gap;
         });
         return;
@@ -3341,7 +3335,7 @@ function ctwPdfDesenharLinha(pdf, op) {
         });
         if (k < n - 1) { if (segs.length) segs[segs.length - 1].t += ' '; }
     });
-    segs.forEach(s => { pdf.setFont(CTW_PDF.fonte, s.b ? 'bold' : 'normal'); ctwPdfEscrever(pdf, s.t, x, yb, s.b); x += ctwPdfW(pdf, s.t); });
+    segs.forEach(s => { pdf.setFont(CTW_PDF.fonte, s.b ? 'bold' : 'normal'); pdf.text(s.t, x, yb); x += ctwPdfW(pdf, s.t); });
 }
 
 async function ctwGerarPdfContratoPaginado(dados) {
@@ -11970,7 +11964,7 @@ async function moverParaLixeira(id) {
 // 2. RESTAURAR DA LIXEIRA (Agora visível para o botão)
 window.restaurarDaLixeira = async function(id) {
     try {
-        const colAtual = ctwDocCol(), lixeira = ctwDocLixeira();
+        const lixeira = ctwDocLixeira();
         const snapshot = await get(ref(db, `${lixeira}/${id}`));
         if (snapshot.exists()) {
             const dados = snapshot.val();
@@ -11979,8 +11973,8 @@ window.restaurarDaLixeira = async function(id) {
             if(dados.deletedAt) delete dados.deletedAt;
             if(dados.originalId) delete dados.originalId;
 
-            // 1. Devolve para pasta principal (bookips ou orcamentos, conforme a tela)
-            await set(ref(db, `${colAtual}/${id}`), dados);
+            // 1. Devolve para a pasta de origem (bookips ou orcamentos, conforme o próprio documento)
+            await set(ref(db, `${ctwColDoDoc(dados)}/${id}`), dados);
             
             // 2. Remove da lixeira
             await remove(ref(db, `${lixeira}/${id}`));
@@ -12053,15 +12047,13 @@ async function limparLixeiraAutomatico() {
     const updates = {};
     let count = 0;
 
-    for (const pasta of ['trash_bookips', 'trash_orcamentos']) {
-        let snapshot;
-        try { snapshot = await get(ref(db, pasta)); } catch (e) { continue; }   // pasta sem permissão/vazia não derruba a faxina da outra
-        if (!snapshot.exists()) continue;
+    const snapshot = await get(ref(db, 'trash_bookips'));
+    if (snapshot.exists()) {
         const lixo = snapshot.val();
         Object.keys(lixo).forEach(key => {
             const item = lixo[key];
             if (item.deletedAt && (agora - item.deletedAt > DIAS_EM_MS)) {
-                updates[`${pasta}/${key}`] = null; // Marca para deletar
+                updates[`trash_bookips/${key}`] = null; // Marca para deletar
                 count++;
             }
         });
@@ -12113,7 +12105,7 @@ window.abrirLixeiraModal = function() {
     div.innerHTML = modalHtml;
     document.body.appendChild(div.firstElementChild);
 
-    // 2. Carrega os dados do Firebase (trash_bookips na Garantia, trash_orcamentos no Orçamento)
+    // 2. Carrega os dados do Firebase (trash_bookips; cada tela filtra os documentos do seu tipo)
     // ATENÇÃO: Certifique-se que 'db', 'ref' e 'onValue' estão importados/disponíveis
     const trashRef = ref(db, ctwDocLixeira());
     
@@ -12121,13 +12113,12 @@ window.abrirLixeiraModal = function() {
         const container = document.getElementById('listaLixeiraContent');
         if(!container) return; // Se o modal já fechou, para tudo
 
-        if (!snapshot.exists()) {
+        const data = snapshot.exists() ? snapshot.val() : {};
+        const lista = Object.keys(data).map(key => ({ id: key, ...data[key] })).filter(ctwDocDaTelaAtual);
+        if (!lista.length) {
             container.innerHTML = '<div class="text-center p-5 text-secondary"><i class="bi bi-check-circle fs-1"></i><p class="mt-2">Lixeira vazia.</p></div>';
             return;
         }
-
-        const data = snapshot.val();
-        const lista = Object.keys(data).map(key => ({ id: key, ...data[key] }));
         
         // Ordena: Excluídos mais recentemente primeiro
         lista.sort((a, b) => b.deletedAt - a.deletedAt);
@@ -12841,9 +12832,8 @@ window.updateNotificationUI  = updateNotificationUI;
                 // 2. Lixeira de Bookips — criadoPor (cópia do bookip, mesmo campo)
                 await marcarNo('trash_bookips', ['criadoPor']);
 
-                // 2b. Orçamentos (e a lixeira deles) — criadoPor
+                // 2b. Orçamentos — criadoPor (a lixeira deles é a trash_bookips acima)
                 await marcarNo('orcamentos', ['criadoPor']);
-                await marcarNo('trash_orcamentos', ['criadoPor']);
 
                 // 3. Contratos / Boletos — criadoPor
                 await marcarNo('boletos', ['criadoPor']);

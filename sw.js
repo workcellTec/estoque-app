@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-217'; // Módulo Orçamento (substitui Ord. Serviços) + fonte sans no PDF do contrato
+const CACHE = 'ctw-218'; // Lixeira do Orçamento em trash_bookips + PDF do contrato em peso normal
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
