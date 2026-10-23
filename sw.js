@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-214'; // CreditoScan: retentativas de rede com diagnóstico, nome do titular pelo extrato, comprometimento derruba a nota
+const CACHE = 'ctw-215'; // Botão voltar do celular (CreditoScan e telas) + confirmação de saída, Baixar PDF no histórico de contratos, faixa no fim da tela de contratos, Calcular aparelho sob a parcela confortável
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

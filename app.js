@@ -3164,15 +3164,17 @@ async function ctwSalvarContratoComSeguranca(r) {
 }
 
 // Entrega o PDF: compartilhar (WhatsApp etc.); se o celular recusar, pede um toque novo; senão baixa.
+function ctwBaixarPdf(blob, nomeArq) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = nomeArq;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);   // revogar já causava download vazio em alguns Android
+}
+
 async function ctwEntregarPdf(blob, nomeArq, nomeCliente) {
     const file = new File([blob], nomeArq, { type: 'application/pdf' });
-    const baixar = () => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = nomeArq;
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 60000);   // revogar já causava download vazio em alguns Android
-    };
+    const baixar = () => ctwBaixarPdf(blob, nomeArq);
     const dadosShare = { files: [file], title: 'Contrato Workcell Tecnologia', text: 'Olá ' + (nomeCliente || 'Cliente') + ', segue seu contrato em anexo.' };
     if (!(navigator.canShare && navigator.canShare({ files: [file] }))) { baixar(); return 'baixado'; }
     try {
@@ -3492,6 +3494,7 @@ function renderBoletosHistoryFiltrado(termoBusca) {
                         <button class="btn btn-sm btn-primary editar-boleto-btn" data-id="${boleto.id}"><i class="bi bi-pencil-fill"></i> Editar</button>
                         <button class="btn btn-sm btn-info duplicar-boleto-btn" data-id="${boleto.id}" title="Criar novo contrato reaproveitando os dados deste cliente"><i class="bi bi-files"></i> Duplicar</button>
                         <button class="btn btn-sm btn-success reenviar-boleto-btn" data-id="${boleto.id}"><i class="bi bi-share-fill"></i> Reenviar</button>
+                        <button class="btn btn-sm btn-outline-success baixar-boleto-btn" data-id="${boleto.id}"><i class="bi bi-download"></i> Baixar PDF</button>
                         <button class="btn btn-sm btn-outline-danger delete-boleto-btn" data-id="${boleto.id}"><i class="bi bi-trash"></i> Excluir</button>
                     </div>
                 </div>
@@ -3637,7 +3640,7 @@ function acaoDuplicarBoleto(boletoId, boletosArray) {
 
 // Ação de Reenviar: refaz o PDF a partir do registro salvo, com a data ORIGINAL do contrato.
 // Não mexe no formulário (antes sobrescrevia o que estava digitado).
-async function acaoReenviarBoleto(boletoId, boletosArray) {
+async function acaoReenviarBoleto(boletoId, boletosArray, soBaixar = false) {
     const boleto = boletosArray.find(b => b.id === boletoId);
     if (!boleto) return;
     if (_contratoEmAndamento) { showCustomModal({ message: 'Aguarde: outro contrato ainda está sendo processado.' }); return; }
@@ -3646,7 +3649,8 @@ async function acaoReenviarBoleto(boletoId, boletosArray) {
         ctwProgresso('Gerando o PDF, aguarde...');
         const blob = await ctwGerarPdfContratoPaginado(ctwDadosContratoDoRegistro(boleto));
         ctwProgresso();
-        await ctwEntregarPdf(blob, ctwNomeArquivoContrato(boleto.compradorNome), boleto.compradorNome);
+        if (soBaixar) ctwBaixarPdf(blob, ctwNomeArquivoContrato(boleto.compradorNome));
+        else await ctwEntregarPdf(blob, ctwNomeArquivoContrato(boleto.compradorNome), boleto.compradorNome);
     } catch (err) {
         console.error('Erro ao reenviar contrato:', err);
         ctwProgresso();
@@ -3704,6 +3708,9 @@ function hookBoletosHistoryActions() {
 
         const resendBtn = e.target.closest('.reenviar-boleto-btn');
         if (resendBtn) { acaoReenviarBoleto(resendBtn.dataset.id, _boletosHistoryCache); return; }
+
+        const baixarBtn = e.target.closest('.baixar-boleto-btn');
+        if (baixarBtn) { acaoReenviarBoleto(baixarBtn.dataset.id, _boletosHistoryCache, true); return; }
 
         const delBtn = e.target.closest('.delete-boleto-btn');
         if (delBtn) { acaoExcluirBoleto(delBtn.dataset.id, _boletosHistoryCache); return; }

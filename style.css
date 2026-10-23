@@ -3692,8 +3692,10 @@ tr, td, .card, .list-group-item {
 body.ctw-v2-active .container {
     padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
 }
+/* Contrato/Garantia: a área de rolagem (#areaContratoWrapper / #areaBookipWrapper, height:100%) já tem folga própria
+   no fim. Reservar espaço também aqui deixava uma faixa vazia, com o conteúdo cortado, entre a lista e o menu inferior. */
 body.ctw-v2-active #contractContainer {
-    padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 0;
 }
 
 /* ── PROFILE SHEET ── */

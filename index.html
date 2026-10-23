@@ -402,7 +402,7 @@ class="dropdown-menu-custom">
                 <span class="ctw-card-sub">Lista de compras</span>
                 <span id="repoBadge2" class="repo-badge-card hidden">0</span>
             </button>
-            <div id="ctwVersaoApp">Central Workcell · versão ctw-214</div>
+            <div id="ctwVersaoApp">Central Workcell · versão ctw-215</div>
         </div>
     </div>
     
@@ -1851,14 +1851,19 @@ window.addEventListener('load', function() {
 (function() {
     console.log("🚀 Sistema de Navegação CSS Computado Iniciado (Corrigido)...");
 
-    // 1. GATILHO: Adiciona histórico ao clicar para abrir telas
+    // 1. GATILHO: cada tela aberta ganha uma entrada no histórico (o botão voltar do celular fecha a tela, não o app)
+    function posicaoNav() { return (history.state && history.state.ctwD) || 0; }
+    window._ctwPushNav = function() { history.pushState({ ctwD: posicaoNav() + 1 }, "", ""); };
     document.addEventListener('click', function(e) {
-        // Pega qualquer botão que pareça ser de navegação ou ação
-        const target = e.target.closest('.btn-menu, .btn-action-sm, #btnAdminClients');
-        if (target) {
-            window.history.pushState({ time: Date.now() }, "", "");
-        }
+        // Botões de navegação/ação + cards que abrem telas sem passar por .btn-menu
+        const target = e.target.closest('.btn-menu, .btn-action-sm, #btnAdminClients, #goToReposicao2, #goCS2, #goCS1');
+        if (target) window._ctwPushNav();
     }, true);
+    // Na 1ª interação do usuário cria a entrada-base: sem ela, voltar na tela inicial fecharia o app sem perguntar
+    // (o navegador ignora entradas criadas sem toque do usuário, por isso não é feito no carregamento).
+    document.addEventListener('pointerdown', function() {
+        if (posicaoNav() === 0) window._ctwPushNav();
+    }, { capture: true, once: true });
 
     // 2. FUNÇÃO INFALÍVEL PARA CHECAR VISIBILIDADE
     function isRealmenteVisivel(id) {
@@ -1867,76 +1872,121 @@ window.addEventListener('load', function() {
         
         const style = window.getComputedStyle(el);
         
+        // getClientRects: vazio quando o elemento ou algum ancestral está com display:none
         return style.display !== 'none' && 
                style.visibility !== 'hidden' && 
-               !el.classList.contains('hidden');
+               !el.classList.contains('hidden') &&
+               el.getClientRects().length > 0;
     }
 
-    // 3. REAÇÃO AO BOTÃO VOLTAR
-    window.addEventListener('popstate', function(event) {
-        console.log("🔙 Voltar detectado. Analisando tela ativa...");
+    // Devolve true se fechou alguma tela
+    function tratarVoltar() {
+        // === NIVEL 0: CreditoScan (camadas próprias: resultado, histórico, configurações) ===
+        if (typeof window._creditoScanBack === 'function' && window._creditoScanBack()) return true;
 
         // === NIVEL 1: TELAS FILHAS (PRIORIDADE MÁXIMA) ===
         
         // --- CORREÇÃO FEITA AQUI: ID EXATO DO SEU HTML ---
         if (isRealmenteVisivel('emprestarValores')) {
-            document.getElementById('backFromEmprestarValores').click(); return;
+            document.getElementById('backFromEmprestarValores').click(); return true;
         }
         // -------------------------------------------------
 
         if (isRealmenteVisivel('fecharVenda')) {
-            document.getElementById('backFromFecharVenda').click(); return;
+            document.getElementById('backFromFecharVenda').click(); return true;
         }
         if (isRealmenteVisivel('repassarValores')) {
-            document.getElementById('backFromRepassarValores').click(); return;
+            document.getElementById('backFromRepassarValores').click(); return true;
         }
         if (isRealmenteVisivel('calcularEmprestimo')) {
-            document.getElementById('backFromCalcularEmprestimo').click(); return;
+            document.getElementById('backFromCalcularEmprestimo').click(); return true;
         }
         if (isRealmenteVisivel('calcularPorAparelho')) {
-            document.getElementById('backFromCalcularPorAparelho').click(); return;
+            document.getElementById('backFromCalcularPorAparelho').click(); return true;
         }
         
         // Docs (Filhos)
         if (isRealmenteVisivel('areaContratoWrapper')) {
-            document.getElementById('backFromContratoView').click(); return;
+            document.getElementById('backFromContratoView').click(); return true;
         }
         if (isRealmenteVisivel('areaBookipWrapper')) {
-            document.getElementById('backFromBookipView').click(); return;
+            document.getElementById('backFromBookipView').click(); return true;
         }
 
 
         // === NIVEL 2: MENUS INTERMEDIÁRIOS ===
         
         if (isRealmenteVisivel('calculatorHome')) {
-            document.getElementById('backFromCalculatorHome').click(); return;
+            document.getElementById('backFromCalculatorHome').click(); return true;
         }
         if (isRealmenteVisivel('documentsHome')) {
-            document.getElementById('backFromDocumentsHome').click(); return;
+            document.getElementById('backFromDocumentsHome').click(); return true;
         }
 
 
         // === NIVEL 3: TELAS INDEPENDENTES ===
         
         if (isRealmenteVisivel('stockContainer')) {
-            document.getElementById('backFromStock').click(); return;
+            document.getElementById('backFromStock').click(); return true;
         }
         if (isRealmenteVisivel('clientsContainer')) {
-            document.getElementById('backFromClients').click(); return;
+            document.getElementById('backFromClients').click(); return true;
         }
         if (isRealmenteVisivel('administracao')) {
-            document.getElementById('backFromAdmin').click(); return;
+            document.getElementById('backFromAdmin').click(); return true;
         }
 
         // Se chegou aqui, força o Menu Principal
         const mainMenu = document.getElementById('mainMenu');
         if (mainMenu && window.getComputedStyle(mainMenu).display === 'none') {
              if(typeof showMainSection === 'function') showMainSection('main');
+             return window.getComputedStyle(mainMenu).display !== 'none';
         }
+        return false;
+    }
+
+    // Tela inicial: pergunta antes de sair do app
+    function perguntarSair() {
+        if (document.getElementById('ctwSairApp')) return;
+        const ov = document.createElement('div');
+        ov.id = 'ctwSairApp';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:24px;';
+        ov.innerHTML = '<div style="background:var(--card-bg,#1d1e23);color:var(--text-color,#ecedee);border:1px solid var(--glass-border,rgba(255,255,255,.1));border-radius:20px;padding:22px;width:100%;max-width:340px;text-align:center;font-family:inherit">' +
+            '<div style="font-size:18px;font-weight:700;margin-bottom:6px">Deseja sair do app?</div>' +
+            '<div style="font-size:13px;color:var(--text-secondary,#9a9ca4);margin-bottom:18px">Aperte voltar de novo para sair, ou toque em Ficar.</div>' +
+            '<div style="display:flex;gap:10px"><button type="button" id="ctwSairNao" style="flex:1;height:48px;border-radius:14px;border:none;background:var(--primary-color,#6FBF8B);color:#0d1f15;font-weight:700;font-size:15px">Ficar</button>' +
+            '<button type="button" id="ctwSairSim" style="flex:1;height:48px;border-radius:14px;border:1px solid var(--glass-border,rgba(255,255,255,.2));background:transparent;color:var(--text-color,#ecedee);font-weight:600;font-size:15px">Sair</button></div></div>';
+        document.body.appendChild(ov);
+        const fechar = function() { ov.remove(); };
+        document.getElementById('ctwSairNao').addEventListener('click', function() {
+            fechar();
+            if (posicaoNav() === 0) window._ctwPushNav(); // volta a proteger a tela inicial
+        });
+        document.getElementById('ctwSairSim').addEventListener('click', function() {
+            fechar();
+            try { window.close(); } catch (e) {}
+            // Alguns navegadores não deixam o site se fechar; a próxima volta do celular sai de vez
+            const t = document.createElement('div');
+            t.textContent = 'Aperte voltar mais uma vez para sair.';
+            t.style.cssText = 'position:fixed;left:50%;bottom:110px;transform:translateX(-50%);z-index:100000;background:#222;color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;';
+            document.body.appendChild(t); setTimeout(function() { t.remove(); }, 2500);
+        });
+    }
+
+    // 3. REAÇÃO AO BOTÃO VOLTAR
+    window.addEventListener('popstate', function() {
+        const tratou = tratarVoltar();
+        if (tratou) {
+            // Sempre sobra uma entrada de histórico enquanto o app estiver aberto
+            if (posicaoNav() === 0) window._ctwPushNav();
+            return;
+        }
+        const mainMenu = document.getElementById('mainMenu');
+        if (mainMenu && window.getComputedStyle(mainMenu).display !== 'none') perguntarSair();
     });
 
     // 4. Estado Inicial
-    window.history.replaceState(null, "", "");
+    window.history.replaceState({ ctwD: 0 }, "", "");
 
 })();
 </script>
@@ -3252,7 +3302,7 @@ window.addEventListener('load', function() {
                 sonda.remove();
                 var selo = document.createElement('div');
                 selo.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;font:10px/1.3 monospace;background:rgba(0,0,0,.8);color:#0f0;padding:3px 6px;pointer-events:none;';
-                selo.textContent = 'ctw-214 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
+                selo.textContent = 'ctw-215 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
                     ' | modo=' + (matchMedia('(display-mode: standalone)').matches ? 'app instalado' : 'navegador') + ' | tela=' + innerWidth + 'x' + innerHeight;
                 document.body.appendChild(selo);
             }, 2500);

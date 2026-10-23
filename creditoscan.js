@@ -2122,6 +2122,23 @@
                 '<span class="cs-lab r">' + Math.round(tetoPct(d.nota) * 100) + '% da<br>renda</span></div>';
         }
 
+        // Calcular aparelho (recolhido)
+        if (!reprov) {
+            var cc = job.calc;
+            h += '<button type="button" class="cs-calc-toggle' + (cc.aberto ? ' open' : '') + '" data-act="calc-toggle">' +
+                '<i class="bi bi-calculator-fill"></i><span><b>Calcular aparelho</b><small>Informe o valor. Usa esta nota, sem nova análise.</small></span>' +
+                '<i class="bi bi-chevron-down cs-chev"></i></button>' +
+                '<div id="cs_calc" class="cs-calc' + (cc.aberto ? ' open' : '') + '">' +
+                    '<div class="cs-card cs-calc-form">' +
+                        '<div class="cs-field"><label for="cs_c_prod">Produto <em>(opcional)</em></label><input id="cs_c_prod" class="cs-in" type="text" maxlength="80" placeholder="Ex: iPhone 13 128 GB" value="' + esc(cc.produto) + '" autocomplete="off"></div>' +
+                        '<div class="cs-field"><label for="cs_c_val">Valor do aparelho (R$)</label><input id="cs_c_val" class="cs-in" type="text" inputmode="decimal" placeholder="Ex: 2.000,00" value="' + (cc.valor > 0 ? fmtNum(cc.valor) : '') + '" autocomplete="off"></div>' +
+                        '<div class="cs-err" id="cs_c_erro"></div>' +
+                        '<button type="button" class="cs-btn cs-btn-pri" data-act="calc-go"><i class="bi bi-calculator"></i> Calcular</button>' +
+                    '</div>' +
+                    '<div id="cs_calc_out"></div>' +
+                '</div>';
+        }
+
         // Reprovado: motivos + mensagem
         if (reprov && d.motivos) h += '<div class="cs-card cs-motivos"><span class="cs-lab">Motivos da reprovação</span><p>' + blocoTexto(d.motivos) + '</p></div>';
 
@@ -2145,22 +2162,6 @@
              detalhe('Raciocínio da nota', d.calculo ? '<p class="mono">' + blocoTexto(d.calculo) + '</p>' : '') +
              detalhe('Conselho para o vendedor', d.conselho ? '<p>' + blocoTexto(d.conselho) + '</p>' : '');
 
-        // Calcular aparelho (recolhido)
-        if (!reprov) {
-            var cc = job.calc;
-            h += '<button type="button" class="cs-calc-toggle' + (cc.aberto ? ' open' : '') + '" data-act="calc-toggle">' +
-                '<i class="bi bi-calculator-fill"></i><span><b>Calcular aparelho</b><small>Informe o valor. Usa esta nota, sem nova análise.</small></span>' +
-                '<i class="bi bi-chevron-down cs-chev"></i></button>' +
-                '<div id="cs_calc" class="cs-calc' + (cc.aberto ? ' open' : '') + '">' +
-                    '<div class="cs-card cs-calc-form">' +
-                        '<div class="cs-field"><label for="cs_c_prod">Produto <em>(opcional)</em></label><input id="cs_c_prod" class="cs-in" type="text" maxlength="80" placeholder="Ex: iPhone 13 128 GB" value="' + esc(cc.produto) + '" autocomplete="off"></div>' +
-                        '<div class="cs-field"><label for="cs_c_val">Valor do aparelho (R$)</label><input id="cs_c_val" class="cs-in" type="text" inputmode="decimal" placeholder="Ex: 2.000,00" value="' + (cc.valor > 0 ? fmtNum(cc.valor) : '') + '" autocomplete="off"></div>' +
-                        '<div class="cs-err" id="cs_c_erro"></div>' +
-                        '<button type="button" class="cs-btn cs-btn-pri" data-act="calc-go"><i class="bi bi-calculator"></i> Calcular</button>' +
-                    '</div>' +
-                    '<div id="cs_calc_out"></div>' +
-                '</div>';
-        }
         el('cs_res_body').innerHTML = h;
         if (!reprov && job.calc.valor > 0) renderCalcOut();
     }
@@ -2749,6 +2750,16 @@
     function init(){injectCSS();injectHTML();injectMenuBtns();wireEvents();atualizarBadge();}
     if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}else{init();}
     window._creditoScanOpen=openOverlay;
+    // Botao voltar do celular: fecha a camada mais de cima do CreditoScan (true = tratou)
+    window._creditoScanBack=function(){
+        if(document.querySelector('.cs-modal,#cs_modal_docq'))return true;
+        var ids=['cs_cfg_ov','cs_res_ov','cs_hist_ov','cs_ov'];
+        for(var i=0;i<ids.length;i++){
+            var o=el(ids[i]);
+            if(o&&o.classList.contains('active')){if(ids[i]==='cs_res_ov')fecharResultado();else o.classList.remove('active');return true;}
+        }
+        return false;
+    };
 
     // Expõe o motor de IA (mesma chave/modelo do CreditoScan) para outros
     // módulos reaproveitarem — usado pela Garantia (Bookip) com IA.
