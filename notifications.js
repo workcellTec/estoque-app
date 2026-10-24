@@ -1,1 +1,207 @@
-const p=location.href.replace(/\/[^\/]*(\?.*)?$/,"/")+"icon-192.png",g=location.href.replace(/\/[^\/]*(\?.*)?$/,"/")+"badge.png";async function h(e=4e3){return"serviceWorker"in navigator?Promise.race([navigator.serviceWorker.ready,new Promise(o=>setTimeout(()=>o(null),e))]):null}window.dispararNotificacaoNativa=async function(e,o=!1){if(!e||e.length===0||Notification.permission!=="granted")return;const i=new Date().toISOString().split("T")[0],s="ctw_fired_"+i;let r=[];try{r=JSON.parse(localStorage.getItem(s)||"[]")}catch{}let a=null;try{a=await Promise.race([navigator.serviceWorker.ready,new Promise(n=>setTimeout(()=>n(null),5e3))])}catch{}for(let n=0;n<e.length;n++){const t=e[n],c=document.createElement("div");c.innerHTML=t.message||"";const u=(c.textContent||"").trim().slice(0,200);if(!u)continue;const N=t.notificationId||t.boletoId||"g"+n+u.slice(0,10),w=i+"_"+N;if(!o&&r.includes(w))continue;let f="\u26A1 Central Workcell";t.isGeneral?f="\u{1F4E2} Aviso do Sistema":t.isBirthday?f="\u{1F382} Anivers\xE1rio!":t.repairId&&(f="\u{1F527} Conserto");const m={body:u,icon:p,badge:g,tag:w,renotify:!0,vibrate:[200,100,200]};let l=!1;if(a)try{await a.showNotification(f,m),l=!0}catch(d){console.warn("SW notif falhou:",d)}if(!l)try{new Notification(f,m),l=!0}catch(d){console.warn("Notification() falhou:",d)}if(console.log("\u{1F514}",l?"OK":"FALHOU","|",f,"|",u.slice(0,60)),l){r.push(w);try{localStorage.setItem(s,JSON.stringify(r))}catch{}}}},window.pedirPermissaoNotificacao=async function(){if(!("Notification"in window)||Notification.permission==="denied"||Notification.permission==="granted"||await Notification.requestPermission()!=="granted")return;const o=new Date().toISOString().split("T")[0];localStorage.removeItem("ctw_fired_"+o),setTimeout(async()=>{let i=null;try{i=await Promise.race([navigator.serviceWorker.ready,new Promise(a=>setTimeout(()=>a(null),3e3))])}catch{}const s={body:"\u2705 Avisos, consertos e anivers\xE1rios v\xE3o aparecer aqui.",icon:p,badge:g,tag:"ctw_boas_vindas",renotify:!0};let r=!1;if(i)try{await i.showNotification("\u26A1 Notifica\xE7\xF5es ativadas!",s),r=!0}catch{}if(!r)try{new Notification("\u26A1 Notifica\xE7\xF5es ativadas!",s)}catch{}},1500),setTimeout(()=>{typeof window.setupNotificationListeners=="function"&&window.setupNotificationListeners()},3e3)},window.checarAniversariosHoje=function(){const e=window.dbClientsCache||[];if(!e.length)return;const o=new Date,i=o.getMonth()+1,s=o.getDate(),r=(window.currentUserProfile||localStorage.getItem("ctwUserProfile")||"").toLowerCase().trim(),n=e.filter(t=>{if(!t.dataNascimento)return!1;const c=t.dataNascimento.split("-");return c.length>=3&&+c[1]===i&&+c[2]===s?t.atribuidoA?t.atribuidoA.toLowerCase().trim()===r:!0:!1}).map(t=>({isBirthday:!0,notificationId:"birthday_"+(t.id||t.nome),message:"\u{1F382} Hoje \xE9 anivers\xE1rio de "+t.nome+"!",clienteNome:t.nome,clienteTel:t.tel}));window._ctwAniversariosHoje=n,typeof window.ctwAtualizarAlertas=="function"&&window.ctwAtualizarAlertas(),n.length&&window.dispararNotificacaoNativa(n)},(function(){function e(){if(typeof window.updateNotificationUI!="function"){setTimeout(e,200);return}var o=window.updateNotificationUI;window.updateNotificationUI=function(i){return i&&i.length>0&&window.dispararNotificacaoNativa&&window.dispararNotificacaoNativa(i),o(i)}}e()})(),(function(){function e(){if(typeof window.setupNotificationListeners!="function"){setTimeout(e,200);return}var o=window.setupNotificationListeners;window.setupNotificationListeners=function(){o(),setTimeout(function(){window.checarAniversariosHoje&&window.checarAniversariosHoje()},5e3)}}e()})(),document.addEventListener("click",function e(){window.pedirPermissaoNotificacao(),document.removeEventListener("click",e)},{once:!0});
+// notifications.js — notificações push locais + aniversários
+// Depende de: window.currentUserProfile, window.dbClientsCache
+
+// ============================================================
+
+// 🔔 NOTIFICAÇÕES NATIVAS — versão final limpa
+// ============================================================
+
+// Ícone do app (arquivo na raiz do repositório)
+const CTW_ICON = (() => {
+    const base = location.href.replace(/\/[^\/]*(\?.*)?$/, '/');
+    return base + 'icon-192.png';
+})();
+const CTW_BADGE = (() => {
+    const base = location.href.replace(/\/[^\/]*(\?.*)?$/, '/');
+    return base + 'badge.png';
+})();
+
+// Dispara notificação via Service Worker (única forma que funciona no Android)
+
+// Obtém SW registration com timeout
+async function getSwReg(timeoutMs = 4000) {
+    if (!('serviceWorker' in navigator)) return null;
+    return Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise(resolve => setTimeout(() => resolve(null), timeoutMs))
+    ]);
+}
+
+window.dispararNotificacaoNativa = async function(notifications, forcar = false) {
+    if (!notifications || notifications.length === 0) return;
+    if (Notification.permission !== 'granted') return;
+
+    // Anti-spam: cada notif dispara só 1x por dia (por ID único)
+    // "forcar=true" ignora o cache — usado no teste de boas-vindas
+    const hoje = new Date().toISOString().split('T')[0];
+    const cacheKey = 'ctw_fired_' + hoje;
+    let fired = [];
+    try { fired = JSON.parse(localStorage.getItem(cacheKey) || '[]'); } catch(e) {}
+
+    // Aguarda o SW estar pronto (máx 5s)
+    let reg = null;
+    try {
+        reg = await Promise.race([
+            navigator.serviceWorker.ready,
+            new Promise(r => setTimeout(() => r(null), 5000))
+        ]);
+    } catch(e) {}
+
+    for (let i = 0; i < notifications.length; i++) {
+        const notif = notifications[i];
+
+        // Texto puro da mensagem HTML
+        const tmp = document.createElement('div');
+        tmp.innerHTML = notif.message || '';
+        const body = (tmp.textContent || '').trim().slice(0, 200);
+        if (!body) continue;
+
+        // Chave única para anti-spam
+        const id = notif.notificationId || notif.boletoId || ('g' + i + body.slice(0, 10));
+        const tag = hoje + '_' + id;
+        if (!forcar && fired.includes(tag)) continue;
+
+        // Título
+        let title = '⚡ Central Workcell';
+        if (notif.isGeneral)     title = '📢 Aviso do Sistema';
+        else if (notif.isBirthday) title = '🎂 Aniversário!';
+        else if (notif.repairId) title = '🔧 Conserto';
+
+        // Opções da notificação — ícone sem verificação prévia
+        const opts = {
+            body,
+            icon: CTW_ICON,
+            badge: CTW_BADGE,
+            tag,
+            renotify: true,
+            vibrate: [200, 100, 200]
+        };
+
+        let ok = false;
+
+        // MÉTODO 1: via SW registration (funciona no Android com app fechado)
+        if (reg) {
+            try { await reg.showNotification(title, opts); ok = true; }
+            catch(e) { console.warn('SW notif falhou:', e); }
+        }
+
+        // MÉTODO 2: Notification API direta (fallback desktop/iOS)
+        if (!ok) {
+            try { new Notification(title, opts); ok = true; }
+            catch(e) { console.warn('Notification() falhou:', e); }
+        }
+
+        console.log('🔔', ok ? 'OK' : 'FALHOU', '|', title, '|', body.slice(0, 60));
+
+        if (ok) {
+            fired.push(tag);
+            try { localStorage.setItem(cacheKey, JSON.stringify(fired)); } catch(e) {}
+        }
+    }
+};
+
+// Pede permissão e dispara teste imediato
+window.pedirPermissaoNotificacao = async function() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'denied') return;
+    if (Notification.permission === 'granted') return;
+
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+
+    // Limpa cache do dia para notificações pendentes dispararem logo
+    const hoje = new Date().toISOString().split('T')[0];
+    localStorage.removeItem('ctw_fired_' + hoje);
+
+    // Notificação de teste — espera SW estar registrado
+    setTimeout(async () => {
+        let reg = null;
+        try { reg = await Promise.race([navigator.serviceWorker.ready, new Promise(r => setTimeout(() => r(null), 3000))]); } catch(e) {}
+
+        const opts = { body: '✅ Avisos, consertos e aniversários vão aparecer aqui.', icon: CTW_ICON, badge: CTW_BADGE, tag: 'ctw_boas_vindas', renotify: true };
+
+        let ok = false;
+        if (reg) { try { await reg.showNotification('⚡ Notificações ativadas!', opts); ok = true; } catch(e) {} }
+        if (!ok) { try { new Notification('⚡ Notificações ativadas!', opts); } catch(e) {} }
+    }, 1500);
+
+    // Dispara notificações reais pendentes
+    setTimeout(() => { if (typeof window.setupNotificationListeners === 'function') window.setupNotificationListeners(); }, 3000);
+};
+
+// Checa aniversários dos clientes
+window.checarAniversariosHoje = function() {
+    const clientes = window.dbClientsCache || [];
+    if (!clientes.length) return;
+    const hoje = new Date();
+    const mes = hoje.getMonth() + 1, dia = hoje.getDate();
+    // Só notifica clientes atribuídos ao perfil atual
+    const perfilAtual = (window.currentUserProfile || localStorage.getItem('ctwUserProfile') || '').toLowerCase().trim();
+    const aniv = clientes.filter(c => {
+        if (!c.dataNascimento) return false;
+        const p = c.dataNascimento.split('-');
+        const dataOk = p.length >= 3 && +p[1] === mes && +p[2] === dia;
+        if (!dataOk) return false;
+        // Se cliente tem atribuição, só notifica o dono
+        if (c.atribuidoA) {
+            return c.atribuidoA.toLowerCase().trim() === perfilAtual;
+        }
+        // Sem atribuição → notifica todos
+        return true;
+    });
+    const lista = aniv.map(c => ({
+        isBirthday: true,
+        notificationId: 'birthday_' + (c.id || c.nome),
+        message: '🎂 Hoje é aniversário de ' + c.nome + '!',
+        clienteNome: c.nome,
+        clienteTel: c.tel,
+    }));
+    // Guardados à parte: os avisos/consertos substituem window._currentNotifications a cada atualização
+    window._ctwAniversariosHoje = lista;
+    if (typeof window.ctwAtualizarAlertas === 'function') window.ctwAtualizarAlertas();
+    if (!lista.length) return;
+    window.dispararNotificacaoNativa(lista);
+};
+
+// Hook em updateNotificationUI → dispara push a cada nova notificação
+(function() {
+    // Aguarda window.updateNotificationUI estar disponível (módulo ES)
+    function hookUpdateNotif() {
+        if (typeof window.updateNotificationUI !== 'function') {
+            setTimeout(hookUpdateNotif, 200);
+            return;
+        }
+        var orig = window.updateNotificationUI;
+        window.updateNotificationUI = function(notifications) {
+            if (notifications && notifications.length > 0) {
+                window.dispararNotificacaoNativa && window.dispararNotificacaoNativa(notifications);
+            }
+            return orig(notifications);
+        };
+    }
+    hookUpdateNotif();
+})();
+
+// Hook aniversários no setupNotificationListeners
+(function() {
+    function hookSetup() {
+        if (typeof window.setupNotificationListeners !== 'function') {
+            setTimeout(hookSetup, 200);
+            return;
+        }
+        var orig = window.setupNotificationListeners;
+        window.setupNotificationListeners = function() {
+            orig();
+            setTimeout(function() {
+                window.checarAniversariosHoje && window.checarAniversariosHoje();
+            }, 5000);
+        };
+    }
+    hookSetup();
+})();
+
+// Pede permissão no primeiro clique
+document.addEventListener('click', function _ask() {
+    window.pedirPermissaoNotificacao();
+    document.removeEventListener('click', _ask);
+}, { once: true });

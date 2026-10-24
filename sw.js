@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-239'; // Sem luz verde no fundo (a barra de status volta a combinar com a tela); teste do servidor mostra a resposta do Supabase
+const CACHE = 'ctw-240'; // CreditoScan: renda confiavel (1 leitura por PDF, 3 meses mais recentes, conferencia com o total do extrato, alertas das entradas excluidas) e nota = chance de calote
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

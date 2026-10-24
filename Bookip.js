@@ -1,37 +1,247 @@
-const f="dmvynrze6",g="g8rdi3om",b=`https://api.cloudinary.com/v1_1/${f}/image/upload`;window._bookipFotoUrl="",window._bookipFotoBlob=null,window.abrirReciboSimples=function(){typeof window.ctwTrocarModoDoc=="function"&&window.ctwTrocarModoDoc("garantia"),window.isSimpleReceiptMode=!0,window.currentEditingBookipId=null,typeof window.resetFormulariosBookip=="function"&&window.resetFormulariosBookip();const n=document.getElementById("txtToggleNovo");n&&(n.innerHTML='<i class="bi bi-plus-lg"></i> Novo Recibo');const t=document.getElementById("toggleModoInputContainer");t&&(t.style.display="flex");const o=document.querySelector("#camposProduto .search-wrapper");o&&o.classList.add("hidden"),document.querySelectorAll("#mainMenu, .section-content").forEach(a=>a.style.display="none");const i=document.getElementById("areaBookipWrapper");i&&(i.style.display="block");const r=document.getElementById("bookipModeToggle");r&&(r.checked=!1,r.dispatchEvent(new Event("change")))},window.abrirFotoBookip=function(n,t){if(!n)return;const o=document.createElement("div");o.id="fotoBookipOverlay",o.style.cssText=`
+// bookip.js — Funções auxiliares do módulo Bookip / Recibo
+// Depende de: window.resetFormulariosBookip, window.showCustomModal
+// Cloudinary: upload de fotos do produto
+
+// ============================================================
+// CLOUDINARY — config
+// ============================================================
+const BOOKIP_CLOUDINARY_CLOUD  = 'dmvynrze6';
+const BOOKIP_CLOUDINARY_PRESET = 'g8rdi3om';
+const BOOKIP_CLOUDINARY_URL    = `https://api.cloudinary.com/v1_1/${BOOKIP_CLOUDINARY_CLOUD}/image/upload`;
+
+window._bookipFotoUrl  = '';
+window._bookipFotoBlob = null;
+
+// ============================================================
+// ABRIR RECIBO SIMPLES
+// ============================================================
+window.abrirReciboSimples = function() {
+    // 0. Recibo simples é sempre Garantia/Recibo (nunca Orçamento)
+    if (typeof window.ctwTrocarModoDoc === 'function') window.ctwTrocarModoDoc('garantia');
+
+    // 1. Configura variáveis globais
+    window.isSimpleReceiptMode = true;
+    window.currentEditingBookipId = null;
+
+    // 2. Faxina (limpa campos e zera produtos)
+    if (typeof window.resetFormulariosBookip === 'function') {
+        window.resetFormulariosBookip();
+    }
+
+    // 3. Títulos
+    const txtNovo = document.getElementById('txtToggleNovo');
+    if (txtNovo) txtNovo.innerHTML = '<i class="bi bi-plus-lg"></i> Novo Recibo';
+
+    // 4. Interface (esconde busca, mostra toggle)
+    const toggle = document.getElementById('toggleModoInputContainer');
+    if (toggle) toggle.style.display = 'flex';
+
+    const buscaContainer = document.querySelector('#camposProduto .search-wrapper');
+    if (buscaContainer) buscaContainer.classList.add('hidden');
+
+    // 5. Troca a tela
+    const menus = document.querySelectorAll('#mainMenu, .section-content');
+    menus.forEach(m => m.style.display = 'none');
+
+    const tela = document.getElementById('areaBookipWrapper');
+    if (tela) tela.style.display = 'block';
+
+    // Garante aba "Novo" ativa visualmente
+    const tabToggle = document.getElementById('bookipModeToggle');
+    if (tabToggle) {
+        tabToggle.checked = false;
+        tabToggle.dispatchEvent(new Event('change'));
+    }
+};
+
+// ============================================================
+// ABRIR FOTO DO PRODUTO (overlay tela cheia)
+// ============================================================
+window.abrirFotoBookip = function(fotoUrl, nome) {
+    if (!fotoUrl) return;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'fotoBookipOverlay';
+    overlay.style.cssText = `
         position: fixed; inset: 0; z-index: 19999;
         background: rgba(0,0,0,0.95);
         display: flex; flex-direction: column;
         align-items: center; justify-content: center;
         gap: 16px;
         animation: notif-overlay-in 0.2s ease;
-    `,o.innerHTML=`
+    `;
+
+    // Estado de loading
+    overlay.innerHTML = `
         <div style="position:relative;width:110px;height:110px;display:flex;align-items:center;justify-content:center;">
             <div style="position:absolute;width:90px;height:90px;border-radius:50%;border:2px solid transparent;border-top-color:var(--primary-color);animation:fav-tr-spin 0.9s linear infinite;"></div>
             <div style="position:absolute;width:110px;height:110px;border-radius:50%;border:2px solid transparent;border-bottom-color:#8b5cf6;animation:fav-tr-spin 1.4s linear infinite reverse;"></div>
-            <span style="font-size:2.2rem;">\u{1F5BC}\uFE0F</span>
+            <span style="font-size:2.2rem;">🖼️</span>
         </div>
         <div style="color:rgba(255,255,255,0.5);font-size:0.8rem;font-family:'Poppins',sans-serif;">Carregando imagem...</div>
-    `,o.addEventListener("click",i=>{(i.target===o||i.target.id==="fotoBookipOverlay")&&(o.style.opacity="0",o.style.transition="opacity 0.2s",setTimeout(()=>o.remove(),200))}),document.body.appendChild(o);const e=new Image;e.onload=()=>{o.innerHTML=`
+    `;
+
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay || e.target.id === 'fotoBookipOverlay') {
+            overlay.style.opacity = '0';
+            overlay.style.transition = 'opacity 0.2s';
+            setTimeout(() => overlay.remove(), 200);
+        }
+    });
+
+    document.body.appendChild(overlay);
+
+    const img = new Image();
+    img.onload = () => {
+        overlay.innerHTML = `
             <div style="position:relative;max-width:min(95vw,600px);">
-                <img src="${n}"
+                <img src="${fotoUrl}"
                     style="width:100%;max-height:80vh;object-fit:contain;border-radius:12px;display:block;box-shadow:0 8px 40px rgba(0,0,0,0.8);">
                 <button onclick="document.getElementById('fotoBookipOverlay').remove()" style="
                     position:absolute;top:-12px;right:-12px;
                     background:rgba(0,0,0,0.8);border:1px solid rgba(255,255,255,0.2);
                     border-radius:50%;width:36px;height:36px;
                     color:#fff;font-size:1rem;cursor:pointer;
-                    display:flex;align-items:center;justify-content:center;">\u2715</button>
+                    display:flex;align-items:center;justify-content:center;">✕</button>
             </div>
             <div style="color:rgba(255,255,255,0.4);font-size:0.72rem;font-family:'Poppins',sans-serif;text-align:center;">
-                ${t} \xB7 Toque fora para fechar
+                ${nome} · Toque fora para fechar
             </div>
-        `},e.onerror=()=>{o.innerHTML=`
+        `;
+    };
+    img.onerror = () => {
+        overlay.innerHTML = `
             <div style="color:rgba(255,255,255,0.5);font-size:0.9rem;text-align:center;padding:20px;">
-                \u26A0\uFE0F N\xE3o foi poss\xEDvel carregar a foto<br><br>
+                ⚠️ Não foi possível carregar a foto<br><br>
                 <button onclick="document.getElementById('fotoBookipOverlay').remove()"
                     style="background:var(--primary-color);border:none;border-radius:8px;color:var(--on-primary);padding:8px 20px;cursor:pointer;">
                     Fechar
                 </button>
             </div>
-        `},e.src=n};function y(n){return new Promise((t,o)=>{const e=new Image,i=URL.createObjectURL(n);e.onload=()=>{URL.revokeObjectURL(i);const r=1920,a=.88;let l=e.width,d=e.height;if(l>r||d>r){const c=Math.min(r/l,r/d);l=Math.round(l*c),d=Math.round(d*c)}const s=document.createElement("canvas");s.width=l,s.height=d,s.getContext("2d").drawImage(e,0,0,l,d),s.toBlob(c=>{if(c){t(c);return}s.toBlob(p=>{p?t(p):o(new Error("Compressao falhou"))},"image/jpeg",a)},"image/webp",a)},e.onerror=()=>{URL.revokeObjectURL(i),o(new Error("Imagem invalida"))},e.src=i})}window.uploadFotoCloudinary=async function(n){if(!n)return"";try{const t=new FormData;t.append("file",n,"foto.webp"),t.append("upload_preset",g),t.append("folder","bookip_fotos");const o=await fetch(b,{method:"POST",body:t});if(!o.ok)throw new Error("HTTP "+o.status);const e=await o.json();return e.secure_url?e.secure_url:(console.warn("Cloudinary resposta inesperada:",e),"")}catch(t){return console.warn("Upload Cloudinary falhou:",t),""}};function m(){const n=document.getElementById("bookipPhotoInputCamera"),t=document.getElementById("bookipPhotoInputGallery"),o=document.getElementById("bookipPhotoBtnCamera"),e=document.getElementById("bookipPhotoBtnGallery"),i=document.getElementById("bookipPhotoPreview"),r=document.getElementById("bookipPhotoImg"),a=document.getElementById("bookipPhotoBtnLabel"),l=document.getElementById("bookipPhotoRemove");if(!n||!t)return;o&&o.addEventListener("click",()=>n.click()),e&&e.addEventListener("click",()=>t.click());async function d(s){if(s){a&&(a.textContent="Comprimindo..."),o&&(o.disabled=!0),e&&(e.disabled=!0);try{const c=await y(s),p=Math.round(c.size/1024),u=URL.createObjectURL(c);r&&(r.src=u),i&&i.classList.remove("hidden"),a&&(a.textContent=`Foto pronta (${p}KB)`),window._bookipFotoBlob=c,window._bookipFotoUrl=""}catch{a&&(a.textContent="Da galeria"),typeof window.showCustomModal=="function"&&window.showCustomModal({message:"N\xE3o foi poss\xEDvel processar a foto. Tente novamente."})}o&&(o.disabled=!1),e&&(e.disabled=!1)}}n.addEventListener("change",()=>{d(n.files[0]),n.value=""}),t.addEventListener("change",()=>{d(t.files[0]),t.value=""}),window._bookipHandlePhotoFile=d,l&&l.addEventListener("click",s=>{s.stopPropagation(),r&&(r.src=""),i&&i.classList.add("hidden"),a&&(a.textContent="Da galeria"),window._bookipFotoBlob=null,window._bookipFotoUrl=""})}document.readyState==="loading"?document.addEventListener("DOMContentLoaded",m):m();
+        `;
+    };
+    img.src = fotoUrl;
+};
+
+// ============================================================
+// COMPRIMIR FOTO (canvas → WebP 88%, max 1920px)
+// ============================================================
+function comprimirFotoBookip(file) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const objUrl = URL.createObjectURL(file);
+        img.onload = () => {
+            URL.revokeObjectURL(objUrl);
+            const MAX = 1920, Q = 0.88;
+            let w = img.width, h = img.height;
+            if (w > MAX || h > MAX) {
+                const r = Math.min(MAX / w, MAX / h);
+                w = Math.round(w * r);
+                h = Math.round(h * r);
+            }
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            c.getContext('2d').drawImage(img, 0, 0, w, h);
+            // Tenta WebP; se o dispositivo nao suportar, cai pra JPEG
+            c.toBlob(blob => {
+                if (blob) { resolve(blob); return; }
+                c.toBlob(blobJpeg => {
+                    blobJpeg ? resolve(blobJpeg) : reject(new Error('Compressao falhou'));
+                }, 'image/jpeg', Q);
+            }, 'image/webp', Q);
+        };
+        img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('Imagem invalida')); };
+        img.src = objUrl;
+    });
+}
+
+// ============================================================
+// UPLOAD PARA CLOUDINARY — retorna URL segura
+// ============================================================
+window.uploadFotoCloudinary = async function(blob) {
+    if (!blob) return '';
+    try {
+        const formData = new FormData();
+        formData.append('file', blob, 'foto.webp');
+        formData.append('upload_preset', BOOKIP_CLOUDINARY_PRESET);
+        formData.append('folder', 'bookip_fotos');
+
+        const resp = await fetch(BOOKIP_CLOUDINARY_URL, { method: 'POST', body: formData });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        if (data.secure_url) return data.secure_url;
+        console.warn('Cloudinary resposta inesperada:', data);
+        return '';
+    } catch(e) {
+        console.warn('Upload Cloudinary falhou:', e);
+        return '';
+    }
+};
+
+// ============================================================
+// INICIALIZAR CÂMERA / GALERIA DO BOOKIP
+// ============================================================
+function initBookipPhoto() {
+    const inputCamera  = document.getElementById('bookipPhotoInputCamera');
+    const inputGallery = document.getElementById('bookipPhotoInputGallery');
+    const btnCamera    = document.getElementById('bookipPhotoBtnCamera');
+    const btnGallery   = document.getElementById('bookipPhotoBtnGallery');
+    const preview      = document.getElementById('bookipPhotoPreview');
+    const imgEl        = document.getElementById('bookipPhotoImg');
+    const btnLabel     = document.getElementById('bookipPhotoBtnLabel');
+    const removeBtn    = document.getElementById('bookipPhotoRemove');
+    if (!inputCamera || !inputGallery) return;
+
+    if (btnCamera)  btnCamera.addEventListener('click',  () => inputCamera.click());
+    if (btnGallery) btnGallery.addEventListener('click', () => inputGallery.click());
+
+    async function handleFile(file) {
+        if (!file) return;
+        if (btnLabel)  btnLabel.textContent   = 'Comprimindo...';
+        if (btnCamera) btnCamera.disabled     = true;
+        if (btnGallery) btnGallery.disabled   = true;
+        try {
+            const compressed = await comprimirFotoBookip(file);
+            const kb = Math.round(compressed.size / 1024);
+            const previewUrl = URL.createObjectURL(compressed);
+            if (imgEl)   imgEl.src = previewUrl;
+            if (preview) preview.classList.remove('hidden');
+            if (btnLabel) btnLabel.textContent = `Foto pronta (${kb}KB)`;
+            window._bookipFotoBlob = compressed;
+            window._bookipFotoUrl  = '';
+        } catch(e) {
+            if (btnLabel) btnLabel.textContent = 'Da galeria';
+            if (typeof window.showCustomModal === 'function') {
+                window.showCustomModal({ message: 'Não foi possível processar a foto. Tente novamente.' });
+            }
+        }
+        if (btnCamera)  btnCamera.disabled  = false;
+        if (btnGallery) btnGallery.disabled = false;
+    }
+
+    inputCamera.addEventListener('change',  () => { handleFile(inputCamera.files[0]);  inputCamera.value  = ''; });
+    inputGallery.addEventListener('change', () => { handleFile(inputGallery.files[0]); inputGallery.value = ''; });
+
+    // Expõe para reaproveitamento: o "Colar do Zap (IA)" já pede uma foto
+    // do produto para a IA ler nome/cor/IMEI — em vez de o usuário ter
+    // que anexar a MESMA foto de novo manualmente aqui, o preenchimento
+    // automático chama esta mesma função com a foto já em mãos.
+    window._bookipHandlePhotoFile = handleFile;
+
+    if (removeBtn) {
+        removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (imgEl)   imgEl.src = '';
+            if (preview) preview.classList.add('hidden');
+            if (btnLabel) btnLabel.textContent = 'Da galeria';
+            window._bookipFotoBlob = null;
+            window._bookipFotoUrl  = '';
+        });
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initBookipPhoto);
+} else {
+    initBookipPhoto();
+}
