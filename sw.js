@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-228'; // CreditoScan: Calcular aparelho em primeiro e aba fechada de aparelhos liberados abaixo
+const CACHE = 'ctw-231'; // Alertas só no sino com botão Limpar; CreditoScan: compromissos listados e conferidos no código
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
