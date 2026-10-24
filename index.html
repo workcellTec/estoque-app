@@ -1498,7 +1498,7 @@
 
 
 <script src="ctw-ui.js?v=4" defer></script>
-<script src="app.js?v=1019" type="module" defer></script>
+<script src="app.js?v=1023" type="module" defer></script>
 <script>
 window.addEventListener('load', function() {
     var s = document.createElement('script');
@@ -1520,12 +1520,62 @@ window.addEventListener('load', function() {
         const carregados = {};
         window.ctwCarregarModulo = (nome) => carregados[nome] || (carregados[nome] = pesados[nome]());
 
-        // Toque no cartão do CreditoScan antes do módulo carregar: carrega agora e repete o toque.
+        // CreditoScan: consulta rápida (~1 KB) ao servidor assim que o app abre, sem carregar o módulo. Serve para
+        // mostrar "2 em análise · 1 pronta" no cartão e dar vantagem ao módulo, que reaproveita a lista.
+        // Obs.: o endereço e o nome da senha são os mesmos de creditoscan.js (SRV_URL / SRV_TOKEN_LS).
+        (function () {
+            let tk = ''; try { tk = localStorage.getItem('ctwServerToken') || ''; } catch (e) {}
+            if (!tk) return;
+            const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 6000);
+            fetch('https://mgjkjwsotzwmhrcwefhg.supabase.co/functions/v1/cs-ia/lista', { headers: { 'x-app-token': tk }, signal: ctl.signal })
+                .then(r => r.status === 200 ? r.json() : null)
+                .then(j => {
+                    if (!j || !Array.isArray(j.analises)) return;
+                    window._csListaInicial = { ts: Date.now(), j };
+                    if (window._csReady) return;   // o módulo já carregou e cuida do cartão
+                    let and = 0, pro = 0, err = 0;
+                    j.analises.forEach(a => { if (a.estado === 'fila' || a.estado === 'rodando') and++; else if (a.estado === 'pronta') pro++; else if (a.estado === 'erro') err++; });
+                    const sm = document.querySelector('#goCS2 small'); if (!sm) return;
+                    const p = []; if (and) p.push(and + ' em análise'); if (pro) p.push(pro + (pro > 1 ? ' prontas' : ' pronta')); if (err) p.push(err + ' com erro');
+                    if (p.length) { sm.setAttribute('data-orig', sm.textContent); sm.textContent = p.join(' · '); sm.style.color = 'var(--primary-color)'; }
+                })
+                .catch(() => {})
+                .finally(() => clearTimeout(tm));
+        })();
+
+        // Toque no cartão do CreditoScan: só abre depois do módulo carregar E da lista do servidor ser lida
+        // (ou de 6 s sem resposta, quando abre com um aviso). Enquanto isso mostra "carregando".
         const cardCS = document.getElementById('goCS2');
-        if (cardCS) cardCS.addEventListener('click', (e) => {
-            if (window._csReady) return;
+        let csPronto = false, csAbrindo = false;
+        function telaCarregandoCS(on) {
+            let t = document.getElementById('csCarregando');
+            if (!on) { if (t) t.remove(); return; }
+            if (t) return;
+            t = document.createElement('div');
+            t.id = 'csCarregando';
+            t.setAttribute('role', 'status');
+            t.style.cssText = 'position:fixed;inset:0;z-index:9400;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:var(--bg-color,#16171A);color:var(--text-color,#fff);font-family:Poppins,sans-serif;font-size:15px;font-weight:600';
+            t.innerHTML = '<div style="width:42px;height:42px;border-radius:50%;border:4px solid rgba(148,151,160,.3);border-top-color:var(--primary-color,#4ade80);animation:csGira 0.9s linear infinite"></div><div>Um segundo, carregando CreditoScan...</div>' +
+                '<style>@keyframes csGira{to{transform:rotate(360deg)}}</style>';
+            document.body.appendChild(t);
+        }
+        if (cardCS) cardCS.addEventListener('click', async (e) => {
+            if (csPronto) return;
             e.stopImmediatePropagation();
-            window.ctwCarregarModulo('creditoscan').then(() => cardCS.click());
+            if (csAbrindo) return;
+            csAbrindo = true;
+            telaCarregandoCS(true);
+            try { await window.ctwCarregarModulo('creditoscan'); } catch (err) { console.warn('CreditoScan não carregou', err); }
+            try { if (window._csAguardarLista) await Promise.race([window._csAguardarLista(), new Promise(r => setTimeout(r, 6500))]); } catch (err) {}
+            telaCarregandoCS(false);
+            csAbrindo = false;
+            if (!window._csReady) {   // o módulo não carregou (sem internet?): avisa em vez de não fazer nada
+                const msg = 'Não consegui carregar o CreditoScan. Confira a internet e toque de novo.';
+                if (window.showCustomModal) window.showCustomModal({ message: msg }); else alert(msg);
+                return;
+            }
+            csPronto = true;
+            cardCS.click();
         }, true);
 
         async function loadModules() {
@@ -1741,7 +1791,7 @@ window.addEventListener('load', function() {
             <span class="ui-grow">Sair</span>
         </button>
     </div>
-    <div class="ui-versao" id="ctwVersaoApp">Central Workcell · versão ctw-240</div>
+    <div class="ui-versao" id="ctwVersaoApp">Central Workcell · versão ctw-244</div>
 </div>
 
 <!-- ═══════════════════════════════════════════════
@@ -3012,7 +3062,7 @@ window.addEventListener('load', function() {
                 sonda.remove();
                 var selo = document.createElement('div');
                 selo.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;font:10px/1.3 monospace;background:rgba(0,0,0,.8);color:#0f0;padding:3px 6px;pointer-events:none;';
-                selo.textContent = 'ctw-240 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
+                selo.textContent = 'ctw-244 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
                     ' | modo=' + (matchMedia('(display-mode: standalone)').matches ? 'app instalado' : 'navegador') + ' | tela=' + innerWidth + 'x' + innerHeight;
                 document.body.appendChild(selo);
             }, 2500);
