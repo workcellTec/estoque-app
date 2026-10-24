@@ -1985,10 +1985,6 @@ tr, td, .card, .list-group-item {
     --ui-warn-bg: rgba(255, 170, 60, .18);
     --ui-bad-bg: rgba(230, 70, 70, .12);
 }
-[data-theme="light"] body {
-    background-image: radial-gradient(90% 28% at 100% 100%, rgba(21, 174, 128, .12), transparent 72%);
-    background-attachment: fixed;
-}
 [hidden] { display: none !important; }
 
 /* Botões da interface nova: tira o visual padrão (as peças abaixo dão o visual) */
@@ -3800,3 +3796,50 @@ html.ctw-leve *:not(.spinner-border):not(.spinner-grow)::after {
 .ctw-upd-toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(110px + env(safe-area-inset-bottom, 0px)); z-index: 20000; background: var(--card-bg); color: var(--text-color); border: 1px solid rgba(var(--primary-color-rgb), .5); border-radius: 99px; padding: 10px 18px; font-size: 13px; font-weight: 600; box-shadow: var(--card-shadow); animation: ctw-upd-toast 3.5s ease forwards; white-space: nowrap; }
 @keyframes ctw-upd-toast { 0% { opacity: 0; transform: translate(-50%, 10px); } 10%, 85% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .ctw-upd-spin { animation-duration: 2.4s; } }
+
+/* ── Celular: rola normalmente, sem mostrar a barra de rolagem ── */
+@media (pointer: coarse) {
+    * { scrollbar-width: none; }
+    *::-webkit-scrollbar { display: none; width: 0; height: 0; }
+}
+
+/* ── Lista de opções própria (no lugar do popup nativo do select) ── */
+.ctw-selwrap { position: relative; }
+.ctw-selwrap > select { pointer-events: none; }
+.ctw-selbtn { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; z-index: 2; -webkit-tap-highlight-color: transparent; }
+.ctw-opt { justify-content: space-between; border: 1.5px solid transparent; cursor: pointer; text-align: left; font: inherit; }
+.ctw-opt .ctw-radio { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--ui-tx3); flex: none; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+.ctw-opt.on { border-color: var(--primary-color); background: rgba(var(--primary-color-rgb), .12); }
+.ctw-opt.on .ctw-radio { border-color: var(--primary-color); }
+.ctw-opt.on .ctw-radio::after { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--primary-color); }
+
+/* ============================================================
+   VIDRO — poucos detalhes, onde algo passa por trás:
+   folhas que sobem de baixo, avisos de atualização, botões redondos do topo e o cartão de destaque do Início.
+   Modo leve (html.ctw-leve) desliga o desfoque em todos eles e volta para a cor lisa.
+   ============================================================ */
+:root {
+    --glass-sheet: rgba(24, 24, 26, .80);
+    --glass-bubble: rgba(34, 34, 37, .58);
+    --glass-hi: rgba(255, 255, 255, .10);
+    --glass-blur: blur(22px) saturate(1.5);
+}
+[data-theme="light"] {
+    --glass-sheet: rgba(255, 255, 255, .80);
+    --glass-bubble: rgba(255, 255, 255, .62);
+    --glass-hi: rgba(255, 255, 255, .85);
+}
+.ui-sheet, #bdSheet { background: var(--glass-sheet); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); border-top: 1px solid var(--glass-hi); }
+.ctw-upd-box, .ctw-upd-toast { background: var(--glass-sheet); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: inset 0 1px 0 var(--glass-hi), var(--card-shadow); }
+.ui-rb { background: var(--glass-bubble); -webkit-backdrop-filter: blur(14px) saturate(1.4); backdrop-filter: blur(14px) saturate(1.4); box-shadow: inset 0 1px 0 var(--glass-hi), var(--card-shadow); }
+.ui-hero {
+    background: linear-gradient(150deg, rgba(var(--primary-color-rgb), .14), var(--glass-bubble) 55%);
+    -webkit-backdrop-filter: blur(18px) saturate(1.4); backdrop-filter: blur(18px) saturate(1.4);
+    border: 1px solid var(--glass-hi);
+    box-shadow: inset 0 1px 0 var(--glass-hi), var(--card-shadow);
+}
+html.ctw-leve .ui-sheet, html.ctw-leve #bdSheet, html.ctw-leve .ctw-upd-box, html.ctw-leve .ctw-upd-toast, html.ctw-leve .ui-rb, html.ctw-leve .ui-hero {
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+html.ctw-leve .ui-sheet, html.ctw-leve #bdSheet, html.ctw-leve .ctw-upd-box, html.ctw-leve .ctw-upd-toast, html.ctw-leve .ui-rb { background: var(--card-bg); }
+html.ctw-leve .ui-hero { background: var(--card-bg); border: 1px solid var(--ui-cardbd); box-shadow: var(--card-shadow); }

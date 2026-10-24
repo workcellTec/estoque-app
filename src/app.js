@@ -4567,7 +4567,7 @@ async function main() {
     try {
         setupPWA();
         setTimeout(ctwAvisarVersaoNova, 2500);
-        applyTheme(safeStorage.getItem('ctwTheme') || 'dark');
+        applyTheme(safeStorage.getItem('ctwTheme') === 'dark' ? 'dark' : 'light');
 
         // BOOT ANIMATION — carrossel de recursos do app
         (function runBootAnimation() {
@@ -4965,7 +4965,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Tema escuro e Claro
 
     // 1. Usa a chave correta 'ctwTheme' (antes estava 'theme' e dava erro)
-    const savedTheme = safeStorage.getItem('ctwTheme') || 'dark';
+    const savedTheme = safeStorage.getItem('ctwTheme') === 'dark' ? 'dark' : 'light';
     
     // 2. Aplica o tema visualmente no site
     applyTheme(savedTheme);
@@ -5121,7 +5121,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('machine3')?.addEventListener('change', (event) => {
     updateCalcularPorAparelhoUI(); 
-    if(event.isTrusted && document.getElementById('machine3').value !== 'pagbank') {
+    if((event.isTrusted || event.ctwUser) && document.getElementById('machine3').value !== 'pagbank') {
         openFlagModal(document.getElementById('machine3'));
     }
 });
@@ -5502,7 +5502,7 @@ document.getElementById('resultCalcularPorAparelho')?.addEventListener('click', 
 
    document.getElementById('machine2')?.addEventListener('change', (event) => {
     updateRepassarValoresUI(); 
-    if(event.isTrusted && document.getElementById('machine2').value !== 'pagbank') {
+    if((event.isTrusted || event.ctwUser) && document.getElementById('machine2').value !== 'pagbank') {
         openFlagModal(document.getElementById('machine2'));
     }
 });
@@ -5533,7 +5533,7 @@ if (btnToggleRepassar) {
     document.getElementById('emprestimoValue')?.addEventListener('input', calculateEmprestimo);
     document.getElementById('machine4')?.addEventListener('change', (event) => {
     updateCalcularEmprestimoUI(); 
-    if(event.isTrusted && document.getElementById('machine4').value !== 'pagbank') {
+    if((event.isTrusted || event.ctwUser) && document.getElementById('machine4').value !== 'pagbank') {
         openFlagModal(document.getElementById('machine4'));
     }
 });
@@ -10588,7 +10588,7 @@ window.resetFormulariosBookip = function(opcoes) {
             }
             
             // 2. Abre o modal de bandeiras (se não for pagbank e for clique real do usuário)
-            if(event.isTrusted && maquina5.value !== 'pagbank' && typeof openFlagModal === 'function') {
+            if((event.isTrusted || event.ctwUser) && maquina5.value !== 'pagbank' && typeof openFlagModal === 'function') {
                 openFlagModal(maquina5);
             }
 

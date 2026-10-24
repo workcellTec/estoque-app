@@ -203,3 +203,97 @@
     return m ? m[1] + 'w_' + (w || 150) + ',c_limit,q_auto,f_auto/' + m[2] : url;
   };
 })();
+
+/* ---------- Lista de opções própria (no lugar do popup nativo do Chrome) ----------
+   O <select> continua no lugar (e é ele que guarda o valor); um botão transparente por cima abre a folha.
+   Ao escolher, o select muda e dispara "change" marcado com ctwUser (os ouvintes que checam event.isTrusted
+   aceitam essa marca, porque um evento criado por script nunca é "trusted"). */
+(function () {
+  'use strict';
+  var LISTAS = [
+    ['machine2', 'Maquininha'], ['machine3', 'Maquininha'], ['machine4', 'Maquininha'], ['machine5', 'Maquininha'],
+    ['bookipGarantiaSelect', 'Tempo de garantia'], ['orcValidadeSelect', 'Validade do orçamento']
+  ];
+  var aberta = null;   // { wrap, sel }
+
+  function fechar(agora) {
+    if (!aberta) return false;
+    var w = aberta.wrap; aberta = null;
+    if (agora) { w.remove(); return true; }
+    w.classList.remove('ui-open');
+    setTimeout(function () { w.remove(); }, 260);
+    return true;
+  }
+  window.ctwFecharListaSheet = function () { return fechar(false); };
+
+  function escolher(sel, valor) {
+    fechar(true);
+    if (sel.value === valor) return;
+    sel.value = valor;
+    ['input', 'change'].forEach(function (nome) {
+      var ev = new Event(nome, { bubbles: true });
+      ev.ctwUser = true;
+      sel.dispatchEvent(ev);
+    });
+  }
+
+  function abrir(sel, titulo) {
+    fechar(true);
+    var opcoes = Array.prototype.filter.call(sel.options, function (o) { return !o.hidden && !o.disabled; });
+    if (!opcoes.length) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'ui-sheet-wrap';
+    wrap.setAttribute('role', 'dialog');
+    wrap.setAttribute('aria-modal', 'true');
+    wrap.setAttribute('aria-label', titulo);
+    var dim = document.createElement('button');
+    dim.type = 'button'; dim.className = 'ui-dim'; dim.setAttribute('aria-label', 'Fechar');
+    dim.addEventListener('click', function () { fechar(false); });
+    var sheet = document.createElement('div');
+    sheet.className = 'ui-sheet';
+    var grab = document.createElement('div'); grab.className = 'ui-grab';
+    var tit = document.createElement('div'); tit.className = 'ui-sheet-title'; tit.textContent = titulo;
+    sheet.appendChild(grab); sheet.appendChild(tit);
+    opcoes.forEach(function (o) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ui-srow ctw-opt' + (o.value === sel.value ? ' on' : '');
+      b.setAttribute('role', 'option');
+      b.setAttribute('aria-selected', o.value === sel.value ? 'true' : 'false');
+      var t = document.createElement('span'); t.className = 'ui-grow';
+      var n = document.createElement('b'); n.textContent = o.textContent.trim();
+      t.appendChild(n);
+      var r = document.createElement('span'); r.className = 'ctw-radio';
+      b.appendChild(t); b.appendChild(r);
+      b.addEventListener('click', function () { escolher(sel, o.value); });
+      sheet.appendChild(b);
+    });
+    wrap.appendChild(dim); wrap.appendChild(sheet);
+    document.body.appendChild(wrap);
+    aberta = { wrap: wrap, sel: sel };
+    void wrap.offsetHeight;
+    wrap.classList.add('ui-open');
+  }
+
+  function envolver(sel, titulo) {
+    if (!sel || sel.getAttribute('data-ctw-lista')) return;
+    sel.setAttribute('data-ctw-lista', '1');
+    var wrap = document.createElement('div');
+    wrap.className = 'ctw-selwrap';
+    sel.parentNode.insertBefore(wrap, sel);
+    wrap.appendChild(sel);
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'ctw-selbtn';
+    btn.setAttribute('aria-label', titulo);
+    btn.setAttribute('aria-haspopup', 'listbox');
+    btn.addEventListener('click', function () { abrir(sel, titulo); });
+    wrap.appendChild(btn);
+    sel.tabIndex = -1;
+  }
+
+  function iniciar() {
+    LISTAS.forEach(function (l) { envolver(document.getElementById(l[0]), l[1]); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') fechar(false); });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar); else iniciar();
+})();

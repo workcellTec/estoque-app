@@ -170,6 +170,14 @@
     var OR_TENTATIVAS = 3;
     var OR_TIMEOUT_MS = 180000;
 
+    // Servidor (Supabase Edge Function): a IA roda la, entao o Android pode congelar o app
+    // (ex.: voce foi ao WhatsApp) que a analise continua. Sem senha salva, usa o caminho direto.
+    var SRV_URL = 'https://mgjkjwsotzwmhrcwefhg.supabase.co/functions/v1/cs-ia';
+    var SRV_TOKEN_LS = 'ctwServerToken';
+    var SRV_POLL_MS = 2000;
+    var SRV_ESPERA_MAX_MS = 600000;      // desiste de esperar o servidor depois de 10 min
+    var _srvFalhouEm = 0;                // quando o servidor falhou: nao insiste por 5 min
+
     function pausa(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
     function aguardarAppPronto(maxMs) {
@@ -185,23 +193,135 @@
 
     function fmtMB(chars) { return chars < 1048576 ? Math.round(chars / 1024) + ' KB' : (chars / 1048576).toFixed(1).replace('.', ',') + ' MB'; }
 
+    async function getServerToken() {
+        var local = safeGet(SRV_TOKEN_LS);
+        if (local) return local;
+        try {
+            var fb = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
+            var db = window._firebaseDB; if (!db) return '';
+            var snap = await fb.get(fb.ref(db, 'settings/serverToken'));
+            var tk = snap.val() || '';
+            if (tk) try { localStorage.setItem(SRV_TOKEN_LS, tk); } catch (e) {}
+            return tk;
+        } catch (e) { return ''; }
+    }
+
+    function novoIdJob() {
+        if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+        var b = new Uint8Array(16); crypto.getRandomValues(b);
+        b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
+        var h = Array.prototype.map.call(b, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+        return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+    }
+
+    function srvHeaders(token) { return { 'Content-Type': 'application/json', 'x-app-token': token }; }
+
+    // Espera ate 'ms' ou ate o app voltar a ficar visivel (o que vier primeiro)
+    function esperarOuVoltar(ms) {
+        return new Promise(function (resolve) {
+            var feito = false;
+            function fim() { if (feito) return; feito = true; document.removeEventListener('visibilitychange', onVis); clearTimeout(tm); resolve(); }
+            function onVis() { if (!document.hidden) fim(); }
+            var tm = setTimeout(fim, ms);
+            document.addEventListener('visibilitychange', onVis);
+        });
+    }
+
+    // fetch que desiste depois de 'ms' (rede movel as vezes deixa a requisicao pendurada)
+    async function fetchComTempo(url, init, ms) {
+        var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var tm = ctl ? setTimeout(function () { ctl.abort(); }, ms) : null;
+        try { init.signal = ctl ? ctl.signal : undefined; return await fetch(url, init); }
+        finally { if (tm) clearTimeout(tm); }
+    }
+
+    function erroSrvIndisponivel(msg) { var e = new Error(msg); e.srvIndisponivel = true; return e; }
+
+    // Manda o pedido ao servidor e espera o resultado. Devolve algo parecido com a resposta do fetch
+    // ({ ok, status, json() }) para o resto do codigo nao mudar. Se o servidor nao responde/recusa o
+    // pedido, lanca erro com srvIndisponivel=true e o chamador usa o caminho direto.
+    async function chamarViaServidor(token, corpo) {
+        var id = novoIdJob(), inicio = Date.now(), aceito = false;
+        // 1) entrega o pedido (repetir o mesmo id e seguro: o servidor nao chama a IA duas vezes)
+        for (var tp = 0; tp < 3 && !aceito; tp++) {
+            try {
+                var rp = await fetchComTempo(SRV_URL, { method: 'POST', headers: srvHeaders(token), body: '{"id":"' + id + '","corpo":' + corpo + '}' }, 90000);
+                if (rp.status === 202) aceito = true;
+                else throw erroSrvIndisponivel('servidor recusou o pedido (HTTP ' + rp.status + ')');
+            } catch (e) {
+                if (e && e.srvIndisponivel) throw e;
+                if (tp === 2) throw erroSrvIndisponivel('sem conexao com o servidor');
+                await aguardarAppPronto(60000); await pausa(1200 * (tp + 1));
+            }
+        }
+        // 2) consulta o resultado ate sair (o servidor continua trabalhando mesmo com o app congelado)
+        var falhas = 0;
+        while (Date.now() - inicio < SRV_ESPERA_MAX_MS) {
+            await esperarOuVoltar(SRV_POLL_MS);
+            var j = null;
+            try {
+                var rg = await fetchComTempo(SRV_URL + '?id=' + id, { method: 'GET', headers: srvHeaders(token) }, 20000);
+                if (rg.status === 404) { var e404 = new Error('servidor perdeu o pedido'); e404.name = 'TypeError'; throw e404; }
+                if (!rg.ok) throw new TypeError('HTTP ' + rg.status);
+                j = await rg.json(); falhas = 0;
+            } catch (e) {
+                if (e && e.message === 'servidor perdeu o pedido') throw e;
+                // falha com o app em segundo plano ou sem internet nao conta: so conta com o app aberto e online
+                if (!document.hidden && navigator.onLine !== false && ++falhas >= 15) { var ef = new Error('sem resposta do servidor'); ef.name = 'TypeError'; throw ef; }
+                continue;
+            }
+            if (j.status === 'done') {
+                fetchComTempo(SRV_URL + '?id=' + id, { method: 'DELETE', headers: srvHeaders(token) }, 15000).catch(function () {});   // nao deixa a resposta guardada
+                var corpoResp; try { corpoResp = JSON.parse(j.resposta); } catch (e) { corpoResp = {}; }
+                return { ok: j.http >= 200 && j.http < 300, status: j.http, json: function () { return Promise.resolve(corpoResp); } };
+            }
+            if (j.status === 'error') {
+                var ee = new Error(j.erro || 'erro no servidor');
+                if (j.tipo === 'rede') ee.name = 'AbortError';
+                ee.doServidor = true;
+                throw ee;
+            }
+        }
+        var et = new Error('sem resposta do servidor em ' + Math.round(SRV_ESPERA_MAX_MS / 60000) + ' min'); et.name = 'AbortError'; et.doServidor = true; throw et;
+    }
+
+    async function fetchDireto(key, corpo) {
+        var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var timer = ctl ? setTimeout(function () { ctl.abort(); }, OR_TIMEOUT_MS) : null;
+        try {
+            return await fetch(OR_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+                body: corpo,
+                signal: ctl ? ctl.signal : undefined
+            });
+        } finally { if (timer) clearTimeout(timer); }
+    }
+
     async function openRouterCall(model, messages) {
         var key = await getApiKey();
-        if (!key) throw new Error('Chave OpenRouter nao configurada. Salve em Firebase > settings/openrouterKey');
+        var tokenSrv = await getServerToken();
+        var usarServidor = !!tokenSrv && (Date.now() - _srvFalhouEm > 300000);
+        if (!key && !usarServidor) throw new Error('Chave OpenRouter nao configurada. Salve em Firebase > settings/openrouterKey');
         var corpo = JSON.stringify({ model: model, max_tokens: 6000, temperature: 0, messages: messages });
         var erroRede = null, t0 = Date.now(), tent = 0;
         while (tent < OR_TENTATIVAS) {
             tent++;
-            var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-            var timer = ctl ? setTimeout(function () { ctl.abort(); }, OR_TIMEOUT_MS) : null;
             try {
-                var resp = await fetch(OR_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
-                    body: corpo,
-                    signal: ctl ? ctl.signal : undefined
-                });
-                if (timer) clearTimeout(timer);
+                var resp;
+                if (usarServidor) {
+                    try { resp = await chamarViaServidor(tokenSrv, corpo); }
+                    catch (eSrv) {
+                        if (!(eSrv && eSrv.srvIndisponivel)) throw eSrv;
+                        // servidor fora do ar ou recusou: segue pelo caminho direto (como antes)
+                        usarServidor = false; _srvFalhouEm = Date.now();
+                        console.warn('[CreditoScan] servidor indisponivel, usando caminho direto:', eSrv.message);
+                        if (!key) throw new Error('Servidor indisponivel (' + eSrv.message + ') e chave OpenRouter nao configurada.');
+                        resp = await fetchDireto(key, corpo);
+                    }
+                } else {
+                    resp = await fetchDireto(key, corpo);
+                }
                 if (!resp.ok) {
                     var e = await resp.json().catch(function () { return {}; });
                     var msg = (e.error && e.error.message) || 'HTTP ' + resp.status;
@@ -212,7 +332,6 @@
                 var d = await resp.json();
                 return ((d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '').trim();
             } catch (err) {
-                if (timer) clearTimeout(timer);
                 var ehRede = err && (err.name === 'TypeError' || err.name === 'AbortError');
                 if (!ehRede) throw err;
                 erroRede = err;
@@ -220,9 +339,48 @@
                 if (tent < OR_TENTATIVAS) { await aguardarAppPronto(120000); await pausa(1500 * tent); }
             }
         }
-        var motivo = (erroRede && erroRede.name === 'AbortError') ? 'sem resposta em ' + Math.round(OR_TIMEOUT_MS / 1000) + 's' : ((erroRede && erroRede.message) || 'falha de rede');
+        var motivo = (erroRede && erroRede.doServidor) ? erroRede.message : (erroRede && erroRede.name === 'AbortError') ? 'sem resposta em ' + Math.round(OR_TIMEOUT_MS / 1000) + 's' : ((erroRede && erroRede.message) || 'falha de rede');
         throw new Error(motivo + ' [envio ' + fmtMB(corpo.length) + ' · ' + tent + ' tentativas · ' + Math.round((Date.now() - t0) / 1000) + 's · ' +
             (navigator.onLine === false ? 'sem internet' : 'online') + (document.hidden ? ' · app em segundo plano' : '') + ']');
+    }
+
+    // Configuracoes: guarda a senha do servidor (aparelho + Firebase) e testa se o servidor aceita
+    async function testarServidor(token) {
+        try {
+            var r = await fetchComTempo(SRV_URL + '?id=' + novoIdJob(), { method: 'GET', headers: srvHeaders(token) }, 15000);
+            if (r.status === 401 || r.status === 403) {
+                var j401 = await r.json().catch(function () { return {}; });
+                // resposta da NOSSA funcao = senha errada; qualquer outra = o Supabase barrou antes de chegar nela
+                if (j401 && j401.erro === 'nao autorizado') return { ok: false, msg: 'Senha não confere com a do servidor (APP_TOKEN).' };
+                var det = (j401 && (j401.message || j401.msg || j401.error_description)) ? ' Resposta: "' + String(j401.message || j401.msg || j401.error_description).slice(0, 80) + '".' : ' (HTTP ' + r.status + ')';
+                return { ok: false, msg: 'O Supabase barrou antes de chegar na função.' + det + ' Confira se "Verify JWT" está desligado e SALVO (Edge Functions > cs-ia > Settings > Save changes).' };
+            }
+            if (r.status === 404 && !(await r.clone().json().catch(function () { return {}; })).status) return { ok: false, msg: 'Função "cs-ia" não encontrada. Confira se ela foi publicada com esse nome exato.' };
+            if (r.status === 404 || r.status === 200) return { ok: true, msg: 'Servidor respondeu e aceitou a senha.' };
+            if (r.status === 500) { var j = await r.json().catch(function () { return {}; }); return { ok: false, msg: 'Servidor com problema: ' + (j.erro || 'HTTP 500') }; }
+            return { ok: false, msg: 'Servidor respondeu HTTP ' + r.status + '. A função cs-ia foi criada com esse nome?' };
+        } catch (e) { return { ok: false, msg: 'Não consegui falar com o servidor (sem internet ou função não criada).' }; }
+    }
+
+    async function salvarSenhaServidor() {
+        var inp = el('cs_cfg_srv'), st = el('cs_cfg_srv_status'); if (!inp || !st) return;
+        var tk = inp.value.trim();
+        var cor = function (ok) { return ok ? 'var(--primary-color)' : 'var(--cs-bad)'; };
+        if (!tk) {   // vazio = desligar o servidor e voltar ao caminho direto
+            try { localStorage.removeItem(SRV_TOKEN_LS); } catch (e) {}
+            try { var fb0 = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js'); if (window._firebaseDB) fb0.remove(fb0.ref(window._firebaseDB, 'settings/serverToken')); } catch (e) {}
+            _srvFalhouEm = 0;
+            st.innerHTML = '<span style="color:' + cor(true) + '">Servidor desligado: a IA volta a rodar direto no celular.</span>'; return;
+        }
+        if (tk.length < 12 || /\s/.test(tk)) { st.innerHTML = '<span style="color:' + cor(false) + '">Use uma senha com 12+ caracteres, sem espaços.</span>'; return; }
+        st.textContent = 'Testando...';
+        var r = await testarServidor(tk);
+        if (r.ok) {
+            try { localStorage.setItem(SRV_TOKEN_LS, tk); } catch (e) {}
+            try { var fb = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js'); if (window._firebaseDB) fb.set(fb.ref(window._firebaseDB, 'settings/serverToken'), tk); } catch (e) {}
+            _srvFalhouEm = 0;
+        }
+        st.innerHTML = '<span style="color:' + cor(r.ok) + '">' + (r.ok ? '✅ Salvo. ' : '❌ Não salvei. ') + r.msg + '</span>';
     }
 
     // Motor Vision: manda imagens + texto pro Qwen-VL via OpenRouter
@@ -408,7 +566,7 @@
     // ── Prompt da etapa 1 (so texto digital): apenas a renda ─────────
     function buildPromptRenda(textoExtrato) {
         return 'Voce e um analista financeiro. Leia o extrato bancario abaixo e levante a RENDA MENSAL REAL do titular, mes a mes.\n\n' +
-            'EXTRATO:\n' + textoExtrato.substring(0, 30000) + '\n\n' +
+            'EXTRATO:\n' + textoExtrato + '\n\n' +
             '=== REGRAS DE RENDA ===\n' +
             'Identifique o nome e o CPF do TITULAR no cabecalho.\n' +
             REGRAS_RENDA + '\n' +
@@ -491,11 +649,14 @@
         { k: 'seguro/plano', re: /seguro|plano de sa[uú]de|unimed|\bamil\b/g },
         { k: 'carnê/crediário', re: /carn[eê]|credi[aá]rio/g }
     ];
+    // Frases fixas dos extratos (propaganda, tabela de tarifas, rodape) que repetem as palavras acima sem ser compromisso
+    var SINAIS_PROPAGANDA = /parcelamento em at[eé] \d+x|valor da mensalidade|mensalidade dos pacotes|mais seguro online|[íi]ndices econ[oô]micos ?\/ ?financeiros/g;
     var SINAIS_MINIMO = 3;   // ocorrencias no texto para a IA ter que justificar "nenhum compromisso"
 
     function detectarSinaisCompromisso(texto) {
         var t = String(texto || '').toLowerCase();
         if (!t) return null;
+        t = t.replace(SINAIS_PROPAGANDA, ' ');
         var termos = [], total = 0;
         SINAIS_COMPROMISSO.forEach(function (s) {
             var m = t.match(s.re);
@@ -623,13 +784,88 @@
             var susp = (d.suspeitasJogo || []).filter(Boolean);
             var porAposta = casas.length > 0 || susp.length > 0 || /aposta|jog|bet/i.test(String((d.rawJson.motivosReprovacao || '') + ' ' + (d.resumoExec || '')));
             return 'A IA recomendou reprovar, mas pelas regras do sistema o cliente passa (nota ' + d.nota + ').' +
-                (porAposta ? ' Apostas: ' + (casas.length ? casas.length + (casas.length > 1 ? ' casas sinalizadas' : ' casa sinalizada') + ' — o sistema desconta 10 pontos por 1 casa e 20 por 2, e só reprova direto com 3 casas ou mais, ou apostas frequentes.'
+                (porAposta ? ' Apostas: ' + (casas.length ? casas.length + (casas.length > 1 ? ' casas sinalizadas' : ' casa sinalizada') + ' neste registro, analisado antes da regra "qualquer casa confirmada reprova".'
                         : susp.length ? susp.length + (susp.length > 1 ? ' nomes suspeitos' : ' nome suspeito') + ' (' + susp.slice(0, 2).join(', ') + '), que não são casas de aposta confirmadas e por isso não descontam nota.'
                         : 'sinais no extrato, sem casa confirmada.') + ' Confira a transação em "Casas de jogo" antes de fechar.'
                     : ' Confira a análise completa antes de fechar.');
         }
         if (!ia && d.reprovado) return 'A IA tinha aprovado, mas o sistema reprovou' + (d.motivos ? ': ' + String(d.motivos).split('\n')[0] : '.');
         return '';
+    }
+
+    // ════════════════════════════════════════════�
+    //  WHATSAPP DO CLIENTE (opcional): numero limpo + link que abre direto na conversa
+    // ════════════════════════════════════════════�
+    // Devolve so os digitos (DDD + numero, 10 ou 11) ou '' se nao for um celular/fixo brasileiro valido.
+    // Aceita +55, 55, zero na frente, espacos, parenteses e traco.
+    function normalizarTelefone(txt) {
+        var dig = String(txt == null ? '' : txt).replace(/\D/g, '');
+        if (dig.length >= 12 && dig.length <= 13 && dig.indexOf('55') === 0) dig = dig.slice(2);
+        if (dig.length === 11 && dig.charAt(0) === '0') dig = dig.slice(1);   // 0 + DDD + 8 digitos
+        else if (dig.length === 12 && dig.charAt(0) === '0') dig = dig.slice(1);
+        if (dig.length !== 10 && dig.length !== 11) return '';
+        if (/^0/.test(dig) || dig.slice(0, 2) === '00') return '';
+        if (dig.length === 11 && dig.charAt(2) !== '9') return '';              // celular com 9 digitos comeca em 9
+        return dig;
+    }
+    // (62) 99999-9999
+    function formatarTelefone(dig) {
+        dig = String(dig || '').replace(/\D/g, '');
+        if (dig.length <= 2) return dig;
+        var ddd = '(' + dig.slice(0, 2) + ') ';
+        if (dig.length <= 6) return ddd + dig.slice(2);
+        if (dig.length <= 10) return ddd + dig.slice(2, dig.length - 4) + (dig.length > 6 ? '-' + dig.slice(-4) : '');
+        return ddd + dig.slice(2, 7) + '-' + dig.slice(7, 11);
+    }
+    // Sem numero valido: abre o WhatsApp para a pessoa escolher a conversa (como era antes)
+    function linkWhatsapp(tel, msg) {
+        var n = normalizarTelefone(tel);
+        return 'https://wa.me/' + (n ? '55' + n : '') + '?text=' + encodeURIComponent(msg || '');
+    }
+
+    // ════════════════════════════════════════════
+    //  TEXTO DO EXTRATO DIGITAL: cabe no limite SEM perder meses inteiros
+    // ════════════════════════════════════════════
+    var LIMITE_TEXTO_DIGITAL = 100000;   // caracteres (≈ 35 mil tokens) enviados a IA no total
+    var SEP_PAGINA = '\n--- PROXIMA PAGINA ---\n';
+
+    // Tira espacos repetidos e linhas vazias; descarta paginas sem nenhum valor em R$ (propaganda/avisos),
+    // desde que o arquivo tenha outras paginas com valores.
+    function compactarTextoPdf(paginas) {
+        var temValor = /\d[\d.]*,\d{2}/;
+        var lim = (paginas || []).map(function (t) {
+            return String(t || '').split(/\r?\n/).map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(Boolean).join('\n');
+        }).filter(Boolean);
+        var comValor = lim.filter(function (t) { return temValor.test(t); });
+        return (comValor.length ? comValor : lim).join(SEP_PAGINA);
+    }
+
+    // arquivos = [[pagina, pagina...], [pagina...]] (um item por PDF, na ordem enviada).
+    // Se tudo cabe, vai tudo. Se nao, cada arquivo recebe uma cota igual (o que sobra de um arquivo
+    // pequeno e repassado aos maiores) e so o FINAL de cada arquivo grande e cortado.
+    // Devolve { texto, cortado } — cortado=true se algo ficou de fora.
+    function montarTextoDigital(arquivos, limite) {
+        limite = limite || LIMITE_TEXTO_DIGITAL;
+        var docs = (arquivos || []).map(compactarTextoPdf).filter(Boolean);
+        if (!docs.length) return { texto: '', cortado: false };
+        var ordem = docs.map(function (d, i) { return i; }).sort(function (a, b) { return docs[a].length - docs[b].length; });
+        var cotas = [], restante = limite, faltam = docs.length;
+        ordem.forEach(function (i) {
+            var cota = Math.floor(restante / faltam);
+            cotas[i] = Math.min(docs[i].length, cota);
+            restante -= cotas[i]; faltam--;
+        });
+        var cortado = false;
+        var partes = docs.map(function (d, i) {
+            var t = d;
+            if (d.length > cotas[i]) {
+                cortado = true;
+                var corte = d.lastIndexOf('\n', cotas[i]);
+                t = d.substring(0, corte > 0 ? corte : cotas[i]) + '\n[... RESTANTE DESTE ARQUIVO CORTADO POR TAMANHO ...]';
+            }
+            return docs.length > 1 ? '=== ARQUIVO ' + (i + 1) + ' de ' + docs.length + ' ===\n' + t : t;
+        });
+        return { texto: partes.join('\n\n'), cortado: cortado };
     }
 
     function buildPrompt(rendaPre) {
@@ -667,8 +903,8 @@ reguaTextoPrompt()+'\n'+
 '   AJC GATEWAY, NEXUMPAY, UNIVEBET, VAIDEBET, BETNACIONAL, R TORRES, NORBE FINTECH,\n'+
 '   GOLD NOW, LUXTAK, ou nome contendo BET/GAMING/APOSTAS/CASSINO.\n'+
 '   "SAQUE DIN LOTERICO" NAO e aposta — e operacao bancaria.\n'+
-'   10+ transacoes OU R$800+/mes OU 3+ meses = REPROVADO.\n'+
-'   1-4 esporadicas = o sistema penaliza a nota (voce nao desconta) mas nao reprova.\n\n'+
+'   QUALQUER casa confirmada (ate 1 unica transacao) = REPROVADO. O sistema aplica; voce so lista a casa.\n'+
+'   So liste em casasDeJogoEncontradas o que tem CERTEZA que e casa de aposta. Na duvida use suspeitasJogo.\n\n'+
 
 'Nota 50 ou menos tambem reprova (o sistema decide pela nota). Todo o resto APROVA com condicoes (o sistema aplica depois):\n'+
 '  FORTE (85-100): entrada 33% | teto parcela 30% da renda\n'+
@@ -866,6 +1102,7 @@ reguaTextoPrompt()+'\n'+
             var ref = await fb.push(fb.ref(db, SAVE_PATH), {
                 nomeCliente: nome || 'Cliente',
                 cpf: cpf_cliente || '',
+                telefone: d.telefone || null,
                 produto: produto || '',
                 decisao: d.reprovado ? 'REPROVADO' : d.downgrade ? 'DOWNGRADE' : d.entradaAlta ? 'ENTRADA_ALTA' : 'APROVADO',
                 nota: d.nota,
@@ -1765,7 +2002,8 @@ reguaTextoPrompt()+'\n'+
 
         // Prioridade 2: fallback por busca de texto se IA nao preencheu o campo
         if (casas.length === 0) {
-            var textoIA = [d.analise||'', d.perfil||'', d.motivos||''].join(' ').toLowerCase();
+            var textoIA = [d.analise||'', d.perfil||'', d.motivos||''].join('. ').toLowerCase()
+            .split(/[.!?;\n]+/).filter(function(fr){ return !/\b(n[aã]o|nenhum\w*|sem|aus[eê]ncia|nada|nunca|inexistente|descart\w*|suspeit\w*)\b/.test(fr); }).join(' . ');
             [
              'phoenix gaming','vaidebet','betnacional','pixbet','blaze','betano',
              'esportes da sorte','superbet','betboom','bet7k','estrelabet',
@@ -1781,7 +2019,7 @@ reguaTextoPrompt()+'\n'+
              'pagbet','betpix','sportbetio','sport bet','betcris',
              'rivalo','betmotion','pinnacle','betsul','sportsbet.io',
              'velozbet','veloz bet','paggue','double.bet','fortune tiger',
-             'cassino','casino online','slots','apostou'
+             'casino online'
             ].forEach(function(c){ if(textoIA.indexOf(c)!==-1) casas.push(c); });
         }
 
@@ -1796,16 +2034,18 @@ reguaTextoPrompt()+'\n'+
                 '(IA original: '+notaOriginal+' pts — corrigido para 0)';
             d.calculo = 'CORRIGIDO PELO SISTEMA\nIA: '+notaOriginal+' pts\n'+
                 'Casas: '+casas.join(', ')+'\nRegra: 3+ casas = REPROVADO\nNota final: 0';
-        } else if (casas.length >= 1 && casas.length <= 2 && d.nota > NOTA_REPROVA) {
-            // 1-2 casas esporadicas → penaliza a nota; se cair a 50 ou menos, reprova
-            var penalidade = casas.length === 1 ? 10 : 20;
-            d.nota = Math.max(0, d.nota - penalidade);
+        } else if (casas.length >= 1) {
+            // 1-2 casas confirmadas → REPROVADO direto (a nota nunca fica acima de 50)
+            var notaAntes = d.nota;
+            d.nota = Math.min(d.nota, NOTA_REPROVA);
             d.casasJogo = casas;
-            d.calculo = (d.calculo||'')+
-                '\nCORRECAO: '+casas.length+' casa(s) esporadica(s) detectada(s) → -'+penalidade+
-                ' pts (nota ajustada: '+d.nota+')';
-            classificarPorNota(d);
-            if (d.reprovado) d.motivos = (d.motivos ? d.motivos + '\n' : '') + 'Apostas (' + casas.join(', ') + '): -' + penalidade + ' pts levaram a nota a ' + d.nota + ' (50 ou menos reprova).';
+            d.aprov = false; d.reprovado = true;
+            d.risco = 'REPROVADO'; d.entradaPct = 0.60;
+            d.motivos = 'REPROVADO — casa de aposta confirmada\n' + casas.join(', ') +
+                (d.motivos ? '\n' + d.motivos : '');
+            d.calculo = (d.calculo || '') +
+                '\nREGRA: casa de aposta confirmada (' + casas.length + ') = REPROVADO' +
+                (notaAntes !== d.nota ? ' (nota limitada de ' + notaAntes + ' para ' + d.nota + ')' : '');
         }
     }
 
@@ -2045,13 +2285,16 @@ reguaTextoPrompt()+'\n'+
 
     function iniciarAnalise() {
         if (!_docsRend.length || _enviando > 0) return;
+        var campoTel = el('cs_tel');
         var job = {
             id: ++_jobSeq, estado: 'fila', ts: Date.now(), nome: '',
             docsId: _docsId, docsRend: _docsRend,
             prog: 0, etapa: 'Na fila', passo: 0,
             dados: null, texto: '', cpf: '', fbKey: null, criadoAqui: false, podeSalvarCalc: true,
-            visto: false, erro: '', cancelado: false, pergunta: null, calc: null
+            visto: false, erro: '', cancelado: false, pergunta: null, calc: null,
+            tel: normalizarTelefone(campoTel ? campoTel.value : '')   // WhatsApp do cliente (opcional)
         };
+        if (campoTel) { campoTel.value = ''; mascararTelefone(campoTel, 'cs_tel_hint'); }
         _docsId = []; _docsRend = [];
         _jobs.unshift(job);
         _formAberto = false;
@@ -2248,6 +2491,10 @@ reguaTextoPrompt()+'\n'+
                         if (escolha === 'reusar') {
                             var dReuso = dadosDoRegistro(itens[0]);
                             job.fbKey = itens[0].id; job.criadoAqui = false; job.podeSalvarCalc = !itens[0].produto;
+                            // numero: o digitado agora vale; senao usa o que ja estava salvo; se mudou, atualiza o registro
+                            var telSalvo = normalizarTelefone(itens[0].telefone);
+                            job.tel = job.tel || telSalvo;
+                            if (job.tel && job.tel !== telSalvo) atualizarFB(job.fbKey, { telefone: job.tel });
                             concluirJob(job, dReuso, itens[0].textoCompleto || '');
                             return;
                         }
@@ -2275,6 +2522,7 @@ reguaTextoPrompt()+'\n'+
             var dAposta = resultadoApostasReprovado('', job.nome || nomeNoTexto(textoParaApostas), apostas);
             dAposta.nomeCliente = String(dAposta.nomeCompleto || 'Cliente').split(' ')[0];
             dAposta.casasJogo = apostas.casas || [];
+            dAposta.telefone = job.tel || '';
             prepararDados(dAposta);
             checar(job);
             job.fbKey = await salvarFB(dAposta.nomeCompleto, '', apostas.detalhe, dAposta, cpf);
@@ -2286,10 +2534,13 @@ reguaTextoPrompt()+'\n'+
         // ── PASSO 2: payload hibrido (imagens + texto digital) ──
         andamento(job, 'Preparando dados...', 32, 2);
         var imagensParaIA = [];
-        var textosDigitais = [];
+        var arquivosDigitais = [], posArq = {};   // paginas de texto agrupadas por PDF
         job.docsId.forEach(function (d) { if (d.base64) imagensParaIA.push(d); });
         job.docsRend.forEach(function (d) {
-            if (d.ehDigital && d.textos && d.textos.length) textosDigitais = textosDigitais.concat(d.textos);
+            if (d.ehDigital && d.textos && d.textos.length) {
+                if (posArq[d.aid] === undefined) { posArq[d.aid] = arquivosDigitais.length; arquivosDigitais.push([]); }
+                arquivosDigitais[posArq[d.aid]] = arquivosDigitais[posArq[d.aid]].concat(d.textos);
+            }
             else if (d.base64) imagensParaIA.push(d);
         });
         if (imagensParaIA.length > MAX_IMGS_AI) {
@@ -2298,9 +2549,10 @@ reguaTextoPrompt()+'\n'+
             imagensParaIA = sampled;
         }
         var textoDigitalStr = '';
-        if (textosDigitais.length) {
-            textoDigitalStr = '=== EXTRATO BANCARIO DIGITAL (texto extraido do PDF) ===\n' +
-                textosDigitais.join('\n--- PROXIMA PAGINA ---\n').substring(0, 30000);
+        if (arquivosDigitais.length) {
+            var montado = montarTextoDigital(arquivosDigitais);
+            if (montado.texto) textoDigitalStr = '=== EXTRATO BANCARIO DIGITAL (texto extraido do PDF) ===\n' + montado.texto;
+            if (montado.cortado) console.warn('[CreditoScan] extrato maior que o limite: parte do texto ficou de fora');
         }
         if (imagensParaIA.length === 0 && !textoDigitalStr) {
             throw new Error('Nenhum documento legível. Envie fotos mais nítidas ou o PDF original do banco.');
@@ -2329,7 +2581,7 @@ reguaTextoPrompt()+'\n'+
         var resp;
         try {
             if (temSoTexto) {
-                var textoParaAnalise = '=== EXTRATO ===\n' + textoDigitalStr.substring(0, 25000) + '\n\n';
+                var textoParaAnalise = '=== EXTRATO ===\n' + textoDigitalStr + '\n\n';
                 resp = await aiCallTexto(textoParaAnalise + buildPrompt(rendaPre));
             } else {
                 resp = await aiCallVision(imagensParaIA, textoDigitalStr, buildPrompt(null));
@@ -2344,6 +2596,7 @@ reguaTextoPrompt()+'\n'+
         var d = extrair(resp);
         if (/^ERRO/.test(d.risco || '')) throw new Error('A IA devolveu uma resposta inválida. Tente de novo.');
         d._produto = '';
+        d.telefone = job.tel || '';
         d.sinaisCompromisso = detectarSinaisCompromisso(textoParaApostas);   // confere a lista de compromissos da IA com o texto do extrato
 
         finalizarPontuacao(d, rendaPre);   // renda (media/mediana/abatimentos) + soma da regua, no codigo
@@ -2547,6 +2800,8 @@ reguaTextoPrompt()+'\n'+
                 '<span class="cs-lab r">' + Math.round(tetoPct(d.nota) * 100) + '% da<br>renda</span></div>';
         }
 
+        h += cartaoTelefone(job);
+
         // Calcular aparelho (recolhido)
         if (!reprov) {
             var cc = job.calc;
@@ -2615,7 +2870,37 @@ reguaTextoPrompt()+'\n'+
     function cartaoMensagem(msg) {
         return '<div class="cs-wpp"><span class="cs-wpp-lbl"><i class="bi bi-whatsapp"></i> Mensagem para o cliente</span>' +
             '<div class="cs-wpp-txt" id="cs_wpp_txt" data-act="copiar">' + blocoTexto(msg) + '</div>' +
-            '<button type="button" class="cs-btn cs-btn-ghost" id="cs_wpp_btn" data-act="copiar"><i class="bi bi-clipboard"></i> Toque para copiar</button></div>';
+            '<div class="cs-ap-btns"><button type="button" class="cs-btn cs-btn-ghost" id="cs_wpp_btn" data-act="copiar"><i class="bi bi-clipboard"></i> Copiar</button>' +
+            '<button type="button" class="cs-btn cs-btn-pri" id="cs_wpp_send" data-act="wpp-msg"><i class="bi bi-whatsapp"></i> Enviar no WhatsApp</button></div></div>';
+    }
+
+    // ── WhatsApp do cliente (opcional) ──
+    // Mascara enquanto digita e avisa (sem bloquear) quando o numero nao esta completo
+    function mascararTelefone(inp, idDica) {
+        var dig = String(inp.value || '').replace(/\D/g, '');
+        if (dig.length >= 12 && dig.indexOf('55') === 0) dig = dig.slice(2);   // colou +55...
+        inp.value = formatarTelefone(dig.slice(0, 11));
+        var dica = el(idDica); if (!dica) return;
+        var n = normalizarTelefone(inp.value);
+        dica.textContent = !dig.length ? 'Com o número, os botões de WhatsApp abrem direto na conversa do cliente.' :
+            n ? 'Os botões de WhatsApp vão abrir a conversa com ' + formatarTelefone(n) + '.' :
+            'Número incompleto: o WhatsApp vai abrir sem destinatário e você escolhe o contato.';
+        dica.style.color = dig.length && !n ? 'var(--cs-warn)' : '';
+    }
+
+    // Digitou/alterou o numero na tela de resultado: vale para os botoes e fica salvo no registro
+    function salvarTelefoneResultado(valor) {
+        var job = _view; if (!job) return;
+        var n = normalizarTelefone(valor);
+        var antes = job.tel || '';
+        job.tel = n;
+        if (n !== antes && job.fbKey) atualizarFB(job.fbKey, { telefone: n || null });
+    }
+
+    function cartaoTelefone(job) {
+        return '<div class="cs-card cs-tel-res"><div class="cs-tel-row"><i class="bi bi-whatsapp"></i>' +
+            '<input id="cs_tel_res" class="cs-in" type="tel" inputmode="tel" autocomplete="off" maxlength="24" placeholder="WhatsApp do cliente (opcional)" aria-label="WhatsApp do cliente" value="' + esc(formatarTelefone(job.tel)) + '"></div>' +
+            '<div class="cs-hint" id="cs_tel_res_hint">' + (job.tel ? 'Os botões de WhatsApp vão abrir a conversa com ' + esc(formatarTelefone(job.tel)) + '.' : 'Com o número, os botões de WhatsApp abrem direto na conversa do cliente.') + '</div></div>';
     }
 
     function textoParaCopiar() {
@@ -2754,7 +3039,7 @@ reguaTextoPrompt()+'\n'+
         var d = dadosDoRegistro(it);
         abrirResultado({
             id: 'h' + it.id, estado: 'pronta', ts: it.ts, nome: String(it.nomeCliente || ''),
-            dados: d, texto: it.textoCompleto || '', fbKey: it.id, criadoAqui: false,
+            dados: d, texto: it.textoCompleto || '', fbKey: it.id, criadoAqui: false, tel: normalizarTelefone(it.telefone),
             podeSalvarCalc: !it.produto, visto: true, calc: { aberto: false, produto: '', valor: 0 }
         });
     }
@@ -2763,6 +3048,7 @@ reguaTextoPrompt()+'\n'+
         var b = e.target.closest('[data-act]'); if (!b) return;
         var a = b.getAttribute('data-act'), job = _view; if (!job) return;
         if (a === 'copiar') copiarTexto(textoParaCopiar(), el('cs_wpp_btn'));
+        else if (a === 'wpp-msg') { var mt = textoParaCopiar(); if (mt) window.open(linkWhatsapp(job.tel, mt), '_blank'); }
         else if (a === 'ap-toggle') apToggleAba(job);
         else if (a === 'ap-sel') apToggleSel(job, b.getAttribute('data-id'));
         else if (a === 'ap-copy') copiarTexto(apMensagemAtual(job), b);
@@ -3057,6 +3343,13 @@ reguaTextoPrompt()+'\n'+
         '.cs-ap-par{flex:none;text-align:right;font-weight:700;font-size:14px;color:var(--primary-color)}',
         '.cs-ap-note{display:flex;gap:10px;align-items:center;font-size:12px;line-height:1.45;color:var(--text-secondary);background:var(--input-bg);border-radius:12px;padding:10px 12px}',
         '.cs-ap-note i{font-size:15px;flex:none}',
+        '.cs-tel-form{display:flex;flex-direction:column;gap:10px}',
+        '.cs-up-h i.bi-whatsapp:first-child{color:#25d366}',
+        '.cs-tel-res{display:flex;flex-direction:column;gap:8px}',
+        '.cs-tel-res .cs-tel-row{display:flex;align-items:center;gap:10px}',
+        '.cs-tel-res .cs-tel-row>i{font-size:1.3rem;color:#25d366}',
+        '.cs-tel-res .cs-tel-row .cs-in{flex:1;min-width:0}',
+        '.cs-tel-res .cs-hint{text-align:left}',
         '.cs-ap-btns{display:flex;gap:8px}.cs-ap-btns .cs-btn{flex:1;white-space:nowrap}',
         '.cs-ap-btns .cs-btn:disabled{opacity:.45}',
         '.cs-ap-foot{text-align:center;font-size:11.5px;color:var(--text-secondary)}',
@@ -3099,6 +3392,11 @@ reguaTextoPrompt()+'\n'+
                     '<div class="cs-files" id="cs_docs_rend"></div>'+
                     '<div class="cs-ubtns"><button type="button" class="cs-ubtn" id="cs_rend_cam"><i class="bi bi-camera"></i> Câmera</button><button type="button" class="cs-ubtn" id="cs_rend_gal"><i class="bi bi-image"></i> Galeria</button><button type="button" class="cs-ubtn" id="cs_rend_pdf"><i class="bi bi-file-earmark-pdf"></i> PDF</button></div>'+
                     '<div class="cs-hint" style="margin-top:-2px">Extratos e holerites. PDF digital é detectado automaticamente.</div>'+
+                '</div>'+
+                '<div class="cs-card cs-tel-form">'+
+                    '<div class="cs-up-h"><i class="bi bi-whatsapp"></i><b>WhatsApp do cliente</b><small>Opcional</small></div>'+
+                    '<input id="cs_tel" class="cs-in" type="tel" inputmode="tel" autocomplete="off" maxlength="24" placeholder="(62) 99999-9999" aria-label="WhatsApp do cliente">'+
+                    '<div class="cs-hint" id="cs_tel_hint" style="margin-top:-2px">Com o número, os botões de WhatsApp abrem direto na conversa do cliente.</div>'+
                 '</div>'+
                 '<div class="cs-up-status cs-h" id="cs_up_status"><i class="bi bi-arrow-repeat"></i><span id="cs_up_status_txt">Lendo arquivos...</span></div>'+
                 '<div style="display:flex;flex-direction:column;gap:8px">'+
@@ -3169,6 +3467,13 @@ reguaTextoPrompt()+'\n'+
                 '<button type="button" class="cs-btn cs-btn-pri" id="cs_cfg_save">Salvar</button>'+
                 '<div id="cs_cfg_status" style="font-size:12px;text-align:center;min-height:18px"></div>'+
                 '<div class="cs-cfg-info"><div class="cs-lab" style="margin-bottom:6px">Status da chave</div><div id="cs_cfg_info" style="font-size:13px">Verificando...</div></div>'+
+                '<div class="cs-cfg-info" style="display:flex;flex-direction:column;gap:8px">'+
+                    '<div class="cs-up-h"><i class="bi bi-cloud-check-fill"></i><b>Servidor (análise em segundo plano)</b></div>'+
+                    '<p class="cs-hint" style="text-align:left">Com a senha do servidor, a IA roda lá e a análise continua mesmo se você sair do app. Deixe vazio para rodar direto no celular.</p>'+
+                    '<input type="password" class="cs-in" id="cs_cfg_srv" placeholder="Senha do servidor (APP_TOKEN)" style="font-size:13px" autocomplete="off">'+
+                    '<button type="button" class="cs-btn cs-btn-sec" id="cs_cfg_srv_save">Testar e salvar</button>'+
+                    '<div id="cs_cfg_srv_status" style="font-size:12px;text-align:center;min-height:18px"></div>'+
+                '</div>'+
             '</div>'+
         '</div>');
     }
@@ -3191,6 +3496,7 @@ reguaTextoPrompt()+'\n'+
         on('cs_rend_gal','click',function(){uploadRend('image/*,application/pdf');});
         on('cs_rend_pdf','click',function(){uploadRend('image/*,application/pdf');});
         on('cs_btn_analisar','click',iniciarAnalise);
+        on('cs_tel','input',function(e){mascararTelefone(e.target,'cs_tel_hint');});
         on('cs_btn_novaform','click',function(){_formAberto=true;aplicarForm();});
         on('cs_form','click',function(e){var x=e.target.closest('.cs-file-x');if(x)removerArquivo(x.getAttribute('data-t'),x.getAttribute('data-aid'));});
         on('cs_lista','click',acaoLista);
@@ -3198,8 +3504,8 @@ reguaTextoPrompt()+'\n'+
         var rb=el('cs_res_body');
         if(rb){
             rb.addEventListener('click',acaoResultado);
-            rb.addEventListener('input',function(e){if(e.target.id==='cs_en')atualizarSim(false);});
-            rb.addEventListener('change',function(e){if(e.target.id==='cs_en'||e.target.id==='cs_np'||e.target.id==='cs_tx')atualizarSim(true);});
+            rb.addEventListener('input',function(e){if(e.target.id==='cs_en')atualizarSim(false);else if(e.target.id==='cs_tel_res')mascararTelefone(e.target,'cs_tel_res_hint');});
+            rb.addEventListener('change',function(e){if(e.target.id==='cs_tel_res')salvarTelefoneResultado(e.target.value);else if(e.target.id==='cs_en'||e.target.id==='cs_np'||e.target.id==='cs_tx')atualizarSim(true);});
             rb.addEventListener('focusout',function(e){if(e.target.id==='cs_en'||e.target.id==='cs_tx')atualizarSim(true);});
             rb.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.target.id==='cs_c_val'||e.target.id==='cs_c_prod')){e.preventDefault();e.target.blur();calcular();}});
         }
@@ -3207,6 +3513,8 @@ reguaTextoPrompt()+'\n'+
         on('cs_cfg_open','click',abrirConfig);
         on('cs_cfg_close','click',function(){el('cs_cfg_ov')&&el('cs_cfg_ov').classList.remove('active');});
         on('cs_cfg_save','click',salvarConfig);
+        on('cs_cfg_srv_save','click',salvarSenhaServidor);
+        on('cs_cfg_open','click',function(){var i=el('cs_cfg_srv'),st=el('cs_cfg_srv_status');if(i)i.value=safeGet(SRV_TOKEN_LS)||'';if(st)st.textContent='';});
         // Menu inferior do app: Inicio, Taxas, Docs e Mais fecham o CreditoScan (as analises seguem rodando)
         var nav=el('ctwBottomNav');
         if(nav)nav.addEventListener('click',function(e){var b=e.target.closest('.ui-nav-it');if(b)fecharTudo();},true);
@@ -3443,7 +3751,7 @@ reguaTextoPrompt()+'\n'+
     }
     function apAbrirWpp(job) {
         var msg = apMensagemAtual(job); if (!msg) return;
-        window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+        window.open(linkWhatsapp(job.tel, msg), '_blank');
     }
 
     // ── Lista colada do WhatsApp ──
