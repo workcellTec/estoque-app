@@ -1,18 +1,21 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-218'; // Lixeira do Orçamento em trash_bookips + PDF do contrato em peso normal
+const CACHE = 'ctw-228'; // CreditoScan: Calcular aparelho em primeiro e aba fechada de aparelhos liberados abaixo
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
     './', './index.html', './app.js', './style.css', './firebase-config.js',
-    './StockCount.js', './repairs.js', './notifications.js', './Favorites.js', './Bookip.js',
+    './StockCount.js', './repairs.js', './notifications.js', './Bookip.js',
     './reposicao.js', './creditoscan.js', './fecharVenda.js', './ambilight.js',
-    './icon-192.png', './icon-512.png', './icon-1024.png', './badge.png'
+    './icon-192.png', './icon-512.png', './icon-1024.png', './badge.png',
+    './ctw-ui.js?v=3', './fuse.min.js?v=6.6.2', './bootstrap-lite.css?v=1', './bootstrap-icons-lite.css?v=1',
+    './fonts/bootstrap-icons.woff2', './fonts/poppins-300.woff2', './fonts/poppins-400.woff2',
+    './fonts/poppins-500.woff2', './fonts/poppins-600.woff2', './fonts/poppins-700.woff2'
 ];
 
-// Bibliotecas de CDN com versão no endereço (nunca mudam): ficam em cache e abrem na hora.
-const EH_LIB_VERSIONADA = /^https:\/\/(cdn\.jsdelivr\.net\/npm\/[^/]+@\d|www\.gstatic\.com\/firebasejs\/\d|cdnjs\.cloudflare\.com\/ajax\/libs\/|fonts\.(googleapis|gstatic)\.com\/)/;
+// Bibliotecas externas com versão no endereço (Firebase SDK e bibliotecas de PDF): ficam em cache e abrem na hora.
+const EH_LIB_VERSIONADA = /^https:\/\/(www\.gstatic\.com\/firebasejs\/\d|cdnjs\.cloudflare\.com\/ajax\/libs\/)/;
 
 // Tempo máximo esperando a rede por um arquivo do app antes de usar a cópia guardada
 // (em internet ruim o app ficava "pensando" até o navegador desistir).
