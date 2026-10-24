@@ -1993,7 +1993,7 @@ tr, td, .card, .list-group-item {
 
 /* Botões da interface nova: tira o visual padrão (as peças abaixo dão o visual) */
 .ui-rb, .ui-go, .ui-pill, .ui-tile, .ui-tools button, .ui-mrow, .ui-srow, .ui-seg button, .ui-sw,
-.ui-nav button, .ui-aviso, .ui-avatar, .ui-dim {
+.ui-nav button, .ui-aviso, .ui-avatar, .ui-dim, .ui-clear {
     font: inherit; color: inherit; border: 0; background: none; padding: 0; text-align: left; cursor: pointer;
     -webkit-tap-highlight-color: transparent;
 }
@@ -2016,8 +2016,6 @@ tr, td, .card, .list-group-item {
 .ui-bub { width: 48px; height: 48px; border-radius: 16px; background: var(--ui-icbg); color: var(--ui-ic); display: flex; align-items: center; justify-content: center; flex: none; position: relative; }
 .ui-bub-sm { width: 40px; height: 40px; border-radius: 13px; }
 .ui-badge { position: absolute; top: -7px; right: -13px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 9px; background: #E5484D; color: #fff; font-size: 10px; line-height: 1; font-weight: 700; display: flex; align-items: center; justify-content: center; border: 2px solid var(--card-bg); box-sizing: content-box; }
-.ui-tag { font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: 999px; background: var(--ui-icbg); color: var(--ui-ic); white-space: nowrap; }
-[data-theme="dark"] .ui-tag, :root:not([data-theme="light"]) .ui-tag { color: var(--text-color); }
 .ui-mini { font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 999px; background: var(--ui-icbg); color: var(--ui-tx2); border: none; white-space: nowrap; flex: none; }
 .ui-mini:active { opacity: .7; }
 
@@ -2125,6 +2123,10 @@ html.ctw-leve .ui-nav { background: var(--card-bg); -webkit-backdrop-filter: non
 html.ctw-leve .ui-dim, html.ctw-leve .ui-sheet { transition: none; }
 .ui-grab { width: 40px; height: 4px; border-radius: 2px; background: var(--ui-track); margin: 0 auto 14px; }
 .ui-sheet-title { font-size: 18px; font-weight: 650; margin: 0 4px 14px; color: var(--text-color); }
+.ui-sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ui-sheet-head .ui-sheet-title { flex: 1; min-width: 0; }
+.ui-clear { font-size: 13px; font-weight: 600; padding: 7px 14px; margin: -2px 4px 0 0; border-radius: 999px; background: var(--ui-icbg); color: var(--text-color); white-space: nowrap; }
+.ui-clear[hidden] { display: none; }
 .ui-srow { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 20px; background: var(--secondary-color); margin-bottom: 10px; width: 100%; color: var(--text-color); }
 .ui-srow b { font-size: 15px; font-weight: 600; display: block; }
 .ui-srow small { font-size: 12px; color: var(--ui-tx3); display: block; }

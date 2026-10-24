@@ -12367,19 +12367,50 @@ window.updateNotificationUI  = updateNotificationUI;
     };
 
     // ── Alertas ──────────────────────────────────────────────
-    // Alertas que valem agora: respeita as preferências de Notificações (aniversários, consertos)
+    function textoPuro(html) {
+        var d = document.createElement('div');
+        d.innerHTML = html || '';
+        return d.textContent.trim().replace(/^[^\p{L}\p{N}]+/u, '');
+    }
+
+    // Alertas "limpos" no aparelho: valem só no dia em que foram limpos (amanhã o que ainda estiver valendo volta)
+    var CHAVE_LIMPOS = 'ctwAlertasLimpos';
+    var limpos = null;
+
+    function hojeLocal() {
+        var d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    // Identifica o alerta: aniversário e conserto têm id próprio; o aviso da loja é pelo texto.
+    // Conserto "prazo próximo" que vira "vencido" é outro alerta (volta a aparecer mesmo se o primeiro foi limpo).
+    function chaveAlerta(n) {
+        if (!n.notificationId) return 'aviso_' + textoPuro(n.message);
+        return String(n.notificationId) + (/^repair_deadline_/.test(n.notificationId) && /VENCIDO/i.test(n.message || '') ? '_vencido' : '');
+    }
+
+    function chavesLimpas() {
+        if (!limpos) { try { limpos = JSON.parse(localStorage.getItem(CHAVE_LIMPOS) || 'null'); } catch (e) { limpos = null; } }
+        if (!limpos || limpos.dia !== hojeLocal() || !Array.isArray(limpos.chaves)) limpos = { dia: hojeLocal(), chaves: [] };
+        return limpos.chaves;
+    }
+
+    // Alertas que valem agora: respeita as preferências de Notificações (aniversários, consertos) e os já limpos
     window.ctwAlertasAtuais = function() {
         var todas = (window._currentNotifications || []).slice();
         (window._ctwAniversariosHoje || []).forEach(function(b) {
             if (!todas.some(function(t) { return t.notificationId === b.notificationId; })) todas.unshift(b);
         });
-        return typeof window.filterNotifsByPref === 'function' ? window.filterNotifsByPref(todas) : todas;
+        var visiveis = typeof window.filterNotifsByPref === 'function' ? window.filterNotifsByPref(todas) : todas;
+        var limpas = chavesLimpas();
+        return visiveis.filter(function(n) { return limpas.indexOf(chaveAlerta(n)) < 0; });
     };
 
-    function textoPuro(html) {
-        var d = document.createElement('div');
-        d.innerHTML = html || '';
-        return d.textContent.trim().replace(/^[^\p{L}\p{N}]+/u, '');
+    function limparAlertas() {
+        var limpas = chavesLimpas();
+        window.ctwAlertasAtuais().forEach(function(n) { limpas.push(chaveAlerta(n)); });
+        try { localStorage.setItem(CHAVE_LIMPOS, JSON.stringify(limpos)); } catch (e) {}
+        window.ctwAtualizarAlertas();
     }
 
     // Tipo, título e texto de cada alerta (mesmo texto na tela inicial e na folha)
@@ -12464,21 +12495,15 @@ window.updateNotificationUI  = updateNotificationUI;
         });
     }
 
-    // Sino da Início, selo do "Mais", contagem na tela Mais, avisos do Início e folha de Alertas
+    // Sino da Início (único lugar de alertas além dos avisos do Início), botão Limpar e folha de Alertas
     window.ctwAtualizarAlertas = function() {
         var alertas = window.ctwAlertasAtuais();
         var total = alertas.length;
-        var texto = total > 9 ? '9+' : String(total);
 
         var bell = $('ctwTopBell');
         if (bell) bell.setAttribute('aria-label', total ? 'Alertas, ' + total + (total === 1 ? ' novo' : ' novos') : 'Alertas');
         setVisivel($('ctwTopBellDot'), total > 0);
-
-        var badge = $('ctwNavMaisBadge');
-        if (badge) { badge.textContent = texto; badge.style.display = total > 0 ? 'flex' : 'none'; }
-
-        var cnt = $('ctwSheetAlertasCount');
-        if (cnt) { cnt.textContent = String(total); cnt.hidden = total === 0; }
+        setVisivel($('ctwAlertasLimpar'), total > 0);
 
         desenharAvisosDoInicio(alertas);
         desenharFolhaAlertas(alertas);
@@ -12693,6 +12718,8 @@ window.updateNotificationUI  = updateNotificationUI;
         if (av) av.addEventListener('click', function() { irParaAba('mais'); });
         var sino = $('ctwTopBell');
         if (sino) sino.addEventListener('click', abrirAlertas);
+        var limpar = $('ctwAlertasLimpar');
+        if (limpar) limpar.addEventListener('click', limparAlertas);
         var tg = $('ctwGoGarantia');
         if (tg) tg.addEventListener('click', function() { window.ctwAbrirDoc('garantia'); });
         var tc = $('goToContract');
@@ -12730,8 +12757,6 @@ window.updateNotificationUI  = updateNotificationUI;
         }, true);
 
         // Tela Mais
-        var linhaAlertas = $('ctwSheetAlertas');
-        if (linhaAlertas) linhaAlertas.addEventListener('click', abrirAlertas);
         document.querySelectorAll('[data-theme-btn]').forEach(function(b) {
             b.addEventListener('click', function() { definirTema(b.getAttribute('data-theme-btn')); });
         });
