@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-231'; // Alertas só no sino com botão Limpar; CreditoScan: compromissos listados e conferidos no código
+const CACHE = 'ctw-239'; // Sem luz verde no fundo (a barra de status volta a combinar com a tela); teste do servidor mostra a resposta do Supabase
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
@@ -9,7 +9,7 @@ const ARQUIVOS_DO_APP = [
     './StockCount.js', './repairs.js', './notifications.js', './Bookip.js',
     './reposicao.js', './creditoscan.js', './fecharVenda.js', './ambilight.js',
     './icon-192.png', './icon-512.png', './icon-1024.png', './badge.png',
-    './ctw-ui.js?v=3', './fuse.min.js?v=6.6.2', './bootstrap-lite.css?v=1', './bootstrap-icons-lite.css?v=1',
+    './ctw-ui.js?v=4', './fuse.min.js?v=6.6.2', './bootstrap-lite.css?v=1', './bootstrap-icons-lite.css?v=1',
     './fonts/bootstrap-icons.woff2', './fonts/poppins-300.woff2', './fonts/poppins-400.woff2',
     './fonts/poppins-500.woff2', './fonts/poppins-600.woff2', './fonts/poppins-700.woff2'
 ];

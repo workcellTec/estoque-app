@@ -28,14 +28,14 @@
     <title>Central Workcell</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" id="status-bar-color" content="#0E0E0F"/>
+    <meta name="theme-color" id="status-bar-color" content="#F3F7F5"/>
 
     <!-- Tema: decidido ANTES da primeira pintura. Fundo e cor da barra de status já nascem iguais ao tema escolhido
          (sem piscar escuro e sem faixa de outra cor no topo). Mesmos valores de --tertiary-color em style.css. -->
     <script>
         (function () {
-            var tema = 'dark';
-            try { tema = localStorage.getItem('ctwTheme') === 'light' ? 'light' : 'dark'; } catch (e) {}
+            var tema = 'light';
+            try { tema = localStorage.getItem('ctwTheme') === 'dark' ? 'dark' : 'light'; } catch (e) {}
             document.documentElement.dataset.theme = tema;
             var cor = tema === 'light' ? '#F3F7F5' : '#0E0E0F';
             document.documentElement.style.backgroundColor = cor;
@@ -52,11 +52,11 @@
         body {
             margin: 0;
             font-family: 'Poppins', system-ui, sans-serif;
-            background-color: #0E0E0F;
-            color: #EEEEEF;
+            background-color: #F3F7F5;
+            color: #10261F;
             min-height: 100%;
         }
-        html[data-theme="light"] body { background-color: #F3F7F5; color: #10261F; }
+        html[data-theme="dark"] body { background-color: #0E0E0F; color: #EEEEEF; }
     </style>
 
         <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png">
@@ -76,7 +76,7 @@
          para a 1ª pintura, mas funciona igual em qualquer aparelho. -->
     <link href="bootstrap-icons-lite.css?v=1" rel="stylesheet"/>
     <link href="bootstrap-lite.css?v=1" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=114">
+    <link rel="stylesheet" href="style.css?v=117">
 
 
 
@@ -1480,8 +1480,8 @@
             "description": "Calculadora de taxas e gerador de contratos para facilitar suas vendas.",
             "start_url": ".",
             "display": "standalone",
-            "background_color": "#0E0E0F",
-            "theme_color": "#0E0E0F",
+            "background_color": "#F3F7F5",
+            "theme_color": "#F3F7F5",
             "orientation": "portrait-primary",
             "icons": [
                 { "src": "icon-192.png",  "type": "image/png", "sizes": "192x192",  "purpose": "any maskable" },
@@ -1497,8 +1497,8 @@
 
 
 
-<script src="ctw-ui.js?v=3" defer></script>
-<script src="app.js?v=1011" type="module" defer></script>
+<script src="ctw-ui.js?v=4" defer></script>
+<script src="app.js?v=1018" type="module" defer></script>
 <script>
 window.addEventListener('load', function() {
     var s = document.createElement('script');
@@ -1585,6 +1585,8 @@ window.addEventListener('load', function() {
     // Devolve true se fechou alguma tela
     function tratarVoltar() {
         // === NIVEL 0: folhas ("Criar novo", "Alertas") fecham antes de qualquer tela ===
+        if (typeof window._bdVoltar === 'function' && window._bdVoltar()) return true;
+        if (typeof window.ctwFecharListaSheet === 'function' && window.ctwFecharListaSheet()) return true;
         if (typeof window.ctwFecharFolhas === 'function' && window.ctwFecharFolhas()) return true;
 
         // === NIVEL 0: CreditoScan (camadas próprias: resultado, histórico, configurações) ===
@@ -1739,7 +1741,7 @@ window.addEventListener('load', function() {
             <span class="ui-grow">Sair</span>
         </button>
     </div>
-    <div class="ui-versao" id="ctwVersaoApp">Central Workcell · versão ctw-231</div>
+    <div class="ui-versao" id="ctwVersaoApp">Central Workcell · versão ctw-239</div>
 </div>
 
 <!-- ═══════════════════════════════════════════════
@@ -2490,131 +2492,68 @@ window.addEventListener('load', function() {
 ═══════════════════════════════════════ -->
 
 <!-- PICKER PRINCIPAL -->
-<div id="ctwBirthdayPicker" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.75);align-items:flex-end;justify-content:center;">
-    <div style="width:100%;max-width:480px;background:var(--bg-color,#0b1325);border:1px solid var(--glass-border);border-bottom:none;border-radius:22px 22px 0 0;padding:0 0 28px;animation:dtPickerUp .28s cubic-bezier(.34,1.2,.64,1) both;">
-        <div style="display:flex;justify-content:center;padding:10px 0 4px;">
-            <div style="width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.12);"></div>
-        </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 20px 14px;">
-            <span style="font-weight:700;font-size:1rem;color:var(--text-color);">🎂 Data de Aniversário</span>
-            <button onclick="window._fecharBirthdayPicker()" style="background:none;border:none;color:var(--text-secondary);font-size:1.2rem;cursor:pointer;padding:4px;">✕</button>
+<div id="ctwBirthdayPicker" style="display:none;">
+    <div id="bdSheet">
+        <div class="bd-cab">
+            <span>🎂 Data de Aniversário</span>
+            <button type="button" class="bd-x" onclick="window._fecharBirthdayPicker()" aria-label="Fechar">✕</button>
         </div>
 
-        <!-- Linha principal: DIA | MÊS (clicável) | ANO (clicável) -->
-        <div style="display:flex;gap:10px;padding:0 20px 20px;align-items:center;">
+        <!-- Digitar a data (22/12/2000) -->
+        <div class="bd-bloco">
+            <label for="bdTexto" class="bd-col-label">DIGITE A DATA</label>
+            <input id="bdTexto" class="bd-input" type="text" inputmode="numeric" autocomplete="off" maxlength="10" placeholder="DD/MM/AAAA" oninput="window._bdDigitar(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();window._bdConfirmar();}">
+            <div id="bdErro" class="bd-erro" role="alert" hidden></div>
+        </div>
 
-            <!-- DIA — toque abre grade -->
-            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;">
-                <div style="height:36px;"></div>
-                <div id="bdDiaDisplay" class="bd-display-box bd-tappable" style="font-size:1.8rem;width:100%;" onclick="window._bdAbrirGradeDia()">
-                    <span>01</span><i class="bi bi-chevron-down" style="font-size:.65rem;opacity:.5;margin-left:3px;"></i>
-                </div>
-                <div style="height:36px;"></div>
-                <span class="bd-col-label">DIA <span style="opacity:.5;font-size:.55rem;">↓ toque</span></span>
-            </div>
-
-            <!-- MÊS — toque abre grade -->
-            <div style="flex:2;display:flex;flex-direction:column;align-items:center;gap:6px;">
-                <div style="height:36px;"></div>
-                <div id="bdMesDisplay" class="bd-display-box bd-tappable" style="font-size:1.05rem;width:100%;" onclick="window._bdAbrirGradeMes()">
-                    <span>Janeiro</span><i class="bi bi-chevron-down" style="font-size:.65rem;opacity:.5;margin-left:4px;"></i>
-                </div>
-                <div style="height:36px;"></div>
-                <span class="bd-col-label">MÊS <span style="opacity:.5;font-size:.55rem;">↓ toque</span></span>
-            </div>
-
-            <!-- ANO — toque abre grade -->
-            <div style="flex:1.3;display:flex;flex-direction:column;align-items:center;gap:6px;">
-                <div style="height:36px;"></div>
-                <div id="bdAnoDisplay" class="bd-display-box bd-tappable" style="font-size:1.35rem;width:100%;" onclick="window._bdAbrirGradeAno()">
-                    <span>2000</span><i class="bi bi-chevron-down" style="font-size:.65rem;opacity:.5;margin-left:2px;"></i>
-                </div>
-                <div style="height:36px;"></div>
-                <span class="bd-col-label">ANO <span style="opacity:.5;font-size:.55rem;">↓ toque</span></span>
+        <!-- Ou escolher: dia, mês e ano numa roda só (rola cada coluna, como o seletor nativo) -->
+        <div class="bd-roda" id="bdRoda" role="group" aria-label="Escolher dia, mês e ano">
+            <div class="bd-roda-cab"><span>DIA</span><span>MÊS</span><span>ANO</span></div>
+            <div class="bd-roda-corpo">
+                <div class="bd-faixa" aria-hidden="true"></div>
+                <div class="bd-cols" id="bdColDia" data-k="dia"></div>
+                <div class="bd-cols" id="bdColMes" data-k="mes"></div>
+                <div class="bd-cols" id="bdColAno" data-k="ano"></div>
             </div>
         </div>
 
-        <!-- Botões -->
-        <div style="display:flex;gap:10px;padding:0 20px;">
-            <button onclick="window._bdLimpar()" style="flex:1;padding:12px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid var(--glass-border);color:var(--text-secondary);font-weight:600;font-size:.85rem;cursor:pointer;">🗑️ Limpar</button>
-            <button onclick="window._bdConfirmar()" style="flex:2;padding:12px;border-radius:12px;background:var(--primary-color);border:none;color:var(--on-primary);font-weight:700;font-size:.9rem;cursor:pointer;">✓ Confirmar</button>
+        <div class="bd-btns">
+            <button type="button" class="bd-b-lim" onclick="window._bdLimpar()">🗑️ Limpar</button>
+            <button type="button" class="bd-b-ok" onclick="window._bdConfirmar()">✓ Confirmar</button>
         </div>
-    </div>
-</div>
-
-<!-- GRADE DE DIAS -->
-<div id="ctwBdDiaGrid" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.6);align-items:center;justify-content:center;">
-    <div style="width:calc(100% - 40px);max-width:380px;background:var(--bg-color,#0b1325);border:1px solid var(--glass-border);border-radius:20px;padding:20px;animation:dtPickerUp .2s ease both;">
-        <div style="font-weight:700;font-size:.95rem;color:var(--text-color);margin-bottom:14px;text-align:center;">Selecione o dia</div>
-        <div id="bdDiaGridItems" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;"></div>
-        <button onclick="document.getElementById('ctwBdDiaGrid').style.display='none'" style="width:100%;margin-top:14px;padding:10px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--glass-border);color:var(--text-secondary);font-weight:600;cursor:pointer;">Cancelar</button>
-    </div>
-</div>
-
-<!-- GRADE DE MESES -->
-<div id="ctwBdMesGrid" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.6);align-items:center;justify-content:center;">
-    <div style="width:calc(100% - 40px);max-width:380px;background:var(--bg-color,#0b1325);border:1px solid var(--glass-border);border-radius:20px;padding:20px;animation:dtPickerUp .2s ease both;">
-        <div style="font-weight:700;font-size:.95rem;color:var(--text-color);margin-bottom:14px;text-align:center;">Selecione o mês</div>
-        <div id="bdMesGridItems" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;"></div>
-        <button onclick="document.getElementById('ctwBdMesGrid').style.display='none'" style="width:100%;margin-top:14px;padding:10px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--glass-border);color:var(--text-secondary);font-weight:600;cursor:pointer;">Cancelar</button>
-    </div>
-</div>
-
-<!-- GRADE DE ANOS -->
-<div id="ctwBdAnoGrid" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.6);align-items:center;justify-content:center;">
-    <div style="width:calc(100% - 40px);max-width:380px;background:var(--bg-color,#0b1325);border:1px solid var(--glass-border);border-radius:20px;padding:20px;animation:dtPickerUp .2s ease both;">
-        <div style="font-weight:700;font-size:.95rem;color:var(--text-color);margin-bottom:14px;text-align:center;">Selecione o ano</div>
-        <div id="bdAnoGridItems" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;max-height:52vh;overflow-y:auto;"></div>
-        <button onclick="document.getElementById('ctwBdAnoGrid').style.display='none'" style="width:100%;margin-top:14px;padding:10px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--glass-border);color:var(--text-secondary);font-weight:600;cursor:pointer;">Cancelar</button>
     </div>
 </div>
 
 <style>
-.bd-arrow-btn {
-    background: rgba(255,255,255,.06);
-    border: 1px solid var(--glass-border);
-    color: var(--text-color);
-    border-radius: 10px;
-    width: 100%;
-    height: 36px;
-    cursor: pointer;
-    font-size: 1rem;
-    font-family: 'Poppins', sans-serif;
-}
-.bd-arrow-btn:active { background: rgba(var(--primary-color-rgb),.2); }
-.bd-display-box {
-    font-weight: 700;
-    color: var(--text-color);
-    text-align: center;
-    background: rgba(var(--primary-color-rgb),.1);
-    border: 1px solid rgba(var(--primary-color-rgb),.3);
-    border-radius: 12px;
-    padding: 10px 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.bd-tappable { cursor: pointer; transition: background .15s; }
-.bd-tappable:active { background: rgba(var(--primary-color-rgb),.22); }
-.bd-col-label { font-size:.62rem; color:var(--text-secondary); font-weight:600; letter-spacing:.06em; }
-.bd-grade-btn {
-    padding: 10px 4px;
-    border-radius: 10px;
-    border: 1px solid var(--glass-border);
-    background: rgba(255,255,255,.04);
-    color: var(--text-color);
-    font-size: .82rem;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: 'Poppins', sans-serif;
-    text-align: center;
-    transition: background .12s;
-}
-.bd-grade-btn:active, .bd-grade-btn.bd-sel {
-    background: var(--primary-color) !important;
-    color: #fff !important;
-    border-color: var(--primary-color) !important;
-}
+/* Cartão no TOPO da tela: o teclado do celular sobe de baixo e nunca chega nele */
+#ctwBirthdayPicker { position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,.6); align-items:flex-start; justify-content:center; padding:calc(10px + env(safe-area-inset-top, 0px)) 12px 0; box-sizing:border-box; }
+#bdSheet { width:100%; max-width:440px; max-height:100%; overflow-y:auto; overscroll-behavior:contain; border:1px solid var(--glass-border); border-radius:22px; padding:6px 0 14px; box-sizing:border-box; animation:bdCai .22s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes bdCai { from { opacity:0; transform:translateY(-14px) scale(.98); } to { opacity:1; transform:none; } }
+.bd-cab { display:flex; align-items:center; justify-content:space-between; padding:8px 18px 6px; font-weight:700; font-size:1rem; color:var(--text-color); }
+.bd-x { background:none; border:none; color:var(--text-secondary); font-size:1.15rem; cursor:pointer; padding:4px 6px; }
+.bd-bloco { padding:0 18px; }
+.bd-bloco .bd-col-label { display:block; margin-bottom:4px; }
+.bd-roda { padding:10px 18px 12px; }
+.bd-roda-cab { display:grid; grid-template-columns:1fr 2fr 1.3fr; gap:8px; margin-bottom:4px; }
+.bd-roda-cab span { text-align:center; }
+.bd-roda-cab span, .bd-col-label { font-size:.62rem; color:var(--text-secondary); font-weight:600; letter-spacing:.06em; }
+.bd-roda-corpo { position:relative; display:grid; grid-template-columns:1fr 2fr 1.3fr; gap:8px; height:120px; border-radius:16px; background:rgba(var(--primary-color-rgb),.05); border:1px solid var(--glass-border); overflow:hidden; }
+.bd-faixa { position:absolute; left:0; right:0; top:40px; height:40px; pointer-events:none; background:rgba(var(--primary-color-rgb),.12); border-top:1px solid rgba(var(--primary-color-rgb),.45); border-bottom:1px solid rgba(var(--primary-color-rgb),.45); transition:opacity .2s; }
+.bd-roda.bd-virgem .bd-faixa { opacity:.45; }
+.bd-cols { height:100%; overflow-y:scroll; scroll-snap-type:y mandatory; overscroll-behavior:contain; touch-action:pan-y; scrollbar-width:none; -ms-overflow-style:none; padding:40px 0; box-sizing:border-box; position:relative; z-index:1;
+    -webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 30%, #000 70%, transparent 100%); mask-image:linear-gradient(to bottom, transparent 0, #000 30%, #000 70%, transparent 100%); }
+.bd-cols::-webkit-scrollbar { display:none; width:0; height:0; }
+.bd-item { height:40px; display:flex; align-items:center; justify-content:center; scroll-snap-align:center; scroll-snap-stop:always; font:600 1rem 'Poppins',sans-serif; color:var(--text-secondary); cursor:pointer; user-select:none; -webkit-user-select:none; white-space:nowrap; }
+.bd-item.bd-sel { color:var(--text-color); font-weight:700; font-size:1.15rem; }
+.bd-input { width:100%; box-sizing:border-box; font:700 1.35rem 'Poppins',sans-serif; letter-spacing:.06em; text-align:center; color:var(--text-color); background:rgba(var(--primary-color-rgb),.08); border:1.5px solid rgba(var(--primary-color-rgb),.3); border-radius:12px; padding:8px 10px; outline:none; }
+.bd-input::placeholder { color:var(--text-secondary); opacity:.5; letter-spacing:.04em; font-weight:600; }
+.bd-input:focus { border-color:var(--primary-color); }
+.bd-input.bd-invalido { border-color:#ef6b6b; background:rgba(239,107,107,.08); }
+.bd-erro { color:#ef6b6b; font-size:.76rem; margin-top:4px; text-align:center; }
+.bd-btns { display:flex; gap:10px; padding:0 18px; }
+.bd-btns button { padding:11px; border-radius:12px; font-family:inherit; cursor:pointer; }
+.bd-b-lim { flex:1; background:rgba(255,255,255,.05); border:1px solid var(--glass-border); color:var(--text-secondary); font-weight:600; font-size:.85rem; }
+.bd-b-ok { flex:2; background:var(--primary-color); border:none; color:var(--on-primary); font-weight:700; font-size:.9rem; }
 
 /* ── Galeria de fotos do cadastro no card ── */
 .rep-foto-galeria {
@@ -2638,88 +2577,133 @@ window.addEventListener('load', function() {
 <script>
 (function() {
     var MESES_BD = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-    var MESES_CURTOS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-    var _bd = { dia: 1, mes: 0, ano: 2000 };
+    var _bd = { dia: 1, mes: 0, ano: 2000, tocado: false };   // tocado: o usuario digitou ou escolheu (sem isso nao ha data de verdade)
     var _bdTarget = { inputId: '', btnId: '', labelId: '' };
     function pad(n) { return String(n).padStart(2,'0'); }
 
-    function _bdRender() {
-        document.getElementById('bdDiaDisplay').innerHTML = pad(_bd.dia) + '<i class="bi bi-chevron-down" style="font-size:.65rem;opacity:.5;margin-left:3px;"></i>';
-        document.getElementById('bdMesDisplay').innerHTML = MESES_BD[_bd.mes] + '<i class="bi bi-chevron-down" style="font-size:.65rem;opacity:.5;margin-left:4px;"></i>';
-        document.getElementById('bdAnoDisplay').innerHTML = _bd.ano + '<i class="bi bi-chevron-down" style="font-size:.65rem;opacity:.5;margin-left:2px;"></i>';
+    function _bdMaxDia() { return new Date(_bd.ano, _bd.mes + 1, 0).getDate(); }
+    var ALT = 40;                 // altura de cada linha da roda (igual ao .bd-item)
+    function _bdCol(k) { return document.getElementById(k === 'dia' ? 'bdColDia' : k === 'mes' ? 'bdColMes' : 'bdColAno'); }
+    function _bdAnoAtual() { return new Date().getFullYear(); }
+
+    function _bdMontar() {
+        var anos = '';
+        for (var a = 1900; a <= _bdAnoAtual(); a++) anos += '<div class="bd-item" data-v="' + a + '">' + a + '</div>';
+        _bdCol('ano').innerHTML = anos;
+        _bdCol('mes').innerHTML = MESES_BD.map(function(m, i) { return '<div class="bd-item" data-v="' + i + '">' + m + '</div>'; }).join('');
+        _bdMontarDias();
+    }
+    function _bdMontarDias() {
+        var max = _bdMaxDia(), h = '';
+        if (_bd.dia > max) _bd.dia = max;
+        for (var d = 1; d <= max; d++) h += '<div class="bd-item" data-v="' + d + '">' + pad(d) + '</div>';
+        _bdCol('dia').innerHTML = h;
+    }
+    function _bdIndice(k) { return k === 'dia' ? _bd.dia - 1 : k === 'mes' ? _bd.mes : _bd.ano - 1900; }
+    function _bdMarcar() {
+        ['dia', 'mes', 'ano'].forEach(function(k) {
+            var itens = _bdCol(k).children, idx = _bdIndice(k);
+            for (var i = 0; i < itens.length; i++) itens[i].classList.toggle('bd-sel', i === idx);
+        });
+        document.getElementById('bdRoda').classList.toggle('bd-virgem', !_bd.tocado);
+    }
+    // Leva as 3 colunas ate a data atual (so o codigo mexe; nao conta como escolha do usuario)
+    // Leva uma coluna ate a linha da data atual. Rolagem feita pelo codigo nao conta como escolha:
+    // quando a coluna para na linha que a data ja tem (e o dedo nao tocou nela), nada muda.
+    function _bdPosicionarCol(k) { _bdCol(k).scrollTop = _bdIndice(k) * ALT; }
+    function _bdPosicionar() { ['dia', 'mes', 'ano'].forEach(_bdPosicionarCol); }
+
+    function _bdRender(atualizarTexto, reposicionar) {
+        _bdMarcar();
+        if (reposicionar) _bdPosicionar();
+        // Escolheu na roda: o campo de digitar mostra a mesma data
+        if (atualizarTexto !== false && _bd.tocado) {
+            document.getElementById('bdTexto').value = pad(_bd.dia) + '/' + pad(_bd.mes + 1) + '/' + _bd.ano;
+            _bdMostrarErro('');
+        }
     }
 
+    // Dedo parou numa coluna: le a linha do meio e vira a data
+    function _bdFimRolagem(k) {
+        var col = _bdCol(k), n = col.children.length;
+        var idx = Math.max(0, Math.min(n - 1, Math.round(col.scrollTop / ALT)));
+        var dedo = col._dedo; col._dedo = false;
+        if (idx === _bdIndice(k) && !dedo) return;
+        if (k === 'dia') _bd.dia = idx + 1; else if (k === 'mes') _bd.mes = idx; else _bd.ano = 1900 + idx;
+        _bd.tocado = true;
+        if (k !== 'dia' && _bdCol('dia').children.length !== _bdMaxDia()) {   // mes/ano mudou o tamanho do mes (ex.: fevereiro): refaz os dias
+            _bdMontarDias();
+            _bdRender(true, false); _bdPosicionarCol('dia');
+        } else _bdRender(true, false);
+        var erro = _bdValidarData(_bd.dia, _bd.mes + 1, _bd.ano);
+        if (erro) _bdMostrarErro(erro);
+    }
+
+    function _bdLigarRoda() {
+        ['dia', 'mes', 'ano'].forEach(function(k) {
+            var col = _bdCol(k), t = null;
+            col.addEventListener('scroll', function() {
+                // destaca a linha do meio enquanto rola
+                var idx = Math.max(0, Math.min(col.children.length - 1, Math.round(col.scrollTop / ALT)));
+                for (var i = 0; i < col.children.length; i++) col.children[i].classList.toggle('bd-sel', i === idx);
+                clearTimeout(t); t = setTimeout(function() { _bdFimRolagem(k); }, 120);
+            }, { passive: true });
+            col.addEventListener('pointerdown', function() { col._dedo = true; }, { passive: true });
+            col.addEventListener('click', function(e) {      // toque numa linha: leva ela para o meio
+                var it = e.target.closest('.bd-item');
+                if (!it) return;
+                col.scrollTo({ top: Array.prototype.indexOf.call(col.children, it) * ALT, behavior: 'smooth' });
+            });
+        });
+    }
+
+    function _bdMostrarErro(msg) {
+        var e = document.getElementById('bdErro'), t = document.getElementById('bdTexto');
+        e.textContent = msg; e.hidden = !msg;
+        t.classList.toggle('bd-invalido', !!msg);
+    }
+
+    // '' se a data existe e nao e futura; senao o motivo
+    function _bdValidarData(d, m, a) {
+        var hoje = new Date(), anoAtual = hoje.getFullYear();
+        if (a < 1900 || a > anoAtual) return 'Ano inválido (de 1900 a ' + anoAtual + ').';
+        if (m < 1 || m > 12) return 'Mês inválido (de 01 a 12).';
+        if (d < 1 || d > new Date(a, m, 0).getDate()) return 'Esse mês não tem o dia ' + pad(d) + '.';
+        if (new Date(a, m - 1, d) > hoje) return 'A data não pode ser no futuro.';
+        return '';
+    }
+
+    // Digitando: vai colocando as barras (22122000 -> 22/12/2000) e confere quando completa
+    window._bdDigitar = function(el) {
+        var dig = el.value.replace(/\D/g, '').slice(0, 8);
+        el.value = dig.slice(0, 2) + (dig.length > 2 ? '/' + dig.slice(2, 4) : '') + (dig.length > 4 ? '/' + dig.slice(4) : '');
+        _bdMostrarErro('');
+        if (!dig.length) { _bd.tocado = false; return; }
+        if (dig.length < 8) return;
+        var d = parseInt(dig.slice(0, 2), 10), m = parseInt(dig.slice(2, 4), 10), a = parseInt(dig.slice(4), 10);
+        var erro = _bdValidarData(d, m, a);
+        if (erro) { _bdMostrarErro(erro); return; }
+        _bd.dia = d; _bd.mes = m - 1; _bd.ano = a; _bd.tocado = true;
+        _bdMontarDias();
+        _bdRender(false, true);
+    };
+
     function _bdMaxDia() { return new Date(_bd.ano, _bd.mes + 1, 0).getDate(); }
-
-    // Grade de dias — respeita o mês atual
-    window._bdAbrirGradeDia = function() {
-        var max = _bdMaxDia();
-        var grid = document.getElementById('bdDiaGridItems');
-        var html = '';
-        for (var d = 1; d <= max; d++) {
-            html += '<button class="bd-grade-btn' + (d === _bd.dia ? ' bd-sel' : '') + '" onclick="window._bdSelecionarDia(' + d + ')">' + d + '</button>';
-        }
-        grid.innerHTML = html;
-        document.getElementById('ctwBdDiaGrid').style.display = 'flex';
-    };
-
-    window._bdSelecionarDia = function(d) {
-        _bd.dia = d;
-        _bdRender();
-        document.getElementById('ctwBdDiaGrid').style.display = 'none';
-    };
-
-    // Grade de meses
-    window._bdAbrirGradeMes = function() {
-        var grid = document.getElementById('bdMesGridItems');
-        grid.innerHTML = MESES_CURTOS.map(function(m, i) {
-            return '<button class="bd-grade-btn' + (i === _bd.mes ? ' bd-sel' : '') + '" onclick="window._bdSelecionarMes(' + i + ')">' + m + '</button>';
-        }).join('');
-        document.getElementById('ctwBdMesGrid').style.display = 'flex';
-    };
-
-    window._bdSelecionarMes = function(i) {
-        _bd.mes = i;
-        if (_bd.dia > _bdMaxDia()) _bd.dia = _bdMaxDia();
-        _bdRender();
-        document.getElementById('ctwBdMesGrid').style.display = 'none';
-    };
-
-    // Grade de anos
-    window._bdAbrirGradeAno = function() {
-        var anoAtual = new Date().getFullYear();
-        var grid = document.getElementById('bdAnoGridItems');
-        var html = '';
-        for (var a = anoAtual; a >= 1930; a--) {
-            html += '<button class="bd-grade-btn' + (a === _bd.ano ? ' bd-sel' : '') + '" onclick="window._bdSelecionarAno(' + a + ')">' + a + '</button>';
-        }
-        grid.innerHTML = html;
-        document.getElementById('ctwBdAnoGrid').style.display = 'flex';
-        // Scroll até o ano selecionado
-        setTimeout(function() {
-            var sel = grid.querySelector('.bd-sel');
-            if (sel) sel.scrollIntoView({ block: 'center' });
-        }, 60);
-    };
-
-    window._bdSelecionarAno = function(a) {
-        _bd.ano = a;
-        if (_bd.dia > _bdMaxDia()) _bd.dia = _bdMaxDia();
-        _bdRender();
-        document.getElementById('ctwBdAnoGrid').style.display = 'none';
-    };
 
     window._abrirBirthdayPicker = function(inputId, btnId, labelId) {
         _bdTarget = { inputId: inputId, btnId: btnId, labelId: labelId };
         var val = document.getElementById(inputId) && document.getElementById(inputId).value;
+        document.getElementById('bdTexto').value = '';
+        _bdMostrarErro('');
         if (val) {
             var p = val.split('-');
-            _bd.ano = parseInt(p[0]); _bd.mes = parseInt(p[1]) - 1; _bd.dia = parseInt(p[2]);
+            _bd.ano = parseInt(p[0]); _bd.mes = parseInt(p[1]) - 1; _bd.dia = parseInt(p[2]); _bd.tocado = true;
         } else {
-            _bd.dia = 1; _bd.mes = 0; _bd.ano = 2000;
+            _bd.dia = 1; _bd.mes = 0; _bd.ano = 2000; _bd.tocado = false;
         }
-        _bdRender();
+        _bdMontarDias();
         document.getElementById('ctwBirthdayPicker').style.display = 'flex';
+        _bdRender(true, true);
     };
 
     window._fecharBirthdayPicker = function() {
@@ -2734,6 +2718,15 @@ window.addEventListener('load', function() {
     };
 
     window._bdConfirmar = function() {
+        var txt = document.getElementById('bdTexto').value.trim();
+        if (txt) {
+            var dig = txt.replace(/\D/g, '');
+            if (dig.length !== 8) { _bdMostrarErro('Digite a data completa: DD/MM/AAAA.'); return; }
+            var d = parseInt(dig.slice(0, 2), 10), m = parseInt(dig.slice(2, 4), 10), a = parseInt(dig.slice(4), 10);
+            var erro = _bdValidarData(d, m, a);
+            if (erro) { _bdMostrarErro(erro); return; }
+            _bd.dia = d; _bd.mes = m - 1; _bd.ano = a;
+        } else if (!_bd.tocado) { _bdMostrarErro('Digite a data ou escolha dia, mês e ano.'); return; }
         var iso = _bd.ano + '-' + pad(_bd.mes + 1) + '-' + pad(_bd.dia);
         document.getElementById(_bdTarget.inputId).value = iso;
         document.getElementById(_bdTarget.labelId).textContent =
@@ -2750,6 +2743,16 @@ window.addEventListener('load', function() {
         document.getElementById(labelId).textContent = label;
         document.getElementById(btnId).style.borderColor = 'var(--primary-color)';
     };
+
+    // Botao voltar do celular: fecha o seletor (true se fechou)
+    window._bdVoltar = function() {
+        var pk = document.getElementById('ctwBirthdayPicker');
+        if (pk && pk.style.display !== 'none') { window._fecharBirthdayPicker(); return true; }
+        return false;
+    };
+
+    _bdMontar();
+    _bdLigarRoda();
 
     document.getElementById('ctwBirthdayPicker').addEventListener('click', function(e) {
         if (e.target === this) window._fecharBirthdayPicker();
@@ -3009,7 +3012,7 @@ window.addEventListener('load', function() {
                 sonda.remove();
                 var selo = document.createElement('div');
                 selo.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;font:10px/1.3 monospace;background:rgba(0,0,0,.8);color:#0f0;padding:3px 6px;pointer-events:none;';
-                selo.textContent = 'ctw-231 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
+                selo.textContent = 'ctw-239 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
                     ' | modo=' + (matchMedia('(display-mode: standalone)').matches ? 'app instalado' : 'navegador') + ' | tela=' + innerWidth + 'x' + innerHeight;
                 document.body.appendChild(selo);
             }, 2500);
