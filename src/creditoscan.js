@@ -378,7 +378,7 @@
             if (r.status === 404 && !(await r.clone().json().catch(function () { return {}; })).status) return { ok: false, msg: 'Função "cs-ia" não encontrada. Confira se ela foi publicada com esse nome exato.' };
             if (r.status === 404 || r.status === 200) {
                 var fila = null;
-                try { var rs = await fetchComTempo(SRV_URL + '/status', { method: 'GET', headers: srvHeaders(token) }, 15000); var js = await rs.json().catch(function () { return {}; }); fila = !!(rs.status === 200 && js && js.fila); } catch (e) {}
+                try { var rs = await fetchComTempo(SRV_URL + '/status', { method: 'GET', headers: srvHeaders(token) }, 15000); var js = await rs.json().catch(function () { return {}; }); fila = !!(rs.status === 200 && js && js.fila); if (fila && js.banco && js.banco !== 'ok') return { ok: false, msg: 'A função nova está no ar, mas o banco não está pronto: ' + js.banco + '.' }; } catch (e) {}
                 _fila.suporte = fila === null ? null : fila; _fila.suporteTs = Date.now();
                 return { ok: true, msg: 'Servidor respondeu e aceitou a senha.' + (fila ? ' Fila de análises ativa.' : fila === false ? ' Atenção: a função no servidor é a versão antiga (sem fila). Cole a nova versão para a análise rodar toda no servidor.' : '') };
             }
@@ -670,6 +670,128 @@
         };
     }
 
+    // ── Leitura do extrato em TRECHOS ─────────────────────────────────
+    // A IA erra a soma quando precisa somar de cabeca 50-60 Pix de um mes numa resposta so (perde entradas e ate meses).
+    // Entao o extrato e lido em trechos pequenos (em paralelo) e o CODIGO soma os trechos e confere com o total impresso.
+    var LIMITE_RENDA_ARQUIVO = 240000;   // caracteres lidos por PDF na etapa de renda (a leitura e em trechos, entao cabe bem mais que o limite da analise final)
+    var ALVO_TRECHO  = 7000;    // caracteres por trecho (≈ 3 a 4 paginas de extrato)
+    var MIN_TRECHO   = 2500;    // na releitura o trecho encolhe, mas nunca abaixo disso
+    var MAX_TRECHOS  = 16;      // por arquivo
+    var PARALELO_IA  = 6;       // chamadas de IA simultaneas por analise
+
+    // Corta o texto do arquivo (paginas separadas por SEP_PAGINA) em trechos de ~alvo caracteres, sempre entre paginas
+    // (ou entre linhas, se uma pagina sozinha for maior que o alvo).
+    function dividirTrechos(texto, alvo) {
+        texto = String(texto || '');
+        alvo = Math.max(MIN_TRECHO / 2, alvo || ALVO_TRECHO);
+        alvo = Math.max(alvo, Math.ceil(texto.length / MAX_TRECHOS));
+        if (texto.length <= alvo * 1.3) return [texto];
+        var partes = [];
+        texto.split(SEP_PAGINA).forEach(function (pg) {
+            if (pg.length <= alvo * 1.3) { partes.push(pg); return; }
+            var cur = '';
+            pg.split('\n').forEach(function (ln) {
+                if (cur && cur.length + ln.length + 1 > alvo) { partes.push(cur); cur = ''; }
+                cur += (cur ? '\n' : '') + ln;
+            });
+            if (cur) partes.push(cur);
+        });
+        var trechos = [], atual = '';
+        partes.forEach(function (pg) {
+            if (atual && atual.length + pg.length > alvo) { trechos.push(atual); atual = ''; }
+            atual += (atual ? SEP_PAGINA : '') + pg;
+        });
+        if (atual) trechos.push(atual);
+        return trechos.length > MAX_TRECHOS ? dividirTrechos(texto, Math.ceil(alvo * 1.25)) : trechos;   // empacotamento deixou sobra: folga maior
+    }
+
+    // Soma as leituras de varios trechos do MESMO arquivo: valores somam, o total impresso e o maior visto,
+    // o periodo e a uniao. (Diferente de unirRendaArquivos, que trata arquivos que podem se sobrepor.)
+    function somarTrechos(lista) {
+        var porMes = {}, ordem = [], ini = '', fim = '', det = [], titular = '';
+        (lista || []).forEach(function (o) {
+            if (!o || typeof o !== 'object') return;
+            if (!titular && o.titular) titular = String(o.titular);
+            var p = o.periodoDocumentos;
+            if (p && typeof p === 'object') {
+                if (p.inicio && (!ini || String(p.inicio) < ini)) ini = String(p.inicio);
+                if (p.fim && (!fim || String(p.fim) > fim)) fim = String(p.fim);
+            }
+            (Array.isArray(o.rendaMeses) ? o.rendaMeses : []).forEach(function (m) {
+                if (!m || typeof m !== 'object') return;
+                var k = String(m.mes || '').trim().replace(/^(\d{4})-(\d)$/, '$1-0$2');   // 2026-8 e 2026-08 sao o mesmo mes
+                if (!k) return;
+                var a = porMes[k];
+                if (!a) { ordem.push(k); a = porMes[k] = { mes: k, fixa: 0, variavel: 0, app: 0, excluidas: 0, totalCreditos: 0, parcial: false }; }
+                ['fixa', 'variavel', 'app', 'excluidas'].forEach(function (f) { a[f] = arred2(a[f] + numPos(m[f])); });
+                a.totalCreditos = Math.max(a.totalCreditos, numPos(m.totalCreditos));
+                if (m.parcial === true || m.parcial === 'true') a.parcial = true;
+            });
+            if (Array.isArray(o.excluidasDetalhe)) det = det.concat(o.excluidasDetalhe);
+        });
+        return {
+            titular: titular, periodoDocumentos: ini && fim ? { inicio: ini, fim: fim } : null,
+            rendaMeses: ordem.map(function (k) { return porMes[k]; }), excluidasDetalhe: det
+        };
+    }
+
+    // Limita quantas funcoes assincronas rodam ao mesmo tempo (fila simples). Devolve run(fn) -> Promise.
+    function criarLimitador(max) {
+        var ativos = 0, fila = [];
+        function proximo() {
+            while (ativos < max && fila.length) {
+                var it = fila.shift(); ativos++;
+                it.fn().then(it.ok, it.err).then(function () { ativos--; proximo(); });
+            }
+        }
+        return function (fn) { return new Promise(function (ok, err) { fila.push({ fn: fn, ok: ok, err: err }); proximo(); }); };
+    }
+
+    // O quanto a soma lida ficou longe do total impresso (0 = fechou). Serve para escolher a melhor de duas leituras.
+    function desvioDivergencia(c) {
+        if (!c || !c.divergentes) return 0;
+        return c.divergentes.reduce(function (a, d) { return a + (d.total > 0 ? Math.abs(d.total - d.soma) / d.total : 0); }, 0);
+    }
+
+    // Le UM arquivo (texto) em trechos. chamar(prompt, rotulo) -> Promise<texto da IA>.
+    // opts: { limitar(fn), sobra() -> ms restantes, fatal(e) -> true se o erro deve abortar tudo (ex.: cancelado) }
+    // Devolve o objeto somado ({rendaMeses...}) ou null se algum trecho nao pode ser lido (leitura incompleta nao vale).
+    // Se a soma ainda nao fechar com o total impresso, relê UMA vez com trechos menores e fica com a melhor.
+    async function lerRendaPorTrechos(texto, chamar, opts) {
+        opts = opts || {};
+        var limitar = opts.limitar || criarLimitador(PARALELO_IA);
+        async function lerTrecho(tx, n, de, tag) {
+            var base = '=== EXTRATO BANCARIO DIGITAL (texto extraido do PDF) ===\n' + tx;
+            for (var t = 0; t < 2; t++) {
+                try {
+                    var r = await chamar(buildPromptRenda(base, { n: n, de: de }), tag + '-' + n + '-' + t);
+                    var a = r.indexOf('{'), b = r.lastIndexOf('}');
+                    if (a !== -1 && b > a) { var o = JSON.parse(r.substring(a, b + 1)); if (o && Array.isArray(o.rendaMeses)) return o; }
+                } catch (e) { if (opts.fatal && opts.fatal(e)) throw e; }
+            }
+            return null;
+        }
+        async function passada(alvo, tag) {
+            var trechos = dividirTrechos(texto, alvo);
+            var leituras = await Promise.all(trechos.map(function (tx, i) {
+                return limitar(function () { return lerTrecho(tx, i + 1, trechos.length, tag); });
+            }));
+            if (leituras.some(function (l) { return l === null; })) return null;
+            var obj = somarTrechos(leituras);
+            var c = obj.rendaMeses.length ? calcularRenda(obj) : null;
+            return { obj: obj, c: c, n: trechos.length, alvo: alvo };
+        }
+        var p1 = await passada(ALVO_TRECHO, 'a');
+        var fechou = function (p) { return !!(p && p.c && p.c.fonte === 'codigo' && p.c.renda > 0 && !(p.c.divergentes && p.c.divergentes.length)); };
+        if (!p1 || fechou(p1)) return p1 ? p1.obj : null;
+        var menor = Math.max(MIN_TRECHO, Math.floor(p1.alvo / 2));
+        if (menor >= p1.alvo || dividirTrechos(texto, menor).length <= p1.n || (opts.sobra && opts.sobra() < 40000)) return p1.obj;   // sem trechos novos a releitura seria igual
+        var p2 = await passada(menor, 'b');
+        if (!p2) return p1.obj;
+        if (fechou(p2)) return p2.obj;
+        return desvioDivergencia(p2.c) < desvioDivergencia(p1.c) ? p2.obj : p1.obj;
+    }
+
     // Texto curto e honesto de como a renda saiu (aparece na tela e vai pro historico)
     function descreverRenda(c) {
         if (!c || c.fonte !== 'codigo' || !c.usados || !c.usados.length) return '';
@@ -731,12 +853,19 @@
     }
 
     // ── Prompt da etapa 1 (so texto digital): apenas a renda ─────────
-    function buildPromptRenda(textoExtrato) {
+    // trecho = { n, de } quando o texto e so UMA PARTE do extrato (a soma de cada parte e feita pelo codigo)
+    function buildPromptRenda(textoExtrato, trecho) {
         return 'Voce e um analista financeiro. Leia o extrato bancario abaixo e levante a RENDA MENSAL REAL do titular, mes a mes.\n\n' +
             'EXTRATO:\n' + textoExtrato + '\n\n' +
             '=== REGRAS DE RENDA ===\n' +
             'Identifique o nome e o CPF do TITULAR no cabecalho.\n' +
             REGRAS_RENDA + '\n' +
+            (trecho && trecho.de > 1
+                ? '=== ATENCAO: ESTE TEXTO E O TRECHO ' + trecho.n + ' DE ' + trecho.de + ' DE UM EXTRATO MAIOR ===\n' +
+                  'Some SOMENTE as entradas que aparecem NESTE trecho (o codigo soma os trechos). Liste apenas os meses que aparecem aqui; um trecho sem nenhuma entrada devolve rendaMeses vazio.\n' +
+                  'totalCreditos: copie o total impresso do mes SOMENTE se este trecho mostrar esse total; senao use 0 (a soma deste trecho nao precisa fechar com ele).\n' +
+                  'periodoDocumentos: primeira e ultima data que aparecem NESTE trecho.\n\n'
+                : '') +
             'Retorne APENAS JSON valido, sem texto extra:\n' +
             '{"titular":"","periodoDocumentos":{"inicio":"AAAA-MM-DD","fim":"AAAA-MM-DD"},"rendaMeses":[{"mes":"AAAA-MM","fixa":0.00,"variavel":0.00,"app":0.00,"excluidas":0.00,"totalCreditos":0.00,"parcial":false}],"excluidasDetalhe":[{"mes":"AAAA-MM","valor":0.00,"motivo":""}]}\n' +
             'Nao invente. Se nao houver nenhuma entrada valida, retorne rendaMeses com os valores zerados.';
@@ -2848,33 +2977,18 @@ reguaTextoPrompt()+'\n'+
         concluirJob(job, d, resp);
     }
 
-    // Etapa 1 da renda: UMA chamada de IA por PDF (em paralelo), cada uma lendo so o seu extrato.
-    // Se o JSON vier invalido/vazio ou se a soma de algum mes nao bater com o "Total de creditos" do extrato, relê 1 vez.
-    async function lerRendaDeUmArquivo(textoArq, job, idx) {
-        var base = '=== EXTRATO BANCARIO DIGITAL (texto extraido do PDF) ===\n' + textoArq;
-        var melhor = null, aviso = '';
-        for (var t = 0; t < 2; t++) {
-            var obj = null;
-            try {
-                var r = await aiCallTexto(buildPromptRenda(base) + aviso, chaveIA(job, 'renda-' + idx + '-' + t));
-                var a = r.indexOf('{'), b = r.lastIndexOf('}');
-                if (a !== -1 && b > a) obj = JSON.parse(r.substring(a, b + 1));
-            } catch (e) { if (e === CANCELADO) throw e; obj = null; }
-            var c = obj ? calcularRenda(obj) : null;
-            var ok = !!(c && c.fonte === 'codigo' && c.renda > 0 && !(c.divergentes && c.divergentes.length));
-            if (c && c.fonte === 'codigo' && (!melhor || ok || (!melhor.ok && c.renda > 0))) melhor = { obj: obj, ok: ok };
-            if (ok) break;
-            aviso = '\n\nATENCAO: sua leitura anterior ' + (c && c.divergentes && c.divergentes.length
-                ? 'nao fechou com o extrato (' + c.divergentes.map(function (d) { return d.mes + ': soma ' + d.soma + ' x total do extrato ' + d.total; }).join('; ') + ')'
-                : 'veio vazia ou invalida') + '. Releia TODOS os lancamentos de credito, confira a soma de cada mes e devolva o JSON completo.';
-        }
-        return melhor ? melhor.obj : null;
-    }
-
+    // Etapa 1 da renda: cada PDF e lido em TRECHOS pequenos (em paralelo) e o codigo soma os trechos
+    // (a IA errava a soma de 50-60 Pix de um mes numa resposta so). Se a soma nao fechar com o "Total de creditos"
+    // impresso, relê com trechos menores (ver lerRendaPorTrechos).
     async function calcularRendaDosArquivos(arquivos, job) {
+        var limitar = criarLimitador(PARALELO_IA);
+        var inicio = Date.now();
         var leituras = await Promise.all(arquivos.map(function (arq, idx) {
-            var m = montarTextoDigital([arq]);
-            return m.texto ? lerRendaDeUmArquivo(m.texto, job, idx) : Promise.resolve(undefined);   // undefined = PDF sem texto (nada a ler)
+            var m = montarTextoDigital([arq], LIMITE_RENDA_ARQUIVO);
+            if (!m.texto) return Promise.resolve(undefined);   // PDF sem texto (nada a ler)
+            return lerRendaPorTrechos(m.texto, function (prompt, rotulo) { return aiCallTexto(prompt, chaveIA(job, 'renda-' + idx + '-' + rotulo)); }, {
+                limitar: limitar, fatal: function (e) { return e === CANCELADO; }, sobra: function () { return 150000 - (Date.now() - inicio); }
+            });
         }));
         // um PDF que a IA nao conseguiu ler faria a renda sair de menos meses sem ninguem saber: nesse caso a etapa 2 calcula tudo
         if (leituras.some(function (l) { return l === null; })) return null;
@@ -3082,7 +3196,7 @@ reguaTextoPrompt()+'\n'+
     var FILA_MAX_CORPO       = 13500000; // o servidor recusa pedidos acima de 14 MB
     var FILA_REVALIDA_MS     = 60000;    // "funcao antiga" e lembrado por 1 min (da tempo de colar a nova)
 
-    var _fila = { suporte: null, suporteTs: 0, itens: [], ok: false, buscou: false, ts: 0, dif: 0, falhas: 0, max: 30, slots: 2, senhaErrada: false };
+    var _fila = { suporte: null, suporteTs: 0, itens: [], ok: false, buscou: false, ts: 0, dif: 0, falhas: 0, max: 30, slots: 2, senhaErrada: false, motivo: '' };
     var _filaTimer = null, _filaBuscando = null, _coletando = {};
 
     function filaToken() { return safeGet(SRV_TOKEN_LS) || ''; }
@@ -3307,7 +3421,7 @@ reguaTextoPrompt()+'\n'+
         _fila.dif = (Date.parse(j.agora) || Date.now()) - Date.now();
         if (j.max_fila) _fila.max = j.max_fila;
         if (j.slots) _fila.slots = j.slots;
-        _fila.suporte = true; _fila.ok = true; _fila.buscou = true; _fila.demorou = false; _fila.falhas = 0; _fila.ts = Date.now(); _fila.senhaErrada = false;
+        _fila.suporte = true; _fila.ok = true; _fila.buscou = true; _fila.demorou = false; _fila.falhas = 0; _fila.motivo = ''; _fila.ts = Date.now(); _fila.senhaErrada = false;
     }
 
     function filaBuscar() {
@@ -3321,8 +3435,12 @@ reguaTextoPrompt()+'\n'+
                 if (r.status === 200) filaLer(await r.json());
                 else if (r.status === 401 || r.status === 403) { _fila.senhaErrada = true; _fila.ok = false; _fila.falhas++; }
                 else if (r.status === 400 || r.status === 404) { _fila.suporte = false; _fila.suporteTs = Date.now(); _fila.itens = []; _fila.ok = true; _fila.buscou = true; }   // funcao antiga, sem fila
-                else { _fila.ok = false; _fila.falhas++; }
-            } catch (e) { _fila.ok = false; _fila.falhas++; }
+                else {
+                    var jr = await r.json().catch(function () { return {}; });
+                    _fila.ok = false; _fila.falhas++;
+                    _fila.motivo = 'HTTP ' + r.status + (jr && (jr.erro || jr.message) ? ' · ' + String(jr.erro || jr.message).slice(0, 140) : '');
+                }
+            } catch (e) { _fila.ok = false; _fila.falhas++; _fila.motivo = (e && e.name === 'AbortError') ? 'o servidor não respondeu em ' + (FILA_TIMEOUT_MS / 1000) + ' s' : 'sem conexão com o servidor (' + String((e && e.message) || e).slice(0, 80) + ')'; }
             finally { _filaBuscando = null; }
             _fila.buscou = true;
             filaColetarProntas();
@@ -3524,7 +3642,11 @@ reguaTextoPrompt()+'\n'+
     function filaAvisoHtml() {
         if (!filaToken() || _fila.suporte === false) return '';
         if (_fila.senhaErrada) return '<div class="cs-alert warn"><i class="bi bi-exclamation-triangle-fill"></i><span>A senha do servidor não confere. Corrija em Configurações > Servidor.</span></div>';
-        if (!_fila.ok && (_fila.falhas > 0 || _fila.demorou)) return '<div class="cs-alert warn"><i class="bi bi-wifi-off"></i><span>Não consegui consultar o servidor agora. Mostrando só o que está neste aparelho. Tentando de novo...</span></div>';
+        if (!_fila.ok && (_fila.falhas > 0 || _fila.demorou)) {
+            var dica = /banco|cs_analises|cs_reivindicar/i.test(_fila.motivo || '') ? ' Provável causa: o SQL (cs-ia.sql) ainda não foi rodado no Supabase.' : '';
+            return '<div class="cs-alert warn"><i class="bi bi-wifi-off"></i><span>Não consegui consultar o servidor agora. Mostrando só o que está neste aparelho. Tentando de novo...' +
+                (_fila.motivo ? '<br><small>Motivo: ' + esc(_fila.motivo) + '.' + dica + '</small>' : '') + '</span></div>';
+        }
         return '';
     }
 
