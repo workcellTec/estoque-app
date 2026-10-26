@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-244'; // CreditoScan: fila no servidor (envia os documentos e fecha o app; 2 por vez, fila de 30), lista vinda do servidor, tempos por etapa
+const CACHE = 'ctw-245'; // CreditoScan: extrato lido em trechos (o codigo soma, a IA nao soma de cabeca) + IA que trava e diagnosticada e refeita rapido
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

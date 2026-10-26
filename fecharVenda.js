@@ -1,355 +1,32 @@
-// ================================================================
-// fecharVenda.js — Fechar Venda · Layout B (Keyboard-Safe)
-// DEPENDE DE (exposto pelo app.js):
-//   window.products, window._fuse, window._rates,
-//   window._getRate, window._areRatesLoaded,
-//   window._parseBrazilianCurrencyToFloat
-// ================================================================
-(function () {
-    'use strict';
-
-    // ── Acesso ao estado global ───────────────────────────────────
-    function ratesOk()   { return !!window._areRatesLoaded; }
-    function getProds()  { return window.products || []; }
-    function getFuse()   { return window._fuse || null; }
-    function getRate(machine, brand, inst) {
-        return typeof window._getRate === 'function'
-            ? window._getRate(machine, brand, inst)
-            : undefined;
-    }
-    function parseMoney(v) {
-        return typeof window._parseBrazilianCurrencyToFloat === 'function'
-            ? window._parseBrazilianCurrencyToFloat(v)
-            : parseFloat(String(v).replace(/\./g,'').replace(',','.')) || 0;
-    }
-    function fmt(v) {
-        return v.toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
-    }
-    function safeGet(k) { try { return localStorage.getItem(k); } catch(e) { return null; } }
-
-    // ── Estado ───────────────────────────────────────────────────
-    let precoBase    = 0;
-    let initialized  = false;
-    const BRINDE     = 16;
-
-    // ── DOM ───────────────────────────────────────────────────────
-    const el = id => document.getElementById(id);
-
-    // ── Máquinas ─────────────────────────────────────────────────
-    function getMachines() {
-        let disabled = [];
-        try { disabled = JSON.parse(localStorage.getItem('disabledMachines') || '[]'); } catch(e){}
-        return [
-            { v:'pagbank',   l:'PagBank'    },
-            { v:'infinity',  l:'InfinityPay'},
-            { v:'valorante', l:'Valorante'  },
-            { v:'nubank',    l:'Nubank'     },
-        ].filter(m => !disabled.includes(m.v));
-    }
-    function maxInst(machine) {
-        return {pagbank:18, infinity:12, valorante:21, nubank:12}[machine] || 18;
-    }
-
-    // ── Leitores da UI ───────────────────────────────────────────
-    const getMachine = () => el('fv_machine')?.value || 'pagbank';
-    const getBrand   = () => el('fv_brand')?.value   || 'visa';
-    const getInst    = () => parseInt(el('fv_installments')?.value || '0');
-    const getModo    = () => el('fv_modo_toggle')?.checked ? 'produto' : 'manual';
-    const getBrinde  = () => !!el('fv_brinde')?.checked;
-
-    // ── Renderiza botões de máquina ──────────────────────────────
-    function renderMachineBtns() {
-        const wrap = el('fv_machine_btns');
-        if (!wrap) return;
-
-        const machines = getMachines();
-        // Se a máquina atual não está mais disponível, muda para a padrão ou primeira
-        let cur = getMachine();
-        if (!machines.find(m => m.v === cur)) {
-            const saved = safeGet('ctwDefaultMachine');
-            cur = (saved && machines.find(m => m.v === saved)) ? saved : (machines[0]?.v || 'pagbank');
-            if (el('fv_machine')) el('fv_machine').value = cur;
-        }
-
-        wrap.innerHTML = machines.map(m =>
-            `<button class="fv-mbtn${cur===m.v?' active':''}" data-m="${m.v}">${m.l}</button>`
-        ).join('');
-        wrap.querySelectorAll('.fv-mbtn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                el('fv_machine').value = btn.dataset.m;
-                renderMachineBtns();
-                updateBrandVis();
-                renderInstBtns();
-                calculate();
-            });
-        });
-    }
-
-    // ── Bandeiras ────────────────────────────────────────────────
-    function populateBrands() {
-        const sel = el('fv_brand');
-        if (!sel) return;
-        const saved = safeGet('ctwDefaultBrand') || 'visa';
-        ['visa','mastercard','elo','hipercard','hiper','amex'].forEach(b => {
-            const o = document.createElement('option');
-            o.value = b; o.textContent = b.charAt(0).toUpperCase()+b.slice(1);
-            if (b===saved) o.selected = true;
-            sel.appendChild(o);
-        });
-    }
-    function updateBrandVis() {
-        const w = el('fv_brand_wrap');
-        if (w) w.style.display = getMachine() !== 'pagbank' ? 'flex' : 'none';
-    }
-
-    // ── Botões de parcelas ───────────────────────────────────────
-    function renderInstBtns() {
-        const wrap = el('fv_inst_btns');
-        if (!wrap) return;
-        const max = maxInst(getMachine());
-        const cur = getInst();
-        // Atualiza o max do slider dinamicamente conforme a máquina
-        const slider = el('fv_installments');
-        if (slider) slider.max = max;
-        const vals = [0,1,8,10,12,18,21].filter(v => v===0||v<=max);
-        wrap.innerHTML = vals.map(v =>
-            `<button class="fv-ibtn${cur===v?' active':''}" data-v="${v}">${v===0?'Déb':`${v}x`}</button>`
-        ).join('');
-        wrap.querySelectorAll('.fv-ibtn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                if (el('fv_installments')) el('fv_installments').value = btn.dataset.v;
-                renderInstBtns();
-                syncInstLabel();
-                calculate();
-            });
-        });
-    }
-    function syncInstLabel() {
-        const v = getInst();
-        const lbl = el('fv_inst_label');
-        if (lbl) lbl.textContent = v===0?'Déb':`${v}x`;
-    }
-
-    // ── Modo manual / produto ────────────────────────────────────
-    function onModoChange() {
-        const isProd = getModo()==='produto';
-        el('fv_manual_area')?.classList.toggle('fv-h', isProd);
-        el('fv_produto_area')?.classList.toggle('fv-h', !isProd);
-        el('fv_lbl_manual')?.classList.toggle('active', !isProd);
-        el('fv_lbl_produto')?.classList.toggle('active', isProd);
-
-        // Mostra/esconde a área de busca produto no bloco de cima
-        el('fv_top_prod_area')?.classList.toggle('fv-h', !isProd);
-
-        // Campo de valor: sempre visível exceto quando entrada à vista ativa
-        const entradaAtiva = isProd && !!el('fv_entrada_check')?.checked;
-        el('fv_value_wrap')?.classList.toggle('fv-h', entradaAtiva);
-        el('fv_entrada_fields')?.classList.toggle('fv-h', !entradaAtiva);
-
-        // Rótulo do campo
-        const lbl = el('fv_value_label');
-        if (lbl) lbl.textContent = 'Você cobrou (R$)';
-
-        if (!isProd) {
-            precoBase = 0;
-            clearProdUI();
-        }
-        calculate();
-    }
-
-    function clearProdUI() {
-        if (el('fv_prod_search')) el('fv_prod_search').value = '';
-        const res = el('fv_prod_results');
-        if (res) { res.innerHTML=''; res.classList.add('fv-h'); }
-        const badge = el('fv_prod_badge');
-        if (badge) { badge.innerHTML=''; badge.classList.add('fv-h'); }
-        el('fv_entrada_wrap')?.classList.add('fv-h');
-        el('fv_entrada_fields')?.classList.add('fv-h');
-        el('fv_value_wrap')?.classList.remove('fv-h');
-        if (el('fv_entrada_check')) el('fv_entrada_check').checked = false;
-    }
-
-    // ── Busca produto ────────────────────────────────────────────
-    function onSearchInput() {
-        const term = el('fv_prod_search')?.value.trim();
-        const box  = el('fv_prod_results');
-        if (!box) return;
-        if (!term || term.length < 1) { box.innerHTML=''; box.classList.add('fv-h'); return; }
-
-        const fuse = getFuse();
-        let matches = fuse
-            ? fuse.search(term).slice(0,8).map(r=>r.item)
-            : getProds().filter(p=>p.nome?.toLowerCase().includes(term.toLowerCase())).slice(0,8);
-
-        if (!matches.length) {
-            box.innerHTML = `<div class="fv-no-result"><i class="bi bi-search"></i> Nenhum produto</div>`;
-        } else {
-            box.innerHTML = matches.map(p =>
-                `<button class="fv-ri" data-id="${p.id}">
-                    <span class="fv-rn">${p.nome}</span>
-                    <span class="fv-rp">${fmt(parseFloat(p.valor)||0)}</span>
-                 </button>`
-            ).join('');
-            box.querySelectorAll('.fv-ri').forEach(btn =>
-                btn.addEventListener('click', () => {
-                    const p = getProds().find(p=>p.id===btn.dataset.id);
-                    if (p) selectProduct(p);
-                })
-            );
-        }
-        box.classList.remove('fv-h');
-    }
-
-    function selectProduct(prod) {
-        precoBase = parseFloat(prod.valor) || 0;
-        if (el('fv_prod_search')) el('fv_prod_search').value = prod.nome;
-        const box = el('fv_prod_results');
-        if (box) { box.innerHTML=''; box.classList.add('fv-h'); }
-
-        const badge = el('fv_prod_badge');
-        if (badge) {
-            badge.innerHTML = `
+(function(){"use strict";function I(){return!!window._areRatesLoaded}function w(){return window.products||[]}function F(){return window._fuse||null}function y(e,r,o){return typeof window._getRate=="function"?window._getRate(e,r,o):void 0}function D(e){return typeof window._parseBrazilianCurrencyToFloat=="function"?window._parseBrazilianCurrencyToFloat(e):parseFloat(String(e).replace(/\./g,"").replace(",","."))||0}function d(e){return e.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}function g(e){try{return localStorage.getItem(e)}catch{return null}}let l=0,k=!1;const H=16,a=e=>document.getElementById(e);function L(){let e=[];try{e=JSON.parse(localStorage.getItem("disabledMachines")||"[]")}catch{}return[{v:"pagbank",l:"PagBank"},{v:"infinity",l:"InfinityPay"},{v:"valorante",l:"Valorante"},{v:"nubank",l:"Nubank"}].filter(r=>!e.includes(r.v))}function A(e){return{pagbank:18,infinity:12,valorante:21,nubank:12}[e]||18}const f=()=>a("fv_machine")?.value||"pagbank",$=()=>a("fv_brand")?.value||"visa",p=()=>parseInt(a("fv_installments")?.value||"0"),z=()=>a("fv_modo_toggle")?.checked?"produto":"manual",q=()=>!!a("fv_brinde")?.checked;function m(){const e=a("fv_machine_btns");if(!e)return;const r=L();let o=f();if(!r.find(t=>t.v===o)){const t=g("ctwDefaultMachine");o=t&&r.find(i=>i.v===t)?t:r[0]?.v||"pagbank",a("fv_machine")&&(a("fv_machine").value=o)}e.innerHTML=r.map(t=>`<button class="fv-mbtn${o===t.v?" active":""}" data-m="${t.v}">${t.l}</button>`).join(""),e.querySelectorAll(".fv-mbtn").forEach(t=>{t.addEventListener("click",()=>{a("fv_machine").value=t.dataset.m,m(),x(),u(),n()})})}function N(){const e=a("fv_brand");if(!e)return;const r=g("ctwDefaultBrand")||"visa";["visa","mastercard","elo","hipercard","hiper","amex"].forEach(o=>{const t=document.createElement("option");t.value=o,t.textContent=o.charAt(0).toUpperCase()+o.slice(1),o===r&&(t.selected=!0),e.appendChild(t)})}function x(){const e=a("fv_brand_wrap");e&&(e.style.display=f()!=="pagbank"?"flex":"none")}function u(){const e=a("fv_inst_btns");if(!e)return;const r=A(f()),o=p(),t=a("fv_installments");t&&(t.max=r);const i=[0,1,8,10,12,18,21].filter(s=>s===0||s<=r);e.innerHTML=i.map(s=>`<button class="fv-ibtn${o===s?" active":""}" data-v="${s}">${s===0?"D\xE9b":`${s}x`}</button>`).join(""),e.querySelectorAll(".fv-ibtn").forEach(s=>{s.addEventListener("click",()=>{a("fv_installments")&&(a("fv_installments").value=s.dataset.v),u(),B(),n()})})}function B(){const e=p(),r=a("fv_inst_label");r&&(r.textContent=e===0?"D\xE9b":`${e}x`)}function V(){const e=z()==="produto";a("fv_manual_area")?.classList.toggle("fv-h",e),a("fv_produto_area")?.classList.toggle("fv-h",!e),a("fv_lbl_manual")?.classList.toggle("active",!e),a("fv_lbl_produto")?.classList.toggle("active",e),a("fv_top_prod_area")?.classList.toggle("fv-h",!e);const r=e&&!!a("fv_entrada_check")?.checked;a("fv_value_wrap")?.classList.toggle("fv-h",r),a("fv_entrada_fields")?.classList.toggle("fv-h",!r);const o=a("fv_value_label");o&&(o.textContent="Voc\xEA cobrou (R$)"),e||(l=0,E()),n()}function E(){a("fv_prod_search")&&(a("fv_prod_search").value="");const e=a("fv_prod_results");e&&(e.innerHTML="",e.classList.add("fv-h"));const r=a("fv_prod_badge");r&&(r.innerHTML="",r.classList.add("fv-h")),a("fv_entrada_wrap")?.classList.add("fv-h"),a("fv_entrada_fields")?.classList.add("fv-h"),a("fv_value_wrap")?.classList.remove("fv-h"),a("fv_entrada_check")&&(a("fv_entrada_check").checked=!1)}function M(){const e=a("fv_prod_search")?.value.trim(),r=a("fv_prod_results");if(!r)return;if(!e||e.length<1){r.innerHTML="",r.classList.add("fv-h");return}const o=F();let t=o?o.search(e).slice(0,8).map(i=>i.item):w().filter(i=>i.nome?.toLowerCase().includes(e.toLowerCase())).slice(0,8);t.length?(r.innerHTML=t.map(i=>`<button class="fv-ri" data-id="${i.id}">
+                    <span class="fv-rn">${i.nome}</span>
+                    <span class="fv-rp">${d(parseFloat(i.valor)||0)}</span>
+                 </button>`).join(""),r.querySelectorAll(".fv-ri").forEach(i=>i.addEventListener("click",()=>{const s=w().find(c=>c.id===i.dataset.id);s&&T(s)}))):r.innerHTML='<div class="fv-no-result"><i class="bi bi-search"></i> Nenhum produto</div>',r.classList.remove("fv-h")}function T(e){l=parseFloat(e.valor)||0,a("fv_prod_search")&&(a("fv_prod_search").value=e.nome);const r=a("fv_prod_results");r&&(r.innerHTML="",r.classList.add("fv-h"));const o=a("fv_prod_badge");o&&(o.innerHTML=`
                 <i class="bi bi-box-seam-fill"></i>
-                <span>${prod.nome}</span>
-                <strong>${fmt(precoBase)}</strong>
-                <button class="fv-pclear" id="fv_prod_clear"><i class="bi bi-x"></i></button>`;
-            badge.classList.remove('fv-h');
-            el('fv_prod_clear')?.addEventListener('click', () => {
-                precoBase = 0; clearProdUI(); calculate();
-            });
-        }
-
-        el('fv_entrada_wrap')?.classList.remove('fv-h');
-
-        // Sugere valor cobrado
-        const tax = getRate(getMachine(), getBrand(), getInst());
-        if (tax !== undefined && el('fv_value') && !el('fv_entrada_check')?.checked) {
-            const sug = precoBase / (1 - tax/100);
-            el('fv_value').value = sug.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-        }
-        calculate();
-    }
-
-    // ── Toggle entrada à vista ───────────────────────────────────
-    function onEntradaToggle() {
-        const checked = el('fv_entrada_check')?.checked;
-        el('fv_entrada_fields')?.classList.toggle('fv-h', !checked);
-        el('fv_value_wrap')?.classList.toggle('fv-h', !!checked);
-        if (!checked) {
-            if (el('fv_entrada_valor')) el('fv_entrada_valor').value = '';
-            if (el('fv_cartao_valor'))  el('fv_cartao_valor').value  = '';
-        }
-        calculate();
-    }
-
-    // ── Máscara de moeda ─────────────────────────────────────────
-    function moneyMask(inp) {
-        if (!inp) return;
-        inp.addEventListener('input', e => {
-            const v = e.target.value.replace(/\D/g,'');
-            e.target.value = v ? (parseFloat(v)/100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '';
-            calculate();
-        });
-    }
-
-    // ── Cálculo principal ─────────────────────────────────────────
-    function calculate() {
-        const zone = el('fv_result_zone');
-        if (!zone) return;
-
-        if (!ratesOk()) {
-            zone.innerHTML = `<div class="fv-wait"><i class="bi bi-hourglass-split"></i> Carregando taxas...</div>`;
-            return;
-        }
-
-        const tax = getRate(getMachine(), getBrand(), getInst());
-        if (tax === undefined || tax === null) {
-            zone.innerHTML = `<div class="fv-wait"><i class="bi bi-exclamation-triangle"></i> Taxa indisponível.</div>`;
-            return;
-        }
-
-        const brinde = getBrinde() ? BRINDE : 0;
-        const isProd  = getModo() === 'produto';
-        const isEnt   = isProd && !!el('fv_entrada_check')?.checked;
-
-        // ── Entrada à vista ──────────────────────────────────────
-        if (isEnt) {
-            if (precoBase <= 0) {
-                zone.innerHTML = `<div class="fv-wait"><i class="bi bi-info-circle"></i> Selecione um produto.</div>`;
-                return;
-            }
-            const entrada = parseFloat(el('fv_entrada_valor')?.value)||0;
-            const cartao  = parseFloat(el('fv_cartao_valor')?.value)||0;
-            if (!entrada && !cartao) { zone.innerHTML=''; return; }
-            const liquidCartao  = cartao*(1-tax/100);
-            const total         = entrada + liquidCartao - brinde;
-            const lucro         = total - precoBase;
-            showResult(zone, {
-                liquid: total,
-                sub: `${fmt(entrada)} à vista + ${fmt(cartao)} cartão (${tax.toFixed(2)}%)`,
-                lucro, brinde,
-            });
-            return;
-        }
-
-        // ── Modo normal ──────────────────────────────────────────
-        const raw   = el('fv_value')?.value || '';
-        const input = parseMoney(raw);
-        if (!input || input <= 0) { zone.innerHTML=''; return; }
-
-        const mmode  = document.querySelector('input[name="fv_manual_mode"]:checked')?.value || 'total';
-        const inst   = getInst();
-        const total  = (!isProd && mmode==='parcela' && inst>0) ? input*inst : input;
-        const liquid = total*(1-tax/100) - brinde;
-        const lucro  = isProd && precoBase>0 ? liquid-precoBase : null;
-        const extra  = (!isProd && mmode==='parcela' && inst>0)
-                     ? ` · ${inst}x de ${fmt(input)} = ${fmt(total)}`
-                     : '';
-
-        showResult(zone, {
-            liquid,
-            sub: `Taxa ${tax.toFixed(2)}% · ${inst===0?'Débito':`${inst}x`}${extra}`,
-            lucro, brinde,
-        });
-    }
-
-    function showResult(zone, {liquid, sub, lucro, brinde}) {
-        const pos  = lucro===null || lucro>=0;
-        const lHtml = lucro!==null
-            ? `<div class="fv-lucro ${lucro>=0?'pos':'neg'}">
-                   <i class="bi bi-${lucro>=0?'graph-up-arrow':'graph-down-arrow'}"></i>
-                   Lucro: ${fmt(lucro)}
-               </div>` : '';
-        const bHtml = brinde>0
-            ? `<div class="fv-brinde-tag"><i class="bi bi-gift"></i> Brinde −${fmt(brinde)}</div>` : '';
-
-        zone.innerHTML = `
-        <div class="fv-card ${pos?'ok':'bad'}">
-            <div class="fv-clbl">Você recebe</div>
-            <div class="fv-cval">${fmt(liquid)}</div>
-            <div class="fv-csub">${sub}</div>
-            ${bHtml}${lHtml}
-        </div>`;
-    }
-
-    // ── CSS ───────────────────────────────────────────────────────
-    function injectCSS() {
-        if (el('fv-styles')) return;
-        const s = document.createElement('style');
-        s.id = 'fv-styles';
-        s.textContent = `
-/* ═══════════════════════════════════════
-   FECHAR VENDA — Layout B keyboard-safe
-═══════════════════════════════════════ */
+                <span>${e.nome}</span>
+                <strong>${d(l)}</strong>
+                <button class="fv-pclear" id="fv_prod_clear"><i class="bi bi-x"></i></button>`,o.classList.remove("fv-h"),a("fv_prod_clear")?.addEventListener("click",()=>{l=0,E(),n()})),a("fv_entrada_wrap")?.classList.remove("fv-h");const t=y(f(),$(),p());if(t!==void 0&&a("fv_value")&&!a("fv_entrada_check")?.checked){const i=l/(1-t/100);a("fv_value").value=i.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}n()}function j(){const e=a("fv_entrada_check")?.checked;a("fv_entrada_fields")?.classList.toggle("fv-h",!e),a("fv_value_wrap")?.classList.toggle("fv-h",!!e),e||(a("fv_entrada_valor")&&(a("fv_entrada_valor").value=""),a("fv_cartao_valor")&&(a("fv_cartao_valor").value="")),n()}function U(e){e&&e.addEventListener("input",r=>{const o=r.target.value.replace(/\D/g,"");r.target.value=o?(parseFloat(o)/100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2}):"",n()})}function n(){const e=a("fv_result_zone");if(!e)return;if(!I()){e.innerHTML='<div class="fv-wait"><i class="bi bi-hourglass-split"></i> Carregando taxas...</div>';return}const r=y(f(),$(),p());if(r==null){e.innerHTML='<div class="fv-wait"><i class="bi bi-exclamation-triangle"></i> Taxa indispon\xEDvel.</div>';return}const o=q()?H:0,t=z()==="produto";if(t&&!!a("fv_entrada_check")?.checked){if(l<=0){e.innerHTML='<div class="fv-wait"><i class="bi bi-info-circle"></i> Selecione um produto.</div>';return}const h=parseFloat(a("fv_entrada_valor")?.value)||0,_=parseFloat(a("fv_cartao_valor")?.value)||0;if(!h&&!_){e.innerHTML="";return}const W=_*(1-r/100),R=h+W-o,ee=R-l;C(e,{liquid:R,sub:`${d(h)} \xE0 vista + ${d(_)} cart\xE3o (${r.toFixed(2)}%)`,lucro:ee,brinde:o});return}const s=a("fv_value")?.value||"",c=D(s);if(!c||c<=0){e.innerHTML="";return}const b=document.querySelector('input[name="fv_manual_mode"]:checked')?.value||"total",v=p(),O=!t&&b==="parcela"&&v>0?c*v:c,S=O*(1-r/100)-o,Q=t&&l>0?S-l:null,K=!t&&b==="parcela"&&v>0?` \xB7 ${v}x de ${d(c)} = ${d(O)}`:"";C(e,{liquid:S,sub:`Taxa ${r.toFixed(2)}% \xB7 ${v===0?"D\xE9bito":`${v}x`}${K}`,lucro:Q,brinde:o})}function C(e,{liquid:r,sub:o,lucro:t,brinde:i}){const s=t===null||t>=0,c=t!==null?`<div class="fv-lucro ${t>=0?"pos":"neg"}">
+                   <i class="bi bi-${t>=0?"graph-up-arrow":"graph-down-arrow"}"></i>
+                   Lucro: ${d(t)}
+               </div>`:"",b=i>0?`<div class="fv-brinde-tag"><i class="bi bi-gift"></i> Brinde \u2212${d(i)}</div>`:"";e.innerHTML=`
+        <div class="fv-card ${s?"ok":"bad"}">
+            <div class="fv-clbl">Voc\xEA recebe</div>
+            <div class="fv-cval">${d(r)}</div>
+            <div class="fv-csub">${o}</div>
+            ${b}${c}
+        </div>`}function X(){if(a("fv-styles"))return;const e=document.createElement("style");e.id="fv-styles",e.textContent=`
+/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+   FECHAR VENDA \u2014 Layout B keyboard-safe
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
 #fecharVenda {
     display:flex; flex-direction:column;
     height:100%; max-height:100dvh;
     background:var(--bg-color); overflow:hidden;
 }
 
-/* ─── ZONA FIXA NO TOPO ───
-   Nunca é coberta pelo teclado.
-   Contém TODOS os campos de digitação. */
+/* \u2500\u2500\u2500 ZONA FIXA NO TOPO \u2500\u2500\u2500
+   Nunca \xE9 coberta pelo teclado.
+   Cont\xE9m TODOS os campos de digita\xE7\xE3o. */
 .fv-top {
     flex-shrink:0;
     padding:0 14px 8px;
@@ -398,7 +75,7 @@
 }
 .fv-vinput::placeholder { color:var(--ui-tx3); opacity:.6; }
 
-/* Campos entrada à vista (substitui campo valor na col-esq) */
+/* Campos entrada \xE0 vista (substitui campo valor na col-esq) */
 .fv-ent-grid {
     display:grid; grid-template-columns:1fr 1fr; gap:7px;
 }
@@ -434,7 +111,7 @@
 .fv-wait { padding:10px 12px; border-radius:12px; background:var(--card-bg); border:1px solid var(--ui-edge); color:var(--text-secondary); font-size:.76rem; display:flex; align-items:center; gap:7px; }
 @keyframes fvIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
 
-/* ── BRINDE MINI (no bloco de cima) ── */
+/* \u2500\u2500 BRINDE MINI (no bloco de cima) \u2500\u2500 */
 .fv-brinde-mini {
     display:flex; align-items:center; gap:5px;
     cursor:pointer; padding:3px 4px; margin-top:-2px;
@@ -450,7 +127,7 @@
 .fv-brinde-mini:has(input:checked) i,
 .fv-brinde-mini:has(input:checked) span { color:var(--status-warn); }
 
-/* ── BUSCA PRODUTO NO TOPO ── */
+/* \u2500\u2500 BUSCA PRODUTO NO TOPO \u2500\u2500 */
 #fv_top_prod_area { display:flex; flex-direction:column; gap:5px; }
 
 /* Badge produto selecionado */
@@ -466,7 +143,7 @@
 .fv-pbadge strong { flex-shrink:0; font-size:.75rem; }
 .fv-pclear { background:none; border:none; color:var(--text-secondary); cursor:pointer; padding:2px; font-size:.88rem; line-height:1; display:flex; align-items:center; flex-shrink:0; }
 
-/* BUSCA — dropdown sobe (bottom: 100%) */
+/* BUSCA \u2014 dropdown sobe (bottom: 100%) */
 .fv-srchwrap { position:relative; }
 .fv-sinput {
     width:100%; background:var(--input-bg);
@@ -478,7 +155,7 @@
 }
 .fv-sinput:focus { border-color:var(--primary-color); }
 
-/* Lista de resultados SOBE — fica acima do campo de busca */
+/* Lista de resultados SOBE \u2014 fica acima do campo de busca */
 .fv-results {
     position:absolute;
     bottom:100%; left:0; right:0;
@@ -513,7 +190,7 @@
 }
 .fv-clbl2 { font-size:.57rem; font-weight:800; text-transform:uppercase; letter-spacing:.07em; color:var(--text-secondary); margin-bottom:3px; }
 
-/* Botões máquina */
+/* Bot\xF5es m\xE1quina */
 .fv-mbtns { display:flex; flex-direction:column; gap:3px; }
 .fv-mbtn {
     padding:6px 9px; border-radius:11px; text-align:left;
@@ -534,7 +211,7 @@
 }
 .fv-bsel option { background:var(--card-bg); color:var(--text-color); }
 
-/* Botões parcelas */
+/* Bot\xF5es parcelas */
 .fv-ibtns { display:flex; flex-wrap:wrap; gap:3px; }
 .fv-ibtn {
     padding:4px 9px; border-radius:999px;
@@ -549,11 +226,11 @@
 /* Divisor */
 .fv-sep { height:1px; background:var(--ui-edge); margin:6px 14px; flex-shrink:0; }
 
-/* ─── ZONA INFERIOR SCROLLÁVEL ───
+/* \u2500\u2500\u2500 ZONA INFERIOR SCROLL\xC1VEL \u2500\u2500\u2500
    Aparece ABAIXO da zona fixa.
    Quando o teclado sobe, esta zona
-   some (não importa — o usuário já
-   vê o campo de valor e o resultado). */
+   some (n\xE3o importa \u2014 o usu\xE1rio j\xE1
+   v\xEA o campo de valor e o resultado). */
 .fv-bottom {
     flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch;
     padding:0 14px 100px;
@@ -574,7 +251,7 @@
 .fv-tsw input:checked + .fv-tknob { background:var(--primary-color); }
 .fv-tsw input:checked + .fv-tknob::before { transform:translateX(17px); }
 
-/* Área Manual */
+/* \xC1rea Manual */
 .fv-atitle { font-size:.6rem; font-weight:800; text-transform:uppercase; letter-spacing:.07em; color:var(--text-secondary); margin-bottom:6px; }
 .fv-rrow { display:flex; gap:7px; margin-bottom:10px; }
 .fv-radio {
@@ -586,7 +263,7 @@
 }
 .fv-radio:has(input:checked) { background:var(--ui-icbg); border-color:var(--primary-color); color:var(--primary-color); }
 
-/* Switch entrada à vista */
+/* Switch entrada \xE0 vista */
 .fv-eslbl {
     display:flex; align-items:center; gap:9px; cursor:pointer;
     font-size:.78rem; font-weight:600; color:var(--text-secondary);
@@ -599,19 +276,11 @@
 
 /* Utilidade */
 .fv-h { display:none !important; }
-        `;
-        document.head.appendChild(s);
-    }
+        `,document.head.appendChild(e)}function Z(){const e=a("fecharVenda");e&&(e.innerHTML=`
 
-    // ── HTML ─────────────────────────────────────────────────────
-    function renderHTML() {
-        const c = el('fecharVenda');
-        if (!c) return;
-        c.innerHTML = `
-
-        <!-- ══ ZONA FIXA ══
-             Teclado nunca cobre esta área.
-             Contém TODOS os campos de digitação. -->
+        <!-- \u2550\u2550 ZONA FIXA \u2550\u2550
+             Teclado nunca cobre esta \xE1rea.
+             Cont\xE9m TODOS os campos de digita\xE7\xE3o. -->
         <div class="fv-top">
             <div class="fv-grid">
 
@@ -620,7 +289,7 @@
 
                     <!-- Campo principal de valor -->
                     <div class="fv-vcard" id="fv_value_wrap">
-                        <div class="fv-vlbl" id="fv_value_label">Você cobrou (R$)</div>
+                        <div class="fv-vlbl" id="fv_value_label">Voc\xEA cobrou (R$)</div>
                         <div class="fv-vrow">
                             <span class="fv-curr">R$</span>
                             <input type="tel" class="fv-vinput" id="fv_value"
@@ -628,14 +297,14 @@
                         </div>
                     </div>
 
-                    <!-- Campos entrada à vista (substitui campo valor) -->
+                    <!-- Campos entrada \xE0 vista (substitui campo valor) -->
                     <div class="fv-ent-grid fv-h" id="fv_entrada_fields">
                         <div>
-                            <div class="fv-ent-lbl"><i class="bi bi-cash"></i> À vista</div>
+                            <div class="fv-ent-lbl"><i class="bi bi-cash"></i> \xC0 vista</div>
                             <input type="number" class="fv-ninput" id="fv_entrada_valor" min="0" step="0.01" placeholder="0,00">
                         </div>
                         <div>
-                            <div class="fv-ent-lbl"><i class="bi bi-credit-card"></i> No cartão</div>
+                            <div class="fv-ent-lbl"><i class="bi bi-credit-card"></i> No cart\xE3o</div>
                             <input type="number" class="fv-ninput" id="fv_cartao_valor" min="0" step="0.01" placeholder="0,00">
                         </div>
                     </div>
@@ -647,10 +316,10 @@
                     <label class="fv-brinde-mini">
                         <input type="checkbox" id="fv_brinde">
                         <i class="bi bi-gift-fill"></i>
-                        <span>Brinde −R$16</span>
+                        <span>Brinde \u2212R$16</span>
                     </label>
 
-                    <!-- Busca produto — só aparece no modo Produto -->
+                    <!-- Busca produto \u2014 s\xF3 aparece no modo Produto -->
                     <div id="fv_top_prod_area" class="fv-h">
 
                         <!-- Badge produto selecionado -->
@@ -671,9 +340,9 @@
                 <div class="fv-right">
                     <div class="fv-cbox">
 
-                        <!-- Máquina -->
+                        <!-- M\xE1quina -->
                         <div>
-                            <div class="fv-clbl2">Máquina</div>
+                            <div class="fv-clbl2">M\xE1quina</div>
                             <select id="fv_machine" style="display:none"></select>
                             <div class="fv-mbtns" id="fv_machine_btns"></div>
                         </div>
@@ -688,7 +357,7 @@
                         <div>
                             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
                                 <span class="fv-clbl2">Parcelas</span>
-                                <span style="font-size:.65rem;font-weight:700;color:var(--primary-color)" id="fv_inst_label">Déb</span>
+                                <span style="font-size:.65rem;font-weight:700;color:var(--primary-color)" id="fv_inst_label">D\xE9b</span>
                             </div>
                             <div class="fv-ibtns" id="fv_inst_btns"></div>
                             <input type="range" class="fv-islider" id="fv_installments" min="0" max="21" step="1" value="0">
@@ -702,10 +371,10 @@
 
         <div class="fv-sep"></div>
 
-        <!-- ══ ZONA SCROLLÁVEL ══
-             Toggle modo, tipo de valor, entrada à vista.
-             Fica abaixo quando teclado sobe — ok,
-             pois o usuário não precisa ver isso
+        <!-- \u2550\u2550 ZONA SCROLL\xC1VEL \u2550\u2550
+             Toggle modo, tipo de valor, entrada \xE0 vista.
+             Fica abaixo quando teclado sobe \u2014 ok,
+             pois o usu\xE1rio n\xE3o precisa ver isso
              enquanto digita. -->
         <div class="fv-bottom">
 
@@ -723,7 +392,7 @@
                 </span>
             </div>
 
-            <!-- Área Manual -->
+            <!-- \xC1rea Manual -->
             <div id="fv_manual_area">
                 <div class="fv-atitle">Tipo de valor digitado</div>
                 <div class="fv-rrow">
@@ -738,124 +407,15 @@
                 </div>
             </div>
 
-            <!-- Área Produto — só mostra toggle entrada à vista -->
+            <!-- \xC1rea Produto \u2014 s\xF3 mostra toggle entrada \xE0 vista -->
             <div id="fv_produto_area" class="fv-h">
                 <div class="fv-h" id="fv_entrada_wrap">
                     <label class="fv-eslbl">
                         <input type="checkbox" id="fv_entrada_check">
-                        <span><i class="bi bi-cash-coin"></i> Teve valor à vista?</span>
+                        <span><i class="bi bi-cash-coin"></i> Teve valor \xE0 vista?</span>
                     </label>
                 </div>
             </div>
 
         </div><!-- /fv-bottom -->
-        `;
-    }
-
-    // ── Eventos ───────────────────────────────────────────────────
-    function bindEvents() {
-        el('fv_installments')?.addEventListener('input', () => {
-            syncInstLabel(); renderInstBtns(); calculate();
-        });
-        el('fv_brand')?.addEventListener('change', calculate);
-        el('fv_modo_toggle')?.addEventListener('change', onModoChange);
-        el('fv_brinde')?.addEventListener('change', calculate);
-
-        document.querySelectorAll('input[name="fv_manual_mode"]').forEach(r =>
-            r.addEventListener('change', () => {
-                const lbl = el('fv_value_label');
-                if (lbl) lbl.textContent = r.value==='parcela' ? 'Valor por parcela (R$)' : 'Você cobrou (R$)';
-                calculate();
-            })
-        );
-
-        el('fv_prod_search')?.addEventListener('input', onSearchInput);
-        el('fv_prod_search')?.addEventListener('focus', onSearchInput);
-
-        el('fv_entrada_check')?.addEventListener('change', onEntradaToggle);
-        el('fv_entrada_valor')?.addEventListener('input', calculate);
-        el('fv_cartao_valor')?.addEventListener('input', calculate);
-
-        moneyMask(el('fv_value'));
-
-        // Fecha dropdown ao clicar fora
-        document.addEventListener('click', e => {
-            const res = el('fv_prod_results');
-            const inp = el('fv_prod_search');
-            if (res && inp && !inp.contains(e.target) && !res.contains(e.target)) {
-                res.classList.add('fv-h');
-            }
-        }, true);
-    }
-
-    // ── API chamada pelo app.js quando taxas chegam ──────────────
-    window._fvOnRatesLoaded = function() { calculate(); };
-
-    // ── Compatibilidade: precoBase externo ───────────────────────
-    // O app.js entrega o preço atribuindo window._fecharVendaPrecoBase. Antes um setInterval
-    // conferia isso a cada 500 ms para sempre; agora a própria atribuição dispara a atualização.
-    function watchPrecoBase() {
-        let valor = window._fecharVendaPrecoBase || 0;
-        let last = 0;
-        const aplicar = () => {
-            const ext = valor || 0;
-            if (ext === last) return;
-            last = ext; precoBase = ext;
-            el('fv_entrada_wrap')?.classList.remove('fv-h');
-            calculate();
-        };
-        Object.defineProperty(window, '_fecharVendaPrecoBase', {
-            configurable: true,
-            get() { return valor; },
-            set(v) { valor = v; aplicar(); }
-        });
-        aplicar();
-    }
-
-    // ── Init ─────────────────────────────────────────────────────
-    function init() {
-        if (initialized) {
-            // Sempre re-renderiza máquinas ao reabrir para refletir
-            // mudanças feitas nas configurações de admin (desativar/ativar)
-            refreshMachineSelect();
-            renderMachineBtns();
-            updateBrandVis();
-            renderInstBtns();
-            calculate();
-            return;
-        }
-        injectCSS();
-        renderHTML();
-
-        // Popula select oculto de máquinas (respeitando padrão e desativadas)
-        refreshMachineSelect();
-
-        populateBrands();
-        updateBrandVis();
-        renderMachineBtns();
-        renderInstBtns();
-        bindEvents();
-        watchPrecoBase();
-        initialized = true;
-
-        setTimeout(() => el('fv_value')?.focus(), 150);
-    }
-
-    // Atualiza o select hidden de máquinas com base no padrão e desativadas
-    function refreshMachineSelect() {
-        const msel = el('fv_machine');
-        if (!msel) return;
-        const machines = getMachines();
-        const saved = safeGet('ctwDefaultMachine') || 'pagbank';
-        // Se a máquina padrão está desativada, usa a primeira disponível
-        const defaultV = machines.find(m => m.v === saved) ? saved : (machines[0]?.v || 'pagbank');
-        msel.innerHTML = machines
-            .map(m=>`<option value="${m.v}" ${m.v===defaultV?'selected':''}>${m.l}</option>`)
-            .join('');
-    }
-
-    // ── API pública ──────────────────────────────────────────────
-    window._initFecharVenda = () => { init(); calculate(); };
-    window._fvSelectProduct = p  => { if (p) selectProduct(p); };
-
-})();
+        `)}function G(){a("fv_installments")?.addEventListener("input",()=>{B(),u(),n()}),a("fv_brand")?.addEventListener("change",n),a("fv_modo_toggle")?.addEventListener("change",V),a("fv_brinde")?.addEventListener("change",n),document.querySelectorAll('input[name="fv_manual_mode"]').forEach(e=>e.addEventListener("change",()=>{const r=a("fv_value_label");r&&(r.textContent=e.value==="parcela"?"Valor por parcela (R$)":"Voc\xEA cobrou (R$)"),n()})),a("fv_prod_search")?.addEventListener("input",M),a("fv_prod_search")?.addEventListener("focus",M),a("fv_entrada_check")?.addEventListener("change",j),a("fv_entrada_valor")?.addEventListener("input",n),a("fv_cartao_valor")?.addEventListener("input",n),U(a("fv_value")),document.addEventListener("click",e=>{const r=a("fv_prod_results"),o=a("fv_prod_search");r&&o&&!o.contains(e.target)&&!r.contains(e.target)&&r.classList.add("fv-h")},!0)}window._fvOnRatesLoaded=function(){n()};function Y(){let e=window._fecharVendaPrecoBase||0,r=0;const o=()=>{const t=e||0;t!==r&&(r=t,l=t,a("fv_entrada_wrap")?.classList.remove("fv-h"),n())};Object.defineProperty(window,"_fecharVendaPrecoBase",{configurable:!0,get(){return e},set(t){e=t,o()}}),o()}function J(){if(k){P(),m(),x(),u(),n();return}X(),Z(),P(),N(),x(),m(),u(),G(),Y(),k=!0,setTimeout(()=>a("fv_value")?.focus(),150)}function P(){const e=a("fv_machine");if(!e)return;const r=L(),o=g("ctwDefaultMachine")||"pagbank",t=r.find(i=>i.v===o)?o:r[0]?.v||"pagbank";e.innerHTML=r.map(i=>`<option value="${i.v}" ${i.v===t?"selected":""}>${i.l}</option>`).join("")}window._initFecharVenda=()=>{J(),n()},window._fvSelectProduct=e=>{e&&T(e)}})();
