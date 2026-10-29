@@ -872,59 +872,31 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    //  REGUA DA NOTA: a IA escolhe o valor DENTRO da faixa de cada item;
-    //  o sistema limita a faixa, soma e classifica.
+    //  FAIXAS: o sistema decide por SINAIS de calote + PILARES (estabilidade,
+    //  capacidade, caixa). Nao ha soma de pontos: um item bom nao apaga um sinal
+    //  grave, e gasto que nao causa calote nao tira nota. A nota (0-100) e
+    //  consequencia da faixa e da folga dentro dela.
     // ═══════════════════════════════════════════════════════════════════
-    var REGUA_BASE = 50;
-    var NOTA_TETO  = 92;   // nenhum cliente e perfeito
-    var REGUA_ITENS = [
-        { k: 'origem', nome: 'Origem e estabilidade da renda', min: -10, max: 15,
-          regra: 'fixa e recorrente +15 | mista ou autonomo regular +8 | irregular 0 | muito irregular ou so 1 mes de renda -10' },
-        { k: 'sobra', nome: 'Sobra do mes (entradas - saidas)', min: -15, max: 10,
-          regra: 'sobra acima de 25% +10 | 10 a 25% +6 | 0 a 10% +2 | gasta mais do que entra -8 | gasta bem mais (acima de 110% das entradas) -15' },
-        { k: 'saldos', nome: 'Saldos de fim de mes', min: -10, max: 8,
-          regra: 'positivos e estaveis/crescentes +8 | positivos baixos +3 | zerados todo mes (tudo que entra sai) -2 | negativos ou cheque especial -10' },
-        { k: 'comprometimento', nome: 'Compromissos fixos', min: -30, max: 5,
-          regra: 'ate 20% +5 | 21 a 40% +2 | 41 a 60% -3 | 61 a 80% -10 | 81 a 95% -20 | acima de 95% -30 (percentual = soma dos valorMensal de "compromissos" / media das entradas validas; o sistema refaz esse item com a renda final)' },
-        { k: 'gastos', nome: 'Perfil de gastos', min: -10, max: 5,
-          regra: 'economico (so o essencial, guarda dinheiro) +5 | equilibrado 0 | gastador (delivery, lazer e compras por impulso pesam muito) -5 a -10' },
-        { k: 'dividas', nome: 'Dividas e juros', min: -20, max: 0,
-          regra: 'cada emprestimo/financiamento ativo -3 (maximo -10) | juros de cheque especial ou cartao rotativo, atrasos -5 a -10 | nenhum 0' },
-        { k: 'outros', nome: 'Outros sinais', min: -10, max: 5,
-          regra: 'so para algo relevante que as faixas acima nao cobrem (justifique); senao 0' }
-    ];
-
-    function reguaTextoPrompt() {
-        var t = 'Parta de ' + REGUA_BASE + ' pontos e aplique os itens abaixo. Em cada item escolha UM valor dentro da faixa, conforme a gravidade, e preencha em "pontos" (numero inteiro). Nao invente itens nem pesos: o sistema limita cada valor a faixa e faz a soma.\n';
-        REGUA_ITENS.forEach(function (it, i) { t += (i + 1) + '. ' + it.nome + ' [' + it.k + ': de ' + it.min + ' a +' + it.max + ']: ' + it.regra + '\n'; });
-        t += (REGUA_ITENS.length + 1) + '. Apostas: o sistema pontua sozinho (use apenas casasDeJogoEncontradas); NAO desconte apostas em nenhum item.\n';
-        return t;
-    }
-
-    // pct = saidas / entradas (%). Segue a regua da "Sobra do mes": 25%+ de sobra +10 | 10-25% +6 | 0-10% +2 | gasta mais do que entra -8 | acima de 110% -15
-    function pontosSobra(pct) {
-        return pct <= 75 ? 10 : pct <= 90 ? 6 : pct <= 100 ? 2 : pct <= 110 ? -8 : -15;
-    }
-
-    function pontosComprometimento(pct) {
-        return pct <= 20 ? 5 : pct <= 40 ? 2 : pct <= 60 ? -3 : pct <= 80 ? -10 : pct <= 95 ? -20 : -30;
-    }
-
-    // Aceita os pontos da IA (objeto k->numero). Devolve itens limitados a faixa, ou null se nao serve.
-    function validarPontos(p) {
-        if (!p || typeof p !== 'object') return null;
-        var itens = {}, achou = 0;
-        REGUA_ITENS.forEach(function (it) {
-            var n = numIA(p[it.k]);
-            if (isFinite(n)) { achou++; n = Math.round(Math.max(it.min, Math.min(it.max, n))); } else n = 0;
-            itens[it.k] = n;
-        });
-        return achou >= 4 ? itens : null;
-    }
+    var NOTA_TETO = 92;   // nenhum cliente e perfeito
+    var FAIXAS = {
+        FORTE:     { min: 85, max: 92, entradaPct: 0.38 },
+        MEDIO:     { min: 60, max: 84, entradaPct: 0.40 },
+        FRACO:     { min: 51, max: 59, entradaPct: 0.60 },
+        REPROVADO: { min: 15, max: 45, entradaPct: 0.60 }
+    };
+    // Limites dos sinais. Percentuais = compromissos / renda final; cv = variacao da renda entre os meses.
+    var LIM = {
+        compForte: 30, compMedio: 50, compGrave: 60, compReprova: 80,   // comprometimento da renda (%)
+        fluxoLeve: 105, fluxoGrave: 110,                                 // saidas / entradas (%)
+        quedaEstavel: 0.30, quedaGrave: 0.45,                            // oscilacao PARA BAIXO da renda entre os meses (so meses abaixo da media contam)
+        credoresGrave: 3, credoresComCompGrave: 40,                      // dividas: qtde e % da renda em que a qtde vira sinal grave
+        reservaMinPct: 0.05, reservaZeroPct: 0.02                        // saldo medio de fim de mes / entradas mensais
+    };
 
     // Faixa do cliente APROVADO pela nota (entrada exigida); reprovado nao passa por aqui
     function riscoPorNota(nota) {
-        return nota >= 85 ? { risco: 'FORTE', entradaPct: 0.33 } : nota >= 60 ? { risco: 'MEDIO', entradaPct: 0.35 } : { risco: 'FRACO', entradaPct: 0.60 };
+        var r = nota >= FAIXAS.FORTE.min ? 'FORTE' : nota >= FAIXAS.MEDIO.min ? 'MEDIO' : 'FRACO';
+        return { risco: r, entradaPct: FAIXAS[r].entradaPct };
     }
 
     // Decisao pela nota: 50 ou menos reprova (FRACO = 51 a 59)
@@ -933,7 +905,7 @@
         if (d.nota > NOTA_REPROVA) {
             var r = riscoPorNota(d.nota);
             d.aprov = true; d.reprovado = false; d.risco = r.risco; d.entradaPct = r.entradaPct;
-        } else { d.aprov = false; d.reprovado = true; d.risco = 'REPROVADO'; d.entradaPct = 0.60; }
+        } else { d.aprov = false; d.reprovado = true; d.risco = 'REPROVADO'; d.entradaPct = FAIXAS.REPROVADO.entradaPct; }
     }
 
     // ── Compromissos fixos ───────────────────────────────────────────
@@ -978,7 +950,7 @@
                 var desc = String(c.descricao || c.tipo || 'Compromisso').trim().substring(0, 60) || 'Compromisso';
                 var k = desc.toLowerCase();
                 if (porNome[k]) { if (v > porNome[k].valor) porNome[k].valor = arred2(v); return; }   // mesmo credor repetido por mes: vale um so
-                porNome[k] = { desc: desc, valor: arred2(v), meses: numPos(c.meses) || 0 };
+                porNome[k] = { desc: desc, tipo: String(c.tipo || '').substring(0, 30), valor: arred2(v), meses: numPos(c.meses) || 0 };
                 ordem.push(porNome[k]);
             });
             return { fonte: 'lista', itens: ordem, total: arred2(ordem.reduce(function (a, i) { return a + i.valor; }, 0)) };
@@ -1027,7 +999,174 @@
         return d;
     }
 
-    // Aplica renda calculada + regua. Idempotente. calcPre = renda da etapa 1 (so texto), se houver.
+    // ── Fatos que a IA informa (ela NAO pontua): saldos, sinais de aperto e dividas ──
+    function mesesInt(v) { var n = Math.round(numIA(v)); return isFinite(n) ? Math.max(0, Math.min(MAX_MESES, n)) : 0; }
+
+    // Saldos de fim de mes -> { n, negativos (meses no vermelho), media } ou null se a IA nao informou
+    function lerSaldos(raw) {
+        var l = Array.isArray((raw || {}).saldosMeses) ? raw.saldosMeses : [], vs = [], neg = 0;
+        l.filter(function (m) { return m && typeof m === 'object'; }).slice(-MAX_MESES).forEach(function (m) {
+            var fim = numIA(m.saldoFinal), min = numIA(m.menorSaldo);
+            if (!isFinite(fim) && !isFinite(min)) return;
+            var f = isFinite(fim) ? fim : min;
+            vs.push(f);
+            if (f < 0 || (isFinite(min) && min < 0)) neg++;
+        });
+        return vs.length ? { n: vs.length, negativos: neg, media: arred2(vs.reduce(function (a, v) { return a + v; }, 0) / vs.length) } : null;
+    }
+
+    // Confere no TEXTO do extrato (zero tokens) o que a IA disse: palavras de cheque especial, rotativo e atraso
+    var SINAIS_RISCO = {
+        chequeEspecial: /cheque especial|chq\.? ?especial|juros (do )?limite|adiantamento a depositante/g,
+        rotativo: /rotativo|pagamento m[ií]nimo|pgto\.? m[ií]nimo|parcelamento (da )?fatura|encargos (do )?cart[aã]o/g,
+        atraso: /juros de mora|\bmora\b|multa|encargos? (por )?atraso|pagamento em atraso/g
+    };
+    function detectarSinaisRisco(texto) {
+        var t = String(texto || '').toLowerCase();
+        if (!t) return null;
+        t = t.replace(SINAIS_PROPAGANDA, ' ');
+        var r = {};
+        Object.keys(SINAIS_RISCO).forEach(function (k) { var m = t.match(SINAIS_RISCO[k]); r[k] = m ? m.length : 0; });
+        return r;
+    }
+
+    var RANK_SINAL = { grave: 2, leve: 1 };
+    // Repetido em 2+ meses = grave; em 1 mes = leve. Sem confirmacao no extrato (IA viu, o texto nao) cai um degrau.
+    function sevMeses(m, confirmado) {
+        if (m >= 2) return confirmado ? 'grave' : 'leve';
+        return m === 1 && confirmado ? 'leve' : null;
+    }
+    function ehDivida(it) { return /empr[eé]st|consign|financ|crediar|carn[eê]|parcel|cons[oó]rcio/i.test((it.tipo || '') + ' ' + (it.desc || '')); }
+    // Quanto a renda oscila PARA BAIXO da media (desvio so dos meses abaixo dela, em % da media).
+    // Mes bom acima da media nao e risco de calote; mes fraco e.
+    function oscilacaoParaBaixo(vals) {
+        var n = vals.length, mu = vals.reduce(function (a, v) { return a + v; }, 0) / n;
+        if (!(mu > 0)) return null;
+        return Math.sqrt(vals.reduce(function (a, v) { var f = Math.max(0, mu - v); return a + f * f; }, 0) / n) / mu;
+    }
+    function limitar01(x) { return Math.max(0, Math.min(1, x)); }
+
+    // Avalia o cliente. Cada GRUPO de sinais correlacionados conta UMA vez (o mais grave do grupo):
+    // assim o mesmo comportamento nao e punido duas vezes. Reprova com 2+ grupos graves.
+    function avaliarFaixa(d) {
+        var raw = d.rawJson || {}, calc = d.rendaCalc, scan = d.sinaisRisco || null;
+        var sin = raw.sinais && typeof raw.sinais === 'object' ? raw.sinais : {};
+        var saldos = lerSaldos(raw), fl = d.fluxo, pct = d.comprometimentoPct;
+        var graves = [], leves = [], obs = [];
+        function grupo(sev, nome, texto) {
+            if (sev === 'grave') graves.push({ grupo: nome, texto: texto });
+            else if (sev === 'leve') leves.push({ grupo: nome, texto: texto });
+        }
+        function maior(a, b) { return (RANK_SINAL[a] || 0) >= (RANK_SINAL[b] || 0) ? a : b; }
+        function plural(n) { return n + (n > 1 ? ' meses' : ' mês'); }
+
+        // 1) atrasos e multas
+        var mAtr = mesesInt(sin.atrasosMeses);
+        grupo(sevMeses(mAtr, !scan || scan.atraso > 0), 'atraso', 'Pagamentos com multa/juros de atraso em ' + plural(mAtr));
+        if (!mAtr && scan && scan.atraso >= 2) obs.push('O extrato cita multa/mora (' + scan.atraso + 'x) e a IA não confirmou atraso: confira.');
+
+        // 2) fatura no minimo / rotativo
+        var mRot = mesesInt(sin.faturaMinimoMeses);
+        grupo(sevMeses(mRot, !scan || scan.rotativo > 0), 'rotativo', 'Fatura paga no mínimo ou rotativo em ' + plural(mRot));
+        if (!mRot && scan && scan.rotativo >= 2) obs.push('O extrato cita rotativo/pagamento mínimo (' + scan.rotativo + 'x) e a IA não confirmou: confira.');
+
+        // 3) caixa no vermelho: cheque especial, saldo negativo e gastar mais do que entra (mesmo problema, conta uma vez)
+        var mCh = mesesInt(sin.chequeEspecialMeses);
+        if (mCh && scan && !(scan.chequeEspecial > 0)) mCh = Math.min(mCh, 1);
+        var mVerm = Math.max(mCh, saldos ? saldos.negativos : 0), sCx = mVerm >= 2 ? 'grave' : mVerm === 1 ? 'leve' : null, tCx = [];
+        if (mVerm) tCx.push('Cheque especial/saldo negativo em ' + plural(mVerm));
+        if (fl && fl.pct > LIM.fluxoLeve) {
+            sCx = maior(sCx, fl.pct > LIM.fluxoGrave ? 'grave' : 'leve');
+            tCx.push('Saídas = ' + fl.pct + '% das entradas (gasta mais do que entra)');
+        }
+        grupo(sCx, 'caixa', tCx.join(' · ') + (mVerm >= 2 && fl && fl.pct > LIM.fluxoGrave ? ' (provado nos dois lados: reprova)' : ''));
+        if (!mCh && scan && scan.chequeEspecial >= 2) obs.push('O extrato cita cheque especial (' + scan.chequeEspecial + 'x) e a IA não confirmou uso: confira.');
+
+        // 4) endividamento: comprometimento da renda, quantidade de dividas, divida nova
+        var credores = (d.compromissosLista || []).filter(ehDivida).length, sEn = null, tEn = [];
+        if (pct !== null && pct > LIM.compGrave) { sEn = 'grave'; tEn.push('Compromissos fixos = ' + pct + '% da renda' + (pct > LIM.compReprova ? ' (acima de ' + LIM.compReprova + '%: reprova)' : '')); }
+        else if (pct !== null && pct > LIM.compMedio) { sEn = 'leve'; tEn.push('Compromissos fixos = ' + pct + '% da renda'); }
+        if (credores >= LIM.credoresGrave) {
+            sEn = maior(sEn, pct !== null && pct > LIM.credoresComCompGrave ? 'grave' : 'leve');
+            tEn.push(credores + ' dívidas/parcelamentos ativos');
+        } else if (credores === 2) { sEn = maior(sEn, 'leve'); tEn.push('2 dívidas/parcelamentos ativos'); }
+        if (sin.emprestimoNovoUltimoMes === true || String(sin.emprestimoNovoUltimoMes).toLowerCase() === 'true') { sEn = maior(sEn, 'leve'); tEn.push('Empréstimo/dívida nova no último mês'); }
+        if (d.compromissoDuvida) { sEn = maior(sEn, 'leve'); tEn.push('Compromissos não confirmados (o extrato tem sinais e a IA não achou nenhum)'); }
+        else if (pct === null) { sEn = maior(sEn, 'leve'); tEn.push('Compromissos fixos não informados pela IA'); }
+        grupo(sEn, 'endividamento', tEn.join(' · '));
+
+        // 5) estabilidade da renda: variacao entre os meses COMPLETOS
+        var meses = calc && calc.usados ? calc.usados.filter(function (m) { return !m.parcial && m.liquido > 0; }) : [];
+        var cv = meses.length >= 2 ? oscilacaoParaBaixo(meses.map(function (m) { return m.liquido; })) : null;
+        var estavel = cv !== null && cv <= LIM.quedaEstavel, motivoInstavel = '';
+        if (cv === null) motivoInstavel = 'menos de 2 meses completos comprovados: não dá para medir a estabilidade';
+        else if (cv > LIM.quedaGrave) grupo('grave', 'renda', 'Renda muito irregular (meses fracos ficam ' + Math.round(cv * 100) + '% abaixo da média)');
+        else if (cv > LIM.quedaEstavel) grupo('leve', 'renda', 'Renda irregular (meses fracos ficam ' + Math.round(cv * 100) + '% abaixo da média)');
+
+        // 6) reserva: so pesa se ha dividas a pagar
+        var entMedia = fl && fl.meses ? fl.entradas / fl.meses : 0;
+        var caixaPositivo = !!(saldos && entMedia > 0 && saldos.negativos === 0 && saldos.media >= LIM.reservaMinPct * entMedia);
+        if (saldos && entMedia > 0 && d.compromissos > 0 && saldos.media / entMedia < LIM.reservaZeroPct && saldos.negativos === 0) {
+            grupo('leve', 'reserva', 'Sem reserva: saldo médio de fim de mês de ' + reaisCurto(saldos.media) + ' com dívidas a pagar');
+        }
+
+        // faixa
+        // caixa no vermelho provado pelos dois lados (saldo/cheque especial em 2+ meses E saidas muito acima das entradas) = reprova
+        var caixaDupla = mVerm >= 2 && !!fl && fl.pct > LIM.fluxoGrave;
+        var reprova = (pct !== null && pct > LIM.compReprova) || graves.length >= 2 || caixaDupla;
+        var compOk = function (lim) { return pct === null || pct <= lim; };   // desconhecido ja entrou como sinal leve
+        var medio = !reprova && !graves.length && leves.length <= 1 && estavel && compOk(LIM.compMedio);
+        var forte = medio && !leves.length && pct !== null && pct <= LIM.compForte && caixaPositivo && meses.length >= 3 && !(calc && calc.curto);
+        var faixa = reprova ? 'REPROVADO' : forte ? 'FORTE' : medio ? 'MEDIO' : 'FRACO';
+
+        // nota dentro da faixa: folga na renda comprometida, estabilidade e caixa; cada sinal leve tira um pouco
+        var partes = [];
+        if (pct !== null) partes.push(limitar01((LIM.compGrave - pct) / LIM.compGrave));
+        if (cv !== null) partes.push(limitar01(1 - cv / LIM.quedaGrave));
+        if (saldos && entMedia > 0) partes.push(limitar01(saldos.media / (0.2 * entMedia)));
+        var forca = partes.length ? partes.reduce(function (a, v) { return a + v; }, 0) / partes.length : 0.5;
+        forca = limitar01(forca - 0.15 * leves.length - (reprova ? 0 : 0.1 * graves.length));
+        var fx = FAIXAS[faixa], nota = Math.min(NOTA_TETO, fx.min + Math.round((fx.max - fx.min) * forca));
+
+        // o que impede a faixa de cima (ajuda o vendedor a explicar)
+        var falta = [];
+        if (faixa === 'FRACO') {
+            graves.forEach(function (g) { falta.push(g.texto); });
+            if (leves.length > 1) leves.forEach(function (g) { falta.push(g.texto); });
+            if (!estavel && motivoInstavel) falta.push(motivoInstavel);
+            if (pct !== null && pct > LIM.compMedio && !graves.some(function (g) { return g.grupo === 'endividamento'; }) && !leves.some(function (g) { return g.grupo === 'endividamento'; })) falta.push('Compromissos fixos = ' + pct + '% da renda');
+        } else if (faixa === 'MEDIO') {
+            leves.forEach(function (g) { falta.push(g.texto); });
+            if (pct !== null && pct > LIM.compForte) falta.push('Compromissos fixos = ' + pct + '% da renda (para FORTE: até ' + LIM.compForte + '%)');
+            if (!caixaPositivo) falta.push(saldos ? 'Caixa baixo: saldo médio de fim de mês de ' + reaisCurto(saldos.media) : 'Saldos de fim de mês não informados');
+            if (meses.length < 3 || (calc && calc.curto)) falta.push('Menos de 3 meses completos de comprovante');
+        }
+        return { faixa: faixa, nota: nota, forca: forca, graves: graves, leves: leves, obs: obs, falta: falta, estavel: estavel, cv: cv,
+                 motivoInstavel: motivoInstavel, comprometimentoPct: pct, caixaPositivo: caixaPositivo, saldos: saldos, credores: credores };
+    }
+
+    function textoFaixa(av) {
+        var L = ['Faixa: ' + av.faixa + ' · nota ' + av.nota + ' (decidida pelos sinais abaixo, sem soma de pontos)'];
+        L.push(av.graves.length ? 'Sinais graves:' : 'Sinais graves: nenhum');
+        av.graves.forEach(function (g) { L.push('⚠ ' + g.texto); });
+        L.push(av.leves.length ? 'Sinais leves:' : 'Sinais leves: nenhum');
+        av.leves.forEach(function (g) { L.push('• ' + g.texto); });
+        L.push('Pilares:');
+        L.push((av.estavel ? '✓ Estabilidade da renda: ok (meses fracos ficam ' + Math.round(av.cv * 100) + '% abaixo da média)' : '✗ Estabilidade da renda: ' + (av.motivoInstavel || (av.cv !== null ? 'meses fracos ficam ' + Math.round(av.cv * 100) + '% abaixo da média' : 'não medida'))));
+        L.push(av.comprometimentoPct === null ? '? Capacidade: compromissos não confirmados' : (av.comprometimentoPct <= LIM.compMedio ? '✓' : '✗') + ' Capacidade: compromissos fixos = ' + av.comprometimentoPct + '% da renda');
+        L.push(av.saldos ? (av.caixaPositivo ? '✓' : '✗') + ' Caixa: saldo médio de fim de mês de ' + reaisCurto(av.saldos.media) + (av.saldos.negativos ? ' (' + av.saldos.negativos + ' mês no vermelho)' : '') : '? Caixa: saldos não informados');
+        if (av.falta.length) { L.push(av.faixa === 'FRACO' ? 'Para subir de faixa:' : 'Para chegar a FORTE:'); av.falta.forEach(function (t) { L.push('– ' + t); }); }
+        av.obs.forEach(function (t) { L.push('ℹ ' + t); });
+        return L.join('\n');
+    }
+
+    // A faixa vale sempre que ha renda: a IA nao pontua mais, entao dado que faltou (meses, compromissos, saldos) vira
+    // incerteza e a faixa fica conservadora (FRACO), com a explicacao na tela. Sem renda, as regras de renda reprovam.
+    function faixaAplicavel(d) {
+        return d.rendaEstimada > 0;
+    }
+
+    // Aplica renda calculada + faixa. Idempotente. calcPre = renda da etapa 1 (so texto), se houver.
     function finalizarPontuacao(d, calcPre) {
         var raw = d.rawJson || {};
         var calc = calcPre || calcularRenda(raw);
@@ -1038,34 +1177,17 @@
 
         calcularComprometimento(d);
 
-        d.reguaAplicada = false;
-        var pontos = validarPontos(raw.pontos);
-        if (!pontos || d.nomesBatem === false) return d;
-        // Sobra do mes sai das ENTRADAS x SAIDAS (conta feita aqui), nao do palpite da IA: gastar tudo que entra nao ganha nota alta
-        if (d.fluxo && d.fluxo.entradas > 0) pontos.sobra = pontosSobra(d.fluxo.pct);
-        if (d.comprometimentoPct !== null) pontos.comprometimento = pontosComprometimento(d.comprometimentoPct);
-        else if (d.compromissoDuvida) pontos.comprometimento = 0;   // sem prova de que nao ha compromissos: nem bonus nem desconto
-
-        var soma = REGUA_ITENS.reduce(function (a, it) { return a + pontos[it.k]; }, 0);
-        var notaIA = d.nota;
-        d.nota = Math.max(0, Math.min(NOTA_TETO, REGUA_BASE + soma));
-        d.pontos = pontos; d.reguaAplicada = true;
+        d.faixaAplicada = false;
+        if (d.nomesBatem === false || !faixaAplicavel(d)) return d;
+        var av = avaliarFaixa(d);
+        if (d.calculoIA === undefined) d.calculoIA = d.calculo || '';
+        d.nota = av.nota; d.avaliacao = av; d.faixaAplicada = true;
         var eraReprovado = d.reprovado;
         classificarPorNota(d);
         if (d.reprovado && !d.motivos) {
-            var neg = REGUA_ITENS.filter(function (it) { return pontos[it.k] < 0; }).sort(function (a, b) { return pontos[a.k] - pontos[b.k]; })
-                .slice(0, 3).map(function (it) { return it.nome + ' (' + pontos[it.k] + ')'; });
-            d.motivos = 'Pontuação ' + d.nota + ' — nota 50 ou menos reprova.' + (neg.length ? '\nMaiores descontos: ' + neg.join(', ') + '.' : '');
+            d.motivos = 'Faixa REPROVADO (nota ' + d.nota + ').' + (av.graves.length ? '\n' + av.graves.map(function (g) { return '• ' + g.texto; }).join('\n') : '');
         } else if (eraReprovado && !d.reprovado) d.motivos = '';
-
-        var sinal = function (n) { return (n > 0 ? '+' : '') + n; };
-        var linhas = ['Base ' + REGUA_BASE];
-        REGUA_ITENS.forEach(function (it) {
-            var extra = it.k === 'sobra' && d.fluxo && d.fluxo.entradas > 0 ? ' (saídas = ' + d.fluxo.pct + '% das entradas)' : it.k !== 'comprometimento' ? '' : d.comprometimentoPct !== null ? ' (' + d.comprometimentoPct + '% da renda)' : d.compromissoDuvida ? ' (não avaliado: a IA não achou compromissos, mas o extrato tem sinais)' : '';
-            linhas.push(it.nome + extra + ': ' + sinal(pontos[it.k]));
-        });
-        linhas.push('Total: ' + d.nota + (notaIA !== d.nota && notaIA > 0 ? '  (a IA tinha estimado ' + notaIA + '; vale a soma da régua)' : ''));
-        d.calculo = linhas.join('\n') + (d.calculo ? '\n\nJustificativa da IA:\n' + d.calculo : '');
+        d.calculo = textoFaixa(av) + (d.calculoIA ? '\n\nResumo da IA:\n' + d.calculoIA : '');
         return d;
     }
 
@@ -1171,7 +1293,7 @@
 
     function buildPrompt(rendaPre) {
         return (
-'Voce e um analista de credito senior da Workcell, loja de celulares em Joinville-SC.\n'+
+'Voce e um analista de credito senior da Workcell, loja de celulares em Goiania-GO.\n'+
 'Analise os documentos do cliente e retorne APENAS um JSON valido, sem texto adicional.\n\n'+
 
 '=== CONTEXTO ===\n'+
@@ -1192,15 +1314,17 @@
   ? '⚠️ RENDA JA CALCULADA PELO SISTEMA: R$ '+Number(rendaPre.renda).toFixed(2)+' por mes. Use exatamente este valor em rendaEstimada; nao recalcule nem classifique a renda de novo.\n\n'
   : REGRAS_RENDA+'\n')+
 
-'=== NOTA (0 a 100): CHANCE DE CALOTE ===\n'+
-'A nota mede a chance de o cliente PAGAR em dia: 0 = altissima chance de calote, 100 = nenhuma. O TAMANHO da renda NAO entra na nota (ele so define o valor do aparelho que o sistema libera depois):\n'+
-'  - renda baixa, gasto consciente, contas e dividas em dia, sem apostas = nota BOA (e so podera comprar aparelho mais barato);\n'+
-'  - renda alta, sobra dinheiro, saldo que cresce, sem dividas ruins = nota ALTA;\n'+
-'  - renda media, gasta tudo, atrasa contas, cheque especial/rotativo, dividas pesadas = nota BAIXA.\n'+
-'O que pesa na nota: sobra do mes, saldos/caixa, dividas e atrasos, disciplina nos gastos, estabilidade da renda e comprometimento. "Tudo que entra sai" so e ruim quando o dinheiro vai para gastos descontrolados, dividas e jogos; repassar o dinheiro de clientes/vendas (conta de passagem) nao e gasto da pessoa.\n'+
-'Pontue SOMENTE pela regua abaixo.\n'+
-reguaTextoPrompt()+'\n'+
-
+'=== NOTA E FAIXA: DECIDIDAS PELO SISTEMA ===\n'+
+'Voce NAO pontua nem soma nota. O sistema decide a faixa (FORTE, MEDIO, FRACO ou REPROVADO) e a nota a partir de FATOS que voce informa. A nota mede a chance de o cliente PAGAR em dia; o TAMANHO da renda NAO entra (so define o valor do aparelho).\n'+
+'O que indica calote: atrasos e multas, cheque especial constante, fatura paga no minimo/rotativo, muitas dividas e parcelas, compromissos que consomem boa parte da renda, gastar mais do que entra, renda irregular. Delivery, lazer e compras NAO sao sinal de calote: cite so como observacao em PADROES DE RISCO. Repassar o dinheiro de clientes/vendas (conta de passagem) nao e gasto da pessoa.\n'+
+'Informe SO o que o extrato prova (na duvida: 0 ou false e explique no texto):\n'+
+'  sinais.atrasosMeses: em quantos dos meses (0 a 3) ha pagamento com multa, juros de mora ou encargo por atraso\n'+
+'  sinais.chequeEspecialMeses: em quantos meses houve uso do cheque especial/limite (juros de limite, IOF de adiantamento, saldo negativo)\n'+
+'  sinais.faturaMinimoMeses: em quantos meses a fatura do cartao foi paga no minimo, em rotativo ou parcelada\n'+
+'  sinais.emprestimoNovoUltimoMes: true SO se entrou credito de emprestimo/financiamento/consignado no ultimo mes, ou ha compromisso novo que nao existia nos meses anteriores\n'+
+'  sinais.evidencias: ate 5 linhas curtas "mes: lancamento" que provam os sinais acima\n'+
+'  saldosMeses: por mes, saldoFinal e menorSaldo (o menor saldo do mes, se o extrato mostrar saldo diario; senao repita o saldo final)\n'+
+'\n'+
 '=== APENAS 2 REPROVACOES OBRIGATORIAS ===\n'+
 '1. Renda real < R$ 1.000/mes = REPROVADO (nao tem como pagar)\n'+
 '2. Apostador compulsivo = REPROVADO\n'+
@@ -1212,9 +1336,9 @@ reguaTextoPrompt()+'\n'+
 '   QUALQUER casa confirmada (ate 1 unica transacao) = REPROVADO. O sistema aplica; voce so lista a casa.\n'+
 '   So liste em casasDeJogoEncontradas o que tem CERTEZA que e casa de aposta. Na duvida use suspeitasJogo.\n\n'+
 
-'Nota 50 ou menos tambem reprova (o sistema decide pela nota). Todo o resto APROVA com condicoes (o sistema aplica depois):\n'+
-'  FORTE (85-100): entrada 33% | teto parcela 30% da renda\n'+
-'  MEDIO (60-84):  entrada 35% | teto parcela 20% da renda\n'+
+'Nota 50 ou menos tambem reprova (o sistema decide). Todo o resto APROVA com condicoes (o sistema aplica depois):\n'+
+'  FORTE (85-100): entrada 38% | teto parcela 30% da renda\n'+
+'  MEDIO (60-84):  entrada 40% | teto parcela 20% da renda\n'+
 '  FRACO (51-59):  entrada 60% | teto parcela 10% da renda\n\n'+
 
 '=== INSTRUCOES DOS CAMPOS NARRATIVOS ===\n'+
@@ -1228,7 +1352,7 @@ reguaTextoPrompt()+'\n'+
 '  SALDOS: saldo final de cada mes\n'+
 '  DIVIDAS ATIVAS: emprestimos identificados com nome da instituicao\n'+
 '  PADROES DE RISCO: comportamentos que chamaram atencao\n\n'+
-'calculoPontuacao: UMA frase curta de justificativa por item da regua (sem repetir os numeros e sem somar; o sistema monta a tabela e o total).\n'+
+'calculoPontuacao: 2 a 3 frases curtas com o que mais pesa A FAVOR e CONTRA o cliente (sem numero de nota: o sistema decide a faixa).\n'+
 (rendaPre ? '' : 'rendaEstimada: sua estimativa da renda mensal (reserva; o sistema recalcula a partir de rendaMeses).\n')+
 'compromissos: lista dos compromissos FIXOS do cliente. ANTES de responder, percorra os DEBITOS de cada mes procurando cada tipo abaixo, um por um:\n'+
 '  fatura de cartao de credito (pagamento da fatura), emprestimo/consignado, financiamento, consorcio, crediario/carne/boleto de loja, parcelamento,\n'+
@@ -1236,7 +1360,7 @@ reguaTextoPrompt()+'\n'+
 '  NAO entram: mercado, farmacia, restaurante, luz, agua, internet, combustivel, transporte e Pix avulso (aparecem em SALDOS e na sobra).\n'+
 '  Uma linha por compromisso (NAO repita o mesmo credor por mes), com o nome do credor em descricao. valorMensal = quanto ele pesa POR MES (valor medio por mes no periodo; se pagou em so 1 dos meses, divida pelos meses do periodo). meses = em quantos meses apareceu.\n'+
 '  Lista vazia [] SO se voce realmente procurou todos os tipos acima e nao achou nenhum. Na duvida, liste e explique em COMPROMISSOS FIXOS.\n'+
-'fluxoMeses: por mes, entradas = soma dos creditos REAIS (sem estornos, sem transferencias entre contas do proprio titular, sem resgate de investimento) e saidas = soma dos debitos REAIS, pela mesma regra (sem transferencias para contas do proprio titular, sem aplicacao em investimento/poupanca, sem estorno). Entradas e saidas precisam usar o MESMO criterio. O sistema calcula a "sobra" da nota a partir desses dois numeros, entao confira a soma.\n'+
+'fluxoMeses: por mes, entradas = soma dos creditos REAIS (sem estornos, sem transferencias entre contas do proprio titular, sem resgate de investimento) e saidas = soma dos debitos REAIS, pela mesma regra (sem transferencias para contas do proprio titular, sem aplicacao em investimento/poupanca, sem estorno). Entradas e saidas precisam usar o MESMO criterio. O sistema mede se o cliente gasta mais do que entra a partir desses dois numeros, entao confira a soma.\n'+
 'conselho: dica especifica. Se reprovado: o que mudaria. Se aprovado: o que checar ao fechar a venda.\n\n'+
 'casasDeJogoEncontradas: CAMPO CRITICO. So liste aqui quando o DESTINATARIO for CLARAMENTE uma casa de aposta, cassino ou jogo online\n'+
 '(o proprio nome diz, ou e uma das casas/gateways conhecidos). Nomes EXATOS. Se nenhuma: []. Exemplos:\n'+
@@ -1254,8 +1378,9 @@ reguaTextoPrompt()+'\n'+
 '  "resumoExecutivo": "1 frase: nome e veredicto (nao cite valor de renda: o sistema calcula).",\n'+
 '  "perfilCliente": "Perfil detalhado 4-6 linhas: fonte de renda, estabilidade, comportamento.",\n'+
 '  "analiseFinanceira": "Analise completa com cabecalhos RENDA:, COMPROMETIMENTO:, SALDOS:, etc.",\n'+
-'  "calculoPontuacao": "Uma frase de justificativa por item da regua.",\n'+
-'  "pontos": {"origem":0,"sobra":0,"saldos":0,"comprometimento":0,"gastos":0,"dividas":0,"outros":0},\n'+
+'  "calculoPontuacao": "O que mais pesa a favor e contra o cliente.",\n'+
+'  "sinais": {"atrasosMeses":0,"chequeEspecialMeses":0,"faturaMinimoMeses":0,"emprestimoNovoUltimoMes":false,"evidencias":[]},\n'+
+'  "saldosMeses": [{"mes":"AAAA-MM","saldoFinal":0.00,"menorSaldo":0.00}],\n'+
 '  "compromissos": [{"descricao":"Credor ou fatura","tipo":"fatura_cartao","valorMensal":0.00,"meses":0}],\n'+
 '  "fluxoMeses": [{"mes":"AAAA-MM","entradas":0.00,"saidas":0.00}],\n'+
 '  "conselho": "Dica pratica especifica pro vendedor.",\n'+
@@ -1323,8 +1448,8 @@ reguaTextoPrompt()+'\n'+
             var confianca      = (obj.confiancaLeitura || 'ALTA').toUpperCase();
 
             var risco = 'REPROVADO', entradaPct = 0.60;
-            if (nota >= 85) { risco = 'FORTE';      entradaPct = 0.33; }
-            else if (nota >= 60) { risco = 'MEDIO'; entradaPct = 0.35; }
+            if (nota >= 85) { risco = 'FORTE';      entradaPct = 0.38; }
+            else if (nota >= 60) { risco = 'MEDIO'; entradaPct = 0.40; }
             else if (nota > NOTA_REPROVA) { risco = 'FRACO'; entradaPct = 0.60; }
             else { risco = 'REPROVADO'; aprov = false; }
 
@@ -2272,7 +2397,7 @@ reguaTextoPrompt()+'\n'+
     }
 
     function validarComprometimento(d) {
-        if (d.reprovado || d.reguaAplicada) return;   // com a regua o item ja entrou na soma
+        if (d.reprovado || d.faixaAplicada) return;   // com a faixa o comprometimento ja foi avaliado
         var pct = pctComprometimento(d);
         if (pct === null) return;
         var alvo = pct > 95 ? 30 : pct > 80 ? 10 : 0;
@@ -2954,8 +3079,9 @@ reguaTextoPrompt()+'\n'+
         d._produto = '';
         d.telefone = job.tel || '';
         d.sinaisCompromisso = detectarSinaisCompromisso(textoParaApostas);   // confere a lista de compromissos da IA com o texto do extrato
+        d.sinaisRisco = detectarSinaisRisco(textoParaApostas);               // confere atraso/cheque especial/rotativo que a IA disse ter visto
 
-        finalizarPontuacao(d, rendaPre);   // renda (media/mediana/abatimentos) + soma da regua, no codigo
+        finalizarPontuacao(d, rendaPre);   // renda (media/mediana/abatimentos) + faixa por sinais e pilares, no codigo
         validarApostasNaResposta(d);
         validarComprometimento(d);
         completarNome(d, job, textoParaApostas);
@@ -3031,8 +3157,8 @@ reguaTextoPrompt()+'\n'+
             var casas = it.casasJogo ? String(it.casasJogo).split(',').filter(Boolean) : [];
             d = {
                 aprov: !reprovado, downgrade: false, entradaAlta: false, reprovado: reprovado,
-                nota: nota, risco: reprovado ? 'REPROVADO' : (nota >= 85 ? 'FORTE' : nota >= 60 ? 'MEDIO' : 'FRACO'),
-                entradaPct: nota >= 85 ? 0.33 : nota >= 60 ? 0.35 : 0.60,
+                nota: nota, risco: reprovado ? 'REPROVADO' : riscoPorNota(nota).risco,
+                entradaPct: reprovado ? FAIXAS.REPROVADO.entradaPct : riscoPorNota(nota).entradaPct,
                 rendaEstimada: parseFloat(it.rendaEstimada) || 0,
                 taxa: TAXA_PADRAO, parcelas: PARCELAS_PADRAO, entrada: null,
                 nomeCliente: nome.split(' ')[0], nomeCompleto: nome,
