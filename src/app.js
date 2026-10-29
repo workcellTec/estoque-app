@@ -2897,6 +2897,92 @@ function ctwPrazoContrato(tipoParcela, numeroParcelas) {
     return n === 1 ? '1 mês' : `${n} meses`;
 }
 
+// ── 1º vencimento: sugestão (contrato + 1 período) e aviso quando foge do normal ──
+// <venc-helpers> (funções puras: testadas sem tela)
+const CTW_VENC_TOLERANCIA = { mensais: 4, quinzenais: 3, semanais: 2 };   // dias a mais que o vendedor pode dar ao cliente
+const CTW_VENC_ROTULO = { mensais: '1 mês', quinzenais: '15 dias', semanais: '7 dias' };
+function ctwIsoLocal(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function ctwIsoParaData(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+    if (!m) return null;
+    const d = new Date(+m[1], +m[2] - 1, +m[3]);
+    return (d.getFullYear() === +m[1] && d.getMonth() === +m[2] - 1 && d.getDate() === +m[3]) ? d : null;
+}
+function ctwFmtBR(d) { return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); }
+function ctwSomarDias(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
+// +1 mês no mesmo dia; se o dia não existe no mês seguinte (31/01), vai para o último dia dele (28 ou 29/02)
+function ctwSomarMes(d) {
+    const ultimo = new Date(d.getFullYear(), d.getMonth() + 2, 0).getDate();
+    return new Date(d.getFullYear(), d.getMonth() + 1, Math.min(d.getDate(), ultimo));
+}
+function ctwVencPadrao(tipo, base) {
+    const b = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+    return tipo === 'semanais' ? ctwSomarDias(b, 7) : tipo === 'quinzenais' ? ctwSomarDias(b, 15) : ctwSomarMes(b);
+}
+// Datas normais: do padrão até padrão + tolerância
+function ctwVencJanela(tipo, base) {
+    const min = ctwVencPadrao(tipo, base), n = CTW_VENC_TOLERANCIA[tipo] !== undefined ? CTW_VENC_TOLERANCIA[tipo] : 4;
+    const datas = [];
+    for (let i = 0; i <= n; i++) datas.push(ctwSomarDias(min, i));
+    return { min, max: datas[n], datas };
+}
+// null = dentro do normal (ou vazio); senão, o texto do aviso
+function ctwVencAvaliar(iso, tipo, base) {
+    const d = ctwIsoParaData(iso);
+    if (!d) return null;
+    const j = ctwVencJanela(tipo, base), b = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+    if (d >= j.min && d <= j.max) return null;
+    const dias = Math.round((d - b) / 864e5);
+    const normal = 'O normal é de ' + ctwFmtBR(j.min) + ' a ' + ctwFmtBR(j.max) + ' (' + CTW_VENC_ROTULO[tipo || 'mensais'] + ' depois do contrato, com pouca tolerância).';
+    if (dias <= 0) return 'O 1º vencimento (' + ctwFmtBR(d) + ') é ANTES (ou no mesmo dia) da data do contrato (' + ctwFmtBR(b) + '). ' + normal;
+    if (d < j.min) return 'O 1º vencimento (' + ctwFmtBR(d) + ') fica só ' + dias + (dias === 1 ? ' dia' : ' dias') + ' depois do contrato. ' + normal;
+    return 'O 1º vencimento (' + ctwFmtBR(d) + ') está ' + Math.round((d - j.max) / 864e5) + ' dia(s) depois do limite normal. ' + normal;
+}
+// </venc-helpers>
+
+// Data de referência do contrato: hoje (contrato novo) ou a data ORIGINAL (editando um salvo)
+function ctwDataBaseContrato() {
+    const id = document.getElementById('editingBoletoId')?.value || window.currentEditingBoletoId || null;
+    if (id) {
+        const original = _boletosHistoryCache.find(b => b.id === id);
+        if (original) return ctwDadosContratoDoRegistro(original).dataContrato;
+    }
+    return new Date();
+}
+
+// Preenche o 1º vencimento com a sugestão (se o vendedor não escolheu outra data) e desenha os botões de data.
+// A data continua LIVRE: é só sugestão; o aviso de data fora do normal aparece ao gerar o contrato.
+function ctwVencSincronizar(ev) {
+    const inp = document.getElementById('primeiroVencimento');
+    const box = document.getElementById('vencChips'), hint = document.getElementById('vencHint');
+    if (!inp) return;
+    const tipo = document.getElementById('tipoParcela')?.value || 'mensais';
+    const base = ctwDataBaseContrato();
+    const padrao = ctwIsoLocal(ctwVencPadrao(tipo, base));
+    const mexeuNoCampo = !!(ev && ev.target && ev.target.id === 'primeiroVencimento');
+    // vazio ou ainda é a sugestão anterior (não foi escolhido à mão) → acompanha frequência/dia
+    if (!mexeuNoCampo && (!inp.value || inp.value === window._ctwVencAuto)) {
+        inp.value = padrao;
+        window._ctwVencAuto = padrao;
+    }
+    if (!box) return;
+    const j = ctwVencJanela(tipo, base);
+    box.innerHTML = '';
+    j.datas.forEach(d => {
+        const iso = ctwIsoLocal(d), sel = inp.value === iso;
+        const b = document.createElement('button');
+        b.type = 'button'; b.dataset.iso = iso;
+        b.textContent = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + ' ' + ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'][d.getDay()];
+        b.style.cssText = 'padding:6px 10px;border-radius:999px;font-size:.8rem;cursor:pointer;border:1px solid ' + (sel ? '#198754' : 'var(--input-border, #555)') + ';background:' + (sel ? '#198754' : 'transparent') + ';color:' + (sel ? '#fff' : 'inherit');
+        box.appendChild(b);
+    });
+    if (hint) {
+        const v = ctwIsoParaData(inp.value);
+        const extra = (v && tipo === 'mensais' && v.getDate() >= 29) ? ' Atenção: dia ' + v.getDate() + ' não existe em todos os meses.' : '';
+        hint.textContent = 'Normal: ' + CTW_VENC_ROTULO[tipo] + ' depois do contrato (' + ctwFmtBR(j.min) + ' até ' + ctwFmtBR(j.max) + '). Pode escolher outra data no calendário se for uma exceção.' + extra;
+    }
+}
+
 // Lê o formulário aberto → objeto simples (mesmos nomes do registro salvo no Firebase).
 function ctwDadosContratoDoFormulario() {
     const val = (id) => (document.getElementById(id)?.value ?? '').toString().trim();
@@ -3589,6 +3675,22 @@ async function ctwFinalizarContrato() {
         // Editar não muda a data do contrato: o PDF sai com a data em que ele foi criado.
         const original = _boletosHistoryCache.find(b => b.id === editId);
         if (original) dados.dataContrato = ctwDadosContratoDoRegistro(original).dataContrato;
+    }
+
+    // 1º vencimento fora do normal (ex.: digitou 31/10 em vez de 30/11)? Avisa, mas o vendedor pode manter (exceção).
+    // Editando um contrato salvo sem mexer na data, não incomoda.
+    {
+        const orig = editId ? _boletosHistoryCache.find(b => b.id === editId) : null;
+        const inalterado = !!(orig && orig.primeiroVencimento === dados.primeiroVencimento);
+        const aviso = inalterado ? null : ctwVencAvaliar(dados.primeiroVencimento, dados.tipoParcela, editId ? dados.dataContrato : new Date());
+        if (aviso) {
+            const manter = await ctwConfirmar('⚠️ ' + aviso + ' Manter essa data mesmo assim?', 'Manter assim', 'Corrigir data');
+            if (!manter) {
+                const inp = document.getElementById('primeiroVencimento');
+                if (inp) { inp.scrollIntoView({ block: 'center' }); inp.focus(); }
+                return;
+            }
+        }
     }
 
     _contratoEmAndamento = true;
@@ -6673,9 +6775,19 @@ Se não houver smartphones: []`;
             if (typeof window.cancelarEdicaoBoleto === 'function') window.cancelarEdicaoBoleto();
         }
     });
-    document.getElementById('contractForm')?.addEventListener('input', () => {
+    document.getElementById('contractForm')?.addEventListener('input', (ev) => {
         calculateContractPayments();
+        ctwVencSincronizar(ev);
     });
+    document.getElementById('contractForm')?.addEventListener('reset', () => setTimeout(() => { window._ctwVencAuto = null; ctwVencSincronizar(); }, 0));
+    document.getElementById('vencChips')?.addEventListener('click', (ev) => {
+        const b = ev.target.closest && ev.target.closest('button[data-iso]');
+        const inp = document.getElementById('primeiroVencimento');
+        if (!b || !inp) return;
+        inp.value = b.dataset.iso;
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    ctwVencSincronizar();
     document.getElementById('btnImprimir')?.addEventListener('click', ctwFinalizarContrato);
     document.getElementById('btnLimparContrato')?.addEventListener('click', () => window.ctwLimparFormularioContrato(true));
 

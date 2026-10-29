@@ -1913,14 +1913,14 @@ reguaTextoPrompt()+'\n'+
         var box = el('cs_lista'); if (!box) return;
         var andam = _jobs.filter(function (j) { return j.estado !== 'pronta'; });
         var noServidor = filaItensTela();
-        var prontas = _jobs.filter(function (j) { return j.estado === 'pronta'; }).slice(0, 8);
+        var prontas = prontasDeHoje();
         var html = filaAvisoHtml();
         if (andam.length || noServidor.length) {
             html += '<div class="cs-sec-h"><span>Em andamento</span><em>' + (andam.length + noServidor.length) + '</em></div>' +
                 andam.map(cardAndamento).join('') + noServidor.map(cardServidor).join('');
         }
         if (prontas.length) {
-            html += '<div class="cs-sec-h"><span>Prontas</span><em>nesta sessão</em></div>' + prontas.map(cardPronta).join('');
+            html += '<div class="cs-sec-h"><span>Prontas</span><em>hoje</em></div>' + prontas.map(function (p) { return p.html; }).join('');
         }
         box.innerHTML = html;
     }
@@ -1928,7 +1928,7 @@ reguaTextoPrompt()+'\n'+
     function atualizarBadge() {
         filaAtualizarCartaoHome();
         var n = _jobs.filter(function (j) { return (j.estado === 'pronta' && !j.visto) || j.estado === 'aguarda' || j.estado === 'erro'; }).length +
-            _fila.itens.filter(function (a) { return a.estado === 'erro'; }).length;
+            _fila.itens.filter(function (a) { return a.estado === 'erro'; }).length + hojeNaoVistas();
         ['goCS2'].forEach(function (id) {
             var b = el(id); if (!b) return;
             var tag = b.querySelector('.cs-card-badge');
@@ -1943,7 +1943,7 @@ reguaTextoPrompt()+'\n'+
         ov.classList.add('active');
         if (_formAberto === null) _formAberto = _jobs.length === 0 && !filaItensTela().length;
         renderRascunho(); aplicarForm(); renderLista();
-        filaBuscar();   // atualiza por tras; a lista que ja esta na tela aparece na hora
+        filaBuscar(); hojeBuscar();   // atualiza por tras; a lista que ja esta na tela aparece na hora
     }
     function closeOverlay() { el('cs_ov') && el('cs_ov').classList.remove('active'); }
 
@@ -1957,6 +1957,7 @@ reguaTextoPrompt()+'\n'+
         var b = e.target.closest('[data-act]'); if (!b) return;
         var sid = b.getAttribute('data-sid');
         if (sid) { filaAcaoLista(b.getAttribute('data-act'), sid); return; }   // analise que esta no servidor
+        if (b.getAttribute('data-act') === 'abrir-h') { hojeAbrir(b.getAttribute('data-hid')); return; }   // pronta de hoje que veio do historico
         var j = jobPorId(b.getAttribute('data-id')); if (!j) return;
         var a = b.getAttribute('data-act');
         if (a === 'abrir') abrirResultado(j);
@@ -3002,7 +3003,7 @@ reguaTextoPrompt()+'\n'+
         encerrarPersistencia(job);
         job.dados = d; job.texto = texto;
         if (d.nomeCompleto && d.nomeCompleto !== 'Cliente' && d.nomeCompleto !== 'Amigo(a)') job.nome = d.nomeCompleto;
-        job.estado = 'pronta'; job.prog = 100; job.etapa = 'Pronta'; job.pergunta = null;
+        job.estado = 'pronta'; job.prog = 100; job.etapa = 'Pronta'; job.pergunta = null; job.tsFim = Date.now();
         job.calc = { aberto: false, produto: '', valor: 0 };
         liberarDocsDoJob(job);
         pedirRender();
@@ -3652,7 +3653,7 @@ reguaTextoPrompt()+'\n'+
 
     // Contagem para o cartao da tela inicial: "2 em análise · 1 pronta"
     function filaResumoTexto(locais, servidor) {
-        var and = 0, pro = 0, err = 0;
+        var and = 0, pro = hojeNaoVistas(), err = 0;
         locais.forEach(function (j) { if (j.estado === 'pronta') { if (!j.visto) pro++; } else if (j.estado === 'erro') err++; else and++; });
         servidor.forEach(function (a) { if (a.estado === 'fila' || a.estado === 'rodando') and++; else if (a.estado === 'pronta') pro++; else if (a.estado === 'erro') err++; });
         var p = [];
@@ -3674,6 +3675,110 @@ reguaTextoPrompt()+'\n'+
     function filaAcaoLista(act, sid) {
         if (act === 's-cancelar' || act === 's-descartar') filaAcaoServidor('cancelar', sid);
         else if (act === 's-retry') filaAcaoServidor('retry', sid);
+    }
+
+    // ================================================================
+    // PRONTAS DE HOJE: as analises do dia continuam na lista mesmo depois de fechar e abrir o app.
+    // Vem do historico (Firebase) + o que acabou de ficar pronto nesta sessao (sem repetir).
+    // "Nova" e lembrada no aparelho ate a analise ser aberta.
+    // ================================================================
+    var HOJE_LS = 'cs_hoje_v1', VISTOS_LS = 'cs_vistos_v1', HOJE_MAX = 30;
+    var _hoje = { itens: [], carregando: false };
+
+    function inicioDoDia() { var d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
+    function operadorAtual() { return window.currentUserProfile || safeGet('ctwUserProfile') || '--'; }
+    // so as do operador deste aparelho (registros sem operador, ou aparelho sem perfil, entram)
+    function ehMinha(it) { var me = operadorAtual(); return !it.operador || it.operador === '--' || me === '--' || it.operador === me; }
+
+    function lsLer(k, padrao) { try { var v = JSON.parse(safeGet(k) || 'null'); return v === null ? padrao : v; } catch (e) { return padrao; } }
+    function lsGravar(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* sem espaco/privado: segue sem guardar */ } }
+
+    function hojeVisto(id) { return !!(id && lsLer(VISTOS_LS, {})[id]); }
+    function hojeMarcarVisto(id) {
+        if (!id) return;
+        var v = lsLer(VISTOS_LS, {}), limite = Date.now() - 4 * 86400000, k;
+        v[id] = Date.now();
+        for (k in v) if (v[k] < limite) delete v[k];   // nao cresce para sempre
+        lsGravar(VISTOS_LS, v);
+    }
+
+    // Resumo leve (o texto completo da analise fica so no Firebase; e buscado ao abrir)
+    function leveDoRegistro(it) {
+        return { id: it.id, nomeCliente: it.nomeCliente || '', nota: it.nota, decisao: it.decisao || '', casasJogo: it.casasJogo || '',
+            rendaEstimada: it.rendaEstimada || null, ts: it.ts, operador: it.operador || '', telefone: it.telefone || null, produto: it.produto || '' };
+    }
+
+    function hojeCarregarCache() {
+        var c = lsLer(HOJE_LS, []), ini = inicioDoDia();
+        _hoje.itens = (Array.isArray(c) ? c : []).filter(function (it) { return it && it.id && it.ts >= ini && ehMinha(it); });
+    }
+
+    // Itens de hoje que NAO estao ja na lista da sessao (as da sessao tem prioridade: carregam estado como a calculadora aberta)
+    function hojeSemSessao() {
+        var ini = inicioDoDia(), chaves = {};
+        _jobs.forEach(function (j) { if (j.fbKey) chaves[j.fbKey] = 1; });
+        return _hoje.itens.filter(function (it) { return it.ts >= ini && ehMinha(it) && !chaves[it.id]; });
+    }
+    function hojeNaoVistas() { return hojeSemSessao().filter(function (it) { return !hojeVisto(it.id); }).length; }
+
+    // Lista unica de "Prontas de hoje": sessao + historico, mais nova primeiro
+    function prontasDeHoje() {
+        var ini = inicioDoDia(), lista = [];
+        _jobs.forEach(function (j) { if (j.estado === 'pronta' && (j.tsFim || j.ts) >= ini) lista.push({ t: j.tsFim || j.ts, html: cardPronta(j) }); });
+        hojeSemSessao().forEach(function (it) { lista.push({ t: it.ts, html: cardHoje(it) }); });
+        lista.sort(function (a, b) { return b.t - a.t; });
+        return lista.slice(0, HOJE_MAX);
+    }
+
+    function cardHoje(it) {
+        var nota = typeof it.nota === 'number' ? it.nota : (parseInt(it.nota) || 0), rep = it.decisao === 'REPROVADO', c = rep ? 'bad' : cor(nota);
+        var sub = rep ? 'Reprovado' + (it.casasJogo ? ' · apostas detectadas' : '') :
+            'Aprovado' + (it.rendaEstimada > 0 ? ' · renda ' + R$(it.rendaEstimada).replace(',00', '') + '/mês' : '');
+        return '<button type="button" class="cs-card cs-pronta" data-act="abrir-h" data-hid="' + esc(it.id) + '">' +
+            '<span class="cs-ring-sm ' + c + '">' + nota + '</span>' +
+            '<span class="cs-job-info"><span class="cs-job-nome">' + esc(it.nomeCliente || 'Cliente') + '</span><span class="cs-job-sub ' + c + '">' + sub + '</span></span>' +
+            (hojeVisto(it.id) ? '<i class="bi bi-chevron-right cs-chev"></i>' : '<span class="cs-tag-nova">Nova</span>') + '</button>';
+    }
+
+    // Busca no Firebase o que foi feito hoje (por tras: a lista guardada no aparelho ja esta na tela)
+    async function hojeBuscar() {
+        if (_hoje.carregando) return;
+        _hoje.carregando = true;
+        try {
+            await esperarFirebase(8000);
+            var db = window._firebaseDB; if (!db) return;
+            var fb = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js'), ini = inicioDoDia(), snap;
+            try { snap = await fb.get(fb.query(fb.ref(db, SAVE_PATH), fb.orderByChild('ts'), fb.startAt(ini))); }
+            catch (e1) { snap = await fb.get(fb.ref(db, SAVE_PATH)); }   // sem indice/consulta: le tudo e filtra aqui
+            var itens = [];
+            snap.forEach(function (c) { var v = c.val(); if (v && v.ts >= ini && ehMinha(v)) itens.push(Object.assign({ id: c.key }, v)); });
+            itens.sort(function (a, b) { return b.ts - a.ts; });
+            _hoje.itens = itens.map(leveDoRegistro);
+            lsGravar(HOJE_LS, _hoje.itens);
+            _hoje.completos = {}; itens.forEach(function (it) { _hoje.completos[it.id] = it; });
+            renderLista(); atualizarBadge();
+        } catch (e) { console.warn('[CreditoScan] nao consegui carregar as de hoje:', e); }
+        finally { _hoje.carregando = false; }
+    }
+
+    async function hojeAbrir(id) {
+        var it = _hoje.completos && _hoje.completos[id];
+        if (!it) {   // veio so do cache do aparelho: busca o texto completo
+            try {
+                await esperarFirebase(8000);
+                var fb = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
+                var s = await fb.get(fb.ref(window._firebaseDB, SAVE_PATH + '/' + id));
+                if (s.exists()) it = Object.assign({ id: id }, s.val());
+            } catch (e) { /* mostra o aviso abaixo */ }
+        }
+        if (!it) { avisar('Não consegui abrir agora. Confira a internet e tente de novo.'); return; }
+        abrirRegistroObj(it);
+    }
+
+    function hojeIniciar() {
+        hojeCarregarCache();
+        hojeBuscar();
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) hojeBuscar(); });
     }
 
     // ================================================================
@@ -3710,6 +3815,7 @@ reguaTextoPrompt()+'\n'+
     function abrirResultado(job) {
         if (!job || !job.dados) return;
         _view = job; job.visto = true;
+        hojeMarcarVisto(job.fbKey);   // lembra que ja abriu (a etiqueta "Nova" nao volta ao reabrir o app)
         removerBanner(job.id);
         if (!job.calc) job.calc = { aberto: false, produto: '', valor: 0 };
         openOverlay();
@@ -4029,8 +4135,9 @@ reguaTextoPrompt()+'\n'+
     }
 
     // ── Abrir uma analise do historico (sem gastar token) ──
-    function abrirRegistro(idx) {
-        var it = (window._histItems || [])[idx]; if (!it) return;
+    function abrirRegistro(idx) { abrirRegistroObj((window._histItems || [])[idx]); }
+    function abrirRegistroObj(it) {
+        if (!it) return;
         var d = dadosDoRegistro(it);
         abrirResultado({
             id: 'h' + it.id, estado: 'pronta', ts: it.ts, nome: String(it.nomeCliente || ''),
@@ -4983,7 +5090,7 @@ reguaTextoPrompt()+'\n'+
         return _jobs.some(function (j) { return j.estado === 'rodando' || j.estado === 'fila'; });
     };
 
-    function init(){injectCSS();injectHTML();injectMenuBtns();wireEvents();apWire();filaIniciar();atualizarBadge();retomarAnalises();}
+    function init(){injectCSS();injectHTML();injectMenuBtns();wireEvents();apWire();filaIniciar();hojeIniciar();atualizarBadge();retomarAnalises();}
     if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}else{init();}
     window._creditoScanOpen=openOverlay;
     // Botao voltar do celular: fecha a camada mais de cima do CreditoScan (true = tratou)
