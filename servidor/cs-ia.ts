@@ -1264,11 +1264,17 @@ async function passoAnalise(ent: any, rendaPre: any, prazo: number, opc: { temp?
 
 class ErroFinal extends Error {}
 
+// Caminho desta função no Supabase, aprendido da própria requisição (o nome/slug muda conforme como a função foi criada: cs-ia, cs-ia-ts, smart-handler...).
+// Com o nome errado o encadeamento dá 404 e cada passo só anda quando o lease vence (~170 s de espera por passo): foi o que deixou as análises lentas.
+// No Supabase o caminho que a função enxerga NÃO traz o nome dela (só /passo, /enviar...), então o nome vem do segredo FN_SLUG (ex.: smart-handler).
+// Sem o segredo, tenta aprender do caminho da requisição; sem nenhum dos dois, usa cs-ia.
+let FN_BASE = '/functions/v1/' + ((Deno.env.get('FN_SLUG') || 'cs-ia').replace(/^\/+|\/+$/g, ''));
+
 // Dispara o próximo passo numa invocação nova (orçamento de 150 s próprio). Se falhar, o lease vence e a fila resgata.
 function encadear(id: string): void {
   const { url } = cfgBanco();
   // @ts-ignore: EdgeRuntime existe no Supabase
-  EdgeRuntime.waitUntil(fetch(url + '/functions/v1/cs-ia/passo', {
+  EdgeRuntime.waitUntil(fetch(url + FN_BASE + '/passo', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-app-token': Deno.env.get('APP_TOKEN') || '' },
     body: JSON.stringify({ id }),
@@ -1431,10 +1437,11 @@ async function rotaFila(req: Request, rota: string, u: URL): Promise<Response> {
     const row = await analiseBuscar(id, 'id,estado,tempos');
     if (!row) return resp({ erro: 'nao_existe' }, 404);
     if (row.estado !== 'erro' && row.estado !== 'pronta') return resp({ erro: 'so analises com erro ou prontas podem ser repetidas' }, 409);
-    const cpfS = row.tempos && row.tempos.cpf_s;
+    const t0r = row.tempos || {}, temposBase: any = {};
+    ['cpf_s', 'prep_s', 'mb'].forEach((k) => { if (t0r[k]) temposBase[k] = t0r[k]; });
     await analiseAtualizar(id, {
       estado: 'fila', etapa: 'Na fila', progresso: 0, passo: null, passos: null, tentativas: 0, erro: null, lease_ate: null,
-      iniciado_em: null, concluido_em: null, coletada_em: null, resultado: null, tempos: cpfS ? { cpf_s: cpfS } : null, criado_em: agoraIso(),
+      iniciado_em: null, concluido_em: null, coletada_em: null, resultado: null, tempos: Object.keys(temposBase).length ? temposBase : null, criado_em: agoraIso(),
     }, row.estado);
     tickEmSegundoPlano();
     return resp({ ok: true });
@@ -1462,7 +1469,7 @@ async function rotaFila(req: Request, rota: string, u: URL): Promise<Response> {
       body: JSON.stringify({
         id, estado: 'fila', etapa: 'Na fila', progresso: 0,
         nome: UF(p.nome, 80), tel: UF(p.tel, 20).replace(/\D/g, ''), cpf: UF(p.cpf, 14).replace(/\D/g, ''),
-        tempos: Number(p.cpf_s) > 0 ? { cpf_s: Math.min(Math.round(Number(p.cpf_s)), 900) } : null,
+        tempos: (() => { const t: any = {}; if (Number(p.cpf_s) > 0) t.cpf_s = Math.min(Math.round(Number(p.cpf_s)), 900); if (Number(p.prep_s) > 0) t.prep_s = Math.min(Math.round(Number(p.prep_s)), 7200); if (Number(p.mb) > 0) t.mb = Math.min(Math.round(Number(p.mb) * 10) / 10, 50); return Object.keys(t).length ? t : null; })(),
         docs: { docsId, docsRend },
       }),
     });
@@ -1489,6 +1496,8 @@ export async function tratar(req: Request): Promise<Response> {
 
   try {
     if (['enviar', 'lista', 'resultado', 'cancelar', 'repetir', 'coletar', 'tick', 'passo', 'status'].includes(rota)) {
+      const base = partes.slice(0, -1).join('/');
+      if (base) FN_BASE = base.startsWith('/functions/v1') ? base : '/functions/v1' + (base.startsWith('/') ? '' : '/') + base;
       return await rotaFila(req, rota, u);
     }
 
