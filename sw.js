@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-252'; // CreditoScan: etiqueta do usuario, filtro Meus/Todos, aviso ao dono, fila intercalada por usuario
+const CACHE = 'ctw-253'; // CreditoScan: periodo do extrato tambem por datas por extenso (extrato de 6 meses nao e mais "curto")
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

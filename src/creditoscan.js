@@ -2775,7 +2775,7 @@
 
         // === V2: Cobertura de periodo (quantos meses o extrato cobre) ===
         if (!problemas.some(function(p){ return p.nivel === 'erro'; })) {
-            var todasDatas = [];
+            var todasDatas = datasPorExtenso(textoTotal);   // "22 de outubro 2026"; as dd/mm/aaaa entram logo abaixo
             var reData = /\b(\d{2})\/(\d{2})\/(\d{2,4})\b/g;
             var mData;
             while ((mData = reData.exec(textoTotal)) !== null) {
@@ -2920,6 +2920,18 @@
     // Com o servidor ligado a IA roda la e a analise sobrevive ao app fechado (l_retomar.js);
     // sem ele, roda enquanto o app estiver aberto.
     // ================================================================
+    // Datas escritas por extenso ("3 de maio de 2026", "22 de outubro 2026") -> timestamps. O periodo do extrato nao pode
+    // depender so de dd/mm/aaaa: em varios bancos essa data aparece apenas no rodape de "gerado em", igual em todas as paginas.
+    function datasPorExtenso(texto) {
+        var meses = { janeiro: 0, fevereiro: 1, marco: 2, 'março': 2, abril: 3, maio: 4, junho: 5, julho: 6, agosto: 7, setembro: 8, outubro: 9, novembro: 10, dezembro: 11 };
+        var re = /\b(\d{1,2})\s+de\s+(janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\s+(?:de\s+)?(20\d{2})\b/gi, m, r = [];
+        while ((m = re.exec(texto)) !== null) {
+            var dia = parseInt(m[1], 10), ts = new Date(parseInt(m[3], 10), meses[m[2].toLowerCase()], dia).getTime();
+            if (dia >= 1 && dia <= 31 && ts > 0 && ts <= Date.now() + 86400000) r.push(ts);
+        }
+        return r;
+    }
+
     var CANCELADO = { cancelado: true };
     var PASSOS = ['Documentos', 'Apostas e risco', 'Extratos e renda', 'Nota final'];
 
