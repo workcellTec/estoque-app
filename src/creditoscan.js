@@ -172,11 +172,30 @@
 
     // Servidor (Supabase Edge Function): a IA roda la, entao o Android pode congelar o app
     // (ex.: voce foi ao WhatsApp) que a analise continua. Sem senha salva, usa o caminho direto.
-    var SRV_URL = 'https://mgjkjwsotzwmhrcwefhg.supabase.co/functions/v1/cs-ia';
+    var SRV_URL_PADRAO = 'https://mgjkjwsotzwmhrcwefhg.supabase.co/functions/v1/cs-ia';
+    var SRV_URL_LS = 'ctwServerUrl';     // endereco da funcao escolhido em Configuracoes (vazio = o padrao acima)
     var SRV_TOKEN_LS = 'ctwServerToken';
     var SRV_POLL_MS = 2000;
     var SRV_ESPERA_MAX_MS = 600000;      // desiste de esperar o servidor depois de 10 min
     var _srvFalhouEm = 0;                // quando o servidor falhou: nao insiste por 5 min
+
+    // Endereco da funcao: so https://<projeto>.supabase.co/functions/v1/<nome> (a senha do servidor e enviada para la).
+    // Devolve o endereco limpo (sem ?query, #, nem barra no fim) ou '' se nao serve.
+    function normalizarUrlServidor(txt) {
+        var s = String(txt == null ? '' : txt).trim().replace(/[?#].*$/, '').replace(/\/+$/, '');
+        return /^https:\/\/[a-z0-9-]+\.supabase\.co\/functions\/v1\/[A-Za-z0-9_-]+$/i.test(s) ? s : '';
+    }
+    function srvUrl() { return normalizarUrlServidor(safeGet(SRV_URL_LS)) || SRV_URL_PADRAO; }
+
+    // Outro aparelho pode ter mudado o endereco: o do Firebase vale (so troca quando e valido)
+    async function urlServidorSincronizar() {
+        try {
+            await esperarFirebase(8000); if (!window._firebaseDB) return;
+            var fb = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
+            var u = normalizarUrlServidor((await fb.get(fb.ref(window._firebaseDB, 'settings/serverUrl'))).val());
+            if (u && u !== safeGet(SRV_URL_LS)) localStorage.setItem(SRV_URL_LS, u);
+        } catch (e) {}
+    }
 
     function pausa(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
@@ -202,6 +221,7 @@
             var snap = await fb.get(fb.ref(db, 'settings/serverToken'));
             var tk = snap.val() || '';
             if (tk) try { localStorage.setItem(SRV_TOKEN_LS, tk); } catch (e) {}
+            if (tk) await urlServidorSincronizar();   // aparelho novo: pega tambem o endereco da funcao
             return tk;
         } catch (e) { return ''; }
     }
@@ -230,7 +250,7 @@
         if (!ids || !ids.length) return;
         var lista = ids.splice(0, ids.length);
         var tk = safeGet(SRV_TOKEN_LS); if (!tk) return;
-        lista.forEach(function (id) { fetchComTempo(SRV_URL + '?id=' + id, { method: 'DELETE', headers: srvHeaders(tk) }, 15000).catch(function () {}); });
+        lista.forEach(function (id) { fetchComTempo(srvUrl() + '?id=' + id, { method: 'DELETE', headers: srvHeaders(tk) }, 15000).catch(function () {}); });
     }
 
     function srvHeaders(token) { return { 'Content-Type': 'application/json', 'x-app-token': token }; }
@@ -265,7 +285,7 @@
         // 1) entrega o pedido (repetir o mesmo id e seguro: o servidor nao chama a IA duas vezes)
         for (var tp = 0; tp < 3 && !aceito; tp++) {
             try {
-                var rp = await fetchComTempo(SRV_URL, { method: 'POST', headers: srvHeaders(token), body: '{"id":"' + id + '","corpo":' + corpo + '}' }, 90000);
+                var rp = await fetchComTempo(srvUrl(), { method: 'POST', headers: srvHeaders(token), body: '{"id":"' + id + '","corpo":' + corpo + '}' }, 90000);
                 if (rp.status === 202) aceito = true;
                 else throw erroSrvIndisponivel('servidor recusou o pedido (HTTP ' + rp.status + ')');
             } catch (e) {
@@ -280,7 +300,7 @@
             await esperarOuVoltar(SRV_POLL_MS);
             var j = null;
             try {
-                var rg = await fetchComTempo(SRV_URL + '?id=' + id, { method: 'GET', headers: srvHeaders(token) }, 20000);
+                var rg = await fetchComTempo(srvUrl() + '?id=' + id, { method: 'GET', headers: srvHeaders(token) }, 20000);
                 if (rg.status === 404) { var e404 = new Error('servidor perdeu o pedido'); e404.name = 'TypeError'; throw e404; }
                 if (!rg.ok) throw new TypeError('HTTP ' + rg.status);
                 j = await rg.json(); falhas = 0;
@@ -291,7 +311,7 @@
                 continue;
             }
             if (j.status === 'done') {
-                if (!idFixo) fetchComTempo(SRV_URL + '?id=' + id, { method: 'DELETE', headers: srvHeaders(token) }, 15000).catch(function () {});   // nao deixa a resposta guardada
+                if (!idFixo) fetchComTempo(srvUrl() + '?id=' + id, { method: 'DELETE', headers: srvHeaders(token) }, 15000).catch(function () {});   // nao deixa a resposta guardada
                 var corpoResp; try { corpoResp = JSON.parse(j.resposta); } catch (e) { corpoResp = {}; }
                 return { ok: j.http >= 200 && j.http < 300, status: j.http, json: function () { return Promise.resolve(corpoResp); } };
             }
@@ -365,9 +385,10 @@
     }
 
     // Configuracoes: guarda a senha do servidor (aparelho + Firebase) e testa se o servidor aceita
-    async function testarServidor(token) {
+    async function testarServidor(token, base) {
+        base = base || srvUrl();
         try {
-            var r = await fetchComTempo(SRV_URL + '?id=' + novoIdJob(), { method: 'GET', headers: srvHeaders(token) }, 15000);
+            var r = await fetchComTempo(base + '?id=' + novoIdJob(), { method: 'GET', headers: srvHeaders(token) }, 15000);
             if (r.status === 401 || r.status === 403) {
                 var j401 = await r.json().catch(function () { return {}; });
                 // resposta da NOSSA funcao = senha errada; qualquer outra = o Supabase barrou antes de chegar nela
@@ -375,21 +396,21 @@
                 var det = (j401 && (j401.message || j401.msg || j401.error_description)) ? ' Resposta: "' + String(j401.message || j401.msg || j401.error_description).slice(0, 80) + '".' : ' (HTTP ' + r.status + ')';
                 return { ok: false, msg: 'O Supabase barrou antes de chegar na função.' + det + ' Confira se "Verify JWT" está desligado e SALVO (Edge Functions > cs-ia > Settings > Save changes).' };
             }
-            if (r.status === 404 && !(await r.clone().json().catch(function () { return {}; })).status) return { ok: false, msg: 'Função "cs-ia" não encontrada. Confira se ela foi publicada com esse nome exato.' };
+            if (r.status === 404 && !(await r.clone().json().catch(function () { return {}; })).status) return { ok: false, msg: 'Função não encontrada nesse endereço. Copie o endereço completo da função no painel do Supabase (Edge Functions) e cole no campo de cima.' };
             if (r.status === 404 || r.status === 200) {
                 var fila = null;
-                try { var rs = await fetchComTempo(SRV_URL + '/status', { method: 'GET', headers: srvHeaders(token) }, 15000); var js = await rs.json().catch(function () { return {}; }); fila = !!(rs.status === 200 && js && js.fila); if (fila && js.banco && js.banco !== 'ok') return { ok: false, msg: 'A função nova está no ar, mas o banco não está pronto: ' + js.banco + '.' }; } catch (e) {}
+                try { var rs = await fetchComTempo(base + '/status', { method: 'GET', headers: srvHeaders(token) }, 15000); var js = await rs.json().catch(function () { return {}; }); fila = !!(rs.status === 200 && js && js.fila); if (fila && js.banco && js.banco !== 'ok') return { ok: false, msg: 'A função nova está no ar, mas o banco não está pronto: ' + js.banco + '.' }; } catch (e) {}
                 _fila.suporte = fila === null ? null : fila; _fila.suporteTs = Date.now();
                 return { ok: true, msg: 'Servidor respondeu e aceitou a senha.' + (fila ? ' Fila de análises ativa.' : fila === false ? ' Atenção: a função no servidor é a versão antiga (sem fila). Cole a nova versão para a análise rodar toda no servidor.' : '') };
             }
             if (r.status === 500) { var j = await r.json().catch(function () { return {}; }); return { ok: false, msg: 'Servidor com problema: ' + (j.erro || 'HTTP 500') }; }
-            return { ok: false, msg: 'Servidor respondeu HTTP ' + r.status + '. A função cs-ia foi criada com esse nome?' };
-        } catch (e) { return { ok: false, msg: 'Não consegui falar com o servidor (sem internet ou função não criada).' }; }
+            return { ok: false, msg: 'Servidor respondeu HTTP ' + r.status + '. Confira o endereço da função.' };
+        } catch (e) { return { ok: false, msg: 'Não consegui falar com o servidor (sem internet, ou o endereço da função está errado).' }; }
     }
 
     async function salvarSenhaServidor() {
         var inp = el('cs_cfg_srv'), st = el('cs_cfg_srv_status'); if (!inp || !st) return;
-        var tk = inp.value.trim();
+        var tk = inp.value.trim(), urlTxt = (el('cs_cfg_url') || { value: '' }).value.trim();
         var cor = function (ok) { return ok ? 'var(--primary-color)' : 'var(--cs-bad)'; };
         if (!tk) {   // vazio = desligar o servidor e voltar ao caminho direto
             try { localStorage.removeItem(SRV_TOKEN_LS); } catch (e) {}
@@ -398,11 +419,16 @@
             st.innerHTML = '<span style="color:' + cor(true) + '">Servidor desligado: a IA volta a rodar direto no celular.</span>'; return;
         }
         if (tk.length < 12 || /\s/.test(tk)) { st.innerHTML = '<span style="color:' + cor(false) + '">Use uma senha com 12+ caracteres, sem espaços.</span>'; return; }
+        var urlNova = normalizarUrlServidor(urlTxt);
+        if (urlTxt && !urlNova) { st.innerHTML = '<span style="color:' + cor(false) + '">Endereço inválido. Use o formato https://…supabase.co/functions/v1/nome-da-funcao (copie do painel do Supabase) ou deixe vazio.</span>'; return; }
         st.textContent = 'Testando...';
-        var r = await testarServidor(tk);
+        var r = await testarServidor(tk, urlNova || SRV_URL_PADRAO);
         if (r.ok) {
-            try { localStorage.setItem(SRV_TOKEN_LS, tk); } catch (e) {}
-            try { var fb = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js'); if (window._firebaseDB) fb.set(fb.ref(window._firebaseDB, 'settings/serverToken'), tk); } catch (e) {}
+            try { localStorage.setItem(SRV_TOKEN_LS, tk); if (urlNova) localStorage.setItem(SRV_URL_LS, urlNova); else localStorage.removeItem(SRV_URL_LS); } catch (e) {}
+            try {
+                var fb = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
+                if (window._firebaseDB) { fb.set(fb.ref(window._firebaseDB, 'settings/serverToken'), tk); if (urlNova) fb.set(fb.ref(window._firebaseDB, 'settings/serverUrl'), urlNova); else fb.remove(fb.ref(window._firebaseDB, 'settings/serverUrl')); }
+            } catch (e) {}
             _srvFalhouEm = 0;
         }
         st.innerHTML = '<span style="color:' + cor(r.ok) + '">' + (r.ok ? '✅ Salvo. ' : '❌ Não salvei. ') + r.msg + '</span>';
@@ -3335,7 +3361,7 @@
         if (_fila.suporte === true) return true;
         if (_fila.suporte === false && Date.now() - _fila.suporteTs < FILA_REVALIDA_MS) return false;
         try {
-            var r = await fetchComTempo(SRV_URL + '/status', { method: 'GET', headers: srvHeaders(tk) }, FILA_TIMEOUT_MS);
+            var r = await fetchComTempo(srvUrl() + '/status', { method: 'GET', headers: srvHeaders(tk) }, FILA_TIMEOUT_MS);
             var j = await r.json().catch(function () { return {}; });
             if (r.status === 401 || r.status === 403) { _fila.senhaErrada = true; return 'senha'; }
             _fila.senhaErrada = false;
@@ -3490,7 +3516,7 @@
     }
 
     async function jaEstaNoServidor(id, tk) {
-        try { var r = await fetchComTempo(SRV_URL + '/resultado?id=' + id, { method: 'GET', headers: srvHeaders(tk) }, 15000); return r.status === 200; }
+        try { var r = await fetchComTempo(srvUrl() + '/resultado?id=' + id, { method: 'GET', headers: srvHeaders(tk) }, 15000); return r.status === 200; }
         catch (e) { return false; }
     }
 
@@ -3510,7 +3536,7 @@
         for (var t = 1; t <= 3 && !res; t++) {
             checar(job);
             try {
-                res = await xhrPost(SRV_URL + '/enviar', tk, corpo, function (a, b) { upProgresso(job, a, b); }, limite);
+                res = await xhrPost(srvUrl() + '/enviar', tk, corpo, function (a, b) { upProgresso(job, a, b); }, limite);
             } catch (e) {
                 ultimoErro = (e && e.message) || 'falha de rede';
                 if (await jaEstaNoServidor(job.uid, tk)) { res = { status: 200, json: { repetido: true, estado: 'fila' } }; break; }   // a resposta se perdeu, o envio nao
@@ -3558,7 +3584,7 @@
         if (_filaBuscando) return _filaBuscando;
         _filaBuscando = (async function () {
             try {
-                var r = await fetchComTempo(SRV_URL + '/lista', { method: 'GET', headers: srvHeaders(tk) }, FILA_TIMEOUT_MS);
+                var r = await fetchComTempo(srvUrl() + '/lista', { method: 'GET', headers: srvHeaders(tk) }, FILA_TIMEOUT_MS);
                 if (r.status === 200) filaLer(await r.json());
                 else if (r.status === 401 || r.status === 403) { _fila.senhaErrada = true; _fila.ok = false; _fila.falhas++; }
                 else if (r.status === 400 || r.status === 404) { _fila.suporte = false; _fila.suporteTs = Date.now(); _fila.itens = []; _fila.ok = true; _fila.buscou = true; }   // funcao antiga, sem fila
@@ -3602,6 +3628,7 @@
     };
 
     function filaIniciar() {
+        urlServidorSincronizar();   // endereco da funcao vindo de outro aparelho (a lista abaixo ja usa o do aparelho)
         var ini = window._csListaInicial;   // leitura rapida feita pelo index.html antes do modulo carregar
         if (ini && ini.j && Date.now() - ini.ts < 30000) { filaLer(ini.j); window._csListaInicial = null; renderLista(); atualizarBadge(); filaColetarProntas(); filaAgendar(); }
         else filaBuscar();
@@ -3641,7 +3668,7 @@
                 job.fbKey = await salvarFB(job.dados.nomeCompleto, '', job.texto, job.dados, job.cpf, job.uid);
                 if (!job.fbKey) return;
             }
-            var r = await fetchComTempo(SRV_URL + '/coletar', { method: 'POST', headers: srvHeaders(tk), body: JSON.stringify({ id: job.uid }) }, 15000);
+            var r = await fetchComTempo(srvUrl() + '/coletar', { method: 'POST', headers: srvHeaders(tk), body: JSON.stringify({ id: job.uid }) }, 15000);
             if (r.ok) { job.coletadaNoServidor = true; _fila.itens = _fila.itens.filter(function (x) { return x.id !== job.uid; }); renderLista(); atualizarBadge(); }
         } catch (e) { /* tenta de novo na proxima consulta */ }
         finally { delete _coletando[job.uid + ':aviso']; }
@@ -3652,7 +3679,7 @@
         try {
             await esperarFirebase(20000);   // o historico e salvo no Firebase: precisa estar conectado
             if (!window._firebaseDB) { delete _coletando[it.id]; return; }   // sem Firebase o resultado nao entraria no historico: tenta na proxima consulta
-            var r = await fetchComTempo(SRV_URL + '/resultado?id=' + it.id, { method: 'GET', headers: srvHeaders(tk) }, 30000);
+            var r = await fetchComTempo(srvUrl() + '/resultado?id=' + it.id, { method: 'GET', headers: srvHeaders(tk) }, 30000);
             if (r.status !== 200) throw new Error('HTTP ' + r.status);
             var j = await r.json();
             if (j.estado !== 'pronta' || !j.resultado || !j.resultado.resp) { delete _coletando[it.id]; return; }   // outro aparelho repetiu ou cancelou
@@ -3683,7 +3710,7 @@
     async function filaPost(rota, id) {
         var tk = filaToken(); if (!tk) return false;
         try {
-            var r = await fetchComTempo(SRV_URL + '/' + rota, { method: 'POST', headers: srvHeaders(tk), body: JSON.stringify({ id: id }) }, 20000);
+            var r = await fetchComTempo(srvUrl() + '/' + rota, { method: 'POST', headers: srvHeaders(tk), body: JSON.stringify({ id: id }) }, 20000);
             return r.ok;
         } catch (e) { return false; }
     }
@@ -4708,6 +4735,8 @@
                 '<div class="cs-cfg-info" style="display:flex;flex-direction:column;gap:8px">'+
                     '<div class="cs-up-h"><i class="bi bi-cloud-check-fill"></i><b>Servidor (análise em segundo plano)</b></div>'+
                     '<p class="cs-hint" style="text-align:left">Com a senha do servidor, você só envia os documentos: a análise roda lá numa fila (2 por vez) e continua mesmo com o app fechado. Documentos e resultados ficam guardados no servidor por 30 dias e depois são apagados. Deixe vazio para rodar direto no celular.</p>'+
+                    '<input type="url" class="cs-in" id="cs_cfg_url" placeholder="Endereço da função (vazio = padrão)" style="font-size:13px" autocomplete="off" autocapitalize="off" spellcheck="false">'+
+                    '<p class="cs-hint" style="text-align:left;margin:0">Cole o endereço completo da função (painel do Supabase > Edge Functions > copiar). Só muda se a função tiver outro endereço.</p>'+
                     '<input type="password" class="cs-in" id="cs_cfg_srv" placeholder="Senha do servidor (APP_TOKEN)" style="font-size:13px" autocomplete="off">'+
                     '<button type="button" class="cs-btn cs-btn-sec" id="cs_cfg_srv_save">Testar e salvar</button>'+
                     '<div id="cs_cfg_srv_status" style="font-size:12px;text-align:center;min-height:18px"></div>'+
@@ -4752,7 +4781,7 @@
         on('cs_cfg_close','click',function(){el('cs_cfg_ov')&&el('cs_cfg_ov').classList.remove('active');});
         on('cs_cfg_save','click',salvarConfig);
         on('cs_cfg_srv_save','click',salvarSenhaServidor);
-        on('cs_cfg_open','click',function(){var i=el('cs_cfg_srv'),st=el('cs_cfg_srv_status');if(i)i.value=safeGet(SRV_TOKEN_LS)||'';if(st)st.textContent='';});
+        on('cs_cfg_open','click',function(){var i=el('cs_cfg_srv'),u=el('cs_cfg_url'),st=el('cs_cfg_srv_status');if(i)i.value=safeGet(SRV_TOKEN_LS)||'';if(u)u.value=normalizarUrlServidor(safeGet(SRV_URL_LS));if(st)st.textContent='';});
         // Menu inferior do app: Inicio, Taxas, Docs e Mais fecham o CreditoScan (as analises seguem rodando)
         var nav=el('ctwBottomNav');
         if(nav)nav.addEventListener('click',function(e){var b=e.target.closest('.ui-nav-it');if(b)fecharTudo();},true);

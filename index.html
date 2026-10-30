@@ -1524,12 +1524,15 @@ window.addEventListener('load', function() {
 
         // CreditoScan: consulta rápida (~1 KB) ao servidor assim que o app abre, sem carregar o módulo. Serve para
         // mostrar "2 em análise · 1 pronta" no cartão e dar vantagem ao módulo, que reaproveita a lista.
-        // Obs.: o endereço e o nome da senha são os mesmos de creditoscan.js (SRV_URL / SRV_TOKEN_LS).
+        // Obs.: o endereço e o nome da senha são os mesmos de creditoscan.js (srvUrl() / SRV_TOKEN_LS).
         (function () {
             let tk = ''; try { tk = localStorage.getItem('ctwServerToken') || ''; } catch (e) {}
             if (!tk) return;
             const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 6000);
-            fetch('https://mgjkjwsotzwmhrcwefhg.supabase.co/functions/v1/cs-ia/lista', { headers: { 'x-app-token': tk }, signal: ctl.signal })
+            // endereço da função: o escolhido em CreditoScan > Configurações (mesma validação de creditoscan.js) ou o padrão
+            let base = 'https://mgjkjwsotzwmhrcwefhg.supabase.co/functions/v1/cs-ia';
+            try { const u = (localStorage.getItem('ctwServerUrl') || '').trim().replace(/[?#].*$/, '').replace(/\/+$/, ''); if (/^https:\/\/[a-z0-9-]+\.supabase\.co\/functions\/v1\/[A-Za-z0-9_-]+$/i.test(u)) base = u; } catch (e) {}
+            fetch(base + '/lista', { headers: { 'x-app-token': tk }, signal: ctl.signal })
                 .then(r => r.status === 200 ? r.json() : null)
                 .then(j => {
                     if (!j || !Array.isArray(j.analises)) return;
@@ -1793,7 +1796,7 @@ window.addEventListener('load', function() {
             <span class="ui-grow">Sair</span>
         </button>
     </div>
-    <div class="ui-versao" id="ctwVersaoApp">Central Workcell · versão ctw-247</div>
+    <div class="ui-versao" id="ctwVersaoApp">Central Workcell · versão ctw-248</div>
 </div>
 
 <!-- ═══════════════════════════════════════════════
@@ -3064,7 +3067,7 @@ window.addEventListener('load', function() {
                 sonda.remove();
                 var selo = document.createElement('div');
                 selo.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;font:10px/1.3 monospace;background:rgba(0,0,0,.8);color:#0f0;padding:3px 6px;pointer-events:none;';
-                selo.textContent = 'ctw-247 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
+                selo.textContent = 'ctw-248 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
                     ' | modo=' + (matchMedia('(display-mode: standalone)').matches ? 'app instalado' : 'navegador') + ' | tela=' + innerWidth + 'x' + innerHeight;
                 document.body.appendChild(selo);
             }, 2500);
