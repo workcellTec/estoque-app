@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-248'; // CreditoScan: endereco da funcao do servidor editavel em Configuracoes
+const CACHE = 'ctw-249'; // Atualizacao do app: arquivos sempre revalidados no servidor (antes o CreditoScan podia ficar ate 10 min na versao antiga)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
@@ -24,7 +24,8 @@ const LIMITE_REDE_MS = 5000;
 self.addEventListener('install', e => {
     self.skipWaiting();
     e.waitUntil(
-        caches.open(CACHE).then(c => Promise.allSettled(ARQUIVOS_DO_APP.map(u => c.add(u))))
+        // cache: 'reload' = baixa de verdade do servidor (sem usar a copia que o navegador guarda por ~10 min no GitHub Pages)
+        caches.open(CACHE).then(c => Promise.allSettled(ARQUIVOS_DO_APP.map(u => c.add(new Request(u, { cache: 'reload' })))))
     );
 });
 
@@ -68,7 +69,9 @@ self.addEventListener('fetch', e => {
             const timer = setTimeout(() => {
                 usarCache().then(r => { if (r && !resolvido) { resolvido = true; resolve(r); } });
             }, LIMITE_REDE_MS);
-            fetch(req).then(r => {
+            // cache: 'no-cache' = pergunta ao servidor se mudou (304 se igual). Sem isso o fetch usa a copia do navegador
+            // (GitHub Pages manda max-age=600) e o app podia abrir ate 10 min com arquivos antigos misturados com os novos.
+            fetch(req, { cache: 'no-cache' }).then(r => {
                 clearTimeout(timer);
                 if (!resolvido) { resolvido = true; resolve(guardar(req, r)); } else { guardar(req, r); }
             }).catch(() => {
