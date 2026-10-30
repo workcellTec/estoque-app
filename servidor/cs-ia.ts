@@ -76,9 +76,10 @@ const MOTOR = (function (R$) {
 '  - venda de bem (carro, moto, imovel) ou emprestimo entre pessoas, SO quando a descricao disser isso\n'+
 'NA DUVIDA, CONTE (variavel). Nao exclua uma entrada so porque o valor e alto ou diferente das outras.\n'+
 'Confira a conta: fixa + variavel + app + excluidas = TUDO que entrou no mes. Se o extrato imprime o total (ex.: "Total de Creditos", "Total de entradas"), copie em totalCreditos; se nao imprime, use 0.\n'+
+'Em cada mes, liste em "pagadores" os ATE 6 MAIORES pagadores do grupo variavel (nome do pagador como aparece no extrato + soma que ele pagou naquele mes). O sistema usa isso para reconhecer quem paga TODO MES (salario sem holerite, cliente fixo) e nao descontar o custo desse valor.\n'+
 'Liste em excluidasDetalhe as MAIORES entradas excluidas (ate 8, mes + valor + motivo curto, ex.: "autotransferencia", "estorno") para o vendedor conferir.\n'+
 'Um item por MES CALENDARIO coberto pelos documentos. NUNCA some meses diferentes no mesmo item; mes sem entradas = item com zeros. Informe tambem o periodo coberto em periodoDocumentos (primeira e ultima data dos documentos). Formato de cada item:\n'+
-'  {"mes":"AAAA-MM","fixa":0.00,"variavel":0.00,"app":0.00,"excluidas":0.00,"totalCreditos":0.00,"parcial":false}\n'+
+'  {"mes":"AAAA-MM","fixa":0.00,"variavel":0.00,"app":0.00,"excluidas":0.00,"totalCreditos":0.00,"parcial":false,"pagadores":[{"nome":"","valor":0.00}]}\n'+
 'Valores em reais, numero puro (ex.: 2350.90), sem texto. parcial=true SO se o documento cobre apenas parte daquele mes (ex.: comeca no dia 20). Confira a soma de cada mes antes de responder.\n';
 
     // ── Utilitarios ──────────────────────────────────────────────────
@@ -141,11 +142,73 @@ const MOTOR = (function (R$) {
         return { divergentes: divergentes, excluidasTotal: arred2(excl), pctExcluido: pct, excluidasDetalhe: det, duvidosa: divergentes.length > 0 || (tot > 0 && pct > DUVIDOSA_PCT) };
     }
 
+    // ── Pagador FIXO: quem paga todo mes (salario sem holerite, cliente fixo) nao leva o desconto de custo ──
+    // A IA/leitor listam, por mes, os maiores pagadores do grupo "variavel". Quem aparece em 2+ meses com valor parecido
+    // (dentro de 35% da mediana e pelo menos PAGADOR_MIN) passa de "variavel" para "fixa". Nunca altera o objeto original.
+    var PAGADOR_MIN = 300, PAGADOR_VARIACAO = 0.35;
+    function chavePagador(nome) { return nuSemAcento(nome).replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim(); }
+    function somarPagadores(a, b) {
+        var mapa = {}, ordem = [];
+        [a, b].forEach(function (l) {
+            (Array.isArray(l) ? l : []).forEach(function (p) {
+                if (!p || typeof p !== 'object') return;
+                var k = chavePagador(p.nome), v = numPos(p.valor);
+                if (!k || !(v > 0)) return;
+                if (!mapa[k]) { mapa[k] = { nome: String(p.nome).trim().slice(0, 60), valor: 0 }; ordem.push(k); }
+                mapa[k].valor = arred2(mapa[k].valor + v);
+            });
+        });
+        return ordem.map(function (k) { return mapa[k]; }).sort(function (x, y) { return y.valor - x.valor; }).slice(0, 12);
+    }
+    function promoverPagadoresFixos(lista) {
+        var porNome = {}, meses = {};
+        lista.forEach(function (m) {
+            var mes = String(m.mes || '').trim();
+            if (!mes || !Array.isArray(m.pagadores)) return;
+            meses[mes] = true;
+            somarPagadores(m.pagadores, null).forEach(function (p) {
+                var k = chavePagador(p.nome);
+                if (!porNome[k]) porNome[k] = { nome: p.nome, porMes: {} };
+                porNome[k].porMes[mes] = arred2((porNome[k].porMes[mes] || 0) + p.valor);
+            });
+        });
+        var fixos = {}, detalhe = [];
+        Object.keys(porNome).forEach(function (k) {
+            var vs = Object.keys(porNome[k].porMes).map(function (x) { return porNome[k].porMes[x]; });
+            if (vs.length < 2) return;
+            var ord = vs.slice().sort(function (a, b) { return a - b; }), med = ord.length % 2 ? ord[(ord.length - 1) / 2] : (ord[ord.length / 2 - 1] + ord[ord.length / 2]) / 2;
+            if (med < PAGADOR_MIN) return;
+            if (vs.some(function (v) { return Math.abs(v - med) / med > PAGADOR_VARIACAO; })) return;
+            fixos[k] = true;
+            detalhe.push({ nome: porNome[k].nome, meses: vs.length, media: arred2(vs.reduce(function (a, v) { return a + v; }, 0) / vs.length) });
+        });
+        if (!detalhe.length) return { lista: lista, detalhe: [] };
+        var nova = lista.map(function (m) {
+            if (!Array.isArray(m.pagadores)) return m;
+            var mover = 0;
+            somarPagadores(m.pagadores, null).forEach(function (p) { if (fixos[chavePagador(p.nome)]) mover += p.valor; });
+            mover = Math.min(mover, numPos(m.variavel));
+            if (!(mover > 0)) return m;
+            var c = Object.assign({}, m);
+            c.variavel = arred2(numPos(m.variavel) - mover); c.fixa = arred2(numPos(m.fixa) + mover);
+            return c;
+        });
+        return { lista: nova, detalhe: detalhe.sort(function (a, b) { return b.media - a.media; }) };
+    }
+
     // ── Calculo da renda ─────────────────────────────────────────────
     // Devolve { renda, fonte:'codigo'|'ia', ... } ou null se nao ha nenhum dado.
     //  - 'codigo': calculado aqui a partir de rendaMeses
     //  - 'ia': a IA nao detalhou os meses; usa o numero que ela deu (formato antigo)
     function calcularRenda(obj) {
+        if (!obj) return null;
+        var lm = Array.isArray(obj.rendaMeses) ? obj.rendaMeses.filter(function (m) { return m && typeof m === 'object'; }) : [];
+        var fx = lm.length > 1 ? promoverPagadoresFixos(lm) : { lista: lm, detalhe: [] };
+        var r = calcularRendaBase(fx.detalhe.length ? Object.assign({}, obj, { rendaMeses: fx.lista }) : obj);
+        if (r && fx.detalhe.length) r.pagadoresFixos = fx.detalhe;
+        return r;
+    }
+    function calcularRendaBase(obj) {
         if (!obj) return null;
         var iaNum = numPos(obj.rendaEstimada) || numPos(obj.rendaMensal);
         var lista = Array.isArray(obj.rendaMeses) ? obj.rendaMeses.filter(function (m) { return m && typeof m === 'object'; }) : [];
@@ -272,6 +335,7 @@ const MOTOR = (function (R$) {
                     if (v > atual.v) { atual.m = Object.assign({}, m); atual.v = v; }
                 } else {
                     ['fixa', 'variavel', 'app', 'excluidas', 'totalCreditos'].forEach(function (f) { atual.m[f] = numPos(atual.m[f]) + numPos(m[f]); });
+                    if (Array.isArray(m.pagadores) || Array.isArray(atual.m.pagadores)) atual.m.pagadores = somarPagadores(atual.m.pagadores, m.pagadores);
                     atual.v += v;
                 }
                 atual.per = unirPeriodos(atual.per, per);
@@ -338,6 +402,7 @@ const MOTOR = (function (R$) {
                 var a = porMes[k];
                 if (!a) { ordem.push(k); a = porMes[k] = { mes: k, fixa: 0, variavel: 0, app: 0, excluidas: 0, totalCreditos: 0, parcial: false }; }
                 ['fixa', 'variavel', 'app', 'excluidas'].forEach(function (f) { a[f] = arred2(a[f] + numPos(m[f])); });
+                if (Array.isArray(m.pagadores)) a.pagadores = somarPagadores(a.pagadores, m.pagadores);
                 a.totalCreditos = Math.max(a.totalCreditos, numPos(m.totalCreditos));
                 if (m.parcial === true || m.parcial === 'true') a.parcial = true;
             });
@@ -359,6 +424,12 @@ const MOTOR = (function (R$) {
     function nuValor(s) { return parseFloat(String(s).replace(/\./g, '').replace(',', '.')); }
     function nuIsoMes(a, m) { return a + '-' + (m < 10 ? '0' : '') + m; }
     function nuIsoData(a, m, d) { return nuIsoMes(a, m) + '-' + (d < 10 ? '0' : '') + d; }
+    // Nome de quem pagou: o texto entre a descricao ("Transferencia recebida pelo Pix") e o primeiro " - " (CPF/CNPJ do pagador)
+    function nuPagador(txt) {
+        var t = String(txt || '').replace(/^(Transfer[eê]ncia recebida pelo Pix|Transfer[eê]ncia Recebida|Pix recebido|Transfer[eê]ncia recebida)\s+/i, '');
+        var i = t.indexOf(' - ');
+        return (i > 0 ? t.slice(0, i) : t).replace(/\s+/g, ' ').trim().slice(0, 60);
+    }
     // Classifica UMA entrada pelas mesmas regras do prompt. Devolve { g: 'fixa'|'variavel'|'app'|'excluidas', motivo }
     function nuClassificar(txt, titular, cpfMeio) {
         var u = nuSemAcento(txt);
@@ -405,7 +476,7 @@ const MOTOR = (function (R$) {
             pend.forEach(function (l) { var mv = /(?:^|\s)(\d[\d.]*,\d{2})$/.exec(l); if (mv) valores.push(nuValor(mv[1])); });
             if (valores.length !== 1 || !dia) return false;
             var cl = nuClassificar(pend.join(' '), titular, cpfMeio);
-            dia.itens.push({ v: valores[0], g: cl.g, motivo: cl.motivo });
+            dia.itens.push({ v: valores[0], g: cl.g, motivo: cl.motivo, nome: cl.g === 'variavel' ? nuPagador(pend.join(' ')) : '' });
             pend = null;
             return true;
         }
@@ -454,6 +525,7 @@ const MOTOR = (function (R$) {
             d.itens.forEach(function (it) {
                 porMes[k][it.g] = arred2(porMes[k][it.g] + it.v);
                 if (it.g === 'excluidas') det.push({ mes: k, valor: it.v, motivo: it.motivo });
+                else if (it.g === 'variavel' && it.nome) porMes[k].pagadores = somarPagadores(porMes[k].pagadores, [{ nome: it.nome, valor: it.v }]);
             });
         });
         if (ordem.length === 1 && totMes !== null) porMes[ordem[0]].totalCreditos = arred2(totMes);   // extrato de mais de um mes: o total impresso e do periodo, nao de um mes
@@ -558,6 +630,7 @@ const MOTOR = (function (R$) {
             if (pAbat > 0) partes.push(Math.round(DESC_APP * 100) + '% sobre repasses de app');
             L.push('Abatimento de custo: ' + partes.join(' e ') + ' (já descontado nos valores acima).');
         }
+        if (c.pagadoresFixos && c.pagadoresFixos.length) L.push('Paga todo mês (conta como renda fixa, sem o desconto de custo): ' + c.pagadoresFixos.slice(0, 4).map(function (p) { return p.nome + ' ≈ ' + reaisCurto(p.media); }).join(' · ') + '.');
         if (c.parciaisIgnorados) L.push(c.parciaisIgnorados + (c.parciaisIgnorados > 1 ? ' meses parciais ignorados.' : ' mês parcial ignorado.'));
         if (c.curto) L.push(avisoCurto(c));
         auditoriaRenda(c, L);
@@ -598,7 +671,7 @@ const MOTOR = (function (R$) {
                   'periodoDocumentos: primeira e ultima data que aparecem NESTE trecho.\n\n'
                 : '') +
             'Retorne APENAS JSON valido, sem texto extra:\n' +
-            '{"titular":"","periodoDocumentos":{"inicio":"AAAA-MM-DD","fim":"AAAA-MM-DD"},"rendaMeses":[{"mes":"AAAA-MM","fixa":0.00,"variavel":0.00,"app":0.00,"excluidas":0.00,"totalCreditos":0.00,"parcial":false}],"excluidasDetalhe":[{"mes":"AAAA-MM","valor":0.00,"motivo":""}]}\n' +
+            '{"titular":"","periodoDocumentos":{"inicio":"AAAA-MM-DD","fim":"AAAA-MM-DD"},"rendaMeses":[{"mes":"AAAA-MM","fixa":0.00,"variavel":0.00,"app":0.00,"excluidas":0.00,"totalCreditos":0.00,"parcial":false,"pagadores":[{"nome":"","valor":0.00}]}],"excluidasDetalhe":[{"mes":"AAAA-MM","valor":0.00,"motivo":""}]}\n' +
             'Nao invente. Se nao houver nenhuma entrada valida, retorne rendaMeses com os valores zerados.';
     }
 
