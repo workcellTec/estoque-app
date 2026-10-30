@@ -1456,9 +1456,9 @@ class ErroFinal extends Error {}
 
 // Caminho desta função no Supabase, aprendido da própria requisição (o nome/slug muda conforme como a função foi criada: cs-ia, cs-ia-ts, smart-handler...).
 // Com o nome errado o encadeamento dá 404 e cada passo só anda quando o lease vence (~170 s de espera por passo): foi o que deixou as análises lentas.
-// No Supabase o caminho que a função enxerga NÃO traz o nome dela (só /passo, /enviar...), então o nome vem do segredo FN_SLUG (ex.: smart-handler).
+// No Supabase o caminho que a função enxerga NÃO traz o nome dela (só /passo, /enviar...), então o nome vem da variável global FN_SLUG (definida no index.ts da função) ou do segredo FN_SLUG (ex.: smart-handler).
 // Sem o segredo, tenta aprender do caminho da requisição; sem nenhum dos dois, usa cs-ia.
-let FN_BASE = '/functions/v1/' + ((Deno.env.get('FN_SLUG') || 'cs-ia').replace(/^\/+|\/+$/g, ''));
+let FN_BASE = '/functions/v1/' + ((((globalThis as any).FN_SLUG as string) || Deno.env.get('FN_SLUG') || 'cs-ia').replace(/^\/+|\/+$/g, ''));
 
 // Dispara o próximo passo numa invocação nova (orçamento de 150 s próprio). Se falhar, o lease vence e a fila resgata.
 function encadear(id: string): void {
