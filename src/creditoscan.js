@@ -4677,6 +4677,7 @@
         '.cs-body,.cs-hbody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 16px 28px;display:flex;flex-direction:column;gap:12px;min-height:0}',
         'body.ctw-v2-active .cs-body,body.ctw-v2-active .cs-hbody{padding-bottom:calc(112px + env(safe-area-inset-bottom,0px))}',
         '.cs-body>*,.cs-hbody>*{flex-shrink:0}',
+        'html.cs-kb-on body .cs-body,html.cs-kb-on body .cs-hbody{padding-bottom:calc(var(--cs-kb,0px) + 24px) !important}',
         '.cs-hbody{padding:12px 13px 28px;gap:9px}',
         '.cs-intro{text-align:left}',
         '.cs-intro h2{margin:0;font-size:22px;font-weight:700;line-height:1.25;text-align:left}',
@@ -5015,6 +5016,33 @@
                 '</div>'+
             '</div>'+
         '</div>');
+        ligarTecladoCS();
+    }
+
+    // O app usa viewport "overlays-content": o teclado do Android cobre a tela em vez de empurra-la. Entao, enquanto o teclado
+    // esta aberto, a area rolavel do CreditoScan ganha folga embaixo (= altura do teclado) e o campo focado sobe para a parte
+    // de cima da tela, ficando visivel acima do teclado.
+    var _tecladoLigado = false;
+    function ligarTecladoCS() {
+        var vv = window.visualViewport; if (_tecladoLigado || !vv) return; _tecladoLigado = true;
+        var raiz = document.documentElement;
+        function alturaTeclado() { var kb = Math.round(window.innerHeight - vv.height - vv.offsetTop); return kb > 120 ? kb : 0; }   // barras do navegador nao contam
+        function subirCampo() {
+            var a = document.activeElement; if (!a || !/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+            var corpo = a.closest('.cs-body,.cs-hbody'); if (!corpo) return;
+            var dy = a.getBoundingClientRect().top - Math.round(vv.height * 0.28);
+            if (Math.abs(dy) > 4) corpo.scrollBy({ top: dy, behavior: 'smooth' });
+        }
+        function atualizar() {
+            var kb = alturaTeclado();
+            raiz.style.setProperty('--cs-kb', kb + 'px'); raiz.classList.toggle('cs-kb-on', kb > 0);
+            if (kb > 0) subirCampo();
+        }
+        vv.addEventListener('resize', atualizar);
+        document.addEventListener('focusin', function (e) {
+            if (!e.target.closest || !e.target.closest('.cs-body,.cs-hbody')) return;
+            setTimeout(function () { atualizar(); subirCampo(); }, 320);   // espera o teclado terminar de abrir
+        });
     }
     function injectMenuBtns(){
         var goCS2=el('goCS2');
