@@ -1739,7 +1739,8 @@
         return 'Ol\u00e1 '+d.nomeCliente+', tudo bem? \ud83d\ude0a\ud83d\udcf2\nSeu cadastro foi APROVADO aqui na Workcell! \u2705\n\n\ud83d\udcf1 '+produto+'\n\ud83d\udcb0 Entrada: '+R$(en)+'\n\ud83d\udcb3 + '+np+'x de '+R$(vp)+' MENSAL no boleto\n\n\u2714 Aparelho revisado e com garantia\nMe confirma aqui pra gente seguir com a libera\u00e7\u00e3o \ud83d\udc47';
     }
 
-    async function salvarFB(nome, produto, texto, d, cpf_cliente, chaveFixa) {
+    // operador = perfil que mandou a analise (vem do servidor); sem ele, o perfil deste aparelho
+    async function salvarFB(nome, produto, texto, d, cpf_cliente, chaveFixa, operador) {
         try {
             var fb = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
             var db = window._firebaseDB; if (!db) return null;
@@ -1769,7 +1770,7 @@
                 textoCompleto: texto || '',
                 ts: now,
                 expira: now + HIST_DAYS * 86400000,
-                operador: window.currentUserProfile || safeGet('ctwUserProfile') || '--'
+                operador: operador || window.currentUserProfile || safeGet('ctwUserProfile') || '--'
             };
             // chave fixa (id da analise): salvar de novo depois de uma retomada sobrescreve o mesmo registro, nao cria outro
             if (chaveFixa) {
@@ -2207,21 +2208,21 @@
     function cor(nota) { return nota >= 60 ? 'ok' : nota > NOTA_REPROVA ? 'warn' : 'bad'; }
 
     function cardAndamento(j) {
-        var nome = esc(nomeDoJob(j));
+        var nome = esc(nomeDoJob(j)), tag = tagUsuario(j.usuario || usuarioAtual());
         var qtd = (j.docsId || []).length + (j.docsRend || []).length;
         var sub = 'Iniciada ' + horaCurta(j.ts) + (qtd ? ' · ' + qtd + (qtd > 1 ? ' arquivos' : ' arquivo') : '');
         var cancelar = '<button type="button" class="cs-link bad" data-act="cancelar" data-id="' + j.id + '">Cancelar</button>';
         if (j.estado === 'fila') {
             return '<div class="cs-card cs-job"><div class="cs-job-top"><div class="cs-job-info"><div class="cs-job-nome">Aguardando na fila</div>' +
-                '<div class="cs-job-sub">' + nome + ' · começa quando uma anterior terminar</div></div>' + cancelar + '</div></div>';
+                '<div class="cs-job-sub">' + nome + tag + ' · começa quando uma anterior terminar</div></div>' + cancelar + '</div></div>';
         }
         if (j.estado === 'aguarda') {
-            return '<div class="cs-card cs-job warn"><div class="cs-job-top"><div class="cs-job-info"><div class="cs-job-nome">' + nome + '</div>' +
+            return '<div class="cs-card cs-job warn"><div class="cs-job-top"><div class="cs-job-info"><div class="cs-job-nome">' + nome + tag + '</div>' +
                 '<div class="cs-job-sub">Precisa da sua decisão para continuar</div></div></div>' +
                 '<div class="cs-job-foot"><button type="button" class="cs-btn cs-btn-pri cs-btn-sm" data-act="responder" data-id="' + j.id + '">Responder</button>' + cancelar + '</div></div>';
         }
         if (j.estado === 'erro') {
-            return '<div class="cs-card cs-job bad"><div class="cs-job-top"><div class="cs-job-info"><div class="cs-job-nome">' + nome + '</div>' +
+            return '<div class="cs-card cs-job bad"><div class="cs-job-top"><div class="cs-job-info"><div class="cs-job-nome">' + nome + tag + '</div>' +
                 '<div class="cs-job-sub">' + sub + '</div></div></div>' +
                 '<div class="cs-job-erro"><i class="bi bi-exclamation-circle-fill"></i><span>' + esc(j.erro) + '</span></div>' +
                 '<div class="cs-job-foot"><button type="button" class="cs-btn cs-btn-pri cs-btn-sm" data-act="retry" data-id="' + j.id + '">Tentar de novo</button>' +
@@ -2233,7 +2234,7 @@
             if (i === j.passo) return '<div class="cs-step on"><i class="bi bi-arrow-repeat"></i>' + esc(j.etapa || nomePasso) + '</div>';
             return '<div class="cs-step"><i class="bi bi-circle"></i>' + nomePasso + '</div>';
         }).join('');
-        return '<div class="cs-card cs-job run"><div class="cs-job-top"><div class="cs-job-info"><div class="cs-job-nome">' + nome + '</div>' +
+        return '<div class="cs-card cs-job run"><div class="cs-job-top"><div class="cs-job-info"><div class="cs-job-nome">' + nome + tag + '</div>' +
             '<div class="cs-job-sub">' + sub + '</div></div><span class="cs-job-pct">' + Math.round(j.prog) + '%</span></div>' +
             '<div class="cs-bar"><div style="width:' + Math.max(2, Math.min(100, j.prog)) + '%"></div></div>' +
             '<div class="cs-steps">' + passos + '</div>' +
@@ -2246,16 +2247,24 @@
             'Aprovado' + (d.rendaEstimada > 0 ? ' · renda ' + R$(d.rendaEstimada).replace(',00', '') + '/mês' : '');
         return '<button type="button" class="cs-card cs-pronta" data-act="abrir" data-id="' + j.id + '">' +
             '<span class="cs-ring-sm ' + c + '">' + d.nota + '</span>' +
-            '<span class="cs-job-info"><span class="cs-job-nome">' + esc(nomeDoJob(j)) + '</span><span class="cs-job-sub ' + c + '">' + sub + '</span></span>' +
+            '<span class="cs-job-info"><span class="cs-job-nome">' + esc(nomeDoJob(j)) + tagUsuario(j.usuario || usuarioAtual()) + '</span><span class="cs-job-sub ' + c + '">' + sub + '</span></span>' +
             (j.visto ? '<i class="bi bi-chevron-right cs-chev"></i>' : '<span class="cs-tag-nova">Nova</span>') + '</button>';
+    }
+
+    // "Meus | Todos": ve so o que este perfil mandou, ou a fila e as prontas de todos os usuarios
+    function filtroHtml() {
+        var f = filtroUsuario(), me = usuarioAtual();
+        return '<div class="cs-seg" role="group" aria-label="Quem mandou">' +
+            '<button type="button" data-act="filtro" data-v="meus" class="' + (f === 'meus' ? 'on' : '') + '">Meus' + (me ? ' · ' + esc(me) : '') + '</button>' +
+            '<button type="button" data-act="filtro" data-v="todos" class="' + (f === 'todos' ? 'on' : '') + '">Todos</button></div>';
     }
 
     function renderLista() {
         var box = el('cs_lista'); if (!box) return;
-        var andam = _jobs.filter(function (j) { return j.estado !== 'pronta'; });
-        var noServidor = filaItensTela();
+        var andam = _jobs.filter(function (j) { return j.estado !== 'pronta' && passaFiltro(j.usuario); });
+        var noServidor = filaItensTela().filter(function (a) { return passaFiltro(a.usuario); });
         var prontas = prontasDeHoje();
-        var html = filaAvisoHtml();
+        var html = filaAvisoHtml() + filtroHtml();
         if (andam.length || noServidor.length) {
             html += '<div class="cs-sec-h"><span>Em andamento</span><em>' + (andam.length + noServidor.length) + '</em></div>' +
                 andam.map(cardAndamento).join('') + noServidor.map(cardServidor).join('');
@@ -2296,6 +2305,7 @@
 
     function acaoLista(e) {
         var b = e.target.closest('[data-act]'); if (!b) return;
+        if (b.getAttribute('data-act') === 'filtro') { lsGravar(FILTRO_LS, b.getAttribute('data-v') === 'todos' ? 'todos' : 'meus'); renderLista(); return; }
         var sid = b.getAttribute('data-sid');
         if (sid) { filaAcaoLista(b.getAttribute('data-act'), sid); return; }   // analise que esta no servidor
         if (b.getAttribute('data-act') === 'abrir-h') { hojeAbrir(b.getAttribute('data-hid')); return; }   // pronta de hoje que veio do historico
@@ -2335,7 +2345,21 @@
         if (b) b.parentNode.removeChild(b);
     }
 
+    // Aviso do sistema (barra de notificacoes) com o app em segundo plano. No Android o Chrome so aceita pelo service worker.
+    function notificarSistema(titulo, corpo, tag) {
+        try {
+            if (!document.hidden || !window.Notification || Notification.permission !== 'granted') return;
+            if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+                navigator.serviceWorker.ready.then(function (reg) {
+                    return reg.showNotification(titulo, { body: corpo, tag: tag, renotify: true, icon: './icon-192.png', badge: './badge.png', vibrate: [200, 100, 200] });
+                }).catch(function () {});
+            } else new Notification(titulo, { body: corpo, tag: tag });
+        } catch (e) {}
+    }
+
     function avisarJob(job, tipo) {
+        // o aviso e do dono da analise: outro perfil que baixou o resultado nao recebe "Analise pronta" de outra pessoa
+        if (job.usuario && usuarioAtual() && job.usuario !== usuarioAtual()) return;
         var box = caixaAvisos();
         removerBanner(job.id);
         var t, sub, btn, c = 'ok', ico = 'bi-check-lg';
@@ -2360,11 +2384,7 @@
             '<button type="button" class="cs-banner-x" data-bact="x" data-id="' + job.id + '" aria-label="Dispensar"><i class="bi bi-x-lg"></i></button></div>' +
             '<button type="button" class="cs-btn cs-btn-pri" data-bact="ver" data-id="' + job.id + '">' + btn + '</button>';
         box.appendChild(div);
-        try {
-            if (document.hidden && window.Notification && Notification.permission === 'granted') {
-                new Notification(t, { body: sub, tag: 'creditoscan-' + job.id });
-            }
-        } catch (e) {}
+        notificarSistema(t, sub, 'creditoscan-' + job.id);
     }
 
     // ── Detector local de apostas — roda ANTES da IA, sem gastar token ──
@@ -2962,7 +2982,8 @@
     function iniciarAnalise() {
         if (!_docsRend.length || _enviando > 0) return;
         var campoTel = el('cs_tel');
-        var job = criarJob(_docsId, _docsRend, normalizarTelefone(campoTel ? campoTel.value : ''));
+        var job = criarJob(_docsId, _docsRend, normalizarTelefone(campoTel ? campoTel.value : ''), { usuario: usuarioAtual() });
+        try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch (e) {}   // para o aviso "Analise pronta" com o app em segundo plano
         if (campoTel) { campoTel.value = ''; mascararTelefone(campoTel, 'cs_tel_hint'); }
         _docsId = []; _docsRend = [];
         _jobs.unshift(job);
@@ -3210,7 +3231,7 @@
             dAposta.telefone = job.tel || '';
             prepararDados(dAposta);
             checar(job);
-            job.fbKey = await salvarFB(dAposta.nomeCompleto, '', apostas.detalhe, dAposta, cpf, job.uid);
+            job.fbKey = await salvarFB(dAposta.nomeCompleto, '', apostas.detalhe, dAposta, cpf, job.uid, job.usuario);
             job.criadoAqui = true;
             concluirJob(job, dAposta, apostas.detalhe);
             return;
@@ -3315,7 +3336,7 @@
         }
         prepararDados(d);
 
-        job.fbKey = await salvarFB(d.nomeCompleto, '', resp, d, cpf, job.uid);
+        job.fbKey = await salvarFB(d.nomeCompleto, '', resp, d, cpf, job.uid, job.usuario);
         job.criadoAqui = true;
         concluirJob(job, d, resp);
     }
@@ -3714,7 +3735,7 @@
         var tk = filaToken();
         andamento(job, 'Enviando ao servidor...', 30, 2);
         var corpo = JSON.stringify({
-            id: job.uid, nome: job.nome || '', tel: job.tel || '', cpf: cpf || '',
+            id: job.uid, nome: job.nome || '', usuario: job.usuario || usuarioAtual(), tel: job.tel || '', cpf: cpf || '',
             cpf_s: (job.tempos && job.tempos.cpf_s) || 0,
             prep_s: Math.max(0, Math.round((Date.now() - (job.ts || Date.now())) / 1000)),   // do toque em Analisar até aqui: leitura dos arquivos no celular
             docsId: job.docsId.map(docParaServidor), docsRend: job.docsRend.map(docParaServidor)
@@ -3752,7 +3773,7 @@
         removerBanner(job.id);
         var i = _jobs.indexOf(job); if (i !== -1) _jobs.splice(i, 1);
         if (!_fila.itens.some(function (x) { return x.id === job.uid; })) {
-            _fila.itens.push({ id: job.uid, nome: job.nome || '', estado: j.estado === 'rodando' ? 'rodando' : 'fila', etapa: 'Na fila', progresso: 0, criado_em: new Date(criada).toISOString(), posicao: null });
+            _fila.itens.push({ id: job.uid, nome: job.nome || '', usuario: job.usuario || usuarioAtual(), estado: j.estado === 'rodando' ? 'rodando' : 'fila', etapa: 'Na fila', progresso: 0, criado_em: new Date(criada).toISOString(), posicao: null });
         }
         _formAberto = false; aplicarForm();
         renderLista(); atualizarBadge();
@@ -3790,6 +3811,7 @@
             finally { _filaBuscando = null; }
             _fila.buscou = true;
             filaColetarProntas();
+            filaAvisarErros();
             renderLista(); atualizarBadge();
             filaAgendar();
         })();
@@ -3799,9 +3821,16 @@
     function filaAtivo() { return _fila.itens.some(function (a) { return a.estado === 'fila' || a.estado === 'rodando' || a.estado === 'pronta'; }); }
     function csAberto() { var o = el('cs_ov'); return !!(o && o.classList.contains('active')); }
 
+    // analise deste perfil ainda na fila/rodando: com o app em segundo plano continua consultando, para avisar quando ficar pronta
+    function temAnaliseMinhaAndando() {
+        var me = usuarioAtual();
+        return _fila.itens.some(function (a) { return (a.estado === 'fila' || a.estado === 'rodando') && (!a.usuario || !me || a.usuario === me); });
+    }
+
     function filaAgendar() {
         if (_filaTimer) { clearTimeout(_filaTimer); _filaTimer = null; }
-        if (!filaToken() || _fila.suporte === false || document.hidden) return;
+        if (!filaToken() || _fila.suporte === false) return;
+        if (document.hidden && !temAnaliseMinhaAndando()) return;
         var ms = csAberto() ? (filaAtivo() ? FILA_POLL_ATIVO_MS : FILA_POLL_OCIOSO_MS) : (filaAtivo() ? FILA_POLL_FUNDO_MS : 0);
         if (!ms) return;
         ms *= Math.min(4, 1 + _fila.falhas);   // servidor fora do ar: espaca as tentativas
@@ -3838,9 +3867,34 @@
         return null;
     }
 
+    // Quem baixa o resultado: o dono da analise. Se ele nao abrir o app em COLETA_ESPERA_MS, qualquer aparelho baixa,
+    // para o resultado nao ficar parado no servidor (o aviso "Analise pronta" continua sendo so do dono).
+    var COLETA_ESPERA_MS = 300000;
+    function ehDonoOuAtrasada(it) {
+        var me = usuarioAtual();
+        if (!it.usuario || !me || it.usuario === me) return true;
+        var fim = Date.parse(it.concluido_em || '') || 0;
+        return !fim || (Date.now() + (_fila.dif || 0) - fim) > COLETA_ESPERA_MS;
+    }
+
+    // Analise deste perfil que estava andando e agora deu erro no servidor: avisa (o "pronta" e avisado ao baixar o resultado)
+    var _estadoAnt = {};
+    function filaAvisarErros() {
+        var me = usuarioAtual();
+        _fila.itens.forEach(function (a) {
+            var ant = _estadoAnt[a.id]; _estadoAnt[a.id] = a.estado;
+            if (a.estado !== 'erro' || (ant !== 'fila' && ant !== 'rodando')) return;
+            if (a.usuario && me && a.usuario !== me) return;
+            var msg = (a.nome || 'Cliente') + ' · ' + String(a.erro || 'não foi concluída').slice(0, 90);
+            notificarSistema('Análise não concluída', msg, 'creditoscan-' + a.id);
+            avisar('Análise não concluída: ' + msg);
+        });
+    }
+
     function filaColetarProntas() {
         _fila.itens.forEach(function (it) {
             if (it.estado !== 'pronta') return;
+            if (!ehDonoOuAtrasada(it)) return;
             var lj = jobPorUid(it.id);
             if (lj) {   // ja processada aqui; se o aviso ao servidor falhou, repete
                 if (lj.estado === 'pronta' && !lj.coletadaNoServidor && !_coletando[it.id + ':aviso']) filaMarcarColetada(lj);
@@ -3858,7 +3912,7 @@
         try {
             // so libera o resultado no servidor depois de ele estar no historico
             if (!job.fbKey && job.dados) {
-                job.fbKey = await salvarFB(job.dados.nomeCompleto, '', job.texto, job.dados, job.cpf, job.uid);
+                job.fbKey = await salvarFB(job.dados.nomeCompleto, '', job.texto, job.dados, job.cpf, job.uid, job.usuario);
                 if (!job.fbKey) return;
             }
             var r = await fetchComTempo(srvUrl() + '/coletar', { method: 'POST', headers: srvHeaders(tk), body: JSON.stringify({ id: job.uid }) }, 15000);
@@ -3878,7 +3932,7 @@
             if (j.estado !== 'pronta' || !j.resultado || !j.resultado.resp) { delete _coletando[it.id]; return; }   // outro aparelho repetiu ou cancelou
             if (jobPorUid(it.id)) return;
             job = criarJob([], [], j.tel || '', {
-                uid: j.id, nome: j.nome || '', cpf: j.cpf || '', ts: Date.parse(it.criado_em) || Date.now(),
+                uid: j.id, nome: j.nome || '', usuario: j.usuario || it.usuario || '', cpf: j.cpf || '', ts: Date.parse(it.criado_em) || Date.now(),
                 estado: 'rodando', etapa: 'Recebendo resultado...', prog: 92, passo: 3, tempos: j.tempos || {}, doServidor: true
             });
             _jobs.unshift(job);
@@ -3953,21 +4007,21 @@
 
     function cardServidor(a) {
         var quando = horaCurta(a.t || Date.parse(a.criado_em));
-        var nome = esc(a.nome || ('Cliente · ' + quando));
+        var nome = esc(a.nome || ('Cliente · ' + quando)), tag = tagUsuario(a.usuario);
         var cancelar = '<button type="button" class="cs-link bad" data-act="s-cancelar" data-sid="' + a.id + '">Cancelar</button>';
         if (a.estado === 'fila') {
             return '<div class="cs-card cs-job"><div class="cs-job-top"><div class="cs-job-info"><div class="cs-job-nome">Na fila' + (a.posicao ? ' · ' + a.posicao + 'ª' : '') + '</div>' +
-                '<div class="cs-job-sub">' + nome + ' · enviada ' + quando + ' · começa quando uma anterior terminar</div></div>' + cancelar + '</div></div>';
+                '<div class="cs-job-sub">' + nome + tag + ' · enviada ' + quando + ' · começa quando uma anterior terminar</div></div>' + cancelar + '</div></div>';
         }
         if (a.estado === 'erro') {
-            return '<div class="cs-card cs-job bad"><div class="cs-job-top"><div class="cs-job-info"><div class="cs-job-nome">' + nome + '</div>' +
+            return '<div class="cs-card cs-job bad"><div class="cs-job-top"><div class="cs-job-info"><div class="cs-job-nome">' + nome + tag + '</div>' +
                 '<div class="cs-job-sub">Enviada ' + quando + '</div></div></div>' +
                 '<div class="cs-job-erro"><i class="bi bi-exclamation-circle-fill"></i><span>' + esc(a.erro || 'A análise não foi concluída.') + '</span></div>' +
                 '<div class="cs-job-foot"><button type="button" class="cs-btn cs-btn-pri cs-btn-sm" data-act="s-retry" data-sid="' + a.id + '">Tentar de novo</button>' +
                 '<button type="button" class="cs-link bad" data-act="s-descartar" data-sid="' + a.id + '">Descartar</button></div></div>';
         }
         if (a.estado === 'pronta') {
-            return '<div class="cs-card cs-job run"><div class="cs-job-top"><div class="cs-job-info"><div class="cs-job-nome">' + nome + '</div>' +
+            return '<div class="cs-card cs-job run"><div class="cs-job-top"><div class="cs-job-info"><div class="cs-job-nome">' + nome + tag + '</div>' +
                 '<div class="cs-job-sub">Pronta · recebendo o resultado...</div></div><span class="cs-job-pct">100%</span></div>' +
                 '<div class="cs-bar"><div style="width:100%"></div></div></div>';
         }
@@ -3975,7 +4029,7 @@
         var ini = a.iniciado_em ? Date.parse(a.iniciado_em) : 0;
         var ha = ini ? filaDur((Date.now() + _fila.dif - ini) / 1000) : '';
         var pct = Math.max(2, Math.min(99, a.progresso || 5));
-        return '<div class="cs-card cs-job run"><div class="cs-job-top"><div class="cs-job-info"><div class="cs-job-nome">' + nome + '</div>' +
+        return '<div class="cs-card cs-job run"><div class="cs-job-top"><div class="cs-job-info"><div class="cs-job-nome">' + nome + tag + '</div>' +
             '<div class="cs-job-sub">' + esc(a.etapa || 'Rodando') + (ha ? ' · há ' + ha : '') + '</div></div><span class="cs-job-pct">' + pct + '%</span></div>' +
             '<div class="cs-bar"><div style="width:' + pct + '%"></div></div>' +
             '<div class="cs-job-foot"><span class="cs-job-sub">Pode sair do app · a análise continua no servidor</span>' + cancelar + '</div></div>';
@@ -4034,6 +4088,13 @@
 
     function inicioDoDia() { var d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
     function operadorAtual() { return window.currentUserProfile || safeGet('ctwUserProfile') || '--'; }
+    // Perfil do app que esta usando este aparelho ('' se nao houver). E o nome que vai na etiqueta e no aviso "Analise pronta".
+    function usuarioAtual() { var u = window.currentUserProfile || safeGet('ctwUserProfile') || ''; return String(u).trim(); }
+    // Filtro "Meus | Todos" da tela inicial (lembrado no aparelho). Meus = o que este perfil mandou; analise sem dono (antiga) entra em Meus.
+    var FILTRO_LS = 'cs_filtro_usr_v1';
+    function filtroUsuario() { return lsLer(FILTRO_LS, 'meus') === 'todos' ? 'todos' : 'meus'; }
+    function passaFiltro(dono) { var me = usuarioAtual(); return filtroUsuario() === 'todos' || !dono || !me || dono === me; }
+    function tagUsuario(dono) { return dono ? '<span class="cs-tag-usr">' + esc(dono) + '</span>' : ''; }
     // so as do operador deste aparelho (registros sem operador, ou aparelho sem perfil, entram)
     function ehMinha(it) { var me = operadorAtual(); return !it.operador || it.operador === '--' || me === '--' || it.operador === me; }
 
@@ -4057,22 +4118,23 @@
 
     function hojeCarregarCache() {
         var c = lsLer(HOJE_LS, []), ini = inicioDoDia();
-        _hoje.itens = (Array.isArray(c) ? c : []).filter(function (it) { return it && it.id && it.ts >= ini && ehMinha(it); });
+        _hoje.itens = (Array.isArray(c) ? c : []).filter(function (it) { return it && it.id && it.ts >= ini; });
     }
 
     // Itens de hoje que NAO estao ja na lista da sessao (as da sessao tem prioridade: carregam estado como a calculadora aberta)
-    function hojeSemSessao() {
+    function hojeSemSessao(filtrar) {
         var ini = inicioDoDia(), chaves = {};
         _jobs.forEach(function (j) { if (j.fbKey) chaves[j.fbKey] = 1; });
-        return _hoje.itens.filter(function (it) { return it.ts >= ini && ehMinha(it) && !chaves[it.id]; });
+        return _hoje.itens.filter(function (it) { return it.ts >= ini && !chaves[it.id] && (filtrar ? passaFiltro(it.operador) : ehMinha(it)); });
     }
-    function hojeNaoVistas() { return hojeSemSessao().filter(function (it) { return !hojeVisto(it.id); }).length; }
+    // o numero no cartao do CreditoScan conta so o que e deste perfil, qualquer que seja o filtro da tela
+    function hojeNaoVistas() { return hojeSemSessao(false).filter(function (it) { return !hojeVisto(it.id); }).length; }
 
     // Lista unica de "Prontas de hoje": sessao + historico, mais nova primeiro
     function prontasDeHoje() {
         var ini = inicioDoDia(), lista = [];
-        _jobs.forEach(function (j) { if (j.estado === 'pronta' && (j.tsFim || j.ts) >= ini) lista.push({ t: j.tsFim || j.ts, html: cardPronta(j) }); });
-        hojeSemSessao().forEach(function (it) { lista.push({ t: it.ts, html: cardHoje(it) }); });
+        _jobs.forEach(function (j) { if (j.estado === 'pronta' && (j.tsFim || j.ts) >= ini && passaFiltro(j.usuario)) lista.push({ t: j.tsFim || j.ts, html: cardPronta(j) }); });
+        hojeSemSessao(true).forEach(function (it) { lista.push({ t: it.ts, html: cardHoje(it) }); });
         lista.sort(function (a, b) { return b.t - a.t; });
         return lista.slice(0, HOJE_MAX);
     }
@@ -4083,8 +4145,8 @@
             'Aprovado' + (it.rendaEstimada > 0 ? ' · renda ' + R$(it.rendaEstimada).replace(',00', '') + '/mês' : '');
         return '<button type="button" class="cs-card cs-pronta" data-act="abrir-h" data-hid="' + esc(it.id) + '">' +
             '<span class="cs-ring-sm ' + c + '">' + nota + '</span>' +
-            '<span class="cs-job-info"><span class="cs-job-nome">' + esc(it.nomeCliente || 'Cliente') + '</span><span class="cs-job-sub ' + c + '">' + sub + '</span></span>' +
-            (hojeVisto(it.id) ? '<i class="bi bi-chevron-right cs-chev"></i>' : '<span class="cs-tag-nova">Nova</span>') + '</button>';
+            '<span class="cs-job-info"><span class="cs-job-nome">' + esc(it.nomeCliente || 'Cliente') + tagUsuario(it.operador && it.operador !== '--' ? it.operador : '') + '</span><span class="cs-job-sub ' + c + '">' + sub + '</span></span>' +
+            (ehMinha(it) && !hojeVisto(it.id) ? '<span class="cs-tag-nova">Nova</span>' : '<i class="bi bi-chevron-right cs-chev"></i>') + '</button>';
     }
 
     // Busca no Firebase o que foi feito hoje (por tras: a lista guardada no aparelho ja esta na tela)
@@ -4098,7 +4160,7 @@
             try { snap = await fb.get(fb.query(fb.ref(db, SAVE_PATH), fb.orderByChild('ts'), fb.startAt(ini))); }
             catch (e1) { snap = await fb.get(fb.ref(db, SAVE_PATH)); }   // sem indice/consulta: le tudo e filtra aqui
             var itens = [];
-            snap.forEach(function (c) { var v = c.val(); if (v && v.ts >= ini && ehMinha(v)) itens.push(Object.assign({ id: c.key }, v)); });
+            snap.forEach(function (c) { var v = c.val(); if (v && v.ts >= ini) itens.push(Object.assign({ id: c.key }, v)); });
             itens.sort(function (a, b) { return b.ts - a.ts; });
             _hoje.itens = itens.map(leveDoRegistro);
             lsGravar(HOJE_LS, _hoje.itens);
@@ -4670,6 +4732,10 @@
         '.cs-pronta:active{transform:scale(.99)}',
         '.cs-ring-sm{width:48px;height:48px;border-radius:50%;border:3px solid;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0}',
         '.cs-ring-sm.ok{border-color:var(--cs-ok);color:var(--cs-ok)}.cs-ring-sm.warn{border-color:var(--cs-warn);color:var(--cs-warn)}.cs-ring-sm.bad{border-color:var(--cs-bad);color:var(--cs-bad)}',
+        '.cs-tag-usr{display:inline-block;vertical-align:middle;margin-left:7px;font-size:10px;font-weight:600;line-height:1;background:rgba(255,255,255,.08);color:var(--text-secondary);border:1px solid var(--input-border);border-radius:20px;padding:3px 8px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+        '.cs-seg{display:flex;gap:4px;padding:3px;margin:0 0 12px;background:var(--input-bg);border:1px solid var(--input-border);border-radius:12px}',
+        '.cs-seg button{flex:1;min-height:38px;border:0;border-radius:9px;background:transparent;color:var(--text-secondary);font:inherit;font-size:13px;font-weight:600;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+        '.cs-seg button.on{background:var(--primary-color);color:#0d1f15}',
         '.cs-tag-nova{font-size:11px;font-weight:600;background:var(--primary-color);color:#0d1f15;border-radius:20px;padding:3px 10px}',
         '.cs-chev{color:var(--text-secondary)}',
         /* ── resultado ── */

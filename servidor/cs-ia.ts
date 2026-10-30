@@ -1285,7 +1285,7 @@ async function executar(id: string, corpo: string): Promise<void> {
 // ═══════════════════════════════════════════════════════════════════
 //  FILA DE ANÁLISES
 // ═══════════════════════════════════════════════════════════════════
-const ANALISE_LISTA = 'id,nome,tel,estado,etapa,progresso,criado_em,iniciado_em,concluido_em,erro,tempos,passo';
+const ANALISE_LISTA = 'id,nome,usuario,tel,estado,etapa,progresso,criado_em,iniciado_em,concluido_em,erro,tempos,passo';
 
 async function analiseBuscar(id: string, colunas: string): Promise<Record<string, any> | null> {
   const r = await banco('cs_analises', '?id=eq.' + id + '&select=' + colunas, { method: 'GET' });
@@ -1579,8 +1579,11 @@ async function rotaFila(req: Request, rota: string, u: URL): Promise<Response> {
     const r = await banco('cs_analises', '?coletada_em=is.null&estado=neq.cancelada&criado_em=gt.' + corte + '&select=' + ANALISE_LISTA + '&order=criado_em.asc', { method: 'GET' });
     if (!r.ok) return resp({ erro: 'banco ' + r.status }, 500);
     const linhas: any[] = await r.json();
-    let pos = 0;
-    linhas.forEach((l) => { if (l.estado === 'fila') l.posicao = ++pos; });
+    // posição na fila = a ordem em que o servidor vai pegar (um de cada usuário por vez, como em cs_reivindicar)
+    const rodadas: Record<string, number> = {};
+    const naFila = linhas.filter((l) => l.estado === 'fila').map((l) => { const u = String(l.usuario || ''); rodadas[u] = (rodadas[u] || 0) + 1; return { l, rodada: rodadas[u] }; });
+    naFila.sort((a, b) => a.rodada - b.rodada || String(a.l.criado_em).localeCompare(String(b.l.criado_em)));
+    naFila.forEach((x, i) => { x.l.posicao = i + 1; });
     if (linhas.some((l) => l.estado === 'fila' || l.estado === 'rodando')) tickEmSegundoPlano();   // empurra a fila e resgata travadas
     return resp({ agora: agoraIso(), slots: SLOTS, max_fila: MAX_FILA, analises: linhas });
   }
@@ -1588,7 +1591,7 @@ async function rotaFila(req: Request, rota: string, u: URL): Promise<Response> {
   if (rota === 'resultado' && req.method === 'GET') {
     const id = u.searchParams.get('id') || '';
     if (!RE_ID.test(id)) return resp({ erro: 'id invalido' }, 400);
-    const row = await analiseBuscar(id, 'id,nome,tel,cpf,estado,resultado,tempos,erro');
+    const row = await analiseBuscar(id, 'id,nome,usuario,tel,cpf,estado,resultado,tempos,erro');
     if (!row) return resp({ erro: 'nao_existe' }, 404);
     return resp(row);
   }
@@ -1658,7 +1661,7 @@ async function rotaFila(req: Request, rota: string, u: URL): Promise<Response> {
       method: 'POST', prefer: 'resolution=ignore-duplicates,return=representation',
       body: JSON.stringify({
         id, estado: 'fila', etapa: 'Na fila', progresso: 0,
-        nome: UF(p.nome, 80), tel: UF(p.tel, 20).replace(/\D/g, ''), cpf: UF(p.cpf, 14).replace(/\D/g, ''),
+        nome: UF(p.nome, 80), usuario: UF(p.usuario, 40), tel: UF(p.tel, 20).replace(/\D/g, ''), cpf: UF(p.cpf, 14).replace(/\D/g, ''),
         tempos: (() => { const t: any = {}; if (Number(p.cpf_s) > 0) t.cpf_s = Math.min(Math.round(Number(p.cpf_s)), 900); if (Number(p.prep_s) > 0) t.prep_s = Math.min(Math.round(Number(p.prep_s)), 7200); if (Number(p.mb) > 0) t.mb = Math.min(Math.round(Number(p.mb) * 10) / 10, 50); return Object.keys(t).length ? t : null; })(),
         docs: { docsId, docsRend },
       }),
