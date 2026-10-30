@@ -349,6 +349,121 @@ const MOTOR = (function (R$) {
         };
     }
 
+    // ── Leitura DETERMINISTICA de extrato Nubank (sem IA) ──────────────
+    // O extrato do Nubank imprime o "Total de entradas" de CADA DIA e do mes. O codigo le cada entrada, soma e CONFERE com esses totais:
+    // so aceita se TODOS os dias e o mes fecharem ao centavo; senao devolve null e a leitura volta para a IA (outros bancos, fotos, layout diferente).
+    // A IA errava a soma de 150+ lancamentos (perdia uns, contava outros duas vezes) e o aviso amarelo "nao bate com o extrato" aparecia.
+    var NU_MES_ABREV = { JAN: 1, FEV: 2, MAR: 3, ABR: 4, MAI: 5, JUN: 6, JUL: 7, AGO: 8, SET: 9, OUT: 10, NOV: 11, DEZ: 12 };
+    var NU_MES_NOME = { JANEIRO: 1, FEVEREIRO: 2, MARCO: 3, ABRIL: 4, MAIO: 5, JUNHO: 6, JULHO: 7, AGOSTO: 8, SETEMBRO: 9, OUTUBRO: 10, NOVEMBRO: 11, DEZEMBRO: 12 };
+    function nuSemAcento(s) { return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase(); }
+    function nuValor(s) { return parseFloat(String(s).replace(/\./g, '').replace(',', '.')); }
+    function nuIsoMes(a, m) { return a + '-' + (m < 10 ? '0' : '') + m; }
+    function nuIsoData(a, m, d) { return nuIsoMes(a, m) + '-' + (d < 10 ? '0' : '') + d; }
+    // Classifica UMA entrada pelas mesmas regras do prompt. Devolve { g: 'fixa'|'variavel'|'app'|'excluidas', motivo }
+    function nuClassificar(txt, titular, cpfMeio) {
+        var u = nuSemAcento(txt);
+        if (/^RESGATE (RDB|DE |CDB|INVEST)|^RESGATE/.test(u)) return { g: 'excluidas', motivo: 'resgate RDB' };
+        if (/^(REEMBOLSO|ESTORNO|DEVOLUCAO)/.test(u)) return { g: 'excluidas', motivo: u.indexOf('ESTORNO') === 0 ? 'estorno' : 'reembolso' };
+        if (/^(RENDIMENTO|JUROS|CASHBACK)/.test(u)) return { g: 'excluidas', motivo: 'rendimento' };
+        if (/^CREDITO EM CONTA/.test(u)) return { g: 'excluidas', motivo: 'crédito em conta sem origem' };
+        if (/EMPRESTIMO|FINANCIAMENTO|CONSIGNADO|ANTECIPACAO|SAQUE.ANIVERSARIO/.test(u)) return { g: 'excluidas', motivo: 'empréstimo' };
+        if ((titular && u.indexOf(titular) !== -1) || (cpfMeio && u.indexOf(cpfMeio) !== -1)) return { g: 'excluidas', motivo: 'autotransferência' };
+        if (/\b(UBER|99 ?TECNOLOGIA|99 ?POP|INDRIVER|IFOOD|RAPPI|LOGGI)\b/.test(u)) return { g: 'app', motivo: '' };
+        if (/SALARIO|PROVENTOS|FOLHA DE PAG|\bINSS\b|APOSENTADORIA|PENSAO|BENEFICIO/.test(u)) return { g: 'fixa', motivo: '' };
+        return { g: 'variavel', motivo: '' };
+    }
+    // texto = texto do PDF (como montarTextoDigital entrega). Devolve o objeto no formato de somarTrechos ou null.
+    var NU_ULTIMO = 0;   // numero do motivo da ultima recusa (diagnostico)
+    function nuNao(n) { NU_ULTIMO = n; return null; }
+    function lerExtratoNubank(texto) {
+        var linhas = String(texto || '').split('\n').map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+        var ini = 0;
+        while (ini < linhas.length && /^(===|---)/.test(linhas[ini])) ini++;
+        var nome = linhas[ini] || '', cab = linhas[ini + 1] || '';
+        if (!/CPF/.test(cab) || !/Conta/.test(cab) || !/VALORES EM R\$/.test(texto) || !/Movimenta[cç][oõ]es/.test(texto)) return nuNao(1);
+        var titular = nuSemAcento(nome), cpf = /(\d{3}\.\d{3})-/.exec(cab), cpfMeio = cpf ? cpf[1] : '';
+        if (titular.length < 5) return nuNao(2);
+        // total do mes e periodo (cabecalho da primeira pagina)
+        var totMes = null, per = null, pm = /Total de entradas \+(\d[\d.]*,\d{2})/.exec(texto.replace(/\s+/g, ' '));
+        if (pm) totMes = nuValor(pm[1]);
+        if (totMes === null) {   // no texto do app os valores do resumo vem em linhas separadas, na ordem: saldo inicial, rendimento (+), entradas (+), saidas (-)
+            for (var j = ini; j < Math.min(linhas.length - 2, ini + 40); j++) {
+                var ra = /^\+(\d[\d.]*,\d{2})$/.exec(linhas[j]), rb = /^\+(\d[\d.]*,\d{2})$/.exec(linhas[j + 1]);
+                if (ra && rb && /^-\d[\d.]*,\d{2}$/.test(linhas[j + 2])) { totMes = nuValor(rb[1]); break; }
+            }
+        }
+        var datas = [], rd = /(\d{1,2}) DE ([A-ZÇ]+) DE (\d{4})/g, md;
+        while ((md = rd.exec(nuSemAcento(texto))) && datas.length < 2) { var mn = NU_MES_NOME[md[2]]; if (mn) datas.push({ a: +md[3], m: mn, d: +md[1] }); }
+        if (datas.length === 2) per = { inicio: nuIsoData(datas[0].a, datas[0].m, datas[0].d), fim: nuIsoData(datas[1].a, datas[1].m, datas[1].d) };
+
+        var dias = [], dia = null, modo = '', pend = null, pulando = false;
+        var RE_INICIO = /^(Transfer[eê]ncia|Resgate|Reembolso|Estorno|Cr[eé]dito|Dep[oó]sito|Pix\b|Rendimento|Pagamento|Cashback|Devolu|Aplica|Compra|Ajuste|Boleto|Saque|Estorno)/;
+        // Uma entrada = a linha de inicio + as linhas de continuacao (nome do pagador, banco, agencia). O valor e a UNICA linha que termina em "1.234,56".
+        function fecharEntrada() {
+            if (!pend) return true;
+            var valores = [];
+            pend.forEach(function (l) { var mv = /(?:^|\s)(\d[\d.]*,\d{2})$/.exec(l); if (mv) valores.push(nuValor(mv[1])); });
+            if (valores.length !== 1 || !dia) return false;
+            var cl = nuClassificar(pend.join(' '), titular, cpfMeio);
+            dia.itens.push({ v: valores[0], g: cl.g, motivo: cl.motivo });
+            pend = null;
+            return true;
+        }
+        for (var i = ini + 2; i < linhas.length; i++) {
+            var ln = linhas[i];
+            if (/^(===|---)/.test(ln)) continue;
+            if (/^(Tem alguma d[uú]vida|Asseguramos a autenticidade)/.test(ln)) { pulando = true; continue; }
+            if (pulando) { if (/^Extrato gerado/.test(ln)) pulando = false; continue; }
+            if (/^\d+ de \d+$/.test(ln)) continue;   // "5 de 16" (numero da pagina, quebrado em outra linha)
+            if (nuSemAcento(ln) === titular || /CPF.*Ag[eê]ncia.*Conta|VALORES EM R\$|^\d{5,}-\d$/.test(ln)) continue;   // cabecalho repetido em cada pagina
+            var dh = /^(?:(\d{1,2}) ([A-Z]{3}) (\d{4}) )?Total de entradas \+ (\d[\d.]*,\d{2})$/.exec(ln);
+            var ds = /^(?:(\d{1,2}) ([A-Z]{3}) (\d{4}) )?Total de sa[ií]das /.test(ln);
+            var dd = /^(\d{1,2}) ([A-Z]{3}) (\d{4}) /.exec(ln);
+            if (dh || ds || dd) {
+                if (!fecharEntrada()) return nuNao(3);
+                if (dh) {
+                    var ant = dia;
+                    if (dh[1]) { var mm = NU_MES_ABREV[dh[2]]; if (!mm) return nuNao(4); dia = { a: +dh[3], m: mm, d: +dh[1], tot: nuValor(dh[4]), itens: [] }; }
+                    else if (ant) dia = { a: ant.a, m: ant.m, d: ant.d, tot: nuValor(dh[4]), itens: [] };   // dia que quebrou de pagina: a data veio na pagina anterior
+                    else return nuNao(5);
+                    dias.push(dia); modo = 'in';
+                } else {
+                    modo = 'out';
+                    if (dd && !dh) { if (!NU_MES_ABREV[dd[2]]) return nuNao(6); dia = { a: +dd[3], m: NU_MES_ABREV[dd[2]], d: +dd[1], tot: 0, itens: [], soSaidas: true }; }
+                }
+                continue;
+            }
+            if (modo !== 'in') continue;
+            if (RE_INICIO.test(ln)) { if (!fecharEntrada()) return nuNao(7); pend = [ln]; }
+            else if (pend) pend.push(ln);
+            else return nuNao(9);
+        }
+        if (!fecharEntrada() || !dias.length) return nuNao(10);
+        // conferencia: cada dia fecha ao centavo e a soma dos dias fecha com o total do mes impresso
+        var somaDias = 0;
+        for (var k = 0; k < dias.length; k++) {
+            var s = dias[k].itens.reduce(function (a, it) { return a + it.v; }, 0);
+            if (Math.abs(s - dias[k].tot) > 0.011) return nuNao(11);
+            somaDias += dias[k].tot;
+        }
+        if (totMes !== null && Math.abs(somaDias - totMes) > 0.011) return nuNao(12);
+        var porMes = {}, ordem = [], det = [];
+        dias.forEach(function (d) {
+            var k = nuIsoMes(d.a, d.m);
+            if (!porMes[k]) { ordem.push(k); porMes[k] = { mes: k, fixa: 0, variavel: 0, app: 0, excluidas: 0, totalCreditos: 0, parcial: false }; }
+            d.itens.forEach(function (it) {
+                porMes[k][it.g] = arred2(porMes[k][it.g] + it.v);
+                if (it.g === 'excluidas') det.push({ mes: k, valor: it.v, motivo: it.motivo });
+            });
+        });
+        if (ordem.length === 1 && totMes !== null) porMes[ordem[0]].totalCreditos = arred2(totMes);   // extrato de mais de um mes: o total impresso e do periodo, nao de um mes
+        det.sort(function (a, b) { return b.valor - a.valor; });
+        return {
+            titular: nome, periodoDocumentos: per, rendaMeses: ordem.map(function (k) { return porMes[k]; }),
+            excluidasDetalhe: det.slice(0, 8), leituraCodigo: 'nubank'
+        };
+    }
+
     // Limita quantas funcoes assincronas rodam ao mesmo tempo (fila simples). Devolve run(fn) -> Promise.
     function criarLimitador(max) {
         var ativos = 0, fila = [];
@@ -373,6 +488,8 @@ const MOTOR = (function (R$) {
     // Se a soma ainda nao fechar com o total impresso, relê UMA vez com trechos menores e fica com a melhor.
     async function lerRendaPorTrechos(texto, chamar, opts) {
         opts = opts || {};
+        var nb = lerExtratoNubank(texto);   // extrato Nubank que fecha com os totais impressos: sem IA
+        if (nb) return nb;
         var limitar = opts.limitar || criarLimitador(PARALELO_IA);
         async function lerTrecho(tx, n, de, tag) {
             var base = '=== EXTRATO BANCARIO DIGITAL (texto extraido do PDF) ===\n' + tx;

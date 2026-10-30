@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-249'; // Atualizacao do app: arquivos sempre revalidados no servidor (antes o CreditoScan podia ficar ate 10 min na versao antiga)
+const CACHE = 'ctw-250'; // CreditoScan: extrato Nubank lido pelo codigo (confere com os totais do dia e do mes), sem IA
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
