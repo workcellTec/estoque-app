@@ -124,7 +124,12 @@
                         if (curLine.length) lines.push(curLine.join(' '));
                         curLine = [];
                     }
-                    curLine.push(item.str);
+                    // Remove caracteres de controle (ex: \u0000) que alguns PDFs
+                    // gerados via impressão de página (Chromium/Skia) embutem na
+                    // camada de texto interna — invisíveis no PDF, mas que o
+                    // Postgres (via PostgREST, ao gravar o job em cs_analises)
+                    // rejeita com erro 22P05 ao receber via JSON.
+                    curLine.push(String(item.str || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ''));
                     lastY = y;
                 });
                 if (curLine.length) lines.push(curLine.join(' '));
