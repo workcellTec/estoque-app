@@ -2983,6 +2983,17 @@ function ctwVencSincronizar(ev) {
     }
 }
 
+// E-mail do cliente (opcional): só vira link "mailto:" se tiver formato válido; o texto sempre passa por escapeHtml.
+// Fica fora de ctwResolverCamposContrato de propósito — o e-mail NÃO sai no contrato/PDF.
+function ctwEmailValido(v) {
+    return /^[^\s@<>"'`]+@[^\s@<>"'`]+\.[^\s@<>"'`]+$/.test(String(v || '').trim());
+}
+function ctwEmailHtml(v, vazio) {
+    const e = String(v || '').trim();
+    if (!e) return vazio || '';
+    return ctwEmailValido(e) ? `<a href="mailto:${escapeHtml(e)}">${escapeHtml(e)}</a>` : escapeHtml(e);
+}
+
 // Lê o formulário aberto → objeto simples (mesmos nomes do registro salvo no Firebase).
 function ctwDadosContratoDoFormulario() {
     const val = (id) => (document.getElementById(id)?.value ?? '').toString().trim();
@@ -2995,6 +3006,7 @@ function ctwDadosContratoDoFormulario() {
         compradorCpf: val('compradorCpf'),
         compradorRg: val('compradorRg'),
         compradorTelefone: val('compradorTelefone'),
+        compradorEmail: val('compradorEmail').toLowerCase(),   // opcional; só cadastro/histórico, NUNCA vai para o PDF
         compradorEndereco: val('compradorEndereco'),
         produtoModelo: val('produtoModelo'),
         produtoImei: val('produtoImei'),
@@ -3024,6 +3036,7 @@ function ctwDadosContratoDoRegistro(b) {
         compradorCpf: b.compradorCpf || '',
         compradorRg: b.compradorRg || '',
         compradorTelefone: b.compradorTelefone || '',
+        compradorEmail: b.compradorEmail || '',
         compradorEndereco: b.compradorEndereco || '',
         produtoModelo: b.produtoModelo || '',
         produtoImei: b.produtoImei || '',
@@ -3573,6 +3586,7 @@ function ctwRegistroParaFirebase(d) {
         compradorCpf: d.compradorCpf,
         compradorRg: d.compradorRg,
         compradorTelefone: d.compradorTelefone,
+        compradorEmail: d.compradorEmail || '',
         compradorEndereco: d.compradorEndereco,
         produtoModelo: d.produtoModelo,
         produtoImei: d.produtoImei,
@@ -3657,6 +3671,13 @@ async function ctwFinalizarContrato() {
     if (_contratoEmAndamento) return;
     const form = document.getElementById('contractForm');
     const btn = document.getElementById('btnImprimir');
+    const emailEl = document.getElementById('compradorEmail');
+    if (emailEl && emailEl.value.trim() && !emailEl.checkValidity()) {
+        showCustomModal({ message: 'O e-mail do cliente parece inválido. Corrija ou deixe o campo vazio (ele é opcional).' });
+        emailEl.scrollIntoView({ block: 'center' });
+        emailEl.focus();
+        return;
+    }
     if (!form.checkValidity()) {
         showCustomModal({ message: 'Por favor, preencha todos os campos obrigatórios.' });
         form.reportValidity();
@@ -3736,6 +3757,7 @@ async function ctwFinalizarContrato() {
             return;
         }
         ctwLimparPendente();
+        ctwSincronizarEmailCliente(dados);
         if (!editId) {
             _ultimoContratoSalvo = { sig, codigo: r.codigoInterno || '' };
             // O PDF sai com a MESMA data que o histórico mostra (hora do servidor, não a do celular).
@@ -3781,6 +3803,7 @@ async function ctwOferecerContratoPendente() {
         ctwProgresso('Enviando contrato guardado...');
         await ctwSalvarContratoComSeguranca(r);
         ctwLimparPendente();
+        ctwSincronizarEmailCliente(r.dados);
         ctwProgresso();
         showCustomModal({ message: 'Contrato de ' + (r.nome || 'cliente') + ' salvo no histórico! ✅' });
     } catch (err) {
@@ -3897,7 +3920,7 @@ function renderBoletosHistoryFiltrado(termoBusca) {
     const termo = (termoBusca || '').toLowerCase().trim();
 
     let boletosArray = !termo ? _boletosHistoryCache : _boletosHistoryCache.filter(b => {
-        const alvo = [b.codigoInterno, b.compradorNome, b.compradorCpf, b.compradorTelefone, b.produtoImei, b.produtoModelo]
+        const alvo = [b.codigoInterno, b.compradorNome, b.compradorCpf, b.compradorTelefone, b.compradorEmail, b.produtoImei, b.produtoModelo]
             .map(v => (v || '').toString().toLowerCase())
             .join(' ');
         return alvo.includes(termo);
@@ -3917,7 +3940,7 @@ function renderBoletosHistoryFiltrado(termoBusca) {
 
     const buscaHtml = `
         <div class="mb-3">
-            <input type="text" id="buscaContratoInput" class="form-control" placeholder="🔎 Buscar por nome, CPF, telefone ou IMEI..." value="${escapeHtml(termoBusca || '')}">
+            <input type="text" id="buscaContratoInput" class="form-control" placeholder="🔎 Buscar por nome, CPF, telefone, e-mail ou IMEI..." value="${escapeHtml(termoBusca || '')}">
         </div>`;
 
     if (_boletosHistoryCache.length === 0) {
@@ -3956,7 +3979,8 @@ function renderBoletosHistoryFiltrado(termoBusca) {
                     ${boleto.codigoInterno ? `<p class="mb-1"><strong>Código:</strong> #${escapeHtml(boleto.codigoInterno)}</p>` : ''}
                     <p class="mb-1"><strong>Comprador:</strong> ${escapeHtml(boleto.compradorNome)}</p>
                     <p class="mb-1"><strong>CPF:</strong> ${escapeHtml(boleto.compradorCpf || '—')}</p>
-                    <p class="mb-2"><strong>Telefone:</strong> ${telefoneHtml}</p>
+                    <p class="mb-1"><strong>Telefone:</strong> ${telefoneHtml}</p>
+                    <p class="mb-2"><strong>E-mail:</strong> ${ctwEmailHtml(boleto.compradorEmail, '(Não informado)')}</p>
                     <p class="mb-1"><strong>Produto:</strong> ${escapeHtml(boleto.produtoModelo || '—')}</p>
                     <p class="mb-2"><strong>IMEI:</strong> ${escapeHtml(boleto.produtoImei || '—')}</p>
                     <p class="mb-1"><strong>Valor Total:</strong> R$ ${Number(boleto.valorTotal||0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
@@ -3997,6 +4021,7 @@ function acaoEditarBoleto(boletoId, boletosArray) {
     document.getElementById('compradorCpf').value = boleto.compradorCpf || '';
     document.getElementById('compradorRg').value = boleto.compradorRg || '';
     document.getElementById('compradorTelefone').value = boleto.compradorTelefone || '';
+    document.getElementById('compradorEmail').value = boleto.compradorEmail || '';
     document.getElementById('compradorEndereco').value = boleto.compradorEndereco || '';
     document.getElementById('produtoModelo').value = boleto.produtoModelo || '';
     document.getElementById('produtoImei').value = boleto.produtoImei || '';
@@ -4080,6 +4105,7 @@ function acaoDuplicarBoleto(boletoId, boletosArray) {
     document.getElementById('compradorCpf').value = boleto.compradorCpf || '';
     document.getElementById('compradorRg').value = boleto.compradorRg || '';
     document.getElementById('compradorTelefone').value = boleto.compradorTelefone || '';
+    document.getElementById('compradorEmail').value = boleto.compradorEmail || '';
     document.getElementById('compradorEndereco').value = boleto.compradorEndereco || '';
     // Dados do aparelho e valores ficam em branco de propósito — são de
     // uma venda nova, não da venda antiga que está sendo duplicada.
@@ -8386,16 +8412,7 @@ async function salvarClienteAutomatico(dados) {
     }
 
     // 1. Cria ID
-    let clienteId = '';
-    const cpfLimpo = (dados.cpf || '').replace(/\D/g, '');
-
-    if (cpfLimpo.length > 5) {
-        clienteId = cpfLimpo;
-    } else {
-        const nomeLimpo = dados.nome.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const telLimpo = (dados.tel || '').replace(/\D/g, '');
-        clienteId = `${nomeLimpo}_${telLimpo}`;
-    }
+    const clienteId = ctwClienteId(dados.nome, dados.cpf, dados.tel);
 
     if (!clienteId) {
         alert("ROBÔ ERRO: Não consegui criar ID (faltou nome/tel/cpf)");
@@ -8403,13 +8420,16 @@ async function salvarClienteAutomatico(dados) {
     }
 
     // 2. Dados
+    // O e-mail também pode vir do contrato; como aqui é SET (substitui tudo), uma garantia
+    // sem e-mail não pode apagar o que já está cadastrado.
+    const emailAtual = ((window.dbClientsCache || []).find(c => c.id === clienteId) || {}).email || '';
     const dadosCliente = {
         id: clienteId,
         nome: dados.nome,
         cpf: dados.cpf || '',
         tel: dados.tel || '',
         end: dados.end || '',
-        email: dados.email || '',
+        email: dados.email || emailAtual,
         criadoPor: currentUserProfile || 'Desconhecido',
         ultimoCompra: new Date().toISOString()
     };
@@ -8423,6 +8443,29 @@ async function salvarClienteAutomatico(dados) {
     } catch (e) {
         alert("ROBÔ FALHOU AO GRAVAR NO BANCO: " + e.message);
     }
+}
+
+// Chave do cadastro de clientes: CPF (só dígitos) ou "nome_telefone" quando não há CPF.
+function ctwClienteId(nome, cpf, tel) {
+    const cpfLimpo = String(cpf || '').replace(/\D/g, '');
+    if (cpfLimpo.length > 5) return cpfLimpo;
+    const nomeLimpo = String(nome || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const telLimpo = String(tel || '').replace(/\D/g, '');
+    return `${nomeLimpo}_${telLimpo}`;
+}
+
+// Contrato salvo com e-mail → guarda o e-mail no cadastro do cliente (só se ele já existir:
+// contrato não cria cliente). Atualiza apenas o campo "email"; nunca bloqueia nem quebra o contrato.
+async function ctwSincronizarEmailCliente(d) {
+    try {
+        const email = String((d && d.compradorEmail) || '').trim().toLowerCase();
+        if (!email || !ctwEmailValido(email)) return;
+        const id = ctwClienteId(d.compradorNome, d.compradorCpf, d.compradorTelefone);
+        if (!id) return;
+        const cliente = (window.dbClientsCache || []).find(c => c.id === id);
+        if (!cliente || String(cliente.email || '').trim().toLowerCase() === email) return;
+        await update(ref(db, 'clientes/' + id), { email });
+    } catch (e) { console.warn('E-mail do cliente não sincronizado:', e); }
 }
 
 //=======================================
@@ -8645,6 +8688,7 @@ window.preencherClienteBoleto = function(id, idLista) {
     set('compradorNome', cliente.nome);
     set('compradorCpf', cliente.cpf);
     set('compradorTelefone', cliente.tel);
+    set('compradorEmail', cliente.email);
     set('compradorEndereco', cliente.end);
     if (idLista) { var l = document.getElementById(idLista); if (l) l.style.display = 'none'; }
     // Feedback visual
@@ -8826,7 +8870,7 @@ window.abrirEstrelaCliente = async function(id, posicao) {
         <div style="font-size:.75rem;color:${cor};font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;">${nivel?.label||'Cliente Fiel'}</div>
         <div style="font-size:1.3rem;font-weight:800;color:var(--text-color);margin-bottom:4px;">${cliente.nome}</div>
         <div style="font-size:.8rem;color:var(--text-secondary);margin-bottom:16px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap;">
-            ${cliente.cpf?`<span>📋 ${cliente.cpf}</span>`:''}${cliente.tel?`<span>📱 ${cliente.tel}</span>`:''}
+            ${cliente.cpf?`<span>📋 ${cliente.cpf}</span>`:''}${cliente.tel?`<span>📱 ${cliente.tel}</span>`:''}${cliente.email?`<span>✉️ ${ctwEmailHtml(cliente.email)}</span>`:''}
         </div>
         <div style="background:${cor}15;border:1px solid ${cor}33;border-radius:14px;padding:12px;margin-bottom:18px;display:flex;justify-content:center;gap:24px;">
             <div><div style="font-size:1.6rem;font-weight:800;color:${cor};">${bookips.length}</div><div style="font-size:.72rem;color:var(--text-secondary);">compras</div></div>
@@ -8873,7 +8917,7 @@ window.abrirResumoCliente = async function(id) {
         <div style="margin-bottom:14px;">
             <div style="font-size:1.1rem;font-weight:700;color:var(--text-color);">${cliente.nome||'?'} ${nivelHTML}</div>
             <div style="font-size:.8rem;color:var(--text-secondary);margin-top:4px;display:flex;flex-wrap:wrap;gap:10px;">
-                ${cliente.cpf?`<span>📋 ${cliente.cpf}</span>`:''}${cliente.tel?`<span>📱 ${cliente.tel}</span>`:''}${cliente.end?`<span>📍 ${cliente.end}</span>`:''}
+                ${cliente.cpf?`<span>📋 ${cliente.cpf}</span>`:''}${cliente.tel?`<span>📱 ${cliente.tel}</span>`:''}${cliente.email?`<span>✉️ ${ctwEmailHtml(cliente.email)}</span>`:''}${cliente.end?`<span>📍 ${cliente.end}</span>`:''}
             </div>
             <div style="margin-top:8px;font-size:.8rem;color:var(--text-secondary);">${bookips.length} compra(s) registrada(s)</div>
         </div>

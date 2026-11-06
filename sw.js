@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-255'; // CreditoScan: remove bytes nulos do texto extraido de PDF digital (erro 22P05 no servidor)
+const CACHE = 'ctw-256'; // Contratos: campo opcional de e-mail do cliente (histórico e perfil do cliente; fora do PDF)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
