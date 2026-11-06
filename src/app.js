@@ -3007,6 +3007,7 @@ function ctwDadosContratoDoFormulario() {
         compradorRg: val('compradorRg'),
         compradorTelefone: val('compradorTelefone'),
         compradorEmail: val('compradorEmail').toLowerCase(),   // opcional; só cadastro/histórico, NUNCA vai para o PDF
+        compradorContatoEmergencia: val('compradorContatoEmergencia'),   // idem: só histórico e "Copiar dados"
         compradorEndereco: val('compradorEndereco'),
         produtoModelo: val('produtoModelo'),
         produtoImei: val('produtoImei'),
@@ -3037,6 +3038,7 @@ function ctwDadosContratoDoRegistro(b) {
         compradorRg: b.compradorRg || '',
         compradorTelefone: b.compradorTelefone || '',
         compradorEmail: b.compradorEmail || '',
+        compradorContatoEmergencia: b.compradorContatoEmergencia || '',
         compradorEndereco: b.compradorEndereco || '',
         produtoModelo: b.produtoModelo || '',
         produtoImei: b.produtoImei || '',
@@ -3587,6 +3589,7 @@ function ctwRegistroParaFirebase(d) {
         compradorRg: d.compradorRg,
         compradorTelefone: d.compradorTelefone,
         compradorEmail: d.compradorEmail || '',
+        compradorContatoEmergencia: d.compradorContatoEmergencia || '',
         compradorEndereco: d.compradorEndereco,
         produtoModelo: d.produtoModelo,
         produtoImei: d.produtoImei,
@@ -3920,7 +3923,7 @@ function renderBoletosHistoryFiltrado(termoBusca) {
     const termo = (termoBusca || '').toLowerCase().trim();
 
     let boletosArray = !termo ? _boletosHistoryCache : _boletosHistoryCache.filter(b => {
-        const alvo = [b.codigoInterno, b.compradorNome, b.compradorCpf, b.compradorTelefone, b.compradorEmail, b.produtoImei, b.produtoModelo]
+        const alvo = [b.codigoInterno, b.compradorNome, b.compradorCpf, b.compradorTelefone, b.compradorEmail, b.compradorContatoEmergencia, b.produtoImei, b.produtoModelo]
             .map(v => (v || '').toString().toLowerCase())
             .join(' ');
         return alvo.includes(termo);
@@ -3980,7 +3983,8 @@ function renderBoletosHistoryFiltrado(termoBusca) {
                     <p class="mb-1"><strong>Comprador:</strong> ${escapeHtml(boleto.compradorNome)}</p>
                     <p class="mb-1"><strong>CPF:</strong> ${escapeHtml(boleto.compradorCpf || '—')}</p>
                     <p class="mb-1"><strong>Telefone:</strong> ${telefoneHtml}</p>
-                    <p class="mb-2"><strong>E-mail:</strong> ${ctwEmailHtml(boleto.compradorEmail, '(Não informado)')}</p>
+                    <p class="mb-1"><strong>E-mail:</strong> ${ctwEmailHtml(boleto.compradorEmail, '(Não informado)')}</p>
+                    <p class="mb-2"><strong>Contato de emergência:</strong> ${escapeHtml(boleto.compradorContatoEmergencia || '(Não informado)')}</p>
                     <p class="mb-1"><strong>Produto:</strong> ${escapeHtml(boleto.produtoModelo || '—')}</p>
                     <p class="mb-2"><strong>IMEI:</strong> ${escapeHtml(boleto.produtoImei || '—')}</p>
                     <p class="mb-1"><strong>Valor Total:</strong> R$ ${Number(boleto.valorTotal||0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
@@ -3988,6 +3992,7 @@ function renderBoletosHistoryFiltrado(termoBusca) {
                     <p class="mb-2"><strong>Parcelas:</strong> ${boleto.numeroParcelas}x de R$ ${boleto.valorParcela}</p>
                     <hr style="border-color: var(--glass-border); margin: 8px 0;">
                     <div class="d-flex gap-2 flex-wrap justify-content-end">
+                        <button class="btn btn-sm btn-outline-info copiar-boleto-btn" data-id="${boleto.id}" title="Copiar um resumo completo deste contrato"><i class="bi bi-clipboard-check"></i> Copiar dados</button>
                         <button class="btn btn-sm btn-primary editar-boleto-btn" data-id="${boleto.id}"><i class="bi bi-pencil-fill"></i> Editar</button>
                         <button class="btn btn-sm btn-info duplicar-boleto-btn" data-id="${boleto.id}" title="Criar novo contrato reaproveitando os dados deste cliente"><i class="bi bi-files"></i> Duplicar</button>
                         <button class="btn btn-sm btn-success reenviar-boleto-btn" data-id="${boleto.id}"><i class="bi bi-share-fill"></i> Reenviar</button>
@@ -4006,6 +4011,84 @@ function renderBoletosHistoryFiltrado(termoBusca) {
     hookBuscaContratoInput();
 }
 
+// Vencimento da parcela nº k (0 = a primeira), a partir do 1º vencimento (AAAA-MM-DD).
+// Mensal conta sempre a partir do dia original (31/01 → 28/02 → 31/03), sem "perder" o dia pelo caminho.
+function ctwVencimentoParcela(iso, tipo, k) {
+    const d = ctwIsoParaData(iso);
+    if (!d) return null;
+    if (tipo === 'semanais') return ctwSomarDias(d, 7 * k);
+    if (tipo === 'quinzenais') return ctwSomarDias(d, 15 * k);
+    const ultimoDia = new Date(d.getFullYear(), d.getMonth() + k + 1, 0).getDate();
+    return new Date(d.getFullYear(), d.getMonth() + k, Math.min(d.getDate(), ultimoDia));
+}
+
+// Resumo completo do contrato em texto puro (para colar no WhatsApp etc.).
+// É o único lugar fora do histórico que mostra e-mail e contato de emergência — o PDF não leva nenhum dos dois.
+function ctwResumoContratoTexto(b) {
+    const d = ctwDadosContratoDoRegistro(b);
+    const ni = (v) => String(v || '').trim() || 'Não informado';
+    const n = d.numeroParcelas;
+    const primeira = n > 0 ? ctwVencimentoParcela(d.primeiroVencimento, d.tipoParcela, 0) : null;
+    const ultima = n > 0 ? ctwVencimentoParcela(d.primeiroVencimento, d.tipoParcela, n - 1) : null;
+    const linhas = [
+        '📄 CONTRATO' + (b.codigoInterno ? ' #' + b.codigoInterno : ''),
+        'Data do contrato: ' + ctwFmtData(d.dataContrato),
+        '',
+        '👤 CLIENTE',
+        'Nome: ' + ni(d.compradorNome),
+        'CPF: ' + ni(d.compradorCpf),
+        'RG: ' + ni(d.compradorRg),
+        'Telefone: ' + ni(d.compradorTelefone),
+        'E-mail: ' + ni(d.compradorEmail),
+        'Endereço: ' + ni(d.compradorEndereco),
+        '🆘 Contato de emergência: ' + ni(d.compradorContatoEmergencia),
+        '',
+        '📱 APARELHO',
+        'Produto: ' + ni(d.produtoModelo),
+        'IMEI: ' + ni(d.produtoImei),
+        'Estado: ' + ni(d.aparelhoEstado),
+        'Acessórios: ' + (String(d.aparelhoAcessorios || '').trim() || 'Nenhum'),
+        '',
+        '💰 VALORES',
+        'Valor total: R$ ' + ctwFmtMoeda(d.valorTotal),
+        'Entrada: R$ ' + ctwFmtMoeda(d.valorEntrada),
+        'Saldo parcelado: R$ ' + ctwFmtMoeda(d.saldoRestante),
+        'Parcelas: ' + n + 'x de R$ ' + ctwFmtMoeda(d.valorParcela) + ' (' + d.tipoParcela + ')',
+        '',
+        '📅 PRAZO',
+        '1º vencimento: ' + (primeira ? ctwFmtData(primeira) : 'Não informado'),
+        'Último vencimento: ' + (ultima ? ctwFmtData(ultima) : 'Não informado'),
+        'Prazo: ' + (ctwPrazoContrato(d.tipoParcela, n) || '—')
+    ];
+    return linhas.join('\n');
+}
+
+// Copia texto: API moderna e, se o aparelho/WebView não deixar, o método antigo (textarea).
+async function ctwCopiarTexto(texto) {
+    try {
+        if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(texto); return true; }
+    } catch (e) { /* tenta o método antigo */ }
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = texto;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+        document.body.appendChild(ta);
+        ta.select();
+        ta.setSelectionRange(0, texto.length);
+        const ok = document.execCommand('copy');
+        ta.remove();
+        return ok;
+    } catch (e) { return false; }
+}
+
+async function acaoCopiarResumoBoleto(boletoId, boletosArray) {
+    const boleto = boletosArray.find(b => b.id === boletoId);
+    if (!boleto) return;
+    const ok = await ctwCopiarTexto(ctwResumoContratoTexto(boleto));
+    showCustomModal({ message: ok ? 'Resumo do contrato copiado! ✅ Agora é só colar.' : 'Não consegui copiar automaticamente neste aparelho.' });
+}
+
 // Ação de Editar um contrato existente: preenche o formulário para edição.
 function acaoEditarBoleto(boletoId, boletosArray) {
     const boleto = boletosArray.find(b => b.id === boletoId);
@@ -4022,6 +4105,7 @@ function acaoEditarBoleto(boletoId, boletosArray) {
     document.getElementById('compradorRg').value = boleto.compradorRg || '';
     document.getElementById('compradorTelefone').value = boleto.compradorTelefone || '';
     document.getElementById('compradorEmail').value = boleto.compradorEmail || '';
+    document.getElementById('compradorContatoEmergencia').value = boleto.compradorContatoEmergencia || '';
     document.getElementById('compradorEndereco').value = boleto.compradorEndereco || '';
     document.getElementById('produtoModelo').value = boleto.produtoModelo || '';
     document.getElementById('produtoImei').value = boleto.produtoImei || '';
@@ -4106,6 +4190,7 @@ function acaoDuplicarBoleto(boletoId, boletosArray) {
     document.getElementById('compradorRg').value = boleto.compradorRg || '';
     document.getElementById('compradorTelefone').value = boleto.compradorTelefone || '';
     document.getElementById('compradorEmail').value = boleto.compradorEmail || '';
+    document.getElementById('compradorContatoEmergencia').value = boleto.compradorContatoEmergencia || '';
     document.getElementById('compradorEndereco').value = boleto.compradorEndereco || '';
     // Dados do aparelho e valores ficam em branco de propósito — são de
     // uma venda nova, não da venda antiga que está sendo duplicada.
@@ -4201,6 +4286,9 @@ function hookBoletosHistoryActions() {
     historyContainer.addEventListener('click', (e) => {
         const editBtn = e.target.closest('.editar-boleto-btn');
         if (editBtn) { acaoEditarBoleto(editBtn.dataset.id, _boletosHistoryCache); return; }
+
+        const copyBtn = e.target.closest('.copiar-boleto-btn');
+        if (copyBtn) { acaoCopiarResumoBoleto(copyBtn.dataset.id, _boletosHistoryCache); return; }
 
         const dupBtn = e.target.closest('.duplicar-boleto-btn');
         if (dupBtn) { acaoDuplicarBoleto(dupBtn.dataset.id, _boletosHistoryCache); return; }

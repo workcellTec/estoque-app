@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-256'; // Contratos: campo opcional de e-mail do cliente (histórico e perfil do cliente; fora do PDF)
+const CACHE = 'ctw-257'; // Contratos: botao Copiar dados (resumo completo) e contato de emergencia (fora do PDF)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
