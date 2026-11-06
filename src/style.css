@@ -565,6 +565,9 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
     font-size: 0.9rem;
 }
 [data-theme="light"] .history-accordion .accordion-body { background-color: var(--tertiary-color); }
+/* Botões de ação de cada contrato do histórico: grade 2 colunas, mesmo tamanho, alinhados */
+.history-accordion .ctw-hist-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.history-accordion .ctw-hist-actions .btn { width: 100%; min-height: 42px; padding: 8px 6px; font-size: .85rem; line-height: 1.2; }
 .history-accordion .accordion-body strong {
     color: var(--text-color);
 }

@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-257'; // Contratos: botao Copiar dados (resumo completo) e contato de emergencia (fora do PDF)
+const CACHE = 'ctw-258'; // Contratos: resumo curto p/ WhatsApp e botoes do historico alinhados em grade
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

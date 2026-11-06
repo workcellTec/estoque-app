@@ -3991,12 +3991,12 @@ function renderBoletosHistoryFiltrado(termoBusca) {
                     <p class="mb-1"><strong>Entrada:</strong> R$ ${Number(boleto.valorEntrada||0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
                     <p class="mb-2"><strong>Parcelas:</strong> ${boleto.numeroParcelas}x de R$ ${boleto.valorParcela}</p>
                     <hr style="border-color: var(--glass-border); margin: 8px 0;">
-                    <div class="d-flex gap-2 flex-wrap justify-content-end">
-                        <button class="btn btn-sm btn-outline-info copiar-boleto-btn" data-id="${boleto.id}" title="Copiar um resumo completo deste contrato"><i class="bi bi-clipboard-check"></i> Copiar dados</button>
-                        <button class="btn btn-sm btn-primary editar-boleto-btn" data-id="${boleto.id}"><i class="bi bi-pencil-fill"></i> Editar</button>
-                        <button class="btn btn-sm btn-info duplicar-boleto-btn" data-id="${boleto.id}" title="Criar novo contrato reaproveitando os dados deste cliente"><i class="bi bi-files"></i> Duplicar</button>
+                    <div class="ctw-hist-actions">
+                        <button class="btn btn-sm btn-primary copiar-boleto-btn" data-id="${boleto.id}" title="Copiar um resumo curto deste contrato"><i class="bi bi-clipboard-check"></i> Copiar dados</button>
                         <button class="btn btn-sm btn-success reenviar-boleto-btn" data-id="${boleto.id}"><i class="bi bi-share-fill"></i> Reenviar</button>
-                        <button class="btn btn-sm btn-outline-success baixar-boleto-btn" data-id="${boleto.id}"><i class="bi bi-download"></i> Baixar PDF</button>
+                        <button class="btn btn-sm btn-outline-primary editar-boleto-btn" data-id="${boleto.id}"><i class="bi bi-pencil-fill"></i> Editar</button>
+                        <button class="btn btn-sm btn-outline-primary duplicar-boleto-btn" data-id="${boleto.id}" title="Criar novo contrato reaproveitando os dados deste cliente"><i class="bi bi-files"></i> Duplicar</button>
+                        <button class="btn btn-sm btn-outline-primary baixar-boleto-btn" data-id="${boleto.id}"><i class="bi bi-download"></i> Baixar PDF</button>
                         <button class="btn btn-sm btn-outline-danger delete-boleto-btn" data-id="${boleto.id}"><i class="bi bi-trash"></i> Excluir</button>
                     </div>
                 </div>
@@ -4022,45 +4022,30 @@ function ctwVencimentoParcela(iso, tipo, k) {
     return new Date(d.getFullYear(), d.getMonth() + k, Math.min(d.getDate(), ultimoDia));
 }
 
-// Resumo completo do contrato em texto puro (para colar no WhatsApp etc.).
+// Resumo do contrato em texto puro, curto para colar no WhatsApp (campo vazio não ocupa linha).
 // É o único lugar fora do histórico que mostra e-mail e contato de emergência — o PDF não leva nenhum dos dois.
 function ctwResumoContratoTexto(b) {
     const d = ctwDadosContratoDoRegistro(b);
-    const ni = (v) => String(v || '').trim() || 'Não informado';
+    const t = (v) => String(v == null ? '' : v).trim();
     const n = d.numeroParcelas;
     const primeira = n > 0 ? ctwVencimentoParcela(d.primeiroVencimento, d.tipoParcela, 0) : null;
     const ultima = n > 0 ? ctwVencimentoParcela(d.primeiroVencimento, d.tipoParcela, n - 1) : null;
-    const linhas = [
-        '📄 CONTRATO' + (b.codigoInterno ? ' #' + b.codigoInterno : ''),
-        'Data do contrato: ' + ctwFmtData(d.dataContrato),
-        '',
-        '👤 CLIENTE',
-        'Nome: ' + ni(d.compradorNome),
-        'CPF: ' + ni(d.compradorCpf),
-        'RG: ' + ni(d.compradorRg),
-        'Telefone: ' + ni(d.compradorTelefone),
-        'E-mail: ' + ni(d.compradorEmail),
-        'Endereço: ' + ni(d.compradorEndereco),
-        '🆘 Contato de emergência: ' + ni(d.compradorContatoEmergencia),
-        '',
-        '📱 APARELHO',
-        'Produto: ' + ni(d.produtoModelo),
-        'IMEI: ' + ni(d.produtoImei),
-        'Estado: ' + ni(d.aparelhoEstado),
-        'Acessórios: ' + (String(d.aparelhoAcessorios || '').trim() || 'Nenhum'),
-        '',
-        '💰 VALORES',
-        'Valor total: R$ ' + ctwFmtMoeda(d.valorTotal),
-        'Entrada: R$ ' + ctwFmtMoeda(d.valorEntrada),
-        'Saldo parcelado: R$ ' + ctwFmtMoeda(d.saldoRestante),
-        'Parcelas: ' + n + 'x de R$ ' + ctwFmtMoeda(d.valorParcela) + ' (' + d.tipoParcela + ')',
-        '',
-        '📅 PRAZO',
-        '1º vencimento: ' + (primeira ? ctwFmtData(primeira) : 'Não informado'),
-        'Último vencimento: ' + (ultima ? ctwFmtData(ultima) : 'Não informado'),
-        'Prazo: ' + (ctwPrazoContrato(d.tipoParcela, n) || '—')
-    ];
-    return linhas.join('\n');
+    const estado = t(d.aparelhoEstado);
+    const venc = [primeira && '1º venc. ' + ctwFmtData(primeira), ultima && 'último ' + ctwFmtData(ultima)].filter(Boolean).join(' · ');
+    return [
+        '*CONTRATO' + (b.codigoInterno ? ' #' + b.codigoInterno : '') + '* — ' + ctwFmtData(d.dataContrato),
+        '👤 ' + (t(d.compradorNome) || 'Não informado'),
+        [t(d.compradorCpf) && 'CPF ' + t(d.compradorCpf), t(d.compradorRg) && 'RG ' + t(d.compradorRg)].filter(Boolean).join(' · '),
+        [t(d.compradorTelefone) && '📞 ' + t(d.compradorTelefone), t(d.compradorEmail) && '✉️ ' + t(d.compradorEmail)].filter(Boolean).join(' · '),
+        t(d.compradorEndereco) && '📍 ' + t(d.compradorEndereco),
+        t(d.compradorContatoEmergencia) && '🆘 ' + t(d.compradorContatoEmergencia),
+        '📱 ' + (t(d.produtoModelo) || 'Não informado') + (estado && estado !== 'Novo' ? ' (' + estado + ')' : ''),
+        t(d.produtoImei) && 'IMEI: ' + t(d.produtoImei),
+        t(d.aparelhoAcessorios) && 'Acessórios: ' + t(d.aparelhoAcessorios),
+        '💰 Total R$ ' + ctwFmtMoeda(d.valorTotal) + ' · Entrada R$ ' + ctwFmtMoeda(d.valorEntrada),
+        '📅 ' + n + 'x de R$ ' + ctwFmtMoeda(d.valorParcela) + ' ' + d.tipoParcela,
+        venc
+    ].filter(Boolean).join('\n');
 }
 
 // Copia texto: API moderna e, se o aparelho/WebView não deixar, o método antigo (textarea).
