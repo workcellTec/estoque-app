@@ -1832,7 +1832,13 @@
             // e com limite de tempo, para nunca ficar girando sem fim.
             function lerPeriodo(dias){
                 var ini=Date.now()-dias*86400000, q=fb.query(fb.ref(db,SAVE_PATH),fb.orderByChild('ts'),fb.startAt(ini));
-                return comLimite(fb.get(q),30000).then(function(snap){
+                return comLimite(fb.get(q),30000).catch(function(e){
+                    if(!semIndiceTs(e)) throw e;
+                    // regras sem ".indexOn": "ts": cai na leitura do no inteiro (lenta; compartilhada, 1x a cada poucos minutos)
+                    var _l=document.getElementById('cs_hist_items');
+                    if(_l)_l.innerHTML='<div class="cs-hist-load"><i class="bi bi-hourglass-split"></i> Carregando todo o historico (pode demorar)...</div>';
+                    return lerNoInteiro(fb,db);
+                }).then(function(snap){
                     var lista=[];
                     snap.forEach(function(c){var v=c.val();if(v&&v.ts&&v.ts>=ini)lista.push(Object.assign({id:c.key},v));});
                     return lista.sort(function(a,b){return(b.ts||0)-(a.ts||0);});
@@ -2104,6 +2110,20 @@
                 var _rb=document.getElementById('cs_hist_retry');if(_rb)_rb.addEventListener('click',function(){abrirHist();});
             }
         }
+    }
+
+    // Sem ".indexOn": "ts" em /creditoscan nas regras do Firebase, a consulta por periodo falha com "Index not defined".
+    function semIndiceTs(e){ return /index not defined|indexon/i.test(String((e && e.message) || e)); }
+
+    // Leitura do no INTEIRO (cada analise guarda o texto completo: e pesada e ocupa a conexao do app com o Firebase).
+    // Todas as telas que cairem aqui dividem o mesmo resultado por 10 min, em vez de baixar de novo a cada abertura/volta ao app.
+    var _lerCheio = null;
+    function lerNoInteiro(fb,db){
+        if(_lerCheio && Date.now()-_lerCheio.ts<600000) return _lerCheio.p;
+        var p=comLimite(fb.get(fb.ref(db,SAVE_PATH)),120000), reg={ts:Date.now(),p:p};
+        _lerCheio=reg;
+        p.catch(function(){ if(_lerCheio===reg)_lerCheio=null; });
+        return p;
     }
 
     // Promessa com limite de tempo: o get() do Firebase nao tem timeout proprio e, com sinal ruim, ficava pendente para sempre.
@@ -3235,10 +3255,12 @@
                 fb = fb || await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
                 var db = window._firebaseDB;
                 if (db) {
-                    var snap = await fb.get(fb.ref(db, SAVE_PATH));
+                    var limite = Date.now() - HIST_DAYS * 86400000, snap;
+                    // so os ultimos HIST_DAYS dias (indexado por "ts"); sem o indice nas regras, le o no inteiro como antes
+                    try { snap = await comLimite(fb.get(fb.query(fb.ref(db, SAVE_PATH), fb.orderByChild('ts'), fb.startAt(limite))), 30000); }
+                    catch (eIdx) { if (!semIndiceTs(eIdx)) throw eIdx; snap = await fb.get(fb.ref(db, SAVE_PATH)); }
                     var itens = [];
                     if (snap.exists()) {
-                        var limite = Date.now() - HIST_DAYS * 86400000;
                         snap.forEach(function (c) {
                             var v = c.val();
                             if (v && v.cpf === cpf && v.ts > limite) itens.push(Object.assign({ id: c.key }, v));
@@ -4214,7 +4236,7 @@
             var db = window._firebaseDB; if (!db) return;
             var fb = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js'), ini = inicioDoDia(), snap;
             try { snap = await fb.get(fb.query(fb.ref(db, SAVE_PATH), fb.orderByChild('ts'), fb.startAt(ini))); }
-            catch (e1) { snap = await fb.get(fb.ref(db, SAVE_PATH)); }   // sem indice/consulta: le tudo e filtra aqui
+            catch (e1) { snap = await lerNoInteiro(fb, db); }   // sem indice/consulta: le tudo e filtra aqui (leitura dividida: nao baixa de novo a cada volta ao app)
             var itens = [];
             snap.forEach(function (c) { var v = c.val(); if (v && v.ts >= ini) itens.push(Object.assign({ id: c.key }, v)); });
             itens.sort(function (a, b) { return b.ts - a.ts; });
