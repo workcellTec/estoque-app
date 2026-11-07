@@ -7527,6 +7527,15 @@ function loadBookipHistory() {
     // Remove listener antigo para não duplicar
     ctwDesligarListenerHistorico();
 
+    // Reabriu o histórico: mostra na hora o que já veio da última vez (já ordenado) e o Firebase atualiza por trás.
+    // Sem isso, toda abertura mostrava "Carregando..." e baixava todas as garantias de novo.
+    const _memoHist = (window._bookipsHistMemo || {})[colDoc];
+    if (_memoHist && _memoHist.length) {
+        listaCompletaCache = _memoHist.slice();
+        configurarFiltros();
+        aplicarFiltrosCombinados();
+    }
+
     // Novo Listener do Firebase
     bookipListener = onValue(bookipsRef, (snapshot) => {
         if (snapshot.exists()) {
@@ -7565,9 +7574,11 @@ function loadBookipHistory() {
             // ==========================================================
             
             // 3. Configura e aplica filtros
+            (window._bookipsHistMemo = window._bookipsHistMemo || {})[colDoc] = listaCompletaCache.slice();
             configurarFiltros();
             aplicarFiltrosCombinados();
         } else {
+            (window._bookipsHistMemo = window._bookipsHistMemo || {})[colDoc] = [];
             container.innerHTML = `<p class="text-center text-secondary mt-4">${ehOrc ? 'Nenhum orçamento salvo.' : 'Nenhum recibo salvo.'}</p>`;
         }
 

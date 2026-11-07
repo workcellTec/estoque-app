@@ -4236,7 +4236,13 @@
             var db = window._firebaseDB; if (!db) return;
             var fb = await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js'), ini = inicioDoDia(), snap;
             try { snap = await fb.get(fb.query(fb.ref(db, SAVE_PATH), fb.orderByChild('ts'), fb.startAt(ini))); }
-            catch (e1) { snap = await lerNoInteiro(fb, db); }   // sem indice/consulta: le tudo e filtra aqui (leitura dividida: nao baixa de novo a cada volta ao app)
+            catch (e1) {
+                // sem indice/consulta: le tudo e filtra aqui (leitura dividida). So com o CreditoScan aberto: em segundo plano
+                // (abrir o app, voltar a ele) baixar o no inteiro entope a conexao e deixa o resto do app lento.
+                var _ov = el('cs_ov');
+                if (!_ov || !_ov.classList.contains('active')) return;
+                snap = await lerNoInteiro(fb, db);
+            }
             var itens = [];
             snap.forEach(function (c) { var v = c.val(); if (v && v.ts >= ini) itens.push(Object.assign({ id: c.key }, v)); });
             itens.sort(function (a, b) { return b.ts - a.ts; });

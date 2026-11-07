@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-260'; // CreditoScan: sem indice ts nas regras nao baixa mais o historico inteiro a cada volta ao app
+const CACHE = 'ctw-261'; // Garantia: historico reabre na hora (memoria) + CreditoScan nao baixa o no inteiro em segundo plano
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
