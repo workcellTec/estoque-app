@@ -1826,24 +1826,48 @@
         try {
             var fb=await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
             var db=window._firebaseDB; if(!db){var _fd=document.getElementById('cs_hist_items')||listWrap;if(_fd)_fd.innerHTML='<div class="cs-hist-empty">Firebase nao disponivel</div>';return;}
-            var snap=await fb.get(fb.ref(db,SAVE_PATH)), items=[];
-            if(snap.exists()) snap.forEach(function(c){var v=c.val();if(v)items.push(Object.assign({id:c.key},v));});
-            items=items.filter(function(i){return i.ts&&i.ts>(Date.now()-365*86400000);}).sort(function(a,b){return(b.ts||0)-(a.ts||0);});
+
+            // Cada analise guarda o texto completo, entao o no inteiro e pesado: le so o periodo pedido
+            // (consulta por "ts", a mesma da lista de hoje; sem indice o Firebase le tudo e filtra aqui, como antes)
+            // e com limite de tempo, para nunca ficar girando sem fim.
+            function lerPeriodo(dias){
+                var ini=Date.now()-dias*86400000, q=fb.query(fb.ref(db,SAVE_PATH),fb.orderByChild('ts'),fb.startAt(ini));
+                return comLimite(fb.get(q),30000).then(function(snap){
+                    var lista=[];
+                    snap.forEach(function(c){var v=c.val();if(v&&v.ts&&v.ts>=ini)lista.push(Object.assign({id:c.key},v));});
+                    return lista.sort(function(a,b){return(b.ts||0)-(a.ts||0);});
+                });
+            }
+            var periodDays = 30; // default
+            var diasCarregados = periodDays;
+            var items=await lerPeriodo(diasCarregados);
             window._histItems=items;
             if(!listWrap)return;
-            if(!items.length){renderDashboard();var _ed=document.getElementById('cs_hist_items')||listWrap;if(_ed)_ed.innerHTML='<div class="cs-hist-empty">Nenhuma consulta recente</div>';return;}
 
             // ── PERIOD CHIPS ──────────────────────────────────────────────
-            var periodDays = 30; // default
             function setPeriodChips(){
                 document.querySelectorAll('.cs-pchip').forEach(function(b){
                     var isActive = parseInt(b.dataset.days) === periodDays;
                     b.classList.toggle('cs-pchip-ativo', isActive);
                 });
             }
-            document.querySelectorAll('.cs-pchip').forEach(function(b){
-                b.addEventListener('click',function(){
-                    periodDays = parseInt(this.dataset.days);
+            // cloneNode descarta os cliques das aberturas anteriores (antes cada abertura empilhava mais um)
+            document.querySelectorAll('.cs-pchip').forEach(function(b0){
+                var b=b0.cloneNode(true);b0.parentNode.replaceChild(b,b0);
+                b.addEventListener('click',async function(){
+                    var dias=parseInt(this.dataset.days);
+                    // periodo maior que o ja baixado: busca de novo ja com o periodo maior
+                    if(dias>diasCarregados){
+                        var _it=document.getElementById('cs_hist_items')||listWrap;
+                        _it.innerHTML='<div class="cs-hist-load"><i class="bi bi-hourglass-split"></i> Carregando...</div>';
+                        try{
+                            items=await lerPeriodo(dias);diasCarregados=dias;window._histItems=items;
+                        }catch(e){
+                            _it.innerHTML='<div style="padding:16px;color:#f87171">Erro: '+esc(String(e.message||e))+'</div>';
+                            return;
+                        }
+                    }
+                    periodDays=dias;
                     setPeriodChips();
                     renderDashboard();
                     renderItems();
@@ -1999,7 +2023,7 @@
                            (String(it.operador||'')).toLowerCase().indexOf(busca)!==-1||
                            (String(it.cpf||'')).toLowerCase().indexOf(busca)!==-1;
                 });
-                var itemsDiv=document.getElementById('cs_hist_items')||listWrap;if(!filtrados.length){itemsDiv.innerHTML='<div class="cs-hist-empty">Nenhum resultado encontrado</div>';return;}
+                var itemsDiv=document.getElementById('cs_hist_items')||listWrap;if(!filtrados.length){itemsDiv.innerHTML='<div class="cs-hist-empty">'+(items.length?'Nenhum resultado encontrado':'Nenhuma consulta recente')+'</div>';return;}
                 var htmlParts=[];
                 filtrados.forEach(function(it){
                     try{
@@ -2072,7 +2096,22 @@
                 });
             });
 
-        } catch(e){ console.error('Erro abrirHist:',e); var _errd=document.getElementById('cs_hist_items')||listWrap;if(_errd)_errd.innerHTML='<div style="padding:16px;color:#f87171">Erro: '+esc(String(e.message||e))+'</div>'; }
+        } catch(e){
+            console.error('Erro abrirHist:',e);
+            var _errd=document.getElementById('cs_hist_items')||listWrap;
+            if(_errd){
+                _errd.innerHTML='<div style="padding:16px;color:#f87171">Erro: '+esc(String(e.message||e))+'</div><div style="text-align:center"><button type="button" id="cs_hist_retry" style="padding:8px 16px;border-radius:99px;border:1px solid var(--ui-edge);background:var(--ui-icbg);color:var(--text-color);font-size:.75rem;font-weight:700;cursor:pointer;font-family:inherit"><i class="bi bi-arrow-clockwise"></i> Tentar de novo</button></div>';
+                var _rb=document.getElementById('cs_hist_retry');if(_rb)_rb.addEventListener('click',function(){abrirHist();});
+            }
+        }
+    }
+
+    // Promessa com limite de tempo: o get() do Firebase nao tem timeout proprio e, com sinal ruim, ficava pendente para sempre.
+    function comLimite(p,ms){
+        return new Promise(function(res,rej){
+            var t=setTimeout(function(){rej(new Error('Demorou demais para responder. Confira a internet e tente de novo.'));},ms);
+            p.then(function(v){clearTimeout(t);res(v);},function(e){clearTimeout(t);rej(e);});
+        });
     }
 
     // ================================================================

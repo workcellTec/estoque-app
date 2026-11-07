@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-258'; // Contratos: resumo curto p/ WhatsApp e botoes do historico alinhados em grade
+const CACHE = 'ctw-259'; // CreditoScan: historico le so o periodo escolhido (30 dias), com limite de tempo e botao Tentar de novo
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
