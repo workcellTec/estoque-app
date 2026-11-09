@@ -2412,7 +2412,9 @@
     // Aviso do sistema (barra de notificacoes) com o app em segundo plano. No Android o Chrome so aceita pelo service worker.
     function notificarSistema(titulo, corpo, tag) {
         try {
-            if (!document.hidden || !window.Notification || Notification.permission !== 'granted') return;
+            if (!document.hidden) return;
+            if (window.ctwNativo && window.ctwNativo.ativo()) { window.ctwNativo.notificar(titulo, corpo); return; }   // no APK o aviso e nativo
+            if (!window.Notification || Notification.permission !== 'granted') return;
             if (navigator.serviceWorker && navigator.serviceWorker.ready) {
                 navigator.serviceWorker.ready.then(function (reg) {
                     return reg.showNotification(titulo, { body: corpo, tag: tag, renotify: true, icon: './icon-192.png', badge: './badge.png', vibrate: [200, 100, 200] });
@@ -3059,7 +3061,10 @@
         if (!_docsRend.length || _enviando > 0) return;
         var campoTel = el('cs_tel');
         var job = criarJob(_docsId, _docsRend, normalizarTelefone(campoTel ? campoTel.value : ''), { usuario: usuarioAtual() });
-        try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch (e) {}   // para o aviso "Analise pronta" com o app em segundo plano
+        try {
+            if (window.ctwNativo && window.ctwNativo.ativo()) window.ctwNativo.pedirNotificacao();
+            else if (window.Notification && Notification.permission === 'default') Notification.requestPermission();
+        } catch (e) {}   // para o aviso "Analise pronta" com o app em segundo plano
         if (campoTel) { campoTel.value = ''; mascararTelefone(campoTel, 'cs_tel_hint'); }
         _docsId = []; _docsRend = [];
         _jobs.unshift(job);

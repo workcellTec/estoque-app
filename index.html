@@ -125,9 +125,197 @@
             var espera = leve ? 0 : Math.max(0, 1400 - (window.performance && performance.now ? performance.now() : 1400));
             setTimeout(function () {
                 o.classList.add('ctw-abre');
+                if (window.ctwBarrasDoTema) window.ctwBarrasDoTema();   // no APK: barras do Android saem do preto da abertura para a cor do tema
                 setTimeout(function () { o.style.display = 'none'; }, leve ? 250 : 900);
             }, espera);
         };
+    </script>
+
+    <script>
+        // Ponte com o APK (Android). Só age quando a página roda dentro do APK; no Chrome/PWA nada muda.
+        // Cuida de: arquivos (PDF/imagem) viram "salvar ou enviar" do Android, links externos (WhatsApp) abrem o app certo,
+        // aviso do sistema (notificação) e cor das barras do Android (status em cima, navegação embaixo).
+        (function () {
+            function nat() {
+                var c = window.Capacitor;
+                return (c && typeof c.isNativePlatform === 'function' && c.isNativePlatform() && typeof c.nativePromise === 'function') ? c : null;
+            }
+            function chamar(plugin, metodo, opcoes) {
+                var c = nat();
+                return c ? c.nativePromise(plugin, metodo, opcoes || {}) : Promise.reject(new Error('fora do app Android'));
+            }
+            function nada() {}
+            function textoErro(e) { return String((e && (e.message || e.errorMessage)) || e || ''); }
+            function cancelou(e) { return /cancel/i.test(textoErro(e)); }
+            function avisar(msg) {
+                if (typeof window.showCustomModal === 'function') window.showCustomModal({ message: msg });
+                else alert(msg);
+            }
+            function ehExterno(u) {
+                try {
+                    var x = new URL(u, location.href);
+                    if (/^(tel|mailto|sms|whatsapp|geo):$/.test(x.protocol)) return true;
+                    return /^https?:$/.test(x.protocol) && x.host !== location.host;
+                } catch (e) { return false; }
+            }
+            function abrirExterno(url) {
+                return chamar('App', 'openUrl', { url: String(url) }).catch(nada);
+            }
+
+            // ── Arquivos: grava no cache do app e abre o "Salvar ou enviar" do Android ──
+            function nomeSeguro(n) {
+                n = String(n || '').replace(/[\\\/:*?"<>|\u0000-\u001f]+/g, '_').trim();
+                return n || 'arquivo';
+            }
+            function blobParaBase64(blob) {
+                return new Promise(function (ok, erro) {
+                    var r = new FileReader();
+                    r.onload = function () { var s = String(r.result || ''); ok(s.slice(s.indexOf(',') + 1)); };
+                    r.onerror = function () { erro(r.error || new Error('não consegui ler o arquivo')); };
+                    r.readAsDataURL(blob);
+                });
+            }
+            function guardarNoCache(blob, nome) {
+                return blobParaBase64(blob).then(function (b64) {
+                    // pasta própria por arquivo: o nome que aparece ao enviar fica limpo (sem número na frente)
+                    return chamar('Filesystem', 'writeFile', { path: 'ctw/' + Date.now() + '-' + Math.floor(Math.random() * 1e6) + '/' + nomeSeguro(nome), data: b64, directory: 'CACHE', recursive: true });
+                }).then(function (r) { return r.uri; });
+            }
+            function compartilharNativo(dados) {
+                dados = dados || {};
+                var arquivos = Array.prototype.slice.call(dados.files || []);
+                return Promise.all(arquivos.map(function (f) { return guardarNoCache(f, f.name); })).then(function (uris) {
+                    var o = { title: dados.title || '', dialogTitle: 'Enviar ou salvar' };
+                    if (dados.text) o.text = dados.text;
+                    if (dados.url) o.url = dados.url;
+                    if (uris.length) o.files = uris;
+                    return chamar('Share', 'share', o);
+                }).then(nada, function (e) {
+                    if (cancelou(e)) throw new DOMException('Compartilhamento cancelado', 'AbortError');
+                    throw e;
+                });
+            }
+            function entregarDownload(href, nome) {
+                var comoArquivo = /^(blob:|data:)/.test(href);
+                return fetch(href).then(function (r) {
+                    if (!r.ok) throw new Error('http ' + r.status);
+                    return r.blob();
+                }).then(function (blob) {
+                    var f = new File([blob], nomeSeguro(nome || 'arquivo'), { type: blob.type || 'application/octet-stream' });
+                    return compartilharNativo({ files: [f], title: f.name });
+                }).catch(function (e) {
+                    if (e && e.name === 'AbortError') return;
+                    if (!comoArquivo) { abrirExterno(href); return; }   // link de fora que o app não consegue ler: abre no navegador
+                    avisar('Não consegui salvar o arquivo (' + textoErro(e) + '). Tente de novo.');
+                });
+            }
+            function ehDownloadDeArquivo(a) {
+                return !!a && a.tagName === 'A' && a.hasAttribute('download') && /^(blob:|data:|https?:)/.test(a.href || '');
+            }
+
+            // ── Cor das barras do Android (acompanha o fundo do tema: claro/noturno) ──
+            var corBarras = '';
+            function fundoClaro(hex) {
+                var n = parseInt(hex.slice(1), 16);
+                return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) > 150;
+            }
+            function pintarBarras(cor) {
+                cor = String(cor || '').trim().toLowerCase();
+                if (!/^#[0-9a-f]{6}$/.test(cor) || cor === corBarras) return;
+                corBarras = cor;
+                var claro = fundoClaro(cor);
+                chamar('StatusBar', 'setBackgroundColor', { color: cor }).catch(nada);
+                chamar('StatusBar', 'setStyle', { style: claro ? 'LIGHT' : 'DARK' }).catch(nada);
+                chamar('CtwBars', 'navegacao', { cor: cor, fundoClaro: claro }).catch(nada);
+            }
+            var barrasLiberadas = false;   // durante a abertura (fundo preto) as barras ficam pretas
+            window.ctwBarrasDoTema = function () {
+                if (!nat()) return;
+                barrasLiberadas = true;
+                var m = document.getElementById('status-bar-color');
+                if (m) pintarBarras(m.getAttribute('content'));
+            };
+
+            // ── Aviso do sistema (notificação) ──
+            function permissaoAviso(pedir) {
+                return chamar('LocalNotifications', 'checkPermissions').then(function (r) {
+                    if (r && r.display === 'granted') return true;
+                    if (!pedir) return false;
+                    return chamar('LocalNotifications', 'requestPermissions').then(function (r2) { return !!(r2 && r2.display === 'granted'); });
+                }).catch(function () { return false; });
+            }
+
+            window.ctwNativo = {
+                ativo: function () { return !!nat(); },
+                chamar: chamar,
+                abrir: abrirExterno,
+                pedirNotificacao: function () { return permissaoAviso(true); },
+                notificar: function (titulo, corpo) {
+                    return permissaoAviso(false).then(function (ok) {
+                        if (!ok) return;
+                        return chamar('LocalNotifications', 'schedule', { notifications: [{ id: Math.floor(Date.now() / 1000) % 2000000000, title: String(titulo || ''), body: String(corpo || ''), smallIcon: 'ic_stat_ctw' }] });
+                    }).catch(nada);
+                }
+            };
+
+            // ── Instalação dos ganchos (só dentro do APK) ──
+            var instalado = false;
+            function instalar() {
+                if (instalado || !nat()) return;
+                instalado = true;
+
+                // começa preto: igual à abertura (o app muda para a cor do tema quando a tela inicial abre)
+                pintarBarras('#000000');
+                // arquivos temporários de envios anteriores
+                chamar('Filesystem', 'rmdir', { path: 'ctw', directory: 'CACHE', recursive: true }).catch(nada);
+                new MutationObserver(function () { if (barrasLiberadas) window.ctwBarrasDoTema(); })
+                    .observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['content'] });
+
+                // compartilhar (WhatsApp etc.): o WebView não tem navigator.share com arquivos
+                var canOrig = navigator.canShare ? navigator.canShare.bind(navigator) : null;
+                navigator.canShare = function (d) {
+                    if (nat()) return !!d;
+                    return canOrig ? canOrig(d) : false;
+                };
+                var shareOrig = navigator.share ? navigator.share.bind(navigator) : null;
+                navigator.share = function (d) {
+                    if (nat()) return compartilharNativo(d);
+                    return shareOrig ? shareOrig(d) : Promise.reject(new DOMException('Compartilhar não é suportado', 'NotSupportedError'));
+                };
+
+                // baixar arquivo (link com download, criado por código ou tocado): vira "salvar ou enviar"
+                var clickOrig = HTMLAnchorElement.prototype.click;
+                HTMLAnchorElement.prototype.click = function () {
+                    if (nat() && ehDownloadDeArquivo(this)) { entregarDownload(this.href, this.getAttribute('download')); return; }
+                    return clickOrig.apply(this, arguments);
+                };
+                var dispOrig = EventTarget.prototype.dispatchEvent;
+                HTMLAnchorElement.prototype.dispatchEvent = function (ev) {
+                    if (nat() && ev && ev.type === 'click' && ehDownloadDeArquivo(this)) { entregarDownload(this.href, this.getAttribute('download')); return true; }
+                    return dispOrig.call(this, ev);
+                };
+                document.addEventListener('click', function (e) {
+                    if (!nat()) return;
+                    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+                    if (!a) return;
+                    if (a.hasAttribute('download')) {
+                        if (ehDownloadDeArquivo(a)) { e.preventDefault(); entregarDownload(a.href, a.getAttribute('download')); }
+                    } else if (ehExterno(a.href)) {
+                        e.preventDefault();   // não impede os outros cliques do app, só a navegação
+                        abrirExterno(a.href);
+                    }
+                }, true);
+
+                // window.open para links de fora (WhatsApp, mapas...): abre o app certo
+                var abrirOrig = window.open;
+                window.open = function (url) {
+                    if (nat() && url && ehExterno(String(url))) { abrirExterno(url); return null; }
+                    return abrirOrig.apply(window, arguments);
+                };
+            }
+            instalar();
+            if (!instalado) document.addEventListener('DOMContentLoaded', instalar);
+        })();
     </script>
 
     <div class="hidden-important">
@@ -1790,7 +1978,7 @@ window.addEventListener('load', function() {
             <span class="ui-grow">Sair</span>
         </button>
     </div>
-    <div class="ui-versao" id="ctwVersaoApp">Central Workcell · versão ctw-263</div>
+    <div class="ui-versao" id="ctwVersaoApp">Central Workcell · versão ctw-264</div>
 </div>
 
 <!-- ═══════════════════════════════════════════════
@@ -3061,7 +3249,7 @@ window.addEventListener('load', function() {
                 sonda.remove();
                 var selo = document.createElement('div');
                 selo.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;font:10px/1.3 monospace;background:rgba(0,0,0,.8);color:#0f0;padding:3px 6px;pointer-events:none;';
-                selo.textContent = 'ctw-263 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
+                selo.textContent = 'ctw-264 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
                     ' | modo=' + (matchMedia('(display-mode: standalone)').matches ? 'app instalado' : 'navegador') + ' | tela=' + innerWidth + 'x' + innerHeight;
                 document.body.appendChild(selo);
             }, 2500);

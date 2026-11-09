@@ -10099,7 +10099,7 @@ const opt = {
             botao.disabled = false;
             
             if(typeof showCustomModal === 'function') {
-                showCustomModal({ message: "Download concluído! Verifique seus arquivos. 📂" });
+                showCustomModal({ message: (window.ctwNativo && window.ctwNativo.ativo()) ? "PDF pronto! Escolha onde salvar ou enviar. 📂" : "Download concluído! Verifique seus arquivos. 📂" });
             }
             return; // Encerra a função aqui
         }
@@ -11362,6 +11362,10 @@ window.imprimirUniversal = function() {
 
     // 2. Abre uma janela nova (Clone)
     const janela = window.open('', '_blank', 'height=900,width=800');
+    if (!janela) {
+        showCustomModal({ message: 'Não foi possível abrir a tela de impressão aqui. Use "Baixar PDF" ou "Compartilhar" e imprima o PDF.' });
+        return;
+    }
     
     // 3. Monta o HTML puxando o seu CSS original + A Correção de Rolagem
     janela.document.write(`

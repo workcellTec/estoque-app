@@ -59,6 +59,11 @@ jobs:
           # ícone do app e tela de abertura preta (a abertura animada é a do próprio app)
           cp -r res/. android/app/src/main/res/
           find android/app/src/main/res -name splash.png -exec cp res/black.png {} \;
+          # parte nativa própria: plugin da barra de navegação + MainActivity que o registra
+          cp native/*.java android/app/src/main/java/br/com/workcell/central/
+          # câmera (campos de foto com capture) e recurso de câmera opcional (não esconde o app de celulares sem câmera)
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />#' android/app/src/main/AndroidManifest.xml
+          grep -n "CAMERA\|uses-feature" android/app/src/main/AndroidManifest.xml
           # versão do APK sobe a cada geração (permite instalar por cima do anterior)
           sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"1.${{ github.run_number }}\"/" android/app/build.gradle
           grep -n "versionCode\|versionName" android/app/build.gradle

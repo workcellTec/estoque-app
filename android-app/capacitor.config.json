@@ -5,10 +5,19 @@
   "server": {
     "url": "https://workcelltec.github.io/estoque-app/",
     "androidScheme": "https",
-    "allowNavigation": ["workcelltec.github.io"]
+    "allowNavigation": [
+      "workcelltec.github.io"
+    ]
   },
   "android": {
     "allowMixedContent": false,
     "webContentsDebuggingEnabled": true
+  },
+  "plugins": {
+    "StatusBar": {
+      "overlaysWebContent": false,
+      "style": "DARK",
+      "backgroundColor": "#000000"
+    }
   }
 }
