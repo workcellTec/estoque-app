@@ -4845,88 +4845,6 @@ async function main() {
         setTimeout(ctwAvisarVersaoNova, 2500);
         applyTheme(safeStorage.getItem('ctwTheme') === 'dark' ? 'dark' : 'light');
 
-        // BOOT ANIMATION — carrossel de recursos do app
-        (function runBootAnimation() {
-            const track = document.getElementById('carouselTrack');
-            const label = document.getElementById('carouselLabel');
-            const msg   = document.getElementById('bootMsg');
-            if (!track) return;
-
-            // Emojis e labels dos recursos do app
-            const items = [
-                { emoji: '🧮', text: 'Calculadora de taxas'     },
-                { emoji: '📋', text: 'Contratos e boletos'       },
-                { emoji: '👥', text: 'Cadastro de clientes'      },
-                { emoji: '📦', text: 'Estoque de produtos'       },
-                { emoji: '🔔', text: 'Notificações em tempo real'},
-                { emoji: '🎂', text: 'Aniversários dos clientes' },
-                { emoji: '📊', text: 'Histórico de vendas'       },
-                { emoji: '🏷️', text: 'Etiquetas personalizadas'  },
-                { emoji: '💳', text: 'Controle de parcelas'      },
-                { emoji: '📱', text: 'Funciona no celular'       },
-            ];
-
-            let current = 0;
-
-            function showItem(i) {
-                const item = items[i % items.length];
-
-                // Limpa e cria novo item com animação
-                track.innerHTML = '';
-                track.style.animation = 'none';
-                track.offsetHeight; // reflow para reiniciar animação
-                track.style.animation = '';
-
-                const el = document.createElement('div');
-                el.className = 'ctw-carousel-item';
-                el.textContent = item.emoji;
-                track.appendChild(el);
-
-                // Atualiza label com fade
-                if (label) {
-                    label.style.opacity = '0';
-                    setTimeout(() => {
-                        label.textContent = item.text;
-                        label.style.opacity = '1';
-                    }, 150);
-                }
-            }
-
-            // Status messages paralelo ao carrossel
-            const msgs = [
-                'Preparando tudo pra você...',
-                'Conectando ao servidor...',
-                'Quase pronto...',
-            ];
-            let msgIdx = 0;
-
-            showItem(0);
-
-            const iv = setInterval(() => {
-                current++;
-                showItem(current);
-
-                // Troca msg a cada 3 itens
-                if (current % 3 === 0 && msg) {
-                    msgIdx = (msgIdx + 1) % msgs.length;
-                    msg.textContent = msgs[msgIdx];
-                }
-            }, 900);
-
-            // Para quando o loading sumir
-            const overlay = document.getElementById('loadingOverlay');
-            if (overlay) {
-                new MutationObserver((_, obs) => {
-                    if (overlay.style.opacity === '0') {
-                        clearInterval(iv);
-                        if (label) { label.style.opacity='0'; label.textContent = ''; }
-                        if (msg)   msg.textContent = '✓ Pronto!';
-                        obs.disconnect();
-                    }
-                }).observe(overlay, { attributes: true, attributeFilter: ['style'] });
-            }
-        })();
-
         app = initializeApp(firebaseConfig); 
         auth = getAuth(app); 
         db = getDatabase(app);
@@ -4985,11 +4903,9 @@ async function main() {
                 // app abrir direto em telas como a calculadora sozinho).
                 showMainSection('main');
 
-                // Fade out rápido
-                if (loadingOverlay) {
-                    loadingOverlay.style.opacity = '0';
-                    setTimeout(() => { loadingOverlay.style.display = 'none'; }, 300);
-                }
+                // Tira a tela de abertura: a logo cresce e a tela inicial abre de dentro dela
+                if (typeof window.ctwAbrirApp === 'function') window.ctwAbrirApp();
+                else if (loadingOverlay) loadingOverlay.style.display = 'none';
 
                 // Carrega dados em background — paralelo, sem travar a UI
                 setTimeout(() => {
