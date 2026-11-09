@@ -1,0 +1,88 @@
+name: APK Android
+
+# Gera o APK do Central Workcell (WebView própria, independente do Chrome).
+# O app em si continua sendo o PWA do GitHub Pages: o APK só abre esse endereço, então
+# as atualizações do app chegam sozinhas. Só precisa de APK novo se a parte nativa mudar.
+# Como baixar: aba "Releases" do repositório -> "APK de teste (beta)" -> Central-Workcell.apk
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'android-app/**'
+      - '.github/workflows/apk.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # Chave de assinatura: criada na primeira execução e guardada no cache do GitHub Actions (não aparece no repositório).
+      # Enquanto o cache existir, todo APK sai com a mesma assinatura e instala por cima do anterior.
+      # Antes de distribuir para a equipe, o ideal é guardar a chave nos Secrets do repositório.
+      - name: Chave de assinatura (cache)
+        id: chave
+        uses: actions/cache@v4
+        with:
+          path: chave
+          key: workcell-chave-apk-v1
+
+      - name: Criar chave de assinatura (só se ainda não existir)
+        if: steps.chave.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p chave
+          openssl rand -hex 16 > chave/senha.txt
+          keytool -genkeypair -storetype PKCS12 -keystore chave/workcell.p12 -alias workcell -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "$(cat chave/senha.txt)" -keypass "$(cat chave/senha.txt)" \
+            -dname "CN=Central Workcell, O=Workcell Tecnologia, C=BR"
+
+      - name: Gerar o projeto Android
+        working-directory: android-app
+        run: |
+          npm ci --no-audit --no-fund
+          npx cap add android
+          # ícone do app e tela de abertura preta (a abertura animada é a do próprio app)
+          cp -r res/. android/app/src/main/res/
+          find android/app/src/main/res -name splash.png -exec cp res/black.png {} \;
+          # versão do APK sobe a cada geração (permite instalar por cima do anterior)
+          sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"1.${{ github.run_number }}\"/" android/app/build.gradle
+          grep -n "versionCode\|versionName" android/app/build.gradle
+
+      - name: Compilar
+        working-directory: android-app/android
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Alinhar e assinar
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/zipalign" -p -f 4 android-app/android/app/build/outputs/apk/release/app-release-unsigned.apk alinhado.apk
+          export KS_PASS="$(cat chave/senha.txt)"
+          "$BT/apksigner" sign --ks chave/workcell.p12 --ks-type PKCS12 --ks-key-alias workcell --ks-pass env:KS_PASS --key-pass env:KS_PASS --out Central-Workcell.apk alinhado.apk
+          "$BT/apksigner" verify --verbose Central-Workcell.apk
+
+      - name: Publicar na aba Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-beta
+          name: APK de teste (beta)
+          prerelease: true
+          body: |
+            APK do Central Workcell (teste). Instale por cima do anterior: a assinatura é sempre a mesma.
+            O app carrega a versão publicada no GitHub Pages, então as atualizações do app chegam sozinhas.
+            Gerado pela execução nº ${{ github.run_number }}.
+          files: Central-Workcell.apk

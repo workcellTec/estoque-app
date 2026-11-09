@@ -1,0 +1,14 @@
+{
+  "appId": "br.com.workcell.central",
+  "appName": "Central Workcell",
+  "webDir": "www",
+  "server": {
+    "url": "https://workcelltec.github.io/estoque-app/",
+    "androidScheme": "https",
+    "allowNavigation": ["workcelltec.github.io"]
+  },
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": true
+  }
+}

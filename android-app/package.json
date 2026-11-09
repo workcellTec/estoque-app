@@ -1,0 +1,11 @@
+{
+  "name": "central-workcell-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Casca Android (WebView própria) do Central Workcell. O app em si continua sendo o PWA publicado no GitHub Pages.",
+  "dependencies": {
+    "@capacitor/android": "6.2.3",
+    "@capacitor/cli": "6.2.3",
+    "@capacitor/core": "6.2.3"
+  }
+}
