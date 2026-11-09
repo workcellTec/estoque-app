@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-261'; // Garantia: historico reabre na hora (memoria) + CreditoScan nao baixa o no inteiro em segundo plano
+const CACHE = 'ctw-262'; // Garantia e Contrato: o que esta sendo digitado nao se perde mais (troca de aba, atualizacao, fechar o app)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

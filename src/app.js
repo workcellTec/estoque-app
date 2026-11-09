@@ -2627,12 +2627,27 @@ function ctwAtualizacaoAvisar(texto) {
 }
 function ctwAtualizacaoFechar() { document.getElementById('ctwUpdOv')?.remove(); }
 
+// Qual documento (garantia/contrato/orçamento) está aberto na tela com algo digitado? null se nenhum.
+function ctwDocAbertoComDados() {
+    if (currentMainSectionId !== 'contract') return null;
+    const aberto = (id) => { const el = document.getElementById(id); return !!el && !el.classList.contains('hidden') && el.style.display !== 'none'; };
+    if (aberto('areaContratoWrapper') && ctwContratoTemDados() && !ctwContratoEmEdicao()) return 'contrato';
+    if (aberto('areaBookipWrapper') && ctwFormularioBookipTemDados() && currentEditingBookipId === null) return ctwEhOrcamento() ? 'orcamento' : 'garantia';
+    return null;
+}
+
 // Recarrega para usar a versão nova, mas espera acabar o que não pode ser interrompido
 // (análise do CreditoScan em andamento) para não perder o trabalho.
 function ctwRecarregarQuandoLivre() {
     const ocupado = () => typeof window._csOcupado === 'function' && window._csOcupado();
     const ir = () => {
-        try { sessionStorage.setItem('ctwAtualizandoEm', String(Date.now())); } catch (e) {}
+        // O que está sendo digitado vai para o rascunho antes de recarregar, e a tela de Documentos reabre sozinha depois.
+        try { window.ctwSalvarRascunhosAgora && window.ctwSalvarRascunhosAgora(); } catch (e) {}
+        try {
+            sessionStorage.setItem('ctwAtualizandoEm', String(Date.now()));
+            const doc = ctwDocAbertoComDados();
+            if (doc) sessionStorage.setItem('ctwReabrirDoc', doc);
+        } catch (e) {}
         window.location.reload();
     };
     if (!ocupado()) { setTimeout(ir, 1200); return; }
@@ -3760,6 +3775,7 @@ async function ctwFinalizarContrato() {
             return;
         }
         ctwLimparPendente();
+        ctwContratoLimparRascunho();   // salvo no histórico: não precisa mais do rascunho
         ctwSincronizarEmailCliente(dados);
         if (!editId) {
             _ultimoContratoSalvo = { sig, codigo: r.codigoInterno || '' };
@@ -3819,10 +3835,69 @@ async function ctwOferecerContratoPendente() {
     }
 }
 
+// ============================================================
+// RASCUNHO DO CONTRATO: o que está sendo digitado fica no celular e volta depois de atualizar/fechar o app.
+// (Separado do "contrato pendente", que é o contrato já finalizado que ainda não chegou à nuvem.)
+// ============================================================
+const CTW_CT_RASCUNHO_KEY = 'ctw_contrato_rascunho_v1';
+let _ctwCtRascTimer = null;
+
+function ctwContratoCampos() {
+    const form = document.getElementById('contractForm');
+    return form ? [...form.querySelectorAll('input, select, textarea')].filter(el => el.id && !['file', 'hidden', 'button', 'submit'].includes(el.type)) : [];
+}
+function ctwContratoTemDados() {
+    // só conta o que a pessoa digitou (campos de texto diferentes do valor inicial); seletores, calculados e o 1º vencimento
+    // (que o app preenche sozinho) não contam
+    return ctwContratoCampos().some(el => el.tagName !== 'SELECT' && el.id !== 'primeiroVencimento' && !el.readOnly && el.type !== 'checkbox' && el.type !== 'radio' && String(el.value).trim() !== String(el.defaultValue || '').trim());
+}
+function ctwContratoEmEdicao() {
+    const h = document.getElementById('editingBoletoId');
+    return !!((h && h.value) || window.currentEditingBoletoId);
+}
+function ctwContratoSalvarRascunhoAgora() {
+    clearTimeout(_ctwCtRascTimer);
+    if (ctwContratoEmEdicao() || _contratoEmAndamento) return;   // editar um contrato salvo não vira rascunho
+    try {
+        if (!ctwContratoTemDados()) { localStorage.removeItem(CTW_CT_RASCUNHO_KEY); return; }
+        const campos = {};
+        ctwContratoCampos().forEach(el => { campos[el.id] = (el.type === 'checkbox' || el.type === 'radio') ? el.checked : el.value; });
+        localStorage.setItem(CTW_CT_RASCUNHO_KEY, JSON.stringify({ campos, nome: (document.getElementById('compradorNome')?.value || '').trim(), ts: Date.now() }));
+    } catch (e) { /* armazenamento cheio/bloqueado: segue sem rascunho */ }
+}
+function ctwContratoAgendarRascunho() {
+    clearTimeout(_ctwCtRascTimer);
+    _ctwCtRascTimer = setTimeout(ctwContratoSalvarRascunhoAgora, 800);
+}
+function ctwContratoLimparRascunho() {
+    clearTimeout(_ctwCtRascTimer);
+    try { localStorage.removeItem(CTW_CT_RASCUNHO_KEY); } catch (e) {}
+}
+function ctwContratoRestaurarRascunho(r) {
+    ctwContratoCampos().forEach(el => {
+        if (!(el.id in r.campos) || el.readOnly) return;
+        if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!r.campos[el.id]; else el.value = r.campos[el.id];
+    });
+    const form = document.getElementById('contractForm');
+    if (form) form.dispatchEvent(new Event('input', { bubbles: true }));   // recalcula parcelas, total e vencimento
+}
+// Ao abrir a tela de Contratos: se sobrou um contrato digitado e não finalizado, oferece continuar.
+async function ctwOferecerRascunhoContrato() {
+    let r = null;
+    try { r = JSON.parse(localStorage.getItem(CTW_CT_RASCUNHO_KEY) || 'null'); } catch (e) { r = null; }
+    if (!r || !r.campos) return;
+    if (ctwLerPendente() || _contratoEmAndamento || ctwContratoEmEdicao() || ctwContratoTemDados()) return;   // já tem coisa na tela
+    const continuar = await ctwConfirmar('Havia um contrato não finalizado de ' + (r.nome || 'um cliente') + '. Deseja continuar ele?', 'Sim, recuperar', 'Não, apagar');
+    if (!continuar) { ctwContratoLimparRascunho(); return; }
+    ctwContratoRestaurarRascunho(r);
+    showCustomModal({ message: 'Rascunho do contrato recuperado! 📂' });
+}
+
 // Botão "Limpar campos": zera o formulário e sai do modo edição.
 window.ctwLimparFormularioContrato = function (pedirConfirmacao) {
     if (_contratoEmAndamento) { showCustomModal({ message: 'Aguarde o contrato terminar de salvar antes de limpar.' }); return; }
     const limpar = () => {
+        ctwContratoLimparRascunho();
         const form = document.getElementById('contractForm');
         if (form) form.reset();
         ['valorTotal', 'saldoRestante', 'contratoPrazo', 'valorTotalDisplay', 'contratoPrazoDisplay'].forEach(id => {
@@ -6877,7 +6952,9 @@ Se não houver smartphones: []`;
     document.getElementById('contractForm')?.addEventListener('input', (ev) => {
         calculateContractPayments();
         ctwVencSincronizar(ev);
+        ctwContratoAgendarRascunho();
     });
+    document.getElementById('contractForm')?.addEventListener('change', ctwContratoAgendarRascunho);
     document.getElementById('contractForm')?.addEventListener('reset', () => setTimeout(() => { window._ctwVencAuto = null; ctwVencSincronizar(); }, 0));
     document.getElementById('vencChips')?.addEventListener('click', (ev) => {
         const b = ev.target.closest && ev.target.closest('button[data-iso]');
@@ -7068,10 +7145,12 @@ if (bookipToggle) {
                 console.log("🔒 Modo Edição: Mantendo dados.");
                 window.isSystemSwitching = false; // Destrava para o futuro
             } else {
-                // Foi o dedo do usuário?
-                console.log("🧹 Clique Manual: Limpando tudo.");
-                if (typeof window.resetFormulariosBookip === 'function') {
-                    window.resetFormulariosBookip();
+                // Foi o dedo do usuário. Só começa um formulário limpo se saiu de uma edição ou acabou de salvar
+                // um documento; se estava digitando um novo, o que já foi digitado (e o rascunho) continua aí.
+                const _ps = document.getElementById('postSaveOptions');
+                const _acabouDeSalvar = !!(_ps && !_ps.classList.contains('hidden'));
+                if (currentEditingBookipId !== null || _acabouDeSalvar) {
+                    if (typeof window.resetFormulariosBookip === 'function') window.resetFormulariosBookip();
                 }
             }
         }
@@ -7328,6 +7407,7 @@ if (inputValorBookip) {
     // 3. Função para Atualizar a Lista Visual (USANDO SEU CSS NOVO)
     function atualizarListaVisualBookip() {
         if (!listaVisual) return;
+        if (typeof window.ctwAgendarRascunho === 'function') window.ctwAgendarRascunho();
         
         listaVisual.innerHTML = ''; 
         let total = 0;
@@ -9507,7 +9587,7 @@ setupProductTags();
                 areaContrato.style.overflowY = 'auto';
                 // Pré-carrega as libs de PDF em background para que o share funcione na hora H
                 garantirPdfLibs({ soContrato: true }).catch(() => {});
-                ctwOferecerContratoPendente();
+                Promise.resolve(ctwOferecerContratoPendente()).then(() => ctwOferecerRascunhoContrato());
             }
         } 
         else if (subSectionId === 'bookip') {
@@ -11193,12 +11273,17 @@ function executarSalvamentoReal() {
         // Usa a variável local 'bookipCartList' em vez de 'window.bookipCartList'
         // Isso garante que o rascunho salve os produtos que estão na memória
         listaProdutos: typeof bookipCartList !== 'undefined' ? bookipCartList : [], 
+
+        // produto que estava sendo digitado e ainda não foi para a lista
+        prodTemp: ['bookipProdNomeTemp', 'bookipProdValorTemp', 'bookipProdCorTemp', 'bookipProdObsTemp', 'bookipProdQtdTemp']
+            .reduce((o, id) => { o[id] = document.getElementById(id)?.value || ''; return o; }, {}),
         
         timestamp: Date.now()
     };
 
     // Verifica se tem algum dado preenchido
-    const temAlgumDado = dados.nome || dados.cpf || dados.tel || dados.email || dados.listaProdutos.length > 0;
+    const temAlgumDado = dados.nome || dados.cpf || dados.tel || dados.email || dados.listaProdutos.length > 0 ||
+        dados.prodTemp.bookipProdNomeTemp.trim() || dados.prodTemp.bookipProdValorTemp.trim();
 
     if (temAlgumDado) {
         localStorage.setItem(ctwDocRascunhoKey(), JSON.stringify(dados));
@@ -11217,8 +11302,29 @@ window.ctwSalvarRascunhoAgora = function() {
     executarSalvamentoReal();
 };
 
+// Adicionar/remover item da lista não dispara 'input' em nenhum campo: agenda o salvamento por aqui.
+window.ctwAgendarRascunho = function() {
+    clearTimeout(timerRascunhoBookip);
+    timerRascunhoBookip = setTimeout(executarSalvamentoReal, 1000);
+};
+
+// Ao sair do app (home, trocar de app, fechar) o Android pode matar a página sem aviso: grava tudo agora.
+window.ctwSalvarRascunhosAgora = function() {
+    try { window.ctwSalvarRascunhoAgora(); } catch (e) { console.warn('rascunho da garantia:', e); }
+    try { ctwContratoSalvarRascunhoAgora(); } catch (e) { console.warn('rascunho do contrato:', e); }
+};
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') window.ctwSalvarRascunhosAgora(); });
+window.addEventListener('pagehide', () => window.ctwSalvarRascunhosAgora());
+
 // 3. VERIFICAR AO ABRIR (A Lógica Inteligente - Mensagem Limpa)
+function ctwFormularioBookipTemDados() {
+    const txt = ['bookipNome', 'bookipCpf', 'bookipTelefone', 'bookipEmail'].some(id => (document.getElementById(id)?.value || '').trim() !== '');
+    return txt || (typeof bookipCartList !== 'undefined' && bookipCartList.length > 0);
+}
+
 window.checarRascunhoAoAbrir = function() {
+    // Formulário já preenchido (voltou da aba Histórico, por exemplo): é o próprio rascunho, não pergunta de novo.
+    if (ctwFormularioBookipTemDados()) { window.ativarSalvamentoAutomatico(); return; }
     const salvo = localStorage.getItem(ctwDocRascunhoKey());
     
     // Se não tem nada salvo, só liga o monitoramento e sai
@@ -11274,6 +11380,9 @@ window.checarRascunhoAoAbrir = function() {
                     if (check) check.checked = true;
                 });
             }
+
+            // Produto que estava sendo digitado
+            Object.entries(dados.prodTemp || {}).forEach(([id, v]) => { const el = document.getElementById(id); if (el && v !== '') el.value = v; });
 
             // Recupera Itens
             window.bookipCartList = dados.listaProdutos || [];
@@ -12879,6 +12988,23 @@ window.updateNotificationUI  = updateNotificationUI;
             if (b) b.click();
         });
     };
+
+    // Depois de uma atualização automática: volta para o documento que estava aberto (o rascunho é oferecido ao abrir).
+    (function reabrirDocAposAtualizar() {
+        var tipo = null;
+        try {
+            var recente = Date.now() - Number(sessionStorage.getItem('ctwAtualizandoEm') || 0) < 60000;
+            tipo = recente ? sessionStorage.getItem('ctwReabrirDoc') : null;
+            sessionStorage.removeItem('ctwReabrirDoc');
+        } catch (e) { tipo = null; }
+        if (!tipo) return;
+        var tentativas = 0, espera = setInterval(function() {
+            if (++tentativas > 40) { clearInterval(espera); return; }
+            if (!isAuthReady) return;
+            clearInterval(espera);
+            window.ctwAbrirDoc(tipo);
+        }, 300);
+    })();
 
     // Início → Taxas "Por aparelho" já com o texto buscado
     function abrirCalculadoraComBusca(texto) {
