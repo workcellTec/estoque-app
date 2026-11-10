@@ -2,7 +2,7 @@
 // precosync.js — Sincronizar preços: catálogo do Stock 2.0 (PDF) → CTW
 // Atualiza SOMENTE o campo "valor" de products/{id}. Nada mais é tocado.
 // Casamento: nome idêntico (normalizado) → vínculo já aprendido → pergunta ao admin.
-// Firebase: precosync/aliases · precosync/ignoradosPdf · precosync/ignoradosCtw · precosync/log
+// Firebase: settings/precosync/{aliases, ignoradosPdf, ignoradosCtw, log}
 // ================================================================
 
 import { ref, get, update, push, query, orderByKey, limitToLast }
@@ -10,6 +10,9 @@ import { ref, get, update, push, query, orderByKey, limitToLast }
 
 const PDFJS_URL    = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
 const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+// As regras do Firebase só liberam caminhos conhecidos; "settings" já é liberado e usado por outros recursos.
+const BASE = 'settings/precosync';
+const MAX_LOGS = 10;               // o nó "settings" é baixado a cada abertura do app: mantém só os últimos registros
 const LIMITE_SUSPEITO = 0.30;      // variação acima disso exige confirmação explícita
 const LIMIAR_PERGUNTA = 0.5;       // semelhança mínima de nome para perguntar ao admin
 const LIMIAR_VINCULO  = 0.25;      // idem, na revisão manual de produtos do CTW
@@ -165,7 +168,7 @@ let S = null;           // estado da importação em andamento
 let APR = { aliases: {}, ignoradosPdf: {}, ignoradosCtw: {} };
 
 async function carregarAprendizado() {
-    const snap = await get(ref(getDb(), 'precosync'));
+    const snap = await get(ref(getDb(), BASE));
     const v = snap.val() || {};
     APR = { aliases: v.aliases || {}, ignoradosPdf: v.ignoradosPdf || {}, ignoradosCtw: v.ignoradosCtw || {} };
 }
@@ -261,7 +264,7 @@ async function telaInicio() {
     let logs = [];
     try {
         await carregarAprendizado();
-        const snap = await get(query(ref(getDb(), 'precosync/log'), orderByKey(), limitToLast(5)));
+        const snap = await get(query(ref(getDb(), BASE + '/log'), orderByKey(), limitToLast(5)));
         const v = snap.val() || {};
         logs = Object.keys(v).sort().reverse().map(id => ({ id, ...v[id] }));
     } catch (e) {
@@ -403,27 +406,31 @@ function telaPrevia() {
 // ── Aplicar ─────────────────────────────────────────────────────
 async function gravar(itens, aliases, ignoradosPdf, ignoradosCtw, arquivo, tipo) {
     const db = getDb();
-    const logId = push(ref(db, 'precosync/log')).key;
+    const logId = push(ref(db, BASE + '/log')).key;
     const upd = {};
     const logItens = {};
     for (const x of itens) {
         upd[`products/${x.id}/valor`] = Math.round(x.para * 100) / 100;
-        logItens[x.id] = { nome: x.c.nome, de: x.de, para: Math.round(x.para * 100) / 100 };
+        logItens[x.id] = { de: x.de, para: Math.round(x.para * 100) / 100 };
     }
     if (itens.length) {
-        upd[`precosync/log/${logId}`] = { quando: Date.now(), arquivo: arquivo || '', usuario: usuario(), tipo: tipo || 'importacao', itens: logItens };
+        upd[`${BASE}/log/${logId}`] = { quando: Date.now(), arquivo: arquivo || '', usuario: usuario(), tipo: tipo || 'importacao', itens: logItens };
     }
     for (const { r, c } of aliases) {
         const val = { pid: c.id, nomeEstoque: r.nome, nomeCtw: c.nome, codigo: r.codigo || '', spec: assinatura(r.an), quando: Date.now() };
-        upd[`precosync/aliases/${chaveNome(r.an)}`] = val;
-        if (r.codigo) upd[`precosync/aliases/${chaveCodigo(r.codigo)}`] = val;
-        upd[`precosync/ignoradosPdf/${chaveNome(r.an)}`] = null;
-        if (r.codigo) upd[`precosync/ignoradosPdf/${chaveCodigo(r.codigo)}`] = null;
-        upd[`precosync/ignoradosCtw/${c.id}`] = null;
+        upd[`${BASE}/aliases/${chaveNome(r.an)}`] = val;
+        if (r.codigo) upd[`${BASE}/aliases/${chaveCodigo(r.codigo)}`] = val;
+        upd[`${BASE}/ignoradosPdf/${chaveNome(r.an)}`] = null;
+        if (r.codigo) upd[`${BASE}/ignoradosPdf/${chaveCodigo(r.codigo)}`] = null;
+        upd[`${BASE}/ignoradosCtw/${c.id}`] = null;
     }
-    for (const r of ignoradosPdf) upd[`precosync/ignoradosPdf/${r.codigo ? chaveCodigo(r.codigo) : chaveNome(r.an)}`] = { nome: r.nome, quando: Date.now() };
-    for (const c of ignoradosCtw) upd[`precosync/ignoradosCtw/${c.id}`] = { nome: c.nome, quando: Date.now() };
+    for (const r of ignoradosPdf) upd[`${BASE}/ignoradosPdf/${r.codigo ? chaveCodigo(r.codigo) : chaveNome(r.an)}`] = { nome: r.nome, quando: Date.now() };
+    for (const c of ignoradosCtw) upd[`${BASE}/ignoradosCtw/${c.id}`] = { nome: c.nome, quando: Date.now() };
     if (!Object.keys(upd).length) return;
+    if (itens.length) {                // poda registros antigos junto com a gravação
+        const antigos = Object.keys((await get(ref(db, BASE + '/log'))).val() || {}).sort().slice(0, -(MAX_LOGS - 1));
+        antigos.forEach(k => { upd[`${BASE}/log/${k}`] = null; });
+    }
     await update(ref(db), upd);       // tudo ou nada: preços + log + vínculos juntos
 }
 
@@ -437,7 +444,7 @@ async function aplicar() {
     try {
         await gravar(seguros, S.novosAliases, S.novosIgnoradosPdf, [], S.arquivo, 'importacao');
     } catch (e) {
-        const regra = /permission/i.test(e.message || '') ? ' O Firebase precisa liberar escrita no caminho “precosync” nas regras do banco.' : '';
+        const regra = /permission/i.test(e.message || '') ? ' O Firebase precisa liberar escrita no caminho “settings/precosync” nas regras do banco.' : '';
         tela(`<div class="ps-msg ps-erro">Não consegui gravar (${esc(e.message)}). Nada foi alterado.${regra}</div><button type="button" class="ps-btn" data-act="previa">Voltar à prévia</button>`);
         return;
     }
@@ -550,14 +557,14 @@ async function telaVinculos() {
 
 async function removerVinculo(pid, nomeEstoque) {
     const upd = {};
-    for (const [k, v] of Object.entries(APR.aliases)) if (v.pid === pid && v.nomeEstoque === nomeEstoque) upd[`precosync/aliases/${k}`] = null;
+    for (const [k, v] of Object.entries(APR.aliases)) if (v.pid === pid && v.nomeEstoque === nomeEstoque) upd[`${BASE}/aliases/${k}`] = null;
     if (Object.keys(upd).length) await update(ref(getDb()), upd);
 }
 
 async function desfazer(id) {
     tela('<div class="ps-msg">Desfazendo…</div>');
     try {
-        const snap = await get(ref(getDb(), `precosync/log/${id}`));
+        const snap = await get(ref(getDb(), `${BASE}/log/${id}`));
         const log = snap.val();
         if (!log || log.desfeito) throw new Error('Essa importação já foi desfeita.');
         const atuais = new Map((window.products || []).map(p => [p.id, valorCtw(p)]));
@@ -567,7 +574,7 @@ async function desfazer(id) {
             if (!igual(atuais.get(pid), it.para)) { mexidos++; continue; }   // alguém mudou depois: não sobrescreve
             upd[`products/${pid}/valor`] = it.de; ok++;
         }
-        upd[`precosync/log/${id}/desfeito`] = Date.now();
+        upd[`${BASE}/log/${id}/desfeito`] = Date.now();
         await update(ref(getDb()), upd);
         tela(`<div class="ps-card ps-ok"><b>Importação desfeita</b><div class="ps-lin"><span>Preços restaurados</span><b>${ok}</b></div>${mexidos ? `<div class="ps-lin"><span>Mantidos (já tinham sido alterados depois)</span><b>${mexidos}</b></div>` : ''}</div><button type="button" class="ps-btn" data-act="inicio">Voltar</button>`);
     } catch (e) {
@@ -585,7 +592,7 @@ async function aoClicar(e) {
         if (act === 'vinculos') return telaVinculos();
         if (act === 'desfazer') return desfazer(b.dataset.id);
         if (act === 'rmvinculo') { await removerVinculo(b.dataset.pid, b.dataset.nome); return telaVinculos(); }
-        if (act === 'esquecerign') { await update(ref(getDb()), { 'precosync/ignoradosPdf': null, 'precosync/ignoradosCtw': null }); return telaVinculos(); }
+        if (act === 'esquecerign') { await update(ref(getDb()), { [`${BASE}/ignoradosPdf`]: null, [`${BASE}/ignoradosCtw`]: null }); return telaVinculos(); }
         if (!S) return;
         if (act === 'mesmo') {
             const r = S.fila[0], c = S.cl.ctw.find(x => x.id === b.dataset.id);
