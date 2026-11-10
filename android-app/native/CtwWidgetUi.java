@@ -146,10 +146,14 @@ final class CtwWidgetUi {
         }
     }
 
-    /** Widget de atalho: um toque em qualquer parte abre o app na ação pedida (garantia, calcular). */
-    static RemoteViews atalho(Context ctx, int layout, int raiz, int codigo, String acao) {
+    private static final int[] BOTOES = {R.id.w_b1, R.id.w_b2, R.id.w_b3};
+
+    /** Widget de atalhos: três botões, cada um abre o app na ação correspondente (calc-*, doc-*). */
+    static RemoteViews botoes(Context ctx, int layout, int codigoBase, String[] acoes) {
         RemoteViews v = new RemoteViews(ctx.getPackageName(), layout);
-        v.setOnClickPendingIntent(raiz, toque(ctx, codigo, acao, ""));
+        for (int i = 0; i < BOTOES.length && i < acoes.length; i++) {
+            v.setOnClickPendingIntent(BOTOES[i], toque(ctx, codigoBase + i, acoes[i], ""));
+        }
         return v;
     }
 

@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-268'; // APK: widgets de atalho (Garantia e Calcular) + CreditoScan
+const CACHE = 'ctw-269'; // APK: widgets 4x1 Calculadoras e Documentos
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

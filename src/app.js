@@ -13035,7 +13035,12 @@ window.updateNotificationUI  = updateNotificationUI;
             var b = e.target.closest('[data-aparelho]');
             if (b) abrirCalculadoraComBusca(b.getAttribute('data-aparelho'));
         });
-        window.ctwAbrirCalculadora = function() { abrirCalculadoraComBusca(''); };   // atalho do widget
+        // atalho do widget: 'aparelho' (padrão) | 'repassar' | 'emprestimo'
+        var PILULA_CALC = { repassar: 'openRepassarValores', emprestimo: 'openCalcularEmprestimo' };
+        window.ctwAbrirCalculadora = function(modo) {
+            if (!PILULA_CALC[modo]) { abrirCalculadoraComBusca(''); return; }
+            irParaSecao('calculator', function() { var b = $(PILULA_CALC[modo]); if (b) b.click(); });
+        };
         window.ctwDesenharRecentes = desenharRecentes;
         desenharRecentes();
 
