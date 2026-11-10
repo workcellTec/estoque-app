@@ -461,8 +461,8 @@ async function aplicar() {
 }
 
 // ── Relatório ───────────────────────────────────────────────────
-// "Em falta" vale por alguns dias (tem 'ate'); "Não está no Stock 2.0" não expira
-const ctwEscondido = id => { const e = APR.ignoradosCtw[id]; return !!e && (!e.ate || e.ate > Date.now()); };
+// "Em falta" vale por alguns dias; depois volta para a revisão. Quem não é mais trabalhado é excluído do CTW.
+const ctwEscondido = id => { const e = APR.ignoradosCtw[id]; return !!e && !!e.ate && e.ate > Date.now(); };   // marcas antigas sem prazo voltam a aparecer
 
 function ctwSemPdf() {
     return S.cl.ctw.filter(c => !S.cl.reivindicado.has(c.id) && !ctwEscondido(c.id)
@@ -519,8 +519,7 @@ function proximoCtw() {
       <div class="ps-busca"><input type="search" id="psBuscaPdf" placeholder="Buscar na lista do Stock 2.0…" autocomplete="off"></div>
       <div id="psBuscaRes"></div>
       <button type="button" class="ps-btn" data-act="emfalta">Em falta no estoque (esconder por ${DIAS_EM_FALTA} dias)</button>
-      <button type="button" class="ps-btn" data-act="semestoque">Não trabalhamos mais (manter no CTW, não perguntar)</button>
-      <button type="button" class="ps-btn ps-perigo" data-act="excluirctw">Excluir do CTW</button>
+      <button type="button" class="ps-btn ps-perigo" data-act="excluirctw">Não trabalhamos mais (excluir do CTW)</button>
       <button type="button" class="ps-btn ps-suave" data-act="pularctw">Decidir depois</button>
       <button type="button" class="ps-btn ps-suave" data-act="relatorio">Voltar ao relatório</button>`);
 }
@@ -616,15 +615,14 @@ async function adicionarProduto(r, nome, valorTxt) {
 function telaExcluirCtw() {
     const c = S.vinculo.c;
     tela(`
-      <div class="ps-card"><div class="ps-cap">Excluir do CTW</div><div class="ps-nome">${esc(c.nome)}</div><div class="ps-valor">${brl(c.valor)}</div>
+      <div class="ps-card"><div class="ps-cap">Não trabalhamos mais — excluir do CTW</div><div class="ps-nome">${esc(c.nome)}</div><div class="ps-valor">${brl(c.valor)}</div>
         <div class="ps-aviso">O produto é apagado do CTW (estoque, busca e vendas). Isso não dá para desfazer por aqui.</div></div>
       <button type="button" class="ps-btn ps-perigo" data-act="excluirctw2">Sim, excluir definitivamente</button>
       <button type="button" class="ps-btn ps-suave" data-act="revisar">Cancelar</button>`);
 }
 
 async function marcarCtw(c, dias) {
-    const val = { nome: c.nome, quando: Date.now() };
-    if (dias) val.ate = Date.now() + dias * 86400000;
+    const val = { nome: c.nome, quando: Date.now(), ate: Date.now() + dias * 86400000 };
     await update(ref(getDb()), { [`${BASE}/ignoradosCtw/${c.id}`]: val });
     APR.ignoradosCtw[c.id] = val;
 }
@@ -647,7 +645,7 @@ async function telaVinculos() {
     tela(`
       <div class="ps-card">
         <div class="ps-lin"><span>Itens do Stock 2.0 marcados “não existe no CTW”</span><b>${nIgP}</b></div>
-        <div class="ps-lin"><span>Produtos do CTW marcados “em falta” ou “não trabalhamos mais”</span><b>${nIgC}</b></div>
+        <div class="ps-lin"><span>Produtos do CTW marcados “em falta”</span><b>${nIgC}</b></div>
         ${(nIgP || nIgC) ? '<button type="button" class="ps-btn" data-act="esquecerign">Voltar a perguntar sobre esses itens</button>' : ''}
       </div>
       <div class="ps-cap ps-esp">Vínculos aprendidos (${al.length})</div>
@@ -726,11 +724,6 @@ async function aoClicar(e) {
         if (act === 'excluirctw2') { b.disabled = true; await excluirProduto(S.vinculo.c); return proximoCtw(); }
         if (act === 'escolherpdf') { const r = S.vinculo.pool.find(x => String(x.i) === b.dataset.i); if (r) telaConfirmarVinculo(r); return; }
         if (act === 'pularctw') { (S.ctwDescartados = S.ctwDescartados || new Set()).add(S.vinculo.c.id); return proximoCtw(); }
-        if (act === 'semestoque') {
-            const c = S.vinculo.c;
-            await marcarCtw(c, 0);
-            return proximoCtw();
-        }
         if (act === 'emfalta') { await marcarCtw(S.vinculo.c, DIAS_EM_FALTA); return proximoCtw(); }
         if (act === 'vincular') {
             const { c, sel: r } = S.vinculo;
