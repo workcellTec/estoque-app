@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-266'; // APK: PDF vai direto na conversa do WhatsApp do cliente (garantia, contrato, orçamento)
+const CACHE = 'ctw-267'; // APK: widgets do CreditoScan (4x2 lista e 2x2 destaque)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

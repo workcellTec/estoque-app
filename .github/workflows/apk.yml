@@ -101,6 +101,20 @@ jobs:
           # e permissão de instalar o APK baixado pelo atualizador (o FileProvider e o file_paths.xml já vêm do Capacitor)
           sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />#' android/app/src/main/AndroidManifest.xml
           grep -n "CAMERA\|REQUEST_INSTALL\|uses-feature" android/app/src/main/AndroidManifest.xml
+          # widgets do CreditoScan (4x2 e 2x2): cada um é um receptor que o launcher do Android enxerga
+          python3 - <<'PY'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          m = open(p, encoding='utf-8').read()
+          def receptor(classe, info, rotulo):
+              return ('        <receiver android:name="br.com.workcell.central.%s" android:exported="true" android:label="@string/%s">\n'
+                      '            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>\n'
+                      '            <meta-data android:name="android.appwidget.provider" android:resource="@xml/%s" />\n'
+                      '        </receiver>\n') % (classe, rotulo, info)
+          bloco = receptor('CreditoScanLista', 'ctw_w_lista_info', 'ctw_w_lista_nome') + receptor('CreditoScanQuadro', 'ctw_w_quadro_info', 'ctw_w_quadro_nome')
+          assert m.count('</application>') == 1 and 'CreditoScanLista' not in m
+          open(p, 'w', encoding='utf-8').write(m.replace('</application>', bloco + '    </application>'))
+          PY
+          grep -n "CreditoScan" android/app/src/main/AndroidManifest.xml
           # versão do APK sobe a cada geração (permite instalar por cima do anterior)
           sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"1.${{ github.run_number }}\"/" android/app/build.gradle
           grep -n "versionCode\|versionName" android/app/build.gradle

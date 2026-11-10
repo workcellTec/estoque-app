@@ -220,6 +220,7 @@ function setupTeamProfilesListener() {
 window.setProfileConfirmed = function(name) {
     currentUserProfile = name;
     localStorage.setItem('ctwUserProfile', name);
+    if (window.ctwCSWidget) window.ctwCSWidget.publicar();   // widget do CreditoScan acompanha o perfil
     
     const displayMenu = document.getElementById('displayProfileName');
     if(displayMenu) displayMenu.innerText = name;
@@ -259,6 +260,7 @@ window.sairDoPerfil = function() {
                 // 1. Limpa o perfil salvo
                 currentUserProfile = '';
                 localStorage.removeItem('ctwUserProfile');
+                if (window.ctwCSWidget) window.ctwCSWidget.publicar();   // widget do CreditoScan acompanha o perfil
 
                 // 2. Atualiza display
                 var displayMenu = document.getElementById('displayProfileName');
@@ -12375,6 +12377,7 @@ window.updateNotificationUI  = updateNotificationUI;
                 if(nome === currentUserProfile && novoNome !== nome) {
                     currentUserProfile = novoNome;
                     localStorage.setItem('ctwUserProfile', novoNome);
+                    if (window.ctwCSWidget) window.ctwCSWidget.publicar();   // widget do CreditoScan acompanha o perfil
                 }
                 ov.remove();
                 _loadPerfis();
@@ -12533,6 +12536,7 @@ window.updateNotificationUI  = updateNotificationUI;
                 if (nome === currentUserProfile) {
                     currentUserProfile = '';
                     localStorage.removeItem('ctwUserProfile');
+                    if (window.ctwCSWidget) window.ctwCSWidget.publicar();   // widget do CreditoScan acompanha o perfil
                 }
 
                 // 8. Invalida cache da equipe para forçar recarga

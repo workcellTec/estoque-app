@@ -2339,8 +2339,101 @@
         box.innerHTML = html;
     }
 
+    // ── Widgets do Android (só no APK): resumo das análises do perfil ativo, enviado ao aparelho ──
+    var _wg = { timer: null, ultimo: '', ts: 0 };
+    var WG_FAIXA = { FORTE: 'FORTE', MEDIO: 'MÉDIO', FRACO: 'FRACO' };
+    var WG_ORDEM = { aguarda: 0, erro: 1, andamento: 2, aprovada: 3, reprovada: 3 };
+
+    // "Maria da Silva" -> "Maria S." (o widget é pequeno e fica à vista de quem passa)
+    function wgNomeCurto(nome) {
+        var n = String(nome || 'Cliente').trim().replace(/\s+/g, ' ');
+        if (/^Cliente\s*·/.test(n)) return n;
+        var p = n.split(' ');
+        var primeiro = p[0].charAt(0).toUpperCase() + p[0].slice(1).toLowerCase();
+        return p.length < 2 ? primeiro : primeiro + ' ' + p[p.length - 1].charAt(0).toUpperCase() + '.';
+    }
+    function wgMeu(dono) { var me = usuarioAtual(); return !dono || !me || dono === me; }
+
+    function wgResumo() {
+        var itens = [], emAnalise = 0, ini = inicioDoDia();
+        _jobs.forEach(function (j) {
+            if (!wgMeu(j.usuario)) return;
+            var it = { id: 'j:' + j.uid, nome: wgNomeCurto(nomeDoJob(j)), t: j.tsFim || j.ts };
+            if (j.estado === 'pronta') {
+                var d = j.dados;
+                if (!d || it.t < ini) return;
+                var nota = Math.round(Number(d.nota) || 0);
+                if (d.reprovado === true) { it.est = 'reprovada'; it.nota = nota; }
+                else if (d.aprov === true) { it.est = 'aprovada'; it.nota = nota; it.faixa = WG_FAIXA[d.risco] || ''; }
+                else it.est = 'aguarda';   // sem decisao automatica (ex.: nomes nao batem): o vendedor decide no app
+            } else if (j.estado === 'aguarda') it.est = 'aguarda';
+            else if (j.estado === 'erro') it.est = 'erro';
+            else { it.est = 'andamento'; it.pct = Math.max(0, Math.min(99, Math.round(j.prog || 0))); it.txt = j.estado === 'fila' ? 'Na fila' : String(j.etapa || ''); emAnalise++; }
+            itens.push(it);
+        });
+        _fila.itens.forEach(function (a) {   // analises que estao no servidor
+            if (!wgMeu(a.usuario) || (a.estado !== 'rodando' && a.estado !== 'fila' && a.estado !== 'erro')) return;
+            var it = { id: 's:' + a.id, nome: wgNomeCurto(a.nome || ('Cliente · ' + horaCurta(a.t || Date.parse(a.criado_em)))), t: a.t || Date.parse(a.criado_em) || 0 };
+            if (a.estado === 'erro') it.est = 'erro';
+            else { it.est = 'andamento'; it.pct = a.estado === 'fila' ? 0 : Math.max(2, Math.min(99, Math.round(a.progresso || 5))); it.txt = a.estado === 'fila' ? 'Na fila' : String(a.etapa || ''); emAnalise++; }
+            itens.push(it);
+        });
+        hojeSemSessao(false).forEach(function (h) {   // prontas de hoje que vieram do historico
+            var nota = Math.round(Number(h.nota) || 0), rep = h.decisao === 'REPROVADO';
+            itens.push({ id: 'h:' + h.id, nome: wgNomeCurto(h.nomeCliente), t: h.ts, est: rep ? 'reprovada' : 'aprovada', nota: nota, faixa: rep ? '' : (WG_FAIXA[riscoPorNota(nota).risco] || '') });
+        });
+        itens.sort(function (a, b) { return (WG_ORDEM[a.est] - WG_ORDEM[b.est]) || (b.t - a.t); });
+        return { ts: Date.now(), perfil: usuarioAtual(), emAnalise: emAnalise, itens: itens.slice(0, 3).map(function (it) { delete it.t; return it; }) };
+    }
+
+    // Manda o resumo ao aparelho. Sem mudança, só renova a hora (o widget mostra "Abra o app" se ela envelhecer com análise rodando).
+    function wgPublicar() {
+        var n = window.ctwNativo;
+        if (!n || !n.ativo()) return;
+        var r = wgResumo(), chave = JSON.stringify([r.perfil, r.emAnalise, r.itens]);
+        if (chave === _wg.ultimo && Date.now() - _wg.ts < 55000) return;
+        _wg.ultimo = chave; _wg.ts = Date.now();
+        n.chamar('CtwWidget', 'atualizar', { json: JSON.stringify(r) }).catch(function () {});
+    }
+    function wgAgendar() {
+        if (_wg.timer || !window.ctwNativo || !window.ctwNativo.ativo()) return;
+        _wg.timer = setTimeout(function () { _wg.timer = null; wgPublicar(); }, 1500);   // junta rajadas de andamento
+    }
+
+    // Toque no widget: o aparelho guarda o pedido; aqui ele é lido e executado (abrir análise, nova análise, lista)
+    function wgExecutar(acao, id) {
+        openOverlay();
+        if (acao === 'nova') { _formAberto = true; aplicarForm(); return; }
+        if (acao !== 'abrir' || !id) return;
+        var tipo = id.charAt(0), chave = id.slice(2);
+        if (tipo === 'h') { hojeAbrir(chave); return; }
+        if (tipo !== 'j') return;   // análise no servidor: a lista já mostra o andamento
+        var job = null;
+        _jobs.forEach(function (j) { if (String(j.uid) === chave) job = j; });
+        if (!job) return;
+        if (job.estado === 'aguarda' && job.pergunta) abrirPergunta(job);
+        else if (job.estado === 'pronta' && job.dados) abrirResultado(job);
+    }
+    function wgTratarAcao() {
+        var n = window.ctwNativo;
+        if (!n || !n.ativo()) return;
+        n.chamar('CtwWidget', 'acaoPendente').then(function (r) {
+            if (r && r.acao) wgExecutar(String(r.acao), String(r.id || ''));
+        }).catch(function () {});
+    }
+    function wgIniciar() {
+        var n = window.ctwNativo;
+        if (!n || !n.ativo()) return;
+        window.addEventListener('ctwWidgetAcao', wgTratarAcao);
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) { wgTratarAcao(); wgPublicar(); } });
+        setInterval(wgPublicar, 60000);
+        wgTratarAcao(); wgAgendar();
+    }
+    window.ctwCSWidget = { publicar: wgAgendar };   // o app avisa quando o perfil muda
+
     function atualizarBadge() {
         filaAtualizarCartaoHome();
+        wgAgendar();
         var n = _jobs.filter(function (j) { return (j.estado === 'pronta' && !j.visto) || j.estado === 'aguarda' || j.estado === 'erro'; }).length +
             _fila.itens.filter(function (a) { return a.estado === 'erro'; }).length + hojeNaoVistas();
         ['goCS2'].forEach(function (id) {
@@ -5622,7 +5715,7 @@
         return _jobs.some(function (j) { return j.estado === 'rodando' || j.estado === 'fila'; });
     };
 
-    function init(){injectCSS();injectHTML();injectMenuBtns();wireEvents();apWire();filaIniciar();hojeIniciar();atualizarBadge();retomarAnalises();}
+    function init(){injectCSS();injectHTML();injectMenuBtns();wireEvents();apWire();filaIniciar();hojeIniciar();atualizarBadge();retomarAnalises();wgIniciar();}
     if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}else{init();}
     window._creditoScanOpen=openOverlay;
     // Botao voltar do celular: fecha a camada mais de cima do CreditoScan (true = tratou)

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ctw_w_lista_nome">CreditoScan · lista</string>
+    <string name="ctw_w_lista_desc">Análises do perfil ativo: nota, aprovado ou reprovado, e o andamento</string>
+    <string name="ctw_w_quadro_nome">CreditoScan · destaque</string>
+    <string name="ctw_w_quadro_desc">A análise mais importante agora, em destaque</string>
+</resources>

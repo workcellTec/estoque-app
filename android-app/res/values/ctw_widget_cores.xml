@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ctw_w_bg">#FFFFFF</color>
+    <color name="ctw_w_row">#F3F7F5</color>
+    <color name="ctw_w_txt">#10261F</color>
+    <color name="ctw_w_mute">#52645E</color>
+    <color name="ctw_w_ok">#0C8562</color>
+    <color name="ctw_w_bad">#B3261E</color>
+    <color name="ctw_w_warn">#B26A00</color>
+    <color name="ctw_w_sobre">#FFFFFF</color>
+</resources>
