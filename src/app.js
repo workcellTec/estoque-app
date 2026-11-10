@@ -7789,7 +7789,7 @@ function loadBookipHistory() {
             // Botões
             const classBtnEnvio = foiEnviado ? 'btn-dark' : 'btn-warning';
             const iconBtnEnvio = foiEnviado ? 'bi-check-circle-fill text-success' : 'bi-envelope-at-fill';
-            const titleBtnEnvio = foiEnviado ? 'Já enviado (Reenviar)' : 'PDF/Email';
+            const titleBtnEnvio = foiEnviado ? 'Já enviado por e-mail (reenviar)' : 'Enviar por Gmail';
 
                                     return `
             <div class="accordion-item" style="${styleCard}">
@@ -7845,6 +7845,12 @@ function loadBookipHistory() {
 
                             <button class="btn btn-sm ${classBtnEnvio} email-history-btn" data-id="${item.id}" title="${titleBtnEnvio}"><i class="bi ${iconBtnEnvio}"></i></button>
 
+                            <button class="btn btn-sm btn-primary btn-share-hist" data-id="${item.id}" title="Compartilhar (WhatsApp, e-mail, Telegram...)"><i class="bi bi-share-fill"></i></button>
+
+                            <button class="btn btn-sm btn-outline-primary btn-download-seguro" data-id="${item.id}" title="Baixar PDF (só salva no celular)">
+                                <i class="bi bi-download"></i>
+                            </button>
+
                             ${item.fotoUrl ? `
                             <button class="btn btn-sm btn-outline-info btn-ver-foto" 
                                 data-foto="${escapeHtml(item.fotoUrl)}" 
@@ -7852,10 +7858,6 @@ function loadBookipHistory() {
                                 title="Ver foto do produto">
                                 <i class="bi bi-image"></i>
                             </button>` : ''}
-
-                            <button class="btn btn-sm btn-outline-primary btn-download-seguro" data-id="${item.id}" title="Baixar PDF">
-                                <i class="bi bi-download"></i>
-                            </button>
 
                             <button class="btn btn-sm btn-outline-danger delete-bookip-btn" data-id="${item.id}" title="Apagar"><i class="bi bi-trash"></i></button>
                         </div>
@@ -7881,7 +7883,8 @@ function loadBookipHistory() {
     // --- REATIVAR BOTÕES INTERNOS ---
     function reativarListeners() {
         container.querySelectorAll('.edit-bookip-btn').forEach(b => b?.addEventListener('click', e => carregarDadosParaEdicao(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id))));
-        container.querySelectorAll('.email-history-btn').forEach(b => b?.addEventListener('click', e => gerarPdfDoHistorico(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id), b)));
+        container.querySelectorAll('.email-history-btn').forEach(b => b?.addEventListener('click', e => gerarPdfDoHistorico(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id), b, 'gmail')));
+        container.querySelectorAll('.btn-share-hist').forEach(b => b?.addEventListener('click', e => gerarPdfDoHistorico(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id), b, 'compartilhar')));
         container.querySelectorAll('.btn-ver-foto').forEach(b => b?.addEventListener('click', e => {
             const btn = e.target.closest('button');
             const fotoUrl = btn.dataset.foto;
@@ -7980,8 +7983,8 @@ container.querySelectorAll('.btn-download-seguro').forEach(b => {
         const item = listaCompletaCache.find(i => i.id === id);
         
         if(item) {
-            // Chama a função mestre ativando o modo "Apenas Baixar" (true)
-            gerarPdfDoHistorico(item, btn, true);
+            // Chama a função mestre no modo "Apenas Baixar"
+            gerarPdfDoHistorico(item, btn, 'baixar');
 }
     });
 });
@@ -9901,11 +9904,14 @@ Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750
 // ============================================================
 // FUNÇÃO MESTRA: GERAR PDF (UNIFICADA: BAIXAR E ENVIAR)
 // ============================================================
-async function gerarPdfDoHistorico(dados, botao, apenasBaixar = false) {
+// modo: 'baixar' (só salva) | 'gmail' | 'compartilhar' | indefinido = envio de sempre (tela pós-salvar)
+async function gerarPdfDoHistorico(dados, botao, modo) {
     await garantirPdfLibs();
-    
+    const apenasBaixar = (modo === true || modo === 'baixar');
+    const nativo = !!(window.ctwNativo && window.ctwNativo.ativo());
+
     // --- 0. PREPARAÇÃO (Copiar E-mail se existir, apenas se for modo Envio) ---
-    if (!apenasBaixar && dados.email && dados.email.trim() !== '') {
+    if (!apenasBaixar && modo !== 'compartilhar' && dados.email && dados.email.trim() !== '') {
         try {
             if (navigator.clipboard) await navigator.clipboard.writeText(dados.email.trim());
         } catch (e) {}
@@ -10089,18 +10095,41 @@ const opt = {
 
         const worker = html2pdf().set(opt).from(printContainer);
 
+        // Texto que acompanha o envio (agradecimento configurado em Ajustes + foto, se houver)
+        const montarTextoEnvio = () => {
+            const settings = (typeof receiptSettings !== 'undefined') ? receiptSettings : {};
+            const saudacao = 'Olá ' + (dados.nome || 'Cliente') + ',';
+            const corpoMensagem = settings.shareMessage || 'segue seu documento em anexo.';
+            const fotoMsg = dados.fotoUrl ? '\n\n📷 Foto do produto: ' + dados.fotoUrl : '';
+            return saudacao + '\n\n' + corpoMensagem + fotoMsg;
+        };
+        const tituloEnvio = dados.type === 'orcamento' ? "Orçamento Workcell Tecnologia" : "Documento Workcell Tecnologia";
+
         // ==========================================
         // 🛣️ ROTA 1: APENAS BAIXAR (DOWNLOAD)
         // ==========================================
         if (apenasBaixar) {
-            await worker.save(); // Baixa direto
-            
+            let mensagem = "Download concluído! Verifique seus arquivos. 📂";
+            if (nativo) {
+                // APK: grava em Downloads sem abrir nada; se o Android/APK não puder, cai no "salvar ou enviar"
+                const blobDl = await worker.output('blob');
+                try {
+                    await window.ctwNativo.salvarEmDownloads(blobDl, nomeFinalArquivo);
+                    mensagem = "PDF salvo em Downloads! 📂";
+                } catch (errDl) {
+                    await worker.save();
+                    mensagem = "PDF pronto! Escolha onde salvar ou enviar. 📂";
+                }
+            } else {
+                await worker.save(); // Baixa direto
+            }
+
             removerLoading();
             botao.innerHTML = textoOriginal;
             botao.disabled = false;
-            
+
             if(typeof showCustomModal === 'function') {
-                showCustomModal({ message: (window.ctwNativo && window.ctwNativo.ativo()) ? "PDF pronto! Escolha onde salvar ou enviar. 📂" : "Download concluído! Verifique seus arquivos. 📂" });
+                showCustomModal({ message: mensagem });
             }
             return; // Encerra a função aqui
         }
@@ -10113,8 +10142,40 @@ const opt = {
         
         removerLoading();
 
+        // APK, Gmail ou Compartilhar: um toque só (no APK o Android não exige o segundo toque que o Chrome exige)
+        if (nativo && (modo === 'gmail' || modo === 'compartilhar')) {
+            botao.innerHTML = textoOriginal;
+            botao.disabled = false;
+            try {
+                if (modo === 'gmail') {
+                    try {
+                        await window.ctwNativo.enviarEmail(pdfBlob, nomeFinalArquivo, { para: (dados.email || '').trim(), assunto: tituloEnvio, texto: montarTextoEnvio() });
+                    } catch (errMail) {
+                        // sem Gmail (ou APK antigo): compartilhamento normal, com o e-mail do cliente já copiado
+                        await navigator.share({ files: [file], title: tituloEnvio, text: montarTextoEnvio() });
+                    }
+                } else {
+                    await navigator.share({ files: [file], title: tituloEnvio, text: montarTextoEnvio() });
+                }
+                if ((dados.id || dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') {
+                    marcarComoEnviadoNoBanco(dados.id || dados.docId, ctwColDoDoc(dados));
+                }
+                const btnMail = botao.closest('.accordion-body')?.querySelector('.email-history-btn');
+                if (btnMail) {
+                    btnMail.classList.remove('btn-warning'); btnMail.classList.add('btn-dark');
+                    btnMail.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
+                    btnMail.title = 'Já enviado (reenviar)';
+                }
+            } catch (errEnvio) {
+                if (errEnvio && errEnvio.name !== 'AbortError' && typeof showCustomModal === 'function') {
+                    showCustomModal({ message: 'Não consegui abrir o envio: ' + (errEnvio.message || errEnvio) });
+                }
+            }
+            return;
+        }
+
         // Configura o botão para estado de "Pronto para Enviar"
-        botao.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
+        botao.innerHTML = modo === 'compartilhar' ? '<i class="bi bi-share-fill"></i> Enviar PDF' : '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
         botao.classList.remove('btn-primary', 'btn-outline-primary', 'btn-secondary', 'btn-dark'); 
         botao.classList.add('btn-success'); 
         botao.disabled = false; 
@@ -10126,18 +10187,12 @@ const opt = {
         // Evento de Clique para Compartilhar
         novoBotao?.addEventListener('click', async () => {
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                const settings = (typeof receiptSettings !== 'undefined') ? receiptSettings : {};
-                const saudacao = 'Olá ' + (dados.nome || 'Cliente') + ',';
-                const corpoMensagem = settings.shareMessage || 'segue seu documento em anexo.';
-                const fotoMsg = dados.fotoUrl ? '\n\n📷 Foto do produto: ' + dados.fotoUrl : '';
-                const textoCompleto = saudacao + '\n\n' + corpoMensagem + fotoMsg;
-
                 try {
                     await navigator.share({
                         files: [file],
-                        title: dados.type === 'orcamento' ? "Orçamento Workcell Tecnologia" : "Documento Workcell Tecnologia",
-                        text: textoCompleto,
-                        telefone: dados.tel
+                        title: tituloEnvio,
+                        text: montarTextoEnvio(),
+                        telefone: modo ? undefined : dados.tel   // Gmail/Compartilhar: quem escolhe o destino é você
                     });
                     
                     // Sucesso Visual

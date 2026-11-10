@@ -270,6 +270,17 @@
                 ativo: function () { return !!nat(); },
                 chamar: chamar,
                 abrir: abrirExterno,
+                // PDF direto na pasta Downloads, sem abrir nada. Rejeita se o Android/APK não puder (o app então usa o compartilhamento)
+                salvarEmDownloads: function (blob, nome) {
+                    return guardarNoCache(blob, nome).then(function (uri) { return chamar('CtwBars', 'salvarDownload', { arquivo: uri, nome: nomeSeguro(nome) }); });
+                },
+                // Gmail com o PDF anexado, destinatário, assunto e texto. Rejeita sem Gmail/APK antigo (o app então usa o compartilhamento)
+                enviarEmail: function (blob, nome, dados) {
+                    dados = dados || {};
+                    return guardarNoCache(blob, nome).then(function (uri) {
+                        return chamar('CtwBars', 'enviarEmail', { arquivo: uri, para: String(dados.para || ''), assunto: String(dados.assunto || ''), texto: String(dados.texto || '') });
+                    });
+                },
                 pedirNotificacao: function () { return permissaoAviso(true); },
                 notificar: function (titulo, corpo) {
                     return permissaoAviso(false).then(function (ok) {
@@ -2035,7 +2046,7 @@ window.addEventListener('load', function() {
             <span class="ui-grow">Sair</span>
         </button>
     </div>
-    <div class="ui-versao" id="ctwVersaoApp">Central Workcell · versão ctw-270</div>
+    <div class="ui-versao" id="ctwVersaoApp">Central Workcell · versão ctw-271</div>
 </div>
 
 <!-- ═══════════════════════════════════════════════
@@ -3306,7 +3317,7 @@ window.addEventListener('load', function() {
                 sonda.remove();
                 var selo = document.createElement('div');
                 selo.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;font:10px/1.3 monospace;background:rgba(0,0,0,.8);color:#0f0;padding:3px 6px;pointer-events:none;';
-                selo.textContent = 'ctw-270 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
+                selo.textContent = 'ctw-271 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
                     ' | modo=' + (matchMedia('(display-mode: standalone)').matches ? 'app instalado' : 'navegador') + ' | tela=' + innerWidth + 'x' + innerHeight;
                 document.body.appendChild(selo);
             }, 2500);
