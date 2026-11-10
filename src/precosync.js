@@ -462,7 +462,8 @@ async function aplicar() {
 
 // ── Relatório ───────────────────────────────────────────────────
 // "Em falta" vale por alguns dias; depois volta para a revisão. Quem não é mais trabalhado é excluído do CTW.
-const ctwEscondido = id => { const e = APR.ignoradosCtw[id]; return !!e && !!e.ate && e.ate > Date.now(); };   // marcas antigas sem prazo voltam a aparecer
+// "Só no CTW" (fixo) nunca expira: o produto existe na loja mas não é cadastrado no Stock 2.0
+const ctwEscondido = id => { const e = APR.ignoradosCtw[id]; return !!e && (!!e.fixo || (!!e.ate && e.ate > Date.now())); };
 
 function ctwSemPdf() {
     return S.cl.ctw.filter(c => !S.cl.reivindicado.has(c.id) && !ctwEscondido(c.id)
@@ -475,7 +476,8 @@ function telaRelatorio() {
     const confirmados = S.aplicados.filter(x => x.origem === 'confirmado' || x.origem === 'vinculo').length;
     const semMudanca = m.filter(x => !x.mudou && !x.invalido).length;
     const faltam = ctwSemPdf();
-    const emFalta = S.cl.ctw.filter(c => !S.cl.reivindicado.has(c.id) && ctwEscondido(c.id) && APR.ignoradosCtw[c.id].ate).length;
+    const emFalta = S.cl.ctw.filter(c => !S.cl.reivindicado.has(c.id) && ctwEscondido(c.id) && !APR.ignoradosCtw[c.id].fixo).length;
+    const soCtw = S.cl.ctw.filter(c => !S.cl.reivindicado.has(c.id) && ctwEscondido(c.id) && APR.ignoradosCtw[c.id].fixo).length;
     const poolPdf = poolSemCtw();
     tela(`
       <div class="ps-card ps-ok"><b>Importação concluída</b>
@@ -495,6 +497,7 @@ function telaRelatorio() {
       </div>
       <div class="ps-card ${faltam.length ? 'ps-alerta' : ''}">
         <div class="ps-lin"><span>Produtos do CTW que não achei no Stock 2.0 (preço não mexido)</span><b>${faltam.length}</b></div>
+        ${soCtw ? `<div class="ps-lin"><span>Só no CTW (não cadastrados no Stock 2.0, não mexo)</span><b>${soCtw}</b></div>` : ''}
         ${emFalta ? `<div class="ps-lin"><span>Em falta (escondidos por ${DIAS_EM_FALTA} dias, voltam depois)</span><b>${emFalta}</b></div>` : ''}
         ${faltam.length ? `<button type="button" class="ps-btn ps-prim" data-act="revisar">Ver e vincular manualmente</button>` : ''}
       </div>
@@ -518,6 +521,7 @@ function proximoCtw() {
       ${cands.map(x => botaoPdf(x.r, c, x.d)).join('') || '<div class="ps-cap">Nenhuma sugestão parecida.</div>'}
       <div class="ps-busca"><input type="search" id="psBuscaPdf" placeholder="Buscar na lista do Stock 2.0…" autocomplete="off"></div>
       <div id="psBuscaRes"></div>
+      <button type="button" class="ps-btn" data-act="sonoctw">Temos, mas não está no Stock 2.0 (manter e não perguntar)</button>
       <button type="button" class="ps-btn" data-act="emfalta">Em falta no estoque (esconder por ${DIAS_EM_FALTA} dias)</button>
       <button type="button" class="ps-btn ps-perigo" data-act="excluirctw">Não trabalhamos mais (excluir do CTW)</button>
       <button type="button" class="ps-btn ps-suave" data-act="pularctw">Decidir depois</button>
@@ -622,7 +626,8 @@ function telaExcluirCtw() {
 }
 
 async function marcarCtw(c, dias) {
-    const val = { nome: c.nome, quando: Date.now(), ate: Date.now() + dias * 86400000 };
+    const val = { nome: c.nome, quando: Date.now() };
+    if (dias) val.ate = Date.now() + dias * 86400000; else val.fixo = true;
     await update(ref(getDb()), { [`${BASE}/ignoradosCtw/${c.id}`]: val });
     APR.ignoradosCtw[c.id] = val;
 }
@@ -645,7 +650,7 @@ async function telaVinculos() {
     tela(`
       <div class="ps-card">
         <div class="ps-lin"><span>Itens do Stock 2.0 marcados “não existe no CTW”</span><b>${nIgP}</b></div>
-        <div class="ps-lin"><span>Produtos do CTW marcados “em falta”</span><b>${nIgC}</b></div>
+        <div class="ps-lin"><span>Produtos do CTW marcados “em falta” ou “só no CTW”</span><b>${nIgC}</b></div>
         ${(nIgP || nIgC) ? '<button type="button" class="ps-btn" data-act="esquecerign">Voltar a perguntar sobre esses itens</button>' : ''}
       </div>
       <div class="ps-cap ps-esp">Vínculos aprendidos (${al.length})</div>
@@ -724,6 +729,7 @@ async function aoClicar(e) {
         if (act === 'excluirctw2') { b.disabled = true; await excluirProduto(S.vinculo.c); return proximoCtw(); }
         if (act === 'escolherpdf') { const r = S.vinculo.pool.find(x => String(x.i) === b.dataset.i); if (r) telaConfirmarVinculo(r); return; }
         if (act === 'pularctw') { (S.ctwDescartados = S.ctwDescartados || new Set()).add(S.vinculo.c.id); return proximoCtw(); }
+        if (act === 'sonoctw') { await marcarCtw(S.vinculo.c, 0); return proximoCtw(); }
         if (act === 'emfalta') { await marcarCtw(S.vinculo.c, DIAS_EM_FALTA); return proximoCtw(); }
         if (act === 'vincular') {
             const { c, sel: r } = S.vinculo;
