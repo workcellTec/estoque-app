@@ -8,4 +8,5 @@
     <color name="ctw_w_bad">#B3261E</color>
     <color name="ctw_w_warn">#B26A00</color>
     <color name="ctw_w_sobre">#FFFFFF</color>
+    <color name="ctw_w_chip">#DDF2EA</color>
 </resources>

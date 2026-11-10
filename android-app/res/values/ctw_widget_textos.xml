@@ -4,4 +4,8 @@
     <string name="ctw_w_lista_desc">Análises do perfil ativo: nota, aprovado ou reprovado, e o andamento</string>
     <string name="ctw_w_quadro_nome">CreditoScan · destaque</string>
     <string name="ctw_w_quadro_desc">A análise mais importante agora, em destaque</string>
+    <string name="ctw_w_garantia_nome">Nova garantia</string>
+    <string name="ctw_w_garantia_desc">Atalho para criar uma garantia</string>
+    <string name="ctw_w_calcular_nome">Calcular por aparelho</string>
+    <string name="ctw_w_calcular_desc">Atalho para a calculadora por aparelho</string>
 </resources>

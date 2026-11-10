@@ -101,7 +101,7 @@ jobs:
           # e permissão de instalar o APK baixado pelo atualizador (o FileProvider e o file_paths.xml já vêm do Capacitor)
           sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />#' android/app/src/main/AndroidManifest.xml
           grep -n "CAMERA\|REQUEST_INSTALL\|uses-feature" android/app/src/main/AndroidManifest.xml
-          # widgets do CreditoScan (4x2 e 2x2): cada um é um receptor que o launcher do Android enxerga
+          # widgets (CreditoScan 4x2 e 2x2, atalhos Garantia e Calcular): cada um é um receptor que o launcher do Android enxerga
           python3 - <<'PY'
           p = 'android/app/src/main/AndroidManifest.xml'
           m = open(p, encoding='utf-8').read()
@@ -110,7 +110,8 @@ jobs:
                       '            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>\n'
                       '            <meta-data android:name="android.appwidget.provider" android:resource="@xml/%s" />\n'
                       '        </receiver>\n') % (classe, rotulo, info)
-          bloco = receptor('CreditoScanLista', 'ctw_w_lista_info', 'ctw_w_lista_nome') + receptor('CreditoScanQuadro', 'ctw_w_quadro_info', 'ctw_w_quadro_nome')
+          bloco = (receptor('CreditoScanLista', 'ctw_w_lista_info', 'ctw_w_lista_nome') + receptor('CreditoScanQuadro', 'ctw_w_quadro_info', 'ctw_w_quadro_nome')
+                   + receptor('GarantiaWidget', 'ctw_w_garantia_info', 'ctw_w_garantia_nome') + receptor('CalcularWidget', 'ctw_w_calcular_info', 'ctw_w_calcular_nome'))
           assert m.count('</application>') == 1 and 'CreditoScanLista' not in m
           open(p, 'w', encoding='utf-8').write(m.replace('</application>', bloco + '    </application>'))
           PY

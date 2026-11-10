@@ -13035,6 +13035,7 @@ window.updateNotificationUI  = updateNotificationUI;
             var b = e.target.closest('[data-aparelho]');
             if (b) abrirCalculadoraComBusca(b.getAttribute('data-aparelho'));
         });
+        window.ctwAbrirCalculadora = function() { abrirCalculadoraComBusca(''); };   // atalho do widget
         window.ctwDesenharRecentes = desenharRecentes;
         desenharRecentes();
 

@@ -146,6 +146,13 @@ final class CtwWidgetUi {
         }
     }
 
+    /** Widget de atalho: um toque em qualquer parte abre o app na ação pedida (garantia, calcular). */
+    static RemoteViews atalho(Context ctx, int layout, int raiz, int codigo, String acao) {
+        RemoteViews v = new RemoteViews(ctx.getPackageName(), layout);
+        v.setOnClickPendingIntent(raiz, toque(ctx, codigo, acao, ""));
+        return v;
+    }
+
     static RemoteViews lista(Context ctx) {
         RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.ctw_w_lista);
         Dados d = ler(ctx);

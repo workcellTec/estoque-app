@@ -2400,7 +2400,7 @@
         _wg.timer = setTimeout(function () { _wg.timer = null; wgPublicar(); }, 1500);   // junta rajadas de andamento
     }
 
-    // Toque no widget: o aparelho guarda o pedido; aqui ele é lido e executado (abrir análise, nova análise, lista)
+    // Toque no widget: a ponte do APK (index.html) lê o pedido e chama aqui (abrir análise, nova análise, lista)
     function wgExecutar(acao, id) {
         openOverlay();
         if (acao === 'nova') { _formAberto = true; aplicarForm(); return; }
@@ -2414,22 +2414,14 @@
         if (job.estado === 'aguarda' && job.pergunta) abrirPergunta(job);
         else if (job.estado === 'pronta' && job.dados) abrirResultado(job);
     }
-    function wgTratarAcao() {
-        var n = window.ctwNativo;
-        if (!n || !n.ativo()) return;
-        n.chamar('CtwWidget', 'acaoPendente').then(function (r) {
-            if (r && r.acao) wgExecutar(String(r.acao), String(r.id || ''));
-        }).catch(function () {});
-    }
     function wgIniciar() {
         var n = window.ctwNativo;
         if (!n || !n.ativo()) return;
-        window.addEventListener('ctwWidgetAcao', wgTratarAcao);
-        document.addEventListener('visibilitychange', function () { if (!document.hidden) { wgTratarAcao(); wgPublicar(); } });
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) wgPublicar(); });
         setInterval(wgPublicar, 60000);
-        wgTratarAcao(); wgAgendar();
+        wgAgendar();
     }
-    window.ctwCSWidget = { publicar: wgAgendar };   // o app avisa quando o perfil muda
+    window.ctwCSWidget = { publicar: wgAgendar, executar: wgExecutar };   // o app avisa quando o perfil muda
 
     function atualizarBadge() {
         filaAtualizarCartaoHome();
