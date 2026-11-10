@@ -3,15 +3,24 @@ name: APK Android
 # Gera o APK do Central Workcell (WebView própria, independente do Chrome).
 # O app em si continua sendo o PWA do GitHub Pages: o APK só abre esse endereço, então
 # as atualizações do app chegam sozinhas. Só precisa de APK novo se a parte nativa mudar.
-# Como baixar: aba "Releases" do repositório -> "APK de teste (beta)" -> Central-Workcell.apk
+# Como gerar: aba Actions -> "APK Android" -> Run workflow (preencha "novidades" e, se quiser, marque "obrigatória").
+# Como baixar: aba "Releases" -> "Central Workcell APK" (tag apk-latest) -> Central-Workcell.apk.
+# Quem já tem o APK com atualizador recebe o aviso sozinho: o app lê o apk-versao.json desta mesma Release.
+# NÃO renomeie este arquivo: o versionCode é o número da execução deste workflow e voltaria a 1 (as atualizações parariam).
+# Requer o segredo APK_SENHA (Settings > Secrets and variables > Actions): senha que protege a chave de assinatura,
+# guardada criptografada em android-app/ctw.jks.enc. Guarde a senha: sem ela o APK instalado não recebe atualização por cima.
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'android-app/**'
-      - '.github/workflows/apk.yml'
+    inputs:
+      novidades:
+        description: 'O que mudou (aparece para a pessoa na janela de atualização do app)'
+        required: true
+        default: 'Melhorias e correções.'
+      obrigatoria:
+        description: 'Atualização obrigatória? (a pessoa não consegue tocar em "Depois")'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -20,8 +29,17 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      APK_SENHA: ${{ secrets.APK_SENHA }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Conferir segredo
+        run: |
+          if [ -z "$APK_SENHA" ]; then
+            echo "::error::Falta o segredo APK_SENHA (Settings > Secrets and variables > Actions > New repository secret)."
+            exit 1
+          fi
 
       - uses: actions/setup-node@v4
         with:
@@ -32,24 +50,42 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # Chave de assinatura: criada na primeira execução e guardada no cache do GitHub Actions (não aparece no repositório).
-      # Enquanto o cache existir, todo APK sai com a mesma assinatura e instala por cima do anterior.
-      # Antes de distribuir para a equipe, o ideal é guardar a chave nos Secrets do repositório.
-      - name: Chave de assinatura (cache)
+      # Chave de assinatura. Ordem: (1) a criptografada do repositório (android-app/ctw.jks.enc);
+      # (2) a que as versões anteriores guardavam no cache do Actions: é convertida para a senha APK_SENHA e guardada
+      # criptografada, mantendo a MESMA assinatura (quem já instalou continua atualizando por cima);
+      # (3) se não existir nenhuma, cria uma nova (aí quem já instalou precisa desinstalar uma vez).
+      # O passo do cache abaixo só serve para a migração (2); depois da 1ª execução pode ser removido.
+      - name: Chave antiga (cache)
         id: chave
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: chave
           key: workcell-chave-apk-v1
 
-      - name: Criar chave de assinatura (só se ainda não existir)
-        if: steps.chave.outputs.cache-hit != 'true'
+      - name: Chave de assinatura
         run: |
-          mkdir -p chave
-          openssl rand -hex 16 > chave/senha.txt
-          keytool -genkeypair -storetype PKCS12 -keystore chave/workcell.p12 -alias workcell -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass "$(cat chave/senha.txt)" -keypass "$(cat chave/senha.txt)" \
-            -dname "CN=Central Workcell, O=Workcell Tecnologia, C=BR"
+          CHAVE="$RUNNER_TEMP/workcell.p12"
+          if [ -f android-app/ctw.jks.enc ]; then
+            echo "Chave: a criptografada do repositório."
+            openssl enc -d -aes-256-cbc -pbkdf2 -in android-app/ctw.jks.enc -out "$CHAVE" -pass env:APK_SENHA
+          else
+            if [ -f chave/workcell.p12 ] && [ -f chave/senha.txt ]; then
+              echo "Chave: migrada do cache (mesma assinatura das versões anteriores)."
+              keytool -importkeystore -srckeystore chave/workcell.p12 -srcstoretype PKCS12 -srcstorepass "$(cat chave/senha.txt)" \
+                -destkeystore "$CHAVE" -deststoretype PKCS12 -deststorepass "$APK_SENHA" -noprompt
+            else
+              echo "::warning::Chave NOVA criada: quem já tinha o APK instalado precisa desinstalar uma vez."
+              keytool -genkeypair -storetype PKCS12 -keystore "$CHAVE" -alias workcell -keyalg RSA -keysize 2048 -validity 36500 \
+                -storepass "$APK_SENHA" -keypass "$APK_SENHA" -dname "CN=Central Workcell, O=Workcell Tecnologia, C=BR"
+            fi
+            openssl enc -aes-256-cbc -pbkdf2 -salt -in "$CHAVE" -out android-app/ctw.jks.enc -pass env:APK_SENHA
+            git config user.name "github-actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            git add android-app/ctw.jks.enc
+            git commit -m "chore(apk): chave de assinatura (criptografada)"
+            git pull --rebase origin ${{ github.ref_name }}
+            git push origin HEAD:${{ github.ref_name }}
+          fi
 
       - name: Gerar o projeto Android
         working-directory: android-app
@@ -61,9 +97,10 @@ jobs:
           find android/app/src/main/res -name splash.png -exec cp res/black.png {} \;
           # parte nativa própria: plugin da barra de navegação + MainActivity que o registra
           cp native/*.java android/app/src/main/java/br/com/workcell/central/
-          # câmera (campos de foto com capture) e recurso de câmera opcional (não esconde o app de celulares sem câmera)
-          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />#' android/app/src/main/AndroidManifest.xml
-          grep -n "CAMERA\|uses-feature" android/app/src/main/AndroidManifest.xml
+          # câmera (campos de foto com capture), recurso de câmera opcional (não esconde o app de celulares sem câmera)
+          # e permissão de instalar o APK baixado pelo atualizador (o FileProvider e o file_paths.xml já vêm do Capacitor)
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />#' android/app/src/main/AndroidManifest.xml
+          grep -n "CAMERA\|REQUEST_INSTALL\|uses-feature" android/app/src/main/AndroidManifest.xml
           # versão do APK sobe a cada geração (permite instalar por cima do anterior)
           sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"1.${{ github.run_number }}\"/" android/app/build.gradle
           grep -n "versionCode\|versionName" android/app/build.gradle
@@ -76,18 +113,47 @@ jobs:
         run: |
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/zipalign" -p -f 4 android-app/android/app/build/outputs/apk/release/app-release-unsigned.apk alinhado.apk
-          export KS_PASS="$(cat chave/senha.txt)"
-          "$BT/apksigner" sign --ks chave/workcell.p12 --ks-type PKCS12 --ks-key-alias workcell --ks-pass env:KS_PASS --key-pass env:KS_PASS --out Central-Workcell.apk alinhado.apk
-          "$BT/apksigner" verify --verbose Central-Workcell.apk
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/workcell.p12" --ks-type PKCS12 --ks-key-alias workcell --ks-pass env:APK_SENHA --key-pass env:APK_SENHA --out Central-Workcell.apk alinhado.apk
+          "$BT/apksigner" verify --verbose --print-certs Central-Workcell.apk | tee "$RUNNER_TEMP/certificado.txt"
+          # impressão digital da assinatura: tem de ser a mesma em todo APK (senão o Android recusa a atualização por cima)
+          echo "### Assinatura do APK" >> "$GITHUB_STEP_SUMMARY"
+          grep "certificate SHA-256" "$RUNNER_TEMP/certificado.txt" | head -1 >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Publicar na aba Releases
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: apk-beta
-          name: APK de teste (beta)
-          prerelease: true
-          body: |
-            APK do Central Workcell (teste). Instale por cima do anterior: a assinatura é sempre a mesma.
-            O app carrega a versão publicada no GitHub Pages, então as atualizações do app chegam sozinhas.
-            Gerado pela execução nº ${{ github.run_number }}.
-          files: Central-Workcell.apk
+      # apk-versao.json: o app instalado consulta este arquivo para saber se há versão nova (ver Atualizador.java).
+      - name: Descrever a versão
+        env:
+          NOVIDADES: ${{ inputs.novidades }}
+          OBRIGATORIA: ${{ inputs.obrigatoria }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os
+          apk = open('Central-Workcell.apk', 'rb').read()
+          json.dump({
+              'versionCode': int('${{ github.run_number }}'),
+              'versionName': '1.${{ github.run_number }}',
+              'notas': os.environ['NOVIDADES'].strip(),
+              'obrigatoria': os.environ['OBRIGATORIA'] == 'true',
+              'tamanho': len(apk),
+              'sha256': hashlib.sha256(apk).hexdigest(),
+          }, open('apk-versao.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
+          PY
+          cat apk-versao.json
+
+      # Release fixa "apk-latest": os arquivos são trocados por cima (a Release nunca some no meio do envio).
+      # O JSON vai por último: quem lê a versão nova já encontra o APK novo no lugar.
+      - name: Publicar na Release apk-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTAS="APK 1.${{ github.run_number }} (commit ${GITHUB_SHA::7})"
+          if gh release view apk-latest >/dev/null 2>&1; then
+            gh release upload apk-latest Central-Workcell.apk --clobber
+            gh release upload apk-latest apk-versao.json --clobber
+            gh release edit apk-latest --title "Central Workcell APK" --notes "$NOTAS"
+          else
+            gh release create apk-latest Central-Workcell.apk apk-versao.json --title "Central Workcell APK" --notes "$NOTAS" --target "$GITHUB_SHA"
+          fi
+          # Release antiga de teste (era o único link até agora): sai de cena para não haver dois endereços
+          gh release delete apk-beta --yes --cleanup-tag 2>/dev/null || true
+          echo "### APK pronto" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://github.com/${{ github.repository }}/releases/download/apk-latest/Central-Workcell.apk" >> "$GITHUB_STEP_SUMMARY"
