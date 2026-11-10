@@ -5194,6 +5194,21 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
     document.getElementById('goToAdmin')?.addEventListener('click', () => showMainSection('administracao'));
+    document.getElementById('ctwSheetPrecos')?.addEventListener('click', () => {
+        showCustomModal({
+            message: "Digite a senha para sincronizar preços:",
+            showPassword: true,
+            confirmText: "Acessar",
+            onConfirm: (password) => {
+                if (password === "220390") {
+                    window.ctwCarregarModulo('precosync').then(m => m.abrir()).catch(() => showCustomModal({ message: "Erro ao abrir a sincronização. Verifique a internet." }));
+                } else {
+                    showCustomModal({ message: "Senha incorreta." });
+                }
+            },
+            onCancel: () => {}
+        });
+    });
 
     document.getElementById('backFromStock')?.addEventListener('click', () => showMainSection('main'));
     document.getElementById('backFromAdmin')?.addEventListener('click', () => showMainSection('mais'));

@@ -3711,3 +3711,41 @@ html.ctw-leve .ui-sheet, html.ctw-leve #bdSheet, html.ctw-leve .ctw-upd-box, htm
 }
 html.ctw-leve .ui-sheet, html.ctw-leve #bdSheet, html.ctw-leve .ctw-upd-box, html.ctw-leve .ctw-upd-toast, html.ctw-leve .ui-rb { background: var(--card-bg); }
 html.ctw-leve .ui-hero { background: var(--card-bg); border: 1px solid var(--ui-cardbd); box-shadow: var(--card-shadow); }
+
+/* ── Sincronizar preços (Stock 2.0 → CTW) ───────────────────── */
+.ps-overlay { position: fixed; inset: 0; z-index: 1090; background: var(--tertiary-color); color: var(--text-color); display: flex; flex-direction: column; }
+.ps-topo { display: flex; align-items: center; gap: 10px; padding: calc(env(safe-area-inset-top, 0px) + 12px) 14px 12px; font-size: 17px; }
+.ps-x { border: 0; background: var(--secondary-color); color: var(--text-color); width: 38px; height: 38px; border-radius: 12px; font-size: 24px; line-height: 1; }
+.ps-corpo { flex: 1; overflow-y: auto; padding: 4px 16px calc(28px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px; }
+.ps-card { background: var(--card-bg); border: 1px solid var(--ui-cardbd); border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.ps-card p { margin: 0; color: var(--ui-tx2); font-size: 14px; }
+.ps-ok { border-color: var(--primary-color); }
+.ps-alerta { border-color: #E0A030; }
+.ps-lin { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+.ps-lin span { color: var(--ui-tx2); }
+.ps-btn { display: block; width: 100%; border: 0; border-radius: 14px; padding: 13px; font-size: 15px; font-weight: 600; text-align: center; background: var(--secondary-color); color: var(--text-color); cursor: pointer; }
+.ps-prim { background: var(--primary-grad); color: var(--on-primary); }
+.ps-suave { background: transparent; color: var(--ui-tx2); font-weight: 500; }
+.ps-btn:disabled { opacity: .5; }
+.ps-cand { display: flex; flex-direction: column; gap: 4px; text-align: left; width: 100%; border: 1px solid var(--ui-edge); background: var(--card-bg); color: var(--text-color); border-radius: 14px; padding: 12px; }
+.ps-nome { font-weight: 600; font-size: 15px; word-break: break-word; }
+.ps-valor { font-size: 20px; font-weight: 700; color: var(--primary-color); }
+.ps-sub { font-size: 13px; color: var(--ui-tx2); }
+.ps-cap { font-size: 12px; color: var(--ui-tx3); text-transform: uppercase; letter-spacing: .04em; }
+.ps-esp { margin-top: 6px; }
+.ps-prog { font-size: 13px; color: var(--ui-tx2); }
+.ps-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ps-chip { font-size: 11.5px; padding: 3px 8px; border-radius: 999px; background: var(--ui-icbg); color: var(--ui-tx2); }
+.ps-chip.ps-forte { background: var(--ui-bad-bg); color: #FF6B6B; font-weight: 600; }
+.ps-it { display: flex; align-items: center; gap: 10px; background: var(--card-bg); border-radius: 14px; padding: 10px 12px; }
+.ps-it.ps-sus { box-shadow: inset 0 0 0 1.5px #E0A030; }
+.ps-grow { flex: 1; min-width: 0; }
+.ps-aviso { font-size: 12.5px; color: #E0A030; margin-top: 2px; }
+.ps-ck input { width: 22px; height: 22px; }
+.ps-msg { padding: 14px; text-align: center; color: var(--ui-tx2); font-size: 14px; }
+.ps-erro { color: #FF6B6B; }
+.ps-busca input { width: 100%; box-sizing: border-box; border: 1px solid var(--ui-edge); background: var(--secondary-color); color: var(--text-color); border-radius: 12px; padding: 11px 12px; font-size: 15px; }
+.ps-det summary { cursor: pointer; color: var(--primary-color); font-size: 14px; }
+.ps-det .ps-sub { padding: 3px 0; }
+.ps-mini { border: 0; background: var(--secondary-color); color: var(--text-color); border-radius: 10px; padding: 7px 10px; font-size: 13px; }
+html.ps-aberto .ui-nav { display: none; }
