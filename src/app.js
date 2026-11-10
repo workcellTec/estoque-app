@@ -8341,14 +8341,13 @@ const btnPostShare = document.getElementById('btnPostShare');
 if (btnPostShare) {
     btnPostShare?.addEventListener('click', () => {
         if (lastSavedBookipData) {
-            // Truque de copiar e-mail antes
-            if (lastSavedBookipData.email) {
-                navigator.clipboard.writeText(lastSavedBookipData.email).catch(()=>{});
+            // No Chrome o e-mail vai para a área de transferência (não dá para anexar); no APK o Gmail abre com tudo pronto
+            if (lastSavedBookipData.email && !(window.ctwNativo && window.ctwNativo.ativo())) {
                 showCustomModal({ message: "E-mail copiado! Gerando PDF..." });
             }
             
-            // Usa a função existente de PDF do histórico
-            gerarPdfDoHistorico(lastSavedBookipData, btnPostShare);
+            // Mesma função do botão Gmail do histórico
+            gerarPdfDoHistorico(lastSavedBookipData, btnPostShare, 'gmail');
         }
     });
 }
@@ -8402,7 +8401,7 @@ botoesReset.forEach(idBotao => {
                 const btnShareNovo = btnShareAntigo.cloneNode(true);
                 
                 // Restaura o visual original
-                btnShareNovo.innerHTML = '<i class="bi bi-whatsapp fs-2 d-block mb-2 text-success"></i> <span class="small text-light">Salvar Online</span>';
+                btnShareNovo.innerHTML = '<i class="bi bi-envelope-at-fill fs-2 d-block mb-2 text-success"></i> <span class="small text-light">Gerar documento & enviar por e-mail</span>';
                 btnShareNovo.className = 'btn btn-dark w-100 p-3 border-secondary';
                 btnShareNovo.disabled = false;
                 
@@ -8411,20 +8410,19 @@ botoesReset.forEach(idBotao => {
                     // CORREÇÃO AQUI: Removemos o "window." para ler a variável do módulo
                     if (typeof lastSavedBookipData !== 'undefined' && lastSavedBookipData) {
                         
-                        // Copia e-mail se tiver
-                        if (lastSavedBookipData.email) {
-                            navigator.clipboard.writeText(lastSavedBookipData.email).catch(()=>{});
-                            if(typeof showCustomModal === 'function') showCustomModal({ message: "E-mail copiado! Gerando PDF..." });
+                        // No Chrome o e-mail vai para a área de transferência (a função copia); no APK o Gmail abre pronto
+                        if (lastSavedBookipData.email && !(window.ctwNativo && window.ctwNativo.ativo()) && typeof showCustomModal === 'function') {
+                            showCustomModal({ message: "E-mail copiado! Gerando PDF..." });
                         }
                         
                         // GERA O PDF NOVO
                         if(typeof gerarPdfDoHistorico === 'function') {
-                            gerarPdfDoHistorico(lastSavedBookipData, btnShareNovo);
+                            gerarPdfDoHistorico(lastSavedBookipData, btnShareNovo, 'gmail');
                         }
                     } else {
                         // Se cair aqui, tenta recuperar do window por segurança
                         if(window.lastSavedBookipData) {
-                             gerarPdfDoHistorico(window.lastSavedBookipData, btnShareNovo);
+                             gerarPdfDoHistorico(window.lastSavedBookipData, btnShareNovo, 'gmail');
                         } else {
                              alert("Erro: Nenhum dado salvo encontrado. Salve novamente.");
                         }
@@ -10175,7 +10173,7 @@ const opt = {
         }
 
         // Configura o botão para estado de "Pronto para Enviar"
-        botao.innerHTML = modo === 'compartilhar' ? '<i class="bi bi-share-fill"></i> Enviar PDF' : '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
+        botao.innerHTML = modo === 'compartilhar' ? '<i class="bi bi-share-fill"></i> Enviar PDF' : modo === 'gmail' ? '<i class="bi bi-envelope-at-fill"></i> Enviar PDF' : '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
         botao.classList.remove('btn-primary', 'btn-outline-primary', 'btn-secondary', 'btn-dark'); 
         botao.classList.add('btn-success'); 
         botao.disabled = false; 

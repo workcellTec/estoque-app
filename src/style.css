@@ -1975,6 +1975,8 @@ html.ctw-leve .ui-nav { background: var(--card-bg); -webkit-backdrop-filter: non
 .ui-nav-ic { position: relative; display: flex; }
 .ui-nav-mid { width: 62px; height: 62px; margin-top: -30px; border-radius: 50%; background: var(--primary-grad) !important; color: var(--on-primary) !important; display: flex; align-items: center; justify-content: center; flex: none; box-shadow: 0 6px 16px rgba(10, 127, 88, .35); }
 .ui-nav-mid .ui-ic { width: 30px; height: 30px; }
+/* APK: o teclado redimensiona a página e a barra subia junto, na frente dos campos; com o teclado aberto ela some */
+html.ctw-teclado .ui-nav { display: none; }
 
 /* ── Folhas (Criar novo, Alertas) ── */
 .ui-sheet-wrap { position: fixed; inset: 0; z-index: 1070; }

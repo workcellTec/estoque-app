@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-271'; // Histórico de garantias: Gmail com anexo, Compartilhar universal, Download só salva
+const CACHE = 'ctw-272'; // APK: barra de baixo some com o teclado; enviar garantia vai por e-mail
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

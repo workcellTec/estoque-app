@@ -326,6 +326,16 @@
                 if (instalado || !nat()) return;
                 instalado = true;
 
+                // teclado aberto: no APK a página encolhe e a barra de baixo subiria na frente dos campos; a classe a esconde (ver .ui-nav no CSS)
+                var alturaBase = window.innerHeight;
+                function vigiarTeclado() {
+                    var h = window.innerHeight;
+                    if (h > alturaBase) alturaBase = h;
+                    document.documentElement.classList.toggle('ctw-teclado', alturaBase - h > 150);
+                }
+                window.addEventListener('resize', vigiarTeclado);
+                window.addEventListener('orientationchange', function () { setTimeout(function () { alturaBase = window.innerHeight; vigiarTeclado(); }, 400); });
+
                 window.addEventListener('ctwWidgetAcao', lerAcaoWidget);
                 document.addEventListener('visibilitychange', function () { if (!document.hidden) lerAcaoWidget(); });
                 lerAcaoWidget();
@@ -1686,8 +1696,8 @@
             <div class="row g-2 mb-3">
     <div class="col-12">
         <button id="btnPostShare" class="btn btn-dark w-100 p-3 border-secondary">
-            <i class="bi bi-whatsapp fs-2 d-block mb-2 text-success"></i> 
-            <span class="small text-light">Gerar documento & enviar </span>
+            <i class="bi bi-envelope-at-fill fs-2 d-block mb-2 text-success"></i> 
+            <span class="small text-light">Gerar documento & enviar por e-mail </span>
         </button>
     </div>
 </div>
@@ -2046,7 +2056,7 @@ window.addEventListener('load', function() {
             <span class="ui-grow">Sair</span>
         </button>
     </div>
-    <div class="ui-versao" id="ctwVersaoApp">Central Workcell · versão ctw-271</div>
+    <div class="ui-versao" id="ctwVersaoApp">Central Workcell · versão ctw-272</div>
 </div>
 
 <!-- ═══════════════════════════════════════════════
@@ -3317,7 +3327,7 @@ window.addEventListener('load', function() {
                 sonda.remove();
                 var selo = document.createElement('div');
                 selo.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;font:10px/1.3 monospace;background:rgba(0,0,0,.8);color:#0f0;padding:3px 6px;pointer-events:none;';
-                selo.textContent = 'ctw-271 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
+                selo.textContent = 'ctw-272 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
                     ' | modo=' + (matchMedia('(display-mode: standalone)').matches ? 'app instalado' : 'navegador') + ' | tela=' + innerWidth + 'x' + innerHeight;
                 document.body.appendChild(selo);
             }, 2500);
