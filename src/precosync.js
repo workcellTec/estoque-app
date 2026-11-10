@@ -2,7 +2,7 @@
 // precosync.js — Sincronizar preços: catálogo do Stock 2.0 (PDF) → CTW
 // Atualiza SOMENTE o campo "valor" de products/{id}. Nada mais é tocado.
 // Casamento: nome idêntico (normalizado) → vínculo já aprendido → pergunta ao admin.
-// Firebase: settings/precosync/{aliases, ignoradosCtw, log}
+// Firebase: settings/precosync/{aliases, ignoradosPdf, ignoradosCtw, log}
 // ================================================================
 
 import { ref, get, update, push, query, orderByKey, limitToLast }
@@ -165,12 +165,12 @@ async function lerPdf(arquivo) {
 
 // ── Estado e acesso ao banco ────────────────────────────────────
 let S = null;           // estado da importação em andamento
-let APR = { aliases: {}, ignoradosCtw: {} };
+let APR = { aliases: {}, ignoradosPdf: {}, ignoradosCtw: {} };
 
 async function carregarAprendizado() {
     const snap = await get(ref(getDb(), BASE));
     const v = snap.val() || {};
-    APR = { aliases: v.aliases || {}, ignoradosCtw: v.ignoradosCtw || {} };
+    APR = { aliases: v.aliases || {}, ignoradosPdf: v.ignoradosPdf || {}, ignoradosCtw: v.ignoradosCtw || {} };
 }
 
 function usuario() { try { return localStorage.getItem('ctwUserProfile') || ''; } catch (e) { return ''; } }
@@ -214,6 +214,9 @@ function classificar(linhasPdf, produtos) {
         restantes.push(r);
     }
     for (const r of restantes) {
+        // "Não existe no CTW" respondido antes: não pergunta de novo (só "Decidir depois" volta a perguntar)
+        const jaIgnorado = (r.codigo && APR.ignoradosPdf[chaveCodigo(r.codigo)]) || APR.ignoradosPdf[chaveNome(r.an)];
+        if (jaIgnorado) { resultado.semCtw.push(r); continue; }
         const cands = candidatos(r, ctw, reivindicado, LIMIAR_PERGUNTA);
         if (cands.length) resultado.perguntas.push(r); else resultado.semCtw.push(r);
     }
@@ -295,7 +298,7 @@ async function aoEscolherPdf(arq) {
         if (!produtos.length) throw new Error('O CTW ainda não carregou os produtos. Aguarde alguns segundos e tente de novo.');
         await carregarAprendizado();
         const cl = classificar(linhas, produtos);
-        S = { arquivo: arq.name, avisos, cl, linhas, decisoes: [], novosAliases: [], pularResto: false, fila: cl.perguntas.slice(), total: cl.perguntas.length, aceitar: {} };
+        S = { arquivo: arq.name, avisos, cl, linhas, decisoes: [], novosAliases: [], novosIgnoradosPdf: [], pularResto: false, fila: cl.perguntas.slice(), total: cl.perguntas.length, aceitar: {} };
         proximaPergunta();
     } catch (e) {
         tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div><button type="button" class="ps-btn" data-act="inicio">Voltar</button>`);
@@ -404,7 +407,7 @@ function telaPrevia() {
 }
 
 // ── Aplicar ─────────────────────────────────────────────────────
-async function gravar(itens, aliases, ignoradosCtw, arquivo, tipo) {
+async function gravar(itens, aliases, ignoradosPdf, ignoradosCtw, arquivo, tipo) {
     const db = getDb();
     const logId = push(ref(db, BASE + '/log')).key;
     const upd = {};
@@ -420,8 +423,11 @@ async function gravar(itens, aliases, ignoradosCtw, arquivo, tipo) {
         const val = { pid: c.id, nomeEstoque: r.nome, nomeCtw: c.nome, codigo: r.codigo || '', spec: assinatura(r.an), quando: Date.now() };
         upd[`${BASE}/aliases/${chaveNome(r.an)}`] = val;
         if (r.codigo) upd[`${BASE}/aliases/${chaveCodigo(r.codigo)}`] = val;
+        upd[`${BASE}/ignoradosPdf/${chaveNome(r.an)}`] = null;
+        if (r.codigo) upd[`${BASE}/ignoradosPdf/${chaveCodigo(r.codigo)}`] = null;
         upd[`${BASE}/ignoradosCtw/${c.id}`] = null;
     }
+    for (const r of ignoradosPdf) upd[`${BASE}/ignoradosPdf/${r.codigo ? chaveCodigo(r.codigo) : chaveNome(r.an)}`] = { nome: r.nome, quando: Date.now() };
     for (const c of ignoradosCtw) upd[`${BASE}/ignoradosCtw/${c.id}`] = { nome: c.nome, quando: Date.now() };
     if (!Object.keys(upd).length) return;
     if (itens.length) {                // poda registros antigos junto com a gravação
@@ -439,7 +445,7 @@ async function aplicar() {
     const seguros = alvo.filter(x => !mexidos.includes(x));
     tela('<div class="ps-msg">Aplicando…</div>');
     try {
-        await gravar(seguros, S.novosAliases, [], S.arquivo, 'importacao');
+        await gravar(seguros, S.novosAliases, S.novosIgnoradosPdf, [], S.arquivo, 'importacao');
     } catch (e) {
         const regra = /permission/i.test(e.message || '') ? ' O Firebase precisa liberar escrita no caminho “settings/precosync” nas regras do banco.' : '';
         tela(`<div class="ps-msg ps-erro">Não consegui gravar (${esc(e.message)}). Nada foi alterado.${regra}</div><button type="button" class="ps-btn" data-act="previa">Voltar à prévia</button>`);
@@ -586,7 +592,8 @@ async function adicionarProduto(r, nome, valorTxt) {
     const upd = { [`products/${id}`]: { nome, valor: Math.round(valor * 100) / 100, quantidade: 0, cores: [], ignorarContagem: false, tag: 'Nenhuma' } };
     const val = { pid: id, nomeEstoque: r.nome, nomeCtw: nome, codigo: r.codigo || '', spec: assinatura(r.an), quando: Date.now() };
     upd[`${BASE}/aliases/${chaveNome(r.an)}`] = val;
-    if (r.codigo) upd[`${BASE}/aliases/${chaveCodigo(r.codigo)}`] = val;
+    upd[`${BASE}/ignoradosPdf/${chaveNome(r.an)}`] = null;
+    if (r.codigo) { upd[`${BASE}/aliases/${chaveCodigo(r.codigo)}`] = val; upd[`${BASE}/ignoradosPdf/${chaveCodigo(r.codigo)}`] = null; }
     await update(ref(db), upd);
     APR.aliases[chaveNome(r.an)] = val;
     S.cl.reivindicado.set(id, r);
@@ -618,11 +625,12 @@ async function telaVinculos() {
     try { await carregarAprendizado(); } catch (e) { tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div>`); return; }
     const vistos = new Set();
     const al = Object.entries(APR.aliases).filter(([k, v]) => { const id = v.pid + '|' + v.nomeEstoque; if (vistos.has(id)) return false; vistos.add(id); return true; });
-    const nIgC = Object.keys(APR.ignoradosCtw).length;
+    const nIgP = Object.keys(APR.ignoradosPdf).length, nIgC = Object.keys(APR.ignoradosCtw).length;
     tela(`
       <div class="ps-card">
+        <div class="ps-lin"><span>Itens do Stock 2.0 marcados “não existe no CTW”</span><b>${nIgP}</b></div>
         <div class="ps-lin"><span>Produtos do CTW marcados “não está no Stock 2.0”</span><b>${nIgC}</b></div>
-        ${nIgC ? '<button type="button" class="ps-btn" data-act="esquecerign">Voltar a perguntar sobre esses itens</button>' : ''}
+        ${(nIgP || nIgC) ? '<button type="button" class="ps-btn" data-act="esquecerign">Voltar a perguntar sobre esses itens</button>' : ''}
       </div>
       <div class="ps-cap ps-esp">Vínculos aprendidos (${al.length})</div>
       ${al.map(([k, v]) => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(v.nomeEstoque)}</div><div class="ps-sub">= ${esc(v.nomeCtw)}</div></div><button type="button" class="ps-mini" data-act="rmvinculo" data-pid="${esc(v.pid)}" data-nome="${esc(v.nomeEstoque)}">Remover</button></div>`).join('') || '<div class="ps-msg">Nenhum vínculo ainda.</div>'}
@@ -666,15 +674,15 @@ async function aoClicar(e) {
         if (act === 'vinculos') return telaVinculos();
         if (act === 'desfazer') return desfazer(b.dataset.id);
         if (act === 'rmvinculo') { await removerVinculo(b.dataset.pid, b.dataset.nome); return telaVinculos(); }
-        if (act === 'esquecerign') { await update(ref(getDb()), { [`${BASE}/ignoradosCtw`]: null }); return telaVinculos(); }
+        if (act === 'esquecerign') { await update(ref(getDb()), { [`${BASE}/ignoradosPdf`]: null, [`${BASE}/ignoradosCtw`]: null }); return telaVinculos(); }
         if (!S) return;
         if (act === 'mesmo') {
             const r = S.fila[0], c = S.cl.ctw.find(x => x.id === b.dataset.id);
             if (!r || !c || S.cl.reivindicado.has(c.id)) return;
             confirmarVinculo(r, c); S.fila.shift(); return proximaPergunta();
         }
-        // "Não existe no CTW" não grava nada: na próxima importação pergunta de novo (o produto pode ser cadastrado depois)
-        if (act === 'naoexiste') { const r = S.fila.shift(); S.cl.semCtw.push(r); return proximaPergunta(); }
+        // "Não existe no CTW" é lembrado (não pergunta mais); "Decidir depois" não grava nada e volta a perguntar
+        if (act === 'naoexiste') { const r = S.fila.shift(); S.novosIgnoradosPdf.push(r); S.cl.semCtw.push(r); return proximaPergunta(); }
         if (act === 'pular') { const r = S.fila.shift(); S.cl.semCtw.push(r); return proximaPergunta(); }
         if (act === 'pularresto') { S.pularResto = true; return telaPrevia(); }
         if (act === 'previa') return telaPrevia();
@@ -702,7 +710,7 @@ async function aoClicar(e) {
         if (act === 'pularctw') { (S.ctwDescartados = S.ctwDescartados || new Set()).add(S.vinculo.c.id); return proximoCtw(); }
         if (act === 'semestoque') {
             const c = S.vinculo.c;
-            await gravar([], [], [c], S.arquivo, 'vinculo');
+            await gravar([], [], [], [c], S.arquivo, 'vinculo');
             APR.ignoradosCtw[c.id] = { nome: c.nome };
             return proximoCtw();
         }
@@ -713,7 +721,7 @@ async function aoClicar(e) {
             const atual = valorCtw((window.products || []).find(p => p.id === c.id) || { valor: de });
             if (!igual(atual, de)) throw new Error('Esse preço foi alterado por outra pessoa agora. Volte e tente de novo.');
             b.disabled = true;
-            await gravar(!igual(de, para) && para > 0 ? [item] : [], [{ r, c }], [], S.arquivo, 'vinculo');
+            await gravar(!igual(de, para) && para > 0 ? [item] : [], [{ r, c }], [], [], S.arquivo, 'vinculo');
             S.cl.reivindicado.set(c.id, r);
             (S.vinculados = S.vinculados || new Set()).add(r.i);
             APR.aliases[chaveNome(r.an)] = { pid: c.id };
