@@ -12,6 +12,7 @@ const PDFJS_URL    = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf
 const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 // As regras do Firebase só liberam caminhos conhecidos; "settings" já é liberado e usado por outros recursos.
 const BASE = 'settings/precosync';
+const DIAS_EM_FALTA = 15;          // produto "em falta" some da revisão por esse tempo; depois volta a aparecer
 const MAX_LOGS = 10;               // o nó "settings" é baixado a cada abertura do app: mantém só os últimos registros
 const LIMITE_SUSPEITO = 0.30;      // variação acima disso exige confirmação explícita
 const LIMIAR_PERGUNTA = 0.5;       // semelhança mínima de nome para perguntar ao admin
@@ -407,7 +408,7 @@ function telaPrevia() {
 }
 
 // ── Aplicar ─────────────────────────────────────────────────────
-async function gravar(itens, aliases, ignoradosPdf, ignoradosCtw, arquivo, tipo) {
+async function gravar(itens, aliases, ignoradosPdf, arquivo, tipo, extra) {
     const db = getDb();
     const logId = push(ref(db, BASE + '/log')).key;
     const upd = {};
@@ -428,7 +429,7 @@ async function gravar(itens, aliases, ignoradosPdf, ignoradosCtw, arquivo, tipo)
         upd[`${BASE}/ignoradosCtw/${c.id}`] = null;
     }
     for (const r of ignoradosPdf) upd[`${BASE}/ignoradosPdf/${r.codigo ? chaveCodigo(r.codigo) : chaveNome(r.an)}`] = { nome: r.nome, quando: Date.now() };
-    for (const c of ignoradosCtw) upd[`${BASE}/ignoradosCtw/${c.id}`] = { nome: c.nome, quando: Date.now() };
+    Object.assign(upd, extra || {});
     if (!Object.keys(upd).length) return;
     if (itens.length) {                // poda registros antigos junto com a gravação
         const antigos = Object.keys((await get(ref(db, BASE + '/log'))).val() || {}).sort().slice(0, -(MAX_LOGS - 1));
@@ -445,7 +446,11 @@ async function aplicar() {
     const seguros = alvo.filter(x => !mexidos.includes(x));
     tela('<div class="ps-msg">Aplicando…</div>');
     try {
-        await gravar(seguros, S.novosAliases, S.novosIgnoradosPdf, [], S.arquivo, 'importacao');
+        // quem voltou a aparecer no PDF deixa de ser "em falta"/"fora do estoque"
+        const voltou = {};
+        S.cl.casados.forEach(({ c }) => { if (APR.ignoradosCtw[c.id]) voltou[`${BASE}/ignoradosCtw/${c.id}`] = null; });
+        await gravar(seguros, S.novosAliases, S.novosIgnoradosPdf, S.arquivo, 'importacao', voltou);
+        Object.keys(voltou).forEach(k => delete APR.ignoradosCtw[k.split('/').pop()]);
     } catch (e) {
         const regra = /permission/i.test(e.message || '') ? ' O Firebase precisa liberar escrita no caminho “settings/precosync” nas regras do banco.' : '';
         tela(`<div class="ps-msg ps-erro">Não consegui gravar (${esc(e.message)}). Nada foi alterado.${regra}</div><button type="button" class="ps-btn" data-act="previa">Voltar à prévia</button>`);
@@ -456,8 +461,11 @@ async function aplicar() {
 }
 
 // ── Relatório ───────────────────────────────────────────────────
+// "Em falta" vale por alguns dias (tem 'ate'); "Não está no Stock 2.0" não expira
+const ctwEscondido = id => { const e = APR.ignoradosCtw[id]; return !!e && (!e.ate || e.ate > Date.now()); };
+
 function ctwSemPdf() {
-    return S.cl.ctw.filter(c => !S.cl.reivindicado.has(c.id) && !APR.ignoradosCtw[c.id]
+    return S.cl.ctw.filter(c => !S.cl.reivindicado.has(c.id) && !ctwEscondido(c.id)
         && !(S.ctwDescartados && S.ctwDescartados.has(c.id)));
 }
 
@@ -467,6 +475,7 @@ function telaRelatorio() {
     const confirmados = S.aplicados.filter(x => x.origem === 'confirmado' || x.origem === 'vinculo').length;
     const semMudanca = m.filter(x => !x.mudou && !x.invalido).length;
     const faltam = ctwSemPdf();
+    const emFalta = S.cl.ctw.filter(c => !S.cl.reivindicado.has(c.id) && ctwEscondido(c.id) && APR.ignoradosCtw[c.id].ate).length;
     const poolPdf = poolSemCtw();
     tela(`
       <div class="ps-card ps-ok"><b>Importação concluída</b>
@@ -486,6 +495,7 @@ function telaRelatorio() {
       </div>
       <div class="ps-card ${faltam.length ? 'ps-alerta' : ''}">
         <div class="ps-lin"><span>Produtos do CTW que não achei no Stock 2.0 (preço não mexido)</span><b>${faltam.length}</b></div>
+        ${emFalta ? `<div class="ps-lin"><span>Em falta (escondidos por ${DIAS_EM_FALTA} dias, voltam depois)</span><b>${emFalta}</b></div>` : ''}
         ${faltam.length ? `<button type="button" class="ps-btn ps-prim" data-act="revisar">Ver e vincular manualmente</button>` : ''}
       </div>
       <button type="button" class="ps-btn" data-act="fechar">Fechar</button>`);
@@ -508,7 +518,8 @@ function proximoCtw() {
       ${cands.map(x => botaoPdf(x.r, c, x.d)).join('') || '<div class="ps-cap">Nenhuma sugestão parecida.</div>'}
       <div class="ps-busca"><input type="search" id="psBuscaPdf" placeholder="Buscar na lista do Stock 2.0…" autocomplete="off"></div>
       <div id="psBuscaRes"></div>
-      <button type="button" class="ps-btn" data-act="semestoque">Não está no Stock 2.0 (manter no CTW)</button>
+      <button type="button" class="ps-btn" data-act="emfalta">Em falta no estoque (esconder por ${DIAS_EM_FALTA} dias)</button>
+      <button type="button" class="ps-btn" data-act="semestoque">Não trabalhamos mais (manter no CTW, não perguntar)</button>
       <button type="button" class="ps-btn ps-perigo" data-act="excluirctw">Excluir do CTW</button>
       <button type="button" class="ps-btn ps-suave" data-act="pularctw">Decidir depois</button>
       <button type="button" class="ps-btn ps-suave" data-act="relatorio">Voltar ao relatório</button>`);
@@ -611,6 +622,13 @@ function telaExcluirCtw() {
       <button type="button" class="ps-btn ps-suave" data-act="revisar">Cancelar</button>`);
 }
 
+async function marcarCtw(c, dias) {
+    const val = { nome: c.nome, quando: Date.now() };
+    if (dias) val.ate = Date.now() + dias * 86400000;
+    await update(ref(getDb()), { [`${BASE}/ignoradosCtw/${c.id}`]: val });
+    APR.ignoradosCtw[c.id] = val;
+}
+
 async function excluirProduto(c) {
     const upd = { [`products/${c.id}`]: null, [`${BASE}/ignoradosCtw/${c.id}`]: null };
     for (const [k, v] of Object.entries(APR.aliases)) if (v && v.pid === c.id) upd[`${BASE}/aliases/${k}`] = null;
@@ -629,7 +647,7 @@ async function telaVinculos() {
     tela(`
       <div class="ps-card">
         <div class="ps-lin"><span>Itens do Stock 2.0 marcados “não existe no CTW”</span><b>${nIgP}</b></div>
-        <div class="ps-lin"><span>Produtos do CTW marcados “não está no Stock 2.0”</span><b>${nIgC}</b></div>
+        <div class="ps-lin"><span>Produtos do CTW marcados “em falta” ou “não trabalhamos mais”</span><b>${nIgC}</b></div>
         ${(nIgP || nIgC) ? '<button type="button" class="ps-btn" data-act="esquecerign">Voltar a perguntar sobre esses itens</button>' : ''}
       </div>
       <div class="ps-cap ps-esp">Vínculos aprendidos (${al.length})</div>
@@ -710,10 +728,10 @@ async function aoClicar(e) {
         if (act === 'pularctw') { (S.ctwDescartados = S.ctwDescartados || new Set()).add(S.vinculo.c.id); return proximoCtw(); }
         if (act === 'semestoque') {
             const c = S.vinculo.c;
-            await gravar([], [], [], [c], S.arquivo, 'vinculo');
-            APR.ignoradosCtw[c.id] = { nome: c.nome };
+            await marcarCtw(c, 0);
             return proximoCtw();
         }
+        if (act === 'emfalta') { await marcarCtw(S.vinculo.c, DIAS_EM_FALTA); return proximoCtw(); }
         if (act === 'vincular') {
             const { c, sel: r } = S.vinculo;
             const para = r.valor, de = c.valor;
@@ -721,7 +739,7 @@ async function aoClicar(e) {
             const atual = valorCtw((window.products || []).find(p => p.id === c.id) || { valor: de });
             if (!igual(atual, de)) throw new Error('Esse preço foi alterado por outra pessoa agora. Volte e tente de novo.');
             b.disabled = true;
-            await gravar(!igual(de, para) && para > 0 ? [item] : [], [{ r, c }], [], [], S.arquivo, 'vinculo');
+            await gravar(!igual(de, para) && para > 0 ? [item] : [], [{ r, c }], [], S.arquivo, 'vinculo');
             S.cl.reivindicado.set(c.id, r);
             (S.vinculados = S.vinculados || new Set()).add(r.i);
             APR.aliases[chaveNome(r.an)] = { pid: c.id };
