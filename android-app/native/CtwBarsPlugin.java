@@ -6,6 +6,9 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.view.Window;
 
+import java.io.File;
+
+import androidx.core.content.FileProvider;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
@@ -57,6 +60,47 @@ public class CtwBarsPlugin extends Plugin {
                 call.reject("nenhum app abre este link");
             } catch (Exception e) {
                 call.reject("nao consegui abrir: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Abre o WhatsApp direto na conversa do cliente, com o arquivo anexado (atalho não documentado da Meta: EXTRA_JID).
+     * Se o WhatsApp ignorar o JID, ele abre a lista de contatos já com o arquivo. Sem WhatsApp, rejeita e o app usa o compartilhamento normal.
+     */
+    @PluginMethod
+    public void enviarWhatsApp(final PluginCall call) {
+        final String arquivo = call.getString("arquivo");
+        final String numero = call.getString("numero");
+        final String texto = call.getString("texto", "");
+        if (arquivo == null || numero == null || !numero.matches("\\d{12,13}")) {
+            call.reject("dados invalidos");
+            return;
+        }
+        getActivity().runOnUiThread(() -> {
+            try {
+                File f = new File(Uri.parse(arquivo).getPath());
+                Uri conteudo = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", f);
+                String[] pacotes = {"com.whatsapp", "com.whatsapp.w4b"};
+                for (String pacote : pacotes) {
+                    Intent it = new Intent(Intent.ACTION_SEND);
+                    it.setType("application/pdf");
+                    it.putExtra(Intent.EXTRA_STREAM, conteudo);
+                    if (texto != null && !texto.isEmpty()) it.putExtra(Intent.EXTRA_TEXT, texto);
+                    it.putExtra("jid", numero + "@s.whatsapp.net");
+                    it.setPackage(pacote);
+                    it.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    try {
+                        getActivity().startActivity(it);
+                        call.resolve();
+                        return;
+                    } catch (ActivityNotFoundException e) {
+                        // tenta o próximo (WhatsApp Business)
+                    }
+                }
+                call.reject("whatsapp nao instalado");
+            } catch (Exception e) {
+                call.reject("nao consegui abrir o whatsapp: " + e.getMessage());
             }
         });
     }

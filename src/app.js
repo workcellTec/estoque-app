@@ -3661,10 +3661,10 @@ function ctwBaixarPdf(blob, nomeArq) {
     setTimeout(() => URL.revokeObjectURL(url), 60000);   // revogar já causava download vazio em alguns Android
 }
 
-async function ctwEntregarPdf(blob, nomeArq, nomeCliente) {
+async function ctwEntregarPdf(blob, nomeArq, nomeCliente, telefone) {
     const file = new File([blob], nomeArq, { type: 'application/pdf' });
     const baixar = () => ctwBaixarPdf(blob, nomeArq);
-    const dadosShare = { files: [file], title: 'Contrato Workcell Tecnologia', text: 'Olá ' + (nomeCliente || 'Cliente') + ', segue seu contrato em anexo.' };
+    const dadosShare = { files: [file], title: 'Contrato Workcell Tecnologia', text: 'Olá ' + (nomeCliente || 'Cliente') + ', segue seu contrato em anexo.', telefone: telefone };
     if (!(navigator.canShare && navigator.canShare({ files: [file] }))) { baixar(); return 'baixado'; }
     try {
         await navigator.share(dadosShare);
@@ -3799,7 +3799,7 @@ async function ctwFinalizarContrato() {
             return;
         }
         ctwProgresso();
-        const resultado = await ctwEntregarPdf(blob, ctwNomeArquivoContrato(dados.compradorNome), dados.compradorNome);
+        const resultado = await ctwEntregarPdf(blob, ctwNomeArquivoContrato(dados.compradorNome), dados.compradorNome, dados.compradorTelefone);
         showCustomModal({ message: resultado === 'cancelado' ? 'Contrato salvo! O PDF não foi enviado — use Histórico → Reenviar quando quiser. ✅' : 'Contrato salvo! ✅' });
     } finally {
         ctwProgresso();
@@ -4293,7 +4293,7 @@ async function acaoReenviarBoleto(boletoId, boletosArray, soBaixar = false) {
         const blob = await ctwGerarPdfContratoPaginado(ctwDadosContratoDoRegistro(boleto));
         ctwProgresso();
         if (soBaixar) ctwBaixarPdf(blob, ctwNomeArquivoContrato(boleto.compradorNome));
-        else await ctwEntregarPdf(blob, ctwNomeArquivoContrato(boleto.compradorNome), boleto.compradorNome);
+        else await ctwEntregarPdf(blob, ctwNomeArquivoContrato(boleto.compradorNome), boleto.compradorNome, boleto.compradorTelefone);
     } catch (err) {
         console.error('Erro ao reenviar contrato:', err);
         ctwProgresso();
@@ -10134,7 +10134,8 @@ const opt = {
                     await navigator.share({
                         files: [file],
                         title: dados.type === 'orcamento' ? "Orçamento Workcell Tecnologia" : "Documento Workcell Tecnologia",
-                        text: textoCompleto
+                        text: textoCompleto,
+                        telefone: dados.tel
                     });
                     
                     // Sucesso Visual

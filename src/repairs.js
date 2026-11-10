@@ -1347,7 +1347,7 @@ async function _gerarECompartilhar() {
         const pdfFile  = new File([pdfBlob], nomeArq, { type: 'application/pdf' });
 
         if (navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-            await navigator.share({ files: [pdfFile], title: 'Comprovante de Serviço' });
+            await navigator.share({ files: [pdfFile], title: 'Comprovante de Serviço', telefone: repair.numeroCliente });
         } else {
             const url = URL.createObjectURL(pdfBlob);
             const a = document.createElement('a');
