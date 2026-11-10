@@ -344,6 +344,7 @@ function resultadoBusca(q) {
 function aoDigitar(e) {
     if (e.target.id === 'psBusca' && S) resultadoBusca(e.target.value);
     if (e.target.id === 'psBuscaPdf' && S && S.vinculo) resultadoBuscaPdf(e.target.value);
+    if (e.target.id === 'psBuscaAdd' && S) { const box = overlay.querySelector('#psAddRes'); if (box) box.innerHTML = listaAdicionar(e.target.value); }
 }
 function aoMudar(e) {
     if (e.target.id === 'psArquivo') aoEscolherPdf(e.target.files && e.target.files[0]);
@@ -459,12 +460,14 @@ function telaRelatorio() {
     const confirmados = S.aplicados.filter(x => x.origem === 'confirmado' || x.origem === 'vinculo').length;
     const semMudanca = m.filter(x => !x.mudou && !x.invalido).length;
     const faltam = ctwSemPdf();
-    const poolPdf = S.cl.semCtw.concat(S.fila);
+    const poolPdf = poolSemCtw();
     tela(`
       <div class="ps-card ps-ok"><b>Importação concluída</b>
         <div class="ps-lin"><span>Atualizados sem perguntar (nome igual ou já aprendido)</span><b>${semPerguntar}</b></div>
         <div class="ps-lin"><span>Atualizados após sua confirmação</span><b>${confirmados}</b></div>
         <div class="ps-lin"><span>Vínculos novos aprendidos</span><b>${S.novosAliases.length}</b></div>
+        ${S.criados ? `<div class="ps-lin"><span>Produtos novos adicionados ao CTW</span><b>${S.criados}</b></div>` : ''}
+        ${S.excluidos ? `<div class="ps-lin"><span>Produtos excluídos do CTW</span><b>${S.excluidos}</b></div>` : ''}
         <div class="ps-lin"><span>Já estavam com o preço certo</span><b>${semMudanca}</b></div>
         ${S.pulados.length ? `<div class="ps-lin"><span>Variação grande não aplicada</span><b>${S.pulados.length}</b></div>` : ''}
         ${S.mexidos.length ? `<div class="ps-lin"><span>Alterados por outra pessoa durante a importação (não mexi)</span><b>${S.mexidos.length}</b></div>` : ''}
@@ -472,7 +475,7 @@ function telaRelatorio() {
       <div class="ps-card">
         <div class="ps-lin"><span>Itens do Stock 2.0 que não existem no CTW</span><b>${poolPdf.length}</b></div>
         ${S.cl.naoVender.length ? `<div class="ps-lin"><span>Marcados “não vender / tirar peças” (ignorados)</span><b>${S.cl.naoVender.length}</b></div>` : ''}
-        ${poolPdf.length ? `<details class="ps-det"><summary>Ver lista</summary>${poolPdf.map(r => `<div class="ps-sub">${esc(r.nome)} · ${brl(r.valor)}</div>`).join('')}</details>` : ''}
+        ${poolPdf.length ? `<button type="button" class="ps-btn" data-act="adicionar">Ver lista e adicionar ao CTW (opcional)</button>` : ''}
       </div>
       <div class="ps-card ${faltam.length ? 'ps-alerta' : ''}">
         <div class="ps-lin"><span>Produtos do CTW que não achei no Stock 2.0 (preço não mexido)</span><b>${faltam.length}</b></div>
@@ -498,7 +501,8 @@ function proximoCtw() {
       ${cands.map(x => botaoPdf(x.r, c, x.d)).join('') || '<div class="ps-cap">Nenhuma sugestão parecida.</div>'}
       <div class="ps-busca"><input type="search" id="psBuscaPdf" placeholder="Buscar na lista do Stock 2.0…" autocomplete="off"></div>
       <div id="psBuscaRes"></div>
-      <button type="button" class="ps-btn" data-act="semestoque">Não está no Stock 2.0</button>
+      <button type="button" class="ps-btn" data-act="semestoque">Não está no Stock 2.0 (manter no CTW)</button>
+      <button type="button" class="ps-btn ps-perigo" data-act="excluirctw">Excluir do CTW</button>
       <button type="button" class="ps-btn ps-suave" data-act="pularctw">Decidir depois</button>
       <button type="button" class="ps-btn ps-suave" data-act="relatorio">Voltar ao relatório</button>`);
 }
@@ -530,6 +534,78 @@ function telaConfirmarVinculo(r) {
         ${sus ? '<div class="ps-aviso">Variação grande. Confira antes de confirmar.</div>' : ''}</div>
       <button type="button" class="ps-btn ps-prim" data-act="vincular">${igual(c.valor, r.valor) ? 'Vincular (preço já igual)' : (sus ? 'Vincular e atualizar mesmo assim' : 'Vincular e atualizar preço')}</button>
       <button type="button" class="ps-btn ps-suave" data-act="revisar">Voltar</button>`);
+}
+
+// ── Adicionar ao CTW um item do Stock 2.0 que não existe lá ──────
+function poolSemCtw() {
+    return S.cl.semCtw.concat(S.fila).filter(r => !(S.vinculados && S.vinculados.has(r.i)));
+}
+
+function listaAdicionar(q) {
+    const t = semAcento(q || '').toUpperCase().split(/\s+/).filter(Boolean);
+    const lista = poolSemCtw().filter(r => t.every(w => semAcento(r.nome).toUpperCase().includes(w)));
+    return (lista.slice(0, 60).map(r => `
+      <div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(r.nome)}</div><div class="ps-sub">${brl(r.valor)}</div></div>
+        <button type="button" class="ps-mini" data-act="addform" data-i="${r.i}">Adicionar</button></div>`).join('')
+        || '<div class="ps-msg">Nada por aqui.</div>')
+        + (lista.length > 60 ? `<div class="ps-cap">Mostrando 60 de ${lista.length}. Use a busca.</div>` : '');
+}
+
+function telaAdicionar() {
+    S.vinculo = null;
+    tela(`
+      <div class="ps-prog">Itens do Stock 2.0 que não existem no CTW (${poolSemCtw().length})</div>
+      <div class="ps-busca"><input type="search" id="psBuscaAdd" placeholder="Buscar…" autocomplete="off"></div>
+      <div id="psAddRes" class="ps-col">${listaAdicionar('')}</div>
+      <button type="button" class="ps-btn ps-suave" data-act="relatorio">Voltar ao relatório</button>`);
+}
+
+function telaFormAdicionar(r) {
+    S.addSel = r;
+    tela(`
+      <div class="ps-card"><div class="ps-cap">No Stock 2.0</div><div class="ps-nome">${esc(r.nome)}</div><div class="ps-valor">${brl(r.valor)}</div></div>
+      <div class="ps-cap ps-esp">Nome no CTW (pode ajustar)</div>
+      <div class="ps-busca"><input type="text" id="psNomeNovo" value="${esc(r.nome)}" maxlength="120" autocomplete="off"></div>
+      <div class="ps-sub">O app lembra que esse nome do CTW é o mesmo produto do Stock 2.0, então nas próximas importações o preço atualiza sozinho. Entra com quantidade 0 e sem cor.</div>
+      <button type="button" class="ps-btn ps-prim" data-act="addconfirmar">Adicionar ao CTW</button>
+      <button type="button" class="ps-btn ps-suave" data-act="adicionar">Voltar</button>`);
+}
+
+async function adicionarProduto(r, nome) {
+    nome = String(nome || '').replace(/\s+/g, ' ').trim();
+    if (!nome) throw new Error('Digite o nome do produto.');
+    const igualNome = semAcento(nome).toLowerCase();
+    if ((window.products || []).some(p => semAcento(p.nome || '').toLowerCase().trim() === igualNome)) throw new Error('Já existe um produto com esse nome no CTW. Ajuste o nome ou use “Mesmo produto” na importação.');
+    if (!(r.valor > 0)) throw new Error('O valor desse item no Stock 2.0 é inválido.');
+    const db = getDb();
+    const id = push(ref(db, 'products')).key;
+    const upd = { [`products/${id}`]: { nome, valor: Math.round(r.valor * 100) / 100, quantidade: 0, cores: [], ignorarContagem: false, tag: 'Nenhuma' } };
+    const val = { pid: id, nomeEstoque: r.nome, nomeCtw: nome, codigo: r.codigo || '', spec: assinatura(r.an), quando: Date.now() };
+    upd[`${BASE}/aliases/${chaveNome(r.an)}`] = val;
+    if (r.codigo) upd[`${BASE}/aliases/${chaveCodigo(r.codigo)}`] = val;
+    await update(ref(db), upd);
+    APR.aliases[chaveNome(r.an)] = val;
+    S.cl.reivindicado.set(id, r);
+    (S.vinculados = S.vinculados || new Set()).add(r.i);   // sai da lista de "não existe no CTW"
+    S.criados = (S.criados || 0) + 1;
+}
+
+// ── Excluir do CTW um produto que não está no Stock 2.0 ─────────
+function telaExcluirCtw() {
+    const c = S.vinculo.c;
+    tela(`
+      <div class="ps-card"><div class="ps-cap">Excluir do CTW</div><div class="ps-nome">${esc(c.nome)}</div><div class="ps-valor">${brl(c.valor)}</div>
+        <div class="ps-aviso">O produto é apagado do CTW (estoque, busca e vendas). Isso não dá para desfazer por aqui.</div></div>
+      <button type="button" class="ps-btn ps-perigo" data-act="excluirctw2">Sim, excluir definitivamente</button>
+      <button type="button" class="ps-btn ps-suave" data-act="revisar">Cancelar</button>`);
+}
+
+async function excluirProduto(c) {
+    const upd = { [`products/${c.id}`]: null, [`${BASE}/ignoradosCtw/${c.id}`]: null };
+    for (const [k, v] of Object.entries(APR.aliases)) if (v && v.pid === c.id) upd[`${BASE}/aliases/${k}`] = null;
+    await update(ref(getDb()), upd);
+    S.cl.reivindicado.set(c.id, { excluido: true });       // some da fila de revisão
+    S.excluidos = (S.excluidos || 0) + 1;
 }
 
 // ── Vínculos e ignorados ────────────────────────────────────────
@@ -601,6 +677,16 @@ async function aoClicar(e) {
         if (act === 'aplicar') return aplicar();
         if (act === 'relatorio') return telaRelatorio();
         if (act === 'revisar') return proximoCtw();
+        if (act === 'adicionar') return telaAdicionar();
+        if (act === 'addform') { const r = poolSemCtw().find(x => String(x.i) === b.dataset.i); if (r) telaFormAdicionar(r); return; }
+        if (act === 'addconfirmar') {
+            const nome = overlay.querySelector('#psNomeNovo').value;
+            b.disabled = true;
+            await adicionarProduto(S.addSel, nome);
+            return telaAdicionar();
+        }
+        if (act === 'excluirctw') return telaExcluirCtw();
+        if (act === 'excluirctw2') { b.disabled = true; await excluirProduto(S.vinculo.c); return proximoCtw(); }
         if (act === 'escolherpdf') { const r = S.vinculo.pool.find(x => String(x.i) === b.dataset.i); if (r) telaConfirmarVinculo(r); return; }
         if (act === 'pularctw') { (S.ctwDescartados = S.ctwDescartados || new Set()).add(S.vinculo.c.id); return proximoCtw(); }
         if (act === 'semestoque') {

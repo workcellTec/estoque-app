@@ -3749,3 +3749,5 @@ html.ctw-leve .ui-hero { background: var(--card-bg); border: 1px solid var(--ui-
 .ps-det .ps-sub { padding: 3px 0; }
 .ps-mini { border: 0; background: var(--secondary-color); color: var(--text-color); border-radius: 10px; padding: 7px 10px; font-size: 13px; }
 html.ps-aberto .ui-nav { display: none; }
+.ps-perigo { background: var(--ui-bad-bg); color: #FF6B6B; }
+.ps-col { display: flex; flex-direction: column; gap: 8px; }
