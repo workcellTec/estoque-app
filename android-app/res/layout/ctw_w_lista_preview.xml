@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/ctw_w_bg"
+    android:orientation="vertical"
+    android:padding="10dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="28dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="3dp"
+        android:paddingRight="2dp">
+
+        <ImageView
+            android:layout_width="19dp"
+            android:layout_height="19dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ctw_w_escudo" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:text="CreditoScan"
+            android:textColor="@color/ctw_w_txt"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginLeft="6dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/ctw_w_mute"
+            android:textSize="11sp" android:text="· 1 em análise"
+        />
+
+        <TextView
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:background="@drawable/ctw_w_circ_ok"
+            android:contentDescription="Nova análise"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="+"
+            android:textColor="@color/ctw_w_sobre"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:textColor="@color/ctw_w_mute"
+        android:textSize="12sp" android:visibility="gone"
+        />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="5dp"
+        android:background="@drawable/ctw_w_row"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="10dp"
+        android:paddingRight="12dp">
+
+        <TextView
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:textSize="11sp"
+            android:textStyle="bold" android:text="62" android:textColor="@color/ctw_w_ok" android:background="@drawable/ctw_w_circ_run"
+        />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginLeft="10dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/ctw_w_txt"
+                android:textSize="12.5sp"
+                android:textStyle="bold" android:text="Maria S."
+        />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/ctw_w_mute"
+                android:textSize="10.5sp" android:text="Lendo o extrato"
+        />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:textSize="20sp"
+            android:textStyle="bold" android:visibility="gone"
+        />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="5dp"
+        android:background="@drawable/ctw_w_row"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="10dp"
+        android:paddingRight="12dp">
+
+        <TextView
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:textSize="11sp"
+            android:textStyle="bold" android:text="✓" android:textColor="@color/ctw_w_sobre" android:background="@drawable/ctw_w_circ_ok"
+        />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginLeft="10dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/ctw_w_txt"
+                android:textSize="12.5sp"
+                android:textStyle="bold" android:text="João P."
+        />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/ctw_w_mute"
+                android:textSize="10.5sp" android:text="Aprovado · FORTE"
+        />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:textSize="20sp"
+            android:textStyle="bold" android:text="78" android:textColor="@color/ctw_w_ok"
+        />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="5dp"
+        android:background="@drawable/ctw_w_row"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="10dp"
+        android:paddingRight="12dp">
+
+        <TextView
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:textSize="11sp"
+            android:textStyle="bold" android:text="✕" android:textColor="@color/ctw_w_sobre" android:background="@drawable/ctw_w_circ_bad"
+        />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginLeft="10dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/ctw_w_txt"
+                android:textSize="12.5sp"
+                android:textStyle="bold" android:text="Ana L."
+        />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/ctw_w_mute"
+                android:textSize="10.5sp" android:text="Reprovado"
+        />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:textSize="20sp"
+            android:textStyle="bold" android:text="21" android:textColor="@color/ctw_w_bad"
+        />
+    </LinearLayout>
+
+</LinearLayout>

@@ -2,6 +2,7 @@
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/ctw_w_quadro_desc"
     android:initialLayout="@layout/ctw_w_quadro"
+    android:previewLayout="@layout/ctw_w_quadro_preview"
     android:minWidth="110dp"
     android:minHeight="110dp"
     android:minResizeWidth="110dp"
