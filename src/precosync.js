@@ -324,6 +324,7 @@ function proximaPergunta() {
         </button>`).join('')}
       <div class="ps-busca"><input type="search" id="psBusca" placeholder="Buscar outro produto do CTW…" autocomplete="off"></div>
       <div id="psBuscaRes"></div>
+      <button type="button" class="ps-btn ps-prim" data-act="addform" data-origem="pergunta" data-i="${r.i}">Adicionar ao CTW (editar nome e preço)</button>
       <button type="button" class="ps-btn" data-act="naoexiste">Não existe no CTW</button>
       <button type="button" class="ps-btn ps-suave" data-act="pular">Decidir depois</button>
       <button type="button" class="ps-btn ps-suave" data-act="pularresto">Pular todas as perguntas restantes (${S.fila.length})</button>`);
@@ -560,26 +561,29 @@ function telaAdicionar() {
       <button type="button" class="ps-btn ps-suave" data-act="relatorio">Voltar ao relatório</button>`);
 }
 
-function telaFormAdicionar(r) {
-    S.addSel = r;
+function telaFormAdicionar(r, origem) {
+    S.addSel = r; S.addOrigem = origem || 'lista';
     tela(`
       <div class="ps-card"><div class="ps-cap">No Stock 2.0</div><div class="ps-nome">${esc(r.nome)}</div><div class="ps-valor">${brl(r.valor)}</div></div>
       <div class="ps-cap ps-esp">Nome no CTW (pode ajustar)</div>
       <div class="ps-busca"><input type="text" id="psNomeNovo" value="${esc(r.nome)}" maxlength="120" autocomplete="off"></div>
+      <div class="ps-cap ps-esp">Valor no CTW</div>
+      <div class="ps-busca"><input type="text" id="psValorNovo" inputmode="decimal" value="${esc(r.valor.toFixed(2).replace('.', ','))}" autocomplete="off"></div>
       <div class="ps-sub">O app lembra que esse nome do CTW é o mesmo produto do Stock 2.0, então nas próximas importações o preço atualiza sozinho. Entra com quantidade 0 e sem cor.</div>
       <button type="button" class="ps-btn ps-prim" data-act="addconfirmar">Adicionar ao CTW</button>
-      <button type="button" class="ps-btn ps-suave" data-act="adicionar">Voltar</button>`);
+      <button type="button" class="ps-btn ps-suave" data-act="${S.addOrigem === 'pergunta' ? 'voltarpergunta' : 'adicionar'}">Voltar</button>`);
 }
 
-async function adicionarProduto(r, nome) {
+async function adicionarProduto(r, nome, valorTxt) {
     nome = String(nome || '').replace(/\s+/g, ' ').trim();
     if (!nome) throw new Error('Digite o nome do produto.');
     const igualNome = semAcento(nome).toLowerCase();
     if ((window.products || []).some(p => semAcento(p.nome || '').toLowerCase().trim() === igualNome)) throw new Error('Já existe um produto com esse nome no CTW. Ajuste o nome ou use “Mesmo produto” na importação.');
-    if (!(r.valor > 0)) throw new Error('O valor desse item no Stock 2.0 é inválido.');
+    const valor = parseFloat(String(valorTxt == null ? r.valor : valorTxt).replace(/R\$|\s/g, '').replace(/\./g, '').replace(',', '.'));
+    if (!(valor > 0)) throw new Error('Digite um valor válido (maior que zero).');
     const db = getDb();
     const id = push(ref(db, 'products')).key;
-    const upd = { [`products/${id}`]: { nome, valor: Math.round(r.valor * 100) / 100, quantidade: 0, cores: [], ignorarContagem: false, tag: 'Nenhuma' } };
+    const upd = { [`products/${id}`]: { nome, valor: Math.round(valor * 100) / 100, quantidade: 0, cores: [], ignorarContagem: false, tag: 'Nenhuma' } };
     const val = { pid: id, nomeEstoque: r.nome, nomeCtw: nome, codigo: r.codigo || '', spec: assinatura(r.an), quando: Date.now() };
     upd[`${BASE}/aliases/${chaveNome(r.an)}`] = val;
     if (r.codigo) upd[`${BASE}/aliases/${chaveCodigo(r.codigo)}`] = val;
@@ -678,11 +682,18 @@ async function aoClicar(e) {
         if (act === 'relatorio') return telaRelatorio();
         if (act === 'revisar') return proximoCtw();
         if (act === 'adicionar') return telaAdicionar();
-        if (act === 'addform') { const r = poolSemCtw().find(x => String(x.i) === b.dataset.i); if (r) telaFormAdicionar(r); return; }
+        if (act === 'addform') {
+            const pergunta = b.dataset.origem === 'pergunta';
+            const r = pergunta ? S.fila[0] : poolSemCtw().find(x => String(x.i) === b.dataset.i);
+            if (r) telaFormAdicionar(r, pergunta ? 'pergunta' : 'lista');
+            return;
+        }
+        if (act === 'voltarpergunta') return proximaPergunta();
         if (act === 'addconfirmar') {
             const nome = overlay.querySelector('#psNomeNovo').value;
             b.disabled = true;
-            await adicionarProduto(S.addSel, nome);
+            await adicionarProduto(S.addSel, nome, overlay.querySelector('#psValorNovo').value);
+            if (S.addOrigem === 'pergunta') { S.fila.shift(); return proximaPergunta(); }
             return telaAdicionar();
         }
         if (act === 'excluirctw') return telaExcluirCtw();
