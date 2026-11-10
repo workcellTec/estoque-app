@@ -286,6 +286,14 @@
                     setTimeout(function () { executarAcaoWidget(acao, id, tentativa + 1); }, 400);
                     return;
                 }
+                if (acao.indexOf('doc-') === 0 || acao.indexOf('calc-') === 0) {
+                    // o CreditoScan (e as folhas) ficam POR CIMA das telas: sem fechar, o app abre a tela pedida por baixo e parece que nada mudou
+                    try {
+                        if (typeof window.ctwFecharListaSheet === 'function') window.ctwFecharListaSheet();
+                        if (typeof window.ctwFecharFolhas === 'function') window.ctwFecharFolhas();
+                        for (var i = 0; i < 6 && typeof window._creditoScanBack === 'function' && window._creditoScanBack(); i++) {}
+                    } catch (e) {}
+                }
                 if (acao.indexOf('doc-') === 0 && window.ctwAbrirDoc) window.ctwAbrirDoc(acao.slice(4));              // garantia | contrato | orcamento
                 else if (acao.indexOf('calc-') === 0 && window.ctwAbrirCalculadora) window.ctwAbrirCalculadora(acao.slice(5));   // aparelho | repassar | emprestimo
                 else if (typeof window.ctwCarregarModulo === 'function') {   // CreditoScan: abrir análise, nova análise, lista
@@ -2027,7 +2035,7 @@ window.addEventListener('load', function() {
             <span class="ui-grow">Sair</span>
         </button>
     </div>
-    <div class="ui-versao" id="ctwVersaoApp">Central Workcell · versão ctw-269</div>
+    <div class="ui-versao" id="ctwVersaoApp">Central Workcell · versão ctw-270</div>
 </div>
 
 <!-- ═══════════════════════════════════════════════
@@ -3298,7 +3306,7 @@ window.addEventListener('load', function() {
                 sonda.remove();
                 var selo = document.createElement('div');
                 selo.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;font:10px/1.3 monospace;background:rgba(0,0,0,.8);color:#0f0;padding:3px 6px;pointer-events:none;';
-                selo.textContent = 'ctw-269 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
+                selo.textContent = 'ctw-270 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
                     ' | modo=' + (matchMedia('(display-mode: standalone)').matches ? 'app instalado' : 'navegador') + ' | tela=' + innerWidth + 'x' + innerHeight;
                 document.body.appendChild(selo);
             }, 2500);
