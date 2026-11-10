@@ -4041,8 +4041,7 @@ function renderBoletosHistoryFiltrado(termoBusca) {
     }
 
     historyContainer.innerHTML = buscaHtml + `<div class="accordion w-100 history-accordion" id="boletosAccordion">${boletosArray.map(boleto => {
-        const telefoneLimpo = boleto.compradorTelefone ? boleto.compradorTelefone.replace(/\D/g, '') : '';
-        const whatsappLink = telefoneLimpo ? `https://wa.me/55${telefoneLimpo}` : '';
+        const whatsappLink = window.ctwWaUrl(boleto.compradorTelefone);
         const telefoneHtml = whatsappLink ? `<a href="${whatsappLink}" target="_blank" class="btn btn-sm btn-success py-0"><i class="bi bi-whatsapp"></i> ${escapeHtml(boleto.compradorTelefone)}</a>` : '(Não informado)';
         const codigoTag = boleto.codigoInterno ? `<span class="badge bg-secondary me-2">#${escapeHtml(boleto.codigoInterno)}</span>` : '';
         return `
@@ -12753,10 +12752,9 @@ window.updateNotificationUI  = updateNotificationUI;
                 wa.appendChild(icone(ICO.zap, 'ui-ic-s'));
                 wa.addEventListener('click', function(ev) {
                     ev.stopPropagation();
-                    var tel = String(n.clienteTel).replace(/\D/g, '');
-                    if (!tel) return;
                     var msg = 'Olá ' + (n.clienteNome || '') + '! 🎂 Feliz aniversário! Desejamos tudo de bom pra você nesse dia especial! 🎉';
-                    window.open('https://wa.me/55' + tel + '?text=' + encodeURIComponent(msg), '_blank');
+                    var url = window.ctwWaUrl(n.clienteTel, msg);
+                    if (url) window.open(url, '_blank');
                 });
                 linha.appendChild(wa);
             }

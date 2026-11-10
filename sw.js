@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-264'; // APK: ponte nativa (PDF, WhatsApp, avisos, cor das barras do Android)
+const CACHE = 'ctw-265'; // APK: links externos (WhatsApp) corrigidos; DDI 55 não duplica
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

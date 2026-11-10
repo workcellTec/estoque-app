@@ -863,12 +863,8 @@ function createNotifCard(notif, idx) {
 }
 
 function abrirWhatsApp(tel, mensagem) {
-    const t = (tel || '').replace(/\D/g, '');
-    if (!t) return;
-    const url = mensagem
-        ? `https://wa.me/55${t}?text=${encodeURIComponent(mensagem)}`
-        : `https://wa.me/55${t}`;
-    window.open(url, '_blank');
+    const url = window.ctwWaUrl(tel, mensagem);
+    if (url) window.open(url, '_blank');
 }
 
 window.dismissNotifBalloon = function(notifId, cardEl) {

@@ -167,8 +167,7 @@ function showToast(msg) {
 }
 
 function whatsappLink(tel) {
-    const t = (tel || '').replace(/\D/g, '');
-    return t ? `https://wa.me/55${t}` : null;
+    return window.ctwWaUrl(tel) || null;
 }
 
 // ============================================================
@@ -1304,7 +1303,7 @@ function _enviarWpp() {
         .replace('{aparelho}', repair.modeloAparelho || 'aparelho');
     const link = whatsappLink(repair.numeroCliente);
     if (!link) { showToast('⚠️ Número do cliente não cadastrado.'); return; }
-    window.open(`${link}?text=${encodeURIComponent(msg)}`, '_blank');
+    window.open(window.ctwWaUrl(repair.numeroCliente, msg), '_blank');
     if (btn) { btn.style.opacity = '0.45'; btn.dataset.used = '1'; }
     _verificarFechamento();
 }
