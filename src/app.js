@@ -685,8 +685,36 @@ const stockContainer = document.getElementById('stockContainer');
 const adminContainer = document.getElementById('administracao');
 
 
+// Transição de entrada estilo Android nativo: só transform+opacity (barato na GPU).
+// Desligada no Modo leve (html.ctw-leve) e com "reduzir movimento".
+const CTW_TELA_POR_SECAO = { main: 'mainMenu', mais: 'maisContainer', calculator: 'calculatorContainer', contract: 'contractContainer', stock: 'stockContainer', administracao: 'adminContainer', repairs: 'repairsContainer', clients: 'clientsContainer', reposicao: 'reposicaoContainer' };
+function ctwEntrar(el, tipo) {
+    if (!el || document.documentElement.classList.contains('ctw-leve')) return;
+    try { if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (e) {}
+    el.classList.remove('ctw-ent-d', 'ctw-ent-e', 'ctw-ent-c');
+    void el.offsetWidth;
+    const cls = 'ctw-ent-' + tipo;
+    el.classList.add(cls);
+    // Remove a classe ao terminar (animationend) ou, por garantia, após 450 ms.
+    const limpar = () => { el.classList.remove(cls); el.removeEventListener('animationend', fim); clearTimeout(t); };
+    const fim = ev => { if (ev.target === el) limpar(); };
+    const t = setTimeout(limpar, 450);
+    el.addEventListener('animationend', fim);
+    window._ctwUltimaTroca = Date.now();
+}
+// Sub-abas (pílulas): anima o conteúdo no sentido da aba, sem repetir logo após troca de seção.
+function ctwEntrarSubAba(el, ordem, chave) {
+    const antes = window._ctwSubAbaAnterior || (window._ctwSubAbaAnterior = {});
+    const prev = antes[chave];
+    antes[chave] = ordem;
+    if (prev === undefined || prev === ordem) return;
+    if (Date.now() - (window._ctwUltimaTroca || 0) < 450) return;
+    ctwEntrar(el, ordem > prev ? 'd' : 'e');
+}
+
 function showMainSection(sectionId) {
     if (!isAuthReady) return;
+    const _secaoAnterior = currentMainSectionId;
     // (A saudação #ctwTopBar vive dentro do #mainMenu: aparece e some junto com a tela inicial,
     //  sem nenhum controle de display por JS.)
 
@@ -815,6 +843,9 @@ function showMainSection(sectionId) {
     }
 
     currentMainSectionId = sectionId;
+    if (_secaoAnterior !== sectionId) {
+        ctwEntrar(document.getElementById(CTW_TELA_POR_SECAO[sectionId]), sectionId === 'main' ? 'e' : (_secaoAnterior === 'main' ? 'd' : 'c'));
+    }
     if (typeof window.ctwAoMudarSecao === 'function') window.ctwAoMudarSecao(sectionId);
 }
 
@@ -1050,6 +1081,7 @@ function openCalculatorSection(sectionId) {
     telaAtual.style.display = 'flex';
     telaAtual.scrollTop = 0;
     currentCalculatorSectionId = sectionId;
+    ctwEntrarSubAba(telaAtual, ['repassarValores', 'calcularEmprestimo', 'calcularPorAparelho', 'fecharVenda', 'emprestarValores'].indexOf(sectionId), 'calc');
     
     // --- LÓGICA DE PADRÕES ---
     const defaultMachine = safeStorage.getItem('ctwDefaultMachine');
@@ -9607,6 +9639,8 @@ setupProductTags();
         // Pílula da aba aberta (Garantia, Contrato ou Orçamento)
         const abaAtiva = subSectionId === 'contrato' ? 'openContratoView'
             : (subSectionId === 'bookip' && modoDoc === 'orcamento') ? 'openOrcamentoView' : 'openBookipView';
+        ctwEntrarSubAba(subSectionId === 'contrato' ? areaContrato : areaBookip,
+            ['openBookipView', 'openContratoView', 'openOrcamentoView'].indexOf(abaAtiva), 'docs');
         document.querySelectorAll('#docsPills .ui-pill').forEach(p => {
             p.classList.toggle('on', p.id === abaAtiva);
             p.setAttribute('aria-pressed', p.id === abaAtiva ? 'true' : 'false');

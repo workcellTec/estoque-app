@@ -3753,3 +3753,14 @@ html.ctw-leve .ui-hero { background: var(--card-bg); border: 1px solid var(--ui-
 html.ps-aberto .ui-nav { display: none; }
 .ps-perigo { background: var(--ui-bad-bg); color: #FF6B6B; }
 .ps-col { display: flex; flex-direction: column; gap: 8px; }
+
+/* Transições de tela estilo Android (só transform/opacidade). Modo leve e "reduzir movimento" desligam. */
+@keyframes ctw-ent-d { from { opacity: 0; transform: translate3d(28px, 0, 0); } to { opacity: 1; transform: none; } }
+@keyframes ctw-ent-e { from { opacity: 0; transform: translate3d(-28px, 0, 0); } to { opacity: 1; transform: none; } }
+@keyframes ctw-ent-c { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+/* Os containers principais têm "animation:none !important" (correção antiga do efeito "tudo expande");
+   aqui a especificidade maior reativa só estas animações leves, e só enquanto a classe existe. */
+:is(.ctw-ent-d, #mainMenu.ctw-ent-d, #calculatorContainer.ctw-ent-d, #contractContainer.ctw-ent-d, #stockContainer.ctw-ent-d, #administracao.ctw-ent-d, #clientsContainer.ctw-ent-d, #reposicaoContainer.ctw-ent-d, #repairsContainer.ctw-ent-d, #areaBookipWrapper.ctw-ent-d, #areaContratoWrapper.ctw-ent-d) { animation: ctw-ent-d .28s cubic-bezier(.05, .7, .1, 1) backwards !important; }
+:is(.ctw-ent-e, #mainMenu.ctw-ent-e, #calculatorContainer.ctw-ent-e, #contractContainer.ctw-ent-e, #stockContainer.ctw-ent-e, #administracao.ctw-ent-e, #clientsContainer.ctw-ent-e, #reposicaoContainer.ctw-ent-e, #repairsContainer.ctw-ent-e, #areaBookipWrapper.ctw-ent-e, #areaContratoWrapper.ctw-ent-e) { animation: ctw-ent-e .28s cubic-bezier(.05, .7, .1, 1) backwards !important; }
+:is(.ctw-ent-c, #mainMenu.ctw-ent-c, #calculatorContainer.ctw-ent-c, #contractContainer.ctw-ent-c, #stockContainer.ctw-ent-c, #administracao.ctw-ent-c, #clientsContainer.ctw-ent-c, #reposicaoContainer.ctw-ent-c, #repairsContainer.ctw-ent-c, #areaBookipWrapper.ctw-ent-c, #areaContratoWrapper.ctw-ent-c) { animation: ctw-ent-c .24s cubic-bezier(.05, .7, .1, 1) backwards !important; }
+@media (prefers-reduced-motion: reduce) { .ctw-ent-d, .ctw-ent-e, .ctw-ent-c { animation: none !important; } }
