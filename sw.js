@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-289'; // Conferir catálogo do WhatsApp (prints + IA)
+const CACHE = 'ctw-290'; // Catálogo: importa ZIP/CSV exportado (leitura exata)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

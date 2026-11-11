@@ -280,9 +280,10 @@ async function telaInicio() {
         <label class="ps-btn ps-prim"><input type="file" id="psArquivo" accept="application/pdf,.pdf" hidden>Escolher PDF do Stock 2.0</label>
       </div>
       <div class="ps-card">
-        <p>Conferir os preços do <b>catálogo do WhatsApp Business</b> (preço à vista = valor do CTW + extra). Tire prints do catálogo e escolha as imagens.</p>
+        <p>Conferir os preços do <b>catálogo do WhatsApp Business</b> (preço à vista = valor do CTW + extra). Use o arquivo exportado do catálogo (ZIP ou CSV): a leitura é exata. Sem o arquivo, dá para usar prints.</p>
         <div class="ps-lin"><span>Extra à vista (R$)</span><input type="text" inputmode="decimal" id="psCatExtra" class="ps-inp" value="${esc(String(catExtra()).replace('.', ','))}"></div>
-        <label class="ps-btn"><input type="file" id="psPrints" accept="image/*" multiple hidden>Escolher prints do catálogo</label>
+        <label class="ps-btn ps-prim"><input type="file" id="psCatArq" accept=".zip,.csv,application/zip,text/csv" hidden>Escolher arquivo do catálogo (ZIP/CSV)</label>
+        <label class="ps-btn"><input type="file" id="psPrints" accept="image/*" multiple hidden>Ou escolher prints do catálogo</label>
       </div>
       <div class="ps-card">
         <div class="ps-lin"><span>Produtos já vinculados</span><b>${nAl}</b></div>
@@ -360,6 +361,7 @@ function aoMudar(e) {
     if (e.target.id === 'psArquivo') aoEscolherPdf(e.target.files && e.target.files[0]);
     if (e.target.id === 'psCatExtra') { const n = numero(e.target.value); try { localStorage.setItem('ctwCatExtra', String(n)); } catch (x) {} }
     if (e.target.id === 'psPrints') aoEscolherPrints(e.target.files);
+    if (e.target.id === 'psCatArq') aoEscolherCatalogo(e.target.files && e.target.files[0]);
     if (S && e.target.dataset && e.target.dataset.sus !== undefined) {
         S.aceitar[e.target.dataset.sus] = e.target.checked;
         const bt = overlay.querySelector('[data-act="aplicar"]');
@@ -843,23 +845,100 @@ async function lerPrints(arquivos) {
     return interpretarResposta(await window.ctwIAVisao([{ role: 'user', content }]));
 }
 
+// Compara a lista lida (prints ou arquivo) com o CTW e abre o relatório
+async function concluirCatalogo(itens, extra) {
+    const produtos = (window.products || []).filter(p => p && p.id);
+    if (!produtos.length) throw new Error('O CTW ainda não carregou os produtos. Aguarde alguns segundos e tente de novo.');
+    await carregarAprendizado();
+    CAT = { extra, itens, feitos: new Set(), ...classificarCat(itens, produtos, extra) };
+    CAT.fila = CAT.perguntas.slice();
+    telaCatRelatorio();
+}
+
+function extraDoCampo() {
+    const campo = overlay && overlay.querySelector('#psCatExtra');
+    if (campo) { try { localStorage.setItem('ctwCatExtra', String(numero(campo.value))); } catch (x) {} }
+    return catExtra();
+}
+
 async function aoEscolherPrints(lista) {
     const arquivos = Array.from(lista || []);
     if (!arquivos.length) return;
     try {
         if (arquivos.length > CAT_MAX_PRINTS) throw new Error(`Escolha até ${CAT_MAX_PRINTS} prints por vez.`);
-        const produtos = (window.products || []).filter(p => p && p.id);
-        if (!produtos.length) throw new Error('O CTW ainda não carregou os produtos. Aguarde alguns segundos e tente de novo.');
-        const campo = overlay && overlay.querySelector('#psCatExtra');
-        if (campo) { try { localStorage.setItem('ctwCatExtra', String(numero(campo.value))); } catch (x) {} }
-        const extra = catExtra();
+        const extra = extraDoCampo();
         tela(`<div class="ps-msg">Lendo ${arquivos.length} print(s) com a IA… pode levar cerca de 1 minuto.</div>`);
         const itens = await lerPrints(arquivos);
         if (!itens.length) throw new Error('Não encontrei produtos com preço nos prints. Eles mostram a lista do catálogo?');
-        await carregarAprendizado();
-        CAT = { extra, itens, feitos: new Set(), ...classificarCat(itens, produtos, extra) };
-        CAT.fila = CAT.perguntas.slice();
-        telaCatRelatorio();
+        await concluirCatalogo(itens, extra);
+    } catch (e) {
+        tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div><button type="button" class="ps-btn" data-act="inicio">Voltar</button>`);
+    }
+}
+
+// ── Arquivo exportado do catálogo (ZIP ou CSV da extensão): leitura exata, sem IA ──
+function lerCsv(txt) {
+    const linhas = []; let campo = '', lin = [], aspas = false;
+    for (let i = 0; i < txt.length; i++) {
+        const ch = txt[i];
+        if (aspas) { if (ch === '"') { if (txt[i + 1] === '"') { campo += '"'; i++; } else aspas = false; } else campo += ch; }
+        else if (ch === '"') aspas = true;
+        else if (ch === ',') { lin.push(campo); campo = ''; }
+        else if (ch === '\n' || ch === '\r') { if (ch === '\r' && txt[i + 1] === '\n') i++; lin.push(campo); campo = ''; linhas.push(lin); lin = []; }
+        else campo += ch;
+    }
+    if (campo !== '' || lin.length) { lin.push(campo); linhas.push(lin); }
+    return linhas;
+}
+
+function itensDoCsv(txt) {
+    const linhas = lerCsv(txt.replace(/^\uFEFF/, '')).filter(l => l.some(c => c !== ''));
+    const cab = (linhas.shift() || []).map(h => h.trim().toLowerCase());
+    const iT = cab.indexOf('title'), iP = cab.indexOf('price'), iPT = cab.indexOf('price_text');
+    if (iT < 0 || (iP < 0 && iPT < 0)) throw new Error('Esse arquivo não parece o catálogo exportado (faltam as colunas title e price).');
+    const itens = [];
+    linhas.forEach(l => {
+        const nome = String(l[iT] || '').replace(/\s+/g, ' ').trim();
+        // Em promoção o preço vem vazio e o texto traz "R$ atual R$ antigo": vale o primeiro valor
+        const valores = (String(l[iPT] || '').match(/[\d.]+,\d{2}/g) || []).map(numero);
+        const preco = (iP >= 0 && numero(l[iP]) > 0) ? numero(l[iP]) : (valores[0] || 0);
+        if (!nome || preco <= 0) return;
+        itens.push({ nome, preco, an: analisar(nome), de: valores.length > 1 ? valores[1] : 0 });
+    });
+    return itens;
+}
+
+async function textoDoZip(buf) {
+    const dv = new DataView(buf), u8 = new Uint8Array(buf);
+    let fim = -1;
+    for (let i = u8.length - 22; i >= Math.max(0, u8.length - 70000); i--) if (dv.getUint32(i, true) === 0x06054b50) { fim = i; break; }
+    if (fim < 0) throw new Error('Não consegui abrir o ZIP.');
+    let pos = dv.getUint32(fim + 16, true);
+    for (let n = dv.getUint16(fim + 10, true); n > 0; n--) {
+        if (dv.getUint32(pos, true) !== 0x02014b50) break;
+        const metodo = dv.getUint16(pos + 10, true), tam = dv.getUint32(pos + 20, true), nl = dv.getUint16(pos + 28, true), el = dv.getUint16(pos + 30, true), cl = dv.getUint16(pos + 32, true), loc = dv.getUint32(pos + 42, true);
+        const nome = new TextDecoder().decode(u8.subarray(pos + 46, pos + 46 + nl));
+        if (/(^|\/)items\.csv$/i.test(nome)) {
+            const ini = loc + 30 + dv.getUint16(loc + 26, true) + dv.getUint16(loc + 28, true), dados = u8.subarray(ini, ini + tam);
+            if (metodo === 0) return new TextDecoder().decode(dados);
+            if (metodo !== 8 || typeof DecompressionStream === 'undefined') throw new Error('Esse navegador não abre este ZIP. Extraia o items.csv e escolha ele.');
+            const fluxo = new Blob([dados]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+            return new TextDecoder().decode(await new Response(fluxo).arrayBuffer());
+        }
+        pos += 46 + nl + el + cl;
+    }
+    throw new Error('Não achei o arquivo items.csv dentro do ZIP.');
+}
+
+async function aoEscolherCatalogo(arq) {
+    if (!arq) return;
+    try {
+        const extra = extraDoCampo();
+        tela('<div class="ps-msg">Lendo o catálogo…</div>');
+        const txt = /\.zip$/i.test(arq.name) ? await textoDoZip(await arq.arrayBuffer()) : await arq.text();
+        const itens = itensDoCsv(txt);
+        if (!itens.length) throw new Error('Não encontrei produtos com preço nesse arquivo.');
+        await concluirCatalogo(itens, extra);
     } catch (e) {
         tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div><button type="button" class="ps-btn" data-act="inicio">Voltar</button>`);
     }
@@ -878,7 +957,7 @@ function telaCatRelatorio() {
       ${c.fila.length ? `<button type="button" class="ps-btn ps-prim" data-act="catperguntas">Resolver ${c.fila.length} nome(s) duvidoso(s)</button>` : ''}
       ${pend.length ? `<div class="ps-cap ps-esp">Corrija estes no catálogo</div>` + pend.map(x => `
         <div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(x.it.nome)}</div>
-          <div class="ps-sub">No catálogo ${brl(x.it.preco)} → <b>colocar ${brl(x.c.valor + c.extra)}</b></div>
+          <div class="ps-sub">No catálogo ${brl(x.it.preco)}${x.it.de ? ` (em promoção, preço antigo ${brl(x.it.de)})` : ''} → <b>colocar ${brl(x.c.valor + c.extra)}</b></div>
           <div class="ps-sub">CTW: ${esc(x.c.nome)} · ${brl(x.c.valor)}</div></div>
           <button type="button" class="ps-mini" data-act="catfeito" data-i="${x.it.i}">Já corrigi</button></div>`).join('')
         : '<div class="ps-msg">Nenhum preço para corrigir.</div>'}
