@@ -698,7 +698,7 @@ function ctwEntrar(el, tipo) {
     // Remove a classe ao terminar (animationend) ou, por garantia, após 450 ms.
     const limpar = () => { el.classList.remove(cls); el.removeEventListener('animationend', fim); clearTimeout(t); };
     const fim = ev => { if (ev.target === el) limpar(); };
-    const t = setTimeout(limpar, 450);
+    const t = setTimeout(limpar, 350);
     el.addEventListener('animationend', fim);
     window._ctwUltimaTroca = Date.now();
 }
@@ -720,7 +720,7 @@ function ctwFantasmaSaida(velho, rect, scroll, tipo, exibicao) {
     g.scrollTop = scroll || window.scrollY || 0;
     const rem = () => { if (g.parentNode) g.parentNode.removeChild(g); };
     g.addEventListener('animationend', rem);
-    setTimeout(rem, 400);
+    setTimeout(rem, 250);
 }
 // Sub-abas (pílulas): anima o conteúdo no sentido da aba, sem repetir logo após troca de seção.
 function ctwEntrarSubAba(el, ordem, chave) {

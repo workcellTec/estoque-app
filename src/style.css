@@ -3755,19 +3755,19 @@ html.ps-aberto .ui-nav { display: none; }
 .ps-col { display: flex; flex-direction: column; gap: 8px; }
 
 /* Transições de tela estilo Android (só transform/opacidade). Modo leve e "reduzir movimento" desligam. */
-@keyframes ctw-ent-d { from { opacity: 0; transform: translate3d(36px, 0, 0); } to { opacity: 1; transform: none; } }
-@keyframes ctw-ent-e { from { opacity: 0; transform: translate3d(-36px, 0, 0); } to { opacity: 1; transform: none; } }
-@keyframes ctw-ent-c { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+@keyframes ctw-ent-d { from { opacity: 0; transform: translate3d(24px, 0, 0); } to { opacity: 1; transform: none; } }
+@keyframes ctw-ent-e { from { opacity: 0; transform: translate3d(-24px, 0, 0); } to { opacity: 1; transform: none; } }
+@keyframes ctw-ent-c { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
 /* Os containers principais têm "animation:none !important" (correção antiga do efeito "tudo expande");
    aqui a especificidade maior reativa só estas animações leves, e só enquanto a classe existe. */
-:is(.ctw-ent-d, #mainMenu.ctw-ent-d, #calculatorContainer.ctw-ent-d, #contractContainer.ctw-ent-d, #stockContainer.ctw-ent-d, #administracao.ctw-ent-d, #clientsContainer.ctw-ent-d, #reposicaoContainer.ctw-ent-d, #repairsContainer.ctw-ent-d, #areaBookipWrapper.ctw-ent-d, #areaContratoWrapper.ctw-ent-d) { animation: ctw-ent-d .28s cubic-bezier(.05, .7, .1, 1) backwards !important; }
-:is(.ctw-ent-e, #mainMenu.ctw-ent-e, #calculatorContainer.ctw-ent-e, #contractContainer.ctw-ent-e, #stockContainer.ctw-ent-e, #administracao.ctw-ent-e, #clientsContainer.ctw-ent-e, #reposicaoContainer.ctw-ent-e, #repairsContainer.ctw-ent-e, #areaBookipWrapper.ctw-ent-e, #areaContratoWrapper.ctw-ent-e) { animation: ctw-ent-e .28s cubic-bezier(.05, .7, .1, 1) backwards !important; }
-:is(.ctw-ent-c, #mainMenu.ctw-ent-c, #calculatorContainer.ctw-ent-c, #contractContainer.ctw-ent-c, #stockContainer.ctw-ent-c, #administracao.ctw-ent-c, #clientsContainer.ctw-ent-c, #reposicaoContainer.ctw-ent-c, #repairsContainer.ctw-ent-c, #areaBookipWrapper.ctw-ent-c, #areaContratoWrapper.ctw-ent-c) { animation: ctw-ent-c .24s cubic-bezier(.05, .7, .1, 1) backwards !important; }
+:is(.ctw-ent-d, #mainMenu.ctw-ent-d, #calculatorContainer.ctw-ent-d, #contractContainer.ctw-ent-d, #stockContainer.ctw-ent-d, #administracao.ctw-ent-d, #clientsContainer.ctw-ent-d, #reposicaoContainer.ctw-ent-d, #repairsContainer.ctw-ent-d, #areaBookipWrapper.ctw-ent-d, #areaContratoWrapper.ctw-ent-d) { animation: ctw-ent-d .2s cubic-bezier(.2, .8, .2, 1) .04s backwards !important; }
+:is(.ctw-ent-e, #mainMenu.ctw-ent-e, #calculatorContainer.ctw-ent-e, #contractContainer.ctw-ent-e, #stockContainer.ctw-ent-e, #administracao.ctw-ent-e, #clientsContainer.ctw-ent-e, #reposicaoContainer.ctw-ent-e, #repairsContainer.ctw-ent-e, #areaBookipWrapper.ctw-ent-e, #areaContratoWrapper.ctw-ent-e) { animation: ctw-ent-e .2s cubic-bezier(.2, .8, .2, 1) .04s backwards !important; }
+:is(.ctw-ent-c, #mainMenu.ctw-ent-c, #calculatorContainer.ctw-ent-c, #contractContainer.ctw-ent-c, #stockContainer.ctw-ent-c, #administracao.ctw-ent-c, #clientsContainer.ctw-ent-c, #reposicaoContainer.ctw-ent-c, #repairsContainer.ctw-ent-c, #areaBookipWrapper.ctw-ent-c, #areaContratoWrapper.ctw-ent-c) { animation: ctw-ent-c .18s cubic-bezier(.2, .8, .2, 1) .04s backwards !important; }
 /* Saída da tela antiga (cópia visual por cima, sem cliques) */
-@keyframes ctw-sai-d { from { opacity: 1; transform: none; } to { opacity: 0; transform: translate3d(-22%, 0, 0); } }
-@keyframes ctw-sai-e { from { opacity: 1; transform: none; } to { opacity: 0; transform: translate3d(22%, 0, 0); } }
+@keyframes ctw-sai-d { from { opacity: 1; transform: none; } to { opacity: 0; transform: translate3d(-24px, 0, 0); } }
+@keyframes ctw-sai-e { from { opacity: 1; transform: none; } to { opacity: 0; transform: translate3d(24px, 0, 0); } }
 @keyframes ctw-sai-c { from { opacity: 1; } to { opacity: 0; } }
-.ctw-fantasma { pointer-events: none; overflow: hidden; z-index: 1040; margin: 0; background: var(--tertiary-color); will-change: transform, opacity; animation-duration: .24s !important; animation-timing-function: cubic-bezier(.4, 0, 1, 1) !important; animation-fill-mode: forwards !important; }
+.ctw-fantasma { pointer-events: none; overflow: hidden; z-index: 1040; margin: 0; background: var(--tertiary-color); will-change: transform, opacity; animation-duration: .12s !important; animation-timing-function: cubic-bezier(.4, 0, 1, 1) !important; animation-fill-mode: forwards !important; }
 .ctw-fantasma.ctw-sai-d { animation-name: ctw-sai-d !important; }
 .ctw-fantasma.ctw-sai-e { animation-name: ctw-sai-e !important; }
 .ctw-fantasma.ctw-sai-c { animation-name: ctw-sai-c !important; }
