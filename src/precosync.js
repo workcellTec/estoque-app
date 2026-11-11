@@ -755,14 +755,18 @@ async function telaVinculos() {
     try { await carregarAprendizado(); } catch (e) { tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div>`); return; }
     const vistos = new Set();
     const al = Object.entries(APR.aliases).filter(([k, v]) => { const id = v.pid + '|' + v.nomeEstoque; if (vistos.has(id)) return false; vistos.add(id); return true; });
-    const nIgP = Object.keys(APR.ignoradosPdf).length, nIgC = Object.keys(APR.ignoradosCtw).length;
+    const nIgP = Object.keys(APR.ignoradosPdf).length, nIgC = Object.keys(APR.ignoradosCtw).length, nIgCat = Object.keys(APR.catIgnorados).length;
+    const nomeCtw = pid => { const c = (window.products || []).find(x => x && x.id === pid); return c ? c.nome : '(produto removido do CTW)'; };
+    const catVinc = Object.entries(APR.catAliases).sort((a, b) => nomeCtw(a[1].pid).localeCompare(nomeCtw(b[1].pid)));
     tela(`
       <div class="ps-card">
         <div class="ps-lin"><span>Itens do Stock 2.0 marcados “não existe no CTW”</span><b>${nIgP}</b></div>
         <div class="ps-lin"><span>Produtos do CTW marcados “em falta”</span><b>${nIgC}</b></div>
         ${(nIgP || nIgC) ? '<button type="button" class="ps-btn" data-act="esquecerign">Voltar a perguntar sobre esses itens</button>' : ''}
       </div>
-      <div class="ps-cap ps-esp">Vínculos aprendidos (${al.length})</div>
+      ${catVinc.length ? `<div class="ps-cap ps-esp">Vínculos do catálogo do WhatsApp (${catVinc.length})</div>` + catVinc.map(([k, v]) => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(v.n || k.replace(/_/g, ' '))}</div><div class="ps-sub">= ${esc(nomeCtw(v.pid))}</div></div><button type="button" class="ps-mini" data-act="rmcatvin" data-k="${esc(k)}">Desvincular</button></div>`).join('') : ''}
+      ${nIgCat ? `<div class="ps-card"><div class="ps-lin"><span>Itens do catálogo marcados “não é do CTW”</span><b>${nIgCat}</b></div><button type="button" class="ps-btn" data-act="esquecercat">Voltar a perguntar sobre esses itens</button></div>` : ''}
+      <div class="ps-cap ps-esp">Vínculos do Stock 2.0 (${al.length})</div>
       ${al.map(([k, v]) => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(v.nomeEstoque)}</div><div class="ps-sub">= ${esc(v.nomeCtw)}</div></div><button type="button" class="ps-mini" data-act="rmvinculo" data-pid="${esc(v.pid)}" data-nome="${esc(v.nomeEstoque)}">Remover</button></div>`).join('') || '<div class="ps-msg">Nenhum vínculo ainda.</div>'}
       <button type="button" class="ps-btn ps-suave" data-act="inicio">Voltar</button>`);
 }
@@ -807,6 +811,8 @@ async function aoClicar(e) {
         if (act === 'vinculos') return telaVinculos();
         if (act === 'desfazer') return desfazer(b.dataset.id);
         if (act === 'rmvinculo') { await removerVinculo(b.dataset.pid, b.dataset.nome); return telaVinculos(); }
+        if (act === 'rmcatvin') { const k = b.dataset.k; await update(ref(getDb()), { [`${BASE}/catAliases/${k}`]: null }); delete APR.catAliases[k]; return telaVinculos(); }
+        if (act === 'esquecercat') { await update(ref(getDb()), { [`${BASE}/catIgnorados`]: null }); APR.catIgnorados = {}; return telaVinculos(); }
         if (act === 'esquecerign') { await update(ref(getDb()), { [`${BASE}/ignoradosPdf`]: null, [`${BASE}/ignoradosCtw`]: null }); return telaVinculos(); }
         if (act === 'analisar') {
             const { pdf, cat } = ESC_;
@@ -1197,8 +1203,8 @@ async function catResponder(act, id) {
     if (act === 'catmesmo') {
         const ct = c.ctw.find(x => x.id === id);
         if (!ct) { c.fila.unshift(it); return telaCatPergunta(); }
-        await update(ref(getDb()), { [`${BASE}/catAliases/${chaveNome(it.an)}`]: { pid: ct.id, spec: assinatura(it.an) } });
-        APR.catAliases[chaveNome(it.an)] = { pid: ct.id, spec: assinatura(it.an) };
+        await update(ref(getDb()), { [`${BASE}/catAliases/${chaveNome(it.an)}`]: { pid: ct.id, spec: assinatura(it.an), n: it.nome } });
+        APR.catAliases[chaveNome(it.an)] = { pid: ct.id, spec: assinatura(it.an), n: it.nome };
         (igual(it.preco, ct.valor + c.extra) ? c.certos : c.errados).push({ it, c: ct });
         if (c.exato) await zapAlinhar([{ it, c: ct }], c.extra).catch(e => console.warn('[zap]', e.message));
         await guardarCatalogo([{ it, c: ct }], 'prints').catch(e => console.warn('[catálogo]', e.message));   // acrescenta ao guardado, sem apagar o resto
