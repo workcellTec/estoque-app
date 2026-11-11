@@ -91,22 +91,29 @@ window.ctwComSenha = function(cfg) {
 // voltou ao de antes = a pendência some. Dev vê e dá "Já corrigi".
 const ZAP_PATH = 'settings/precosync/zap';
 const ZAP_MAX = 200;
-window.ctwZapCalcular = function(atual, lista, usuario) {
+window.ctwZapCalcular = function(atual, lista, usuario, caminho) {
+    const base = caminho || ZAP_PATH;
     const up = {}; let total = Object.keys(atual || {}).length;
     (lista || []).forEach(m => {
         const de0 = Number(m.de), para = Number(m.para);
         if (!m.id || !(de0 > 0) || !(para > 0)) return;
         const ex = atual && atual[m.id], de = ex ? Number(ex.de) : de0;
-        if (Math.abs(de - para) < 0.005) { if (ex) { up[`${ZAP_PATH}/${m.id}`] = null; total--; } return; }
+        if (Math.abs(de - para) < 0.005) { if (ex) { up[`${base}/${m.id}`] = null; total--; } return; }
         if (!ex) { if (total >= ZAP_MAX) return; total++; }
-        up[`${ZAP_PATH}/${m.id}`] = { nome: m.nome || '', de, para, quando: Date.now(), usuario: usuario || '' };
+        up[`${base}/${m.id}`] = { nome: m.nome || '', de, para, quando: Date.now(), usuario: usuario || '' };
     });
     return up;
 };
+// Cada conta de WhatsApp tem a própria lista: "loja" fica no caminho original, as demais em settings/precosync/contas/{id}
 window.ctwZapRegistrar = async function(lista) {
     try {
-        const atual = (await get(ref(db, ZAP_PATH))).val() || {};
-        const up = window.ctwZapCalcular(atual, lista, localStorage.getItem('ctwUserProfile') || '');
+        const nomes = (await get(ref(db, 'settings/precosync/contasNomes'))).val() || {};
+        const caminhos = [ZAP_PATH].concat(Object.keys(nomes).map(id => `settings/precosync/contas/${id}/zap`));
+        const up = {}, quem = localStorage.getItem('ctwUserProfile') || '';
+        for (const c of caminhos) {
+            const atual = (await get(ref(db, c))).val() || {};
+            Object.assign(up, window.ctwZapCalcular(atual, lista, quem, c));
+        }
         if (Object.keys(up).length) await update(ref(db), up);
     } catch (e) { console.warn('[Alterar no WhatsApp] não registrou:', e && e.message); }
 };
@@ -114,18 +121,13 @@ let _zapOuvindo = false;
 window.ctwZapOuvir = function() {
     if (_zapOuvindo || !isAuthReady) return;
     _zapOuvindo = true;
-    let nZap = 0, nEsg = 0;
-    const pintar = () => {
-        const n = nZap + nEsg;
+    const conta = d => Object.keys((d && d.zap) || {}).length + Object.values((d && d.esg) || {}).filter(e => e && (e.estado === 'desativar' || e.estado === 'reativar')).length;
+    onValue(ref(db, 'settings/precosync'), snap => {
+        const v = snap.val() || {};
+        window.ctwZapDados = v.zap || {};
+        const n = conta(v) + Object.values(v.contas || {}).reduce((t, c) => t + conta(c), 0);
         document.querySelectorAll('[data-zap-n]').forEach(el => { el.textContent = n ? String(n) : ''; el.hidden = !n; });
-    };
-    onValue(ref(db, ZAP_PATH), snap => {
-        window.ctwZapDados = snap.val() || {};
-        nZap = Object.keys(window.ctwZapDados).length; pintar();
     }, () => { _zapOuvindo = false; });
-    onValue(ref(db, ZAP_PATH.replace(/\/zap$/, '/esg')), snap => {
-        nEsg = Object.values(snap.val() || {}).filter(e => e && (e.estado === 'desativar' || e.estado === 'reativar')).length; pintar();
-    }, () => {});
 };
 
 // Adicione junto com suas variáveis globais

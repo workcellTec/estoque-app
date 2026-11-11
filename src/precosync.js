@@ -167,12 +167,33 @@ async function lerPdf(arquivo) {
 
 // ── Estado e acesso ao banco ────────────────────────────────────
 let S = null;           // estado da importação em andamento
-let APR = { aliases: {}, ignoradosPdf: {}, ignoradosCtw: {}, catAliases: {}, catIgnorados: {}, catalogo: null, esg: {} };
+let APR = { aliases: {}, ignoradosPdf: {}, ignoradosCtw: {}, catAliases: {}, catIgnorados: {}, catalogo: null, esg: {}, contas: {} };
+
+// Contas de WhatsApp: cada uma tem catálogo, esgotados e lista de pendências próprios. "loja" é a original (caminhos antigos).
+// Vínculos de nomes são compartilhados. O PDF do Stock 2.0 alimenta todas as contas de uma vez.
+let CONTA = (() => { try { return localStorage.getItem('ctwPsConta') || 'loja'; } catch (e) { return 'loja'; } })();
+const raiz = (id = CONTA) => id === 'loja' ? BASE : `${BASE}/contas/${id}`;
+function usarConta(id) {
+    if (!APR.contas[id]) id = 'loja';
+    CONTA = id; try { localStorage.setItem('ctwPsConta', id); } catch (e) {}
+    APR.catalogo = APR.contas[id].catalogo; APR.esg = APR.contas[id].esg;
+}
+async function criarConta(nome) {
+    nome = String(nome || '').trim().slice(0, 30); if (!nome) return;
+    let id = semAcento(nome).toLowerCase().replace(/[^a-z0-9]+/g, '') || 'conta', k = id, n = 1;
+    while (APR.contas[id]) id = k + (++n);
+    await update(ref(getDb()), { [`${BASE}/contasNomes/${id}`]: nome });
+    APR.contas[id] = { nome, catalogo: null, esg: {} };
+    usarConta(id);
+}
 
 async function carregarAprendizado() {
     const snap = await get(ref(getDb(), BASE));
     const v = snap.val() || {};
-    APR = { aliases: v.aliases || {}, ignoradosPdf: v.ignoradosPdf || {}, ignoradosCtw: v.ignoradosCtw || {}, catAliases: v.catAliases || {}, catIgnorados: v.catIgnorados || {}, catalogo: v.catalogo || null, esg: v.esg || {} };
+    APR = { aliases: v.aliases || {}, ignoradosPdf: v.ignoradosPdf || {}, ignoradosCtw: v.ignoradosCtw || {}, catAliases: v.catAliases || {}, catIgnorados: v.catIgnorados || {}, catalogo: v.catalogo || null, esg: v.esg || {}, contas: {} };
+    APR.contas.loja = { nome: 'Loja', catalogo: v.catalogo || null, esg: v.esg || {} };
+    Object.entries(v.contasNomes || {}).forEach(([id, nome]) => { const d = (v.contas || {})[id] || {}; APR.contas[id] = { nome, catalogo: d.catalogo || null, esg: d.esg || {} }; });
+    usarConta(CONTA);
 }
 
 function usuario() { try { return localStorage.getItem('ctwUserProfile') || ''; } catch (e) { return ''; } }
@@ -262,7 +283,8 @@ function tela(html) {
 
 const chip = (t, forte) => `<span class="ps-chip${forte ? ' ps-forte' : ''}">${esc(t)}</span>`;
 
-const ESC_ = { pdf: null, cat: null };   // arquivos escolhidos na entrada, ainda não analisados
+const ESC_ = { pdf: null, cat: null, nova: false };   // arquivos escolhidos na entrada, ainda não analisados
+const chipsConta = nova => `<div class="ps-contas">${Object.entries(APR.contas).map(([id, c]) => `<button type="button" class="${id === CONTA ? 'on' : ''}" data-act="conta" data-id="${esc(id)}">${esc(c.nome)}</button>`).join('')}${nova ? '<button type="button" data-act="novaconta">+ Nova conta</button>' : ''}</div>`;
 
 async function telaInicio() {
     const tit = overlay && overlay.querySelector('.ps-topo b'); if (tit) tit.textContent = 'Sincronizar preços';
@@ -280,7 +302,7 @@ async function telaInicio() {
     const nAl = Object.keys(APR.aliases).length;
     let nPend = 0, cat = null;
     try {
-        const [z, e, c] = await Promise.all([get(ref(getDb(), BASE + '/zap')), get(ref(getDb(), BASE + '/esg')), get(ref(getDb(), BASE + '/catalogo'))]);
+        const [z, e, c] = await Promise.all([get(ref(getDb(), raiz() + '/zap')), get(ref(getDb(), raiz() + '/esg')), get(ref(getDb(), raiz() + '/catalogo'))]);
         nPend = Object.keys(z.val() || {}).length + Object.values(e.val() || {}).filter(x => x.estado === 'desativar' || x.estado === 'reativar').length;
         cat = c.val();
     } catch (e) { /* painel segue sem os contadores */ }
@@ -294,7 +316,10 @@ async function telaInicio() {
       </div>
       <div class="ps-card">
         <div class="ps-passo"><span class="ps-n">2</span><b class="ps-grow">Catálogo do WhatsApp</b><span class="ps-opc">opcional</span></div>
-        <div class="ps-sub">O app guarda o último catálogo importado. Só envie outro de vez em quando ou ao cadastrar produto novo.</div>
+        <div class="ps-sub">Cada WhatsApp tem o próprio catálogo e as próprias listas. Escolha para qual conta este arquivo vai:</div>
+        ${chipsConta(true)}
+        ${ESC_.nova ? '<div class="ps-lin"><input type="text" id="psNovaConta" class="ps-inp ps-busca" maxlength="30" placeholder="Nome da conta (ex.: Colega)"><button type="button" class="ps-mini ps-prim" data-act="criarconta">Criar</button></div>' : ''}
+        <div class="ps-sub">O app guarda o último catálogo importado dessa conta. Só envie outro de vez em quando ou ao cadastrar produto novo.</div>
         <div class="ps-arq"><span class="ps-tipo ps-zip">ZIP</span><div class="ps-grow">${ESC_.cat ? arqTxt(ESC_.cat, '') : (cat ? `<div class="ps-nome">Último: ${tempoAtras(cat.atualizado)} (${cat.origem === 'zip' ? 'ZIP' : 'prints'})</div><div class="ps-sub">${Object.keys(cat.itens || {}).length} produtos guardados</div>` : '<div class="ps-sub">Ainda não guardado. Envie o ZIP uma vez para o app avisar os esgotados.</div>')}</div>
           <label class="ps-link"><input type="file" id="psCatArq" accept=".zip,.csv,application/zip,text/csv" hidden>${ESC_.cat || cat ? 'Atualizar' : 'Escolher'}</label></div>
         <div class="ps-lin"><span>Extra à vista (R$)</span><input type="text" inputmode="decimal" id="psCatExtra" class="ps-inp" value="${esc(String(catExtra()).replace('.', ','))}"></div>
@@ -432,7 +457,7 @@ function telaPrevia() {
         ${inval.length ? `<div class="ps-lin"><span>Valor inválido no PDF (não aplico)</span><b>${inval.length}</b></div>` : ''}
         ${S.avisos.length ? `<details class="ps-det"><summary>${S.avisos.length} aviso(s) na leitura do PDF</summary>${S.avisos.map(a => `<div class="ps-sub">${esc(a)}</div>`).join('')}</details>` : ''}
       </div>
-      ${cartaoWhats(calcEsgotados(presencaPdf(), duvidaPdf()))}
+      ${cartaoWhats(calcTodasEsg())}
       ${muda.length ? muda.map(linha).join('') : '<div class="ps-msg">Nenhum preço precisa mudar.</div>'}
       <button type="button" class="ps-btn ps-prim" data-act="aplicar">${muda.length ? `Aplicar ${nAplicar} preço(s)` : 'Concluir'}</button>
       <button type="button" class="ps-btn ps-suave" data-act="fechar">Cancelar (nada é alterado)</button>`);
@@ -461,8 +486,8 @@ function duvidaPdf() {
     return set;
 }
 
-function calcEsgotados(presenca, duvida) {
-    const cat = (APR.catalogo && APR.catalogo.itens) || {}, esg = APR.esg || {}, agora = Date.now();
+function calcEsgotados(presenca, duvida, catalogo, esgAtual) {
+    const cat = (catalogo && catalogo.itens) || {}, esg = esgAtual || {}, agora = Date.now();
     const upd = {}; let novos = 0;
     new Set([...Object.keys(cat), ...Object.keys(esg)]).forEach(pid => {
         const e = esg[pid], c = cat[pid];
@@ -488,33 +513,46 @@ function calcEsgotados(presenca, duvida) {
     };
 }
 
-function contagemEsg() {
-    const v = Object.values(APR.esg || {});
+function contagemEsg(esg) {
+    const v = Object.values(esg || {});
     return { desativar: v.filter(e => e.estado === 'desativar').length, reativar: v.filter(e => e.estado === 'reativar').length };
 }
 
-function aplicarEsgLocal(upd) {
-    APR.esg = APR.esg || {};
-    Object.entries(upd).forEach(([pid, v]) => { if (v === null) delete APR.esg[pid]; else APR.esg[pid] = v; });
+function aplicarEsgLocal(esg, upd) {
+    Object.entries(upd).forEach(([pid, v]) => { if (v === null) delete esg[pid]; else esg[pid] = v; });
 }
 
-function cartaoWhats(eg) {
-    if (!eg || !Object.keys(APR.catalogo && APR.catalogo.itens || {}).length) return '';
-    return `<div class="ps-card ${eg.suspeito ? 'ps-alerta' : ''}">
-        <div class="ps-cap">WhatsApp (catálogo)</div>
+// Esgotados/voltaram de cada conta que tem catálogo guardado, a partir do PDF analisado
+function calcTodasEsg() {
+    const pres = presencaPdf(), duv = duvidaPdf(), out = {};
+    Object.entries(APR.contas).forEach(([id, c]) => {
+        if (!c.catalogo || !Object.keys(c.catalogo.itens || {}).length) return;
+        out[id] = { nome: c.nome, ...calcEsgotados(pres, duv, c.catalogo, c.esg) };
+    });
+    return out;
+}
+
+function cartaoWhats(esgs) {
+    const ids = Object.keys(esgs || {});
+    if (!ids.length) return '';
+    return ids.map(id => {
+        const eg = esgs[id], multi = Object.keys(APR.contas).length > 1;
+        return `<div class="ps-card ${eg.suspeito ? 'ps-alerta' : ''}">
+        <div class="ps-cap">WhatsApp${multi ? ' · ' + esc(eg.nome) : ' (catálogo)'}</div>
         ${eg.suspeito ? `<div class="ps-aviso">${eg.novos} produtos do catálogo parecem esgotados de uma vez. O PDF veio completo? Nada é avisado até você confirmar.</div>
-          <button type="button" class="ps-btn ps-perigo" data-act="esgaplicar">Sim, o PDF está completo: avisar os esgotados</button>`
+          <button type="button" class="ps-btn ps-perigo" data-act="esgaplicar" data-conta="${esc(id)}">Sim, o PDF está completo: avisar os esgotados</button>`
         : `<div class="ps-lin"><span>Esgotaram (desativar no WhatsApp)</span><b>${eg.desativar}</b></div>`}
         ${eg.reativar ? `<div class="ps-lin"><span>Voltaram ao estoque (reativar)</span><b>${eg.reativar}</b></div>` : ''}
       </div>`;
+    }).join('');
 }
 
 async function logZap(entrada, upd) {
     const db = getDb();
-    const log = (await get(ref(db, BASE + '/zapLog'))).val() || {};
-    const key = push(ref(db, BASE + '/zapLog')).key;
-    Object.keys(log).sort().slice(0, -(MAX_ZAPLOG - 1)).forEach(k => { upd[`${BASE}/zapLog/${k}`] = null; });
-    upd[`${BASE}/zapLog/${key}`] = { quando: Date.now(), usuario: usuario(), ...entrada };
+    const log = (await get(ref(db, raiz() + '/zapLog'))).val() || {};
+    const key = push(ref(db, raiz() + '/zapLog')).key;
+    Object.keys(log).sort().slice(0, -(MAX_ZAPLOG - 1)).forEach(k => { upd[`${raiz()}/zapLog/${k}`] = null; });
+    upd[`${raiz()}/zapLog/${key}`] = { quando: Date.now(), usuario: usuario(), ...entrada };
 }
 
 // ── Aplicar ─────────────────────────────────────────────────────
@@ -540,8 +578,11 @@ async function gravar(itens, aliases, ignoradosPdf, arquivo, tipo, extra) {
     }
     for (const r of ignoradosPdf) upd[`${BASE}/ignoradosPdf/${r.codigo ? chaveCodigo(r.codigo) : chaveNome(r.an)}`] = { nome: r.nome, quando: Date.now() };
     if (itens.length) {   // cada preço alterado vira pendência na lista "Alterar no WhatsApp"
-        const zap = (await get(ref(db, BASE + '/zap'))).val() || {};
-        Object.assign(upd, window.ctwZapCalcular(zap, itens.map(x => ({ id: x.id, nome: x.c.nome, de: x.de, para: Math.round(x.para * 100) / 100 })), usuario()));
+        const lista = itens.map(x => ({ id: x.id, nome: x.c.nome, de: x.de, para: Math.round(x.para * 100) / 100 }));
+        for (const id of Object.keys(APR.contas)) {      // todas as contas de WhatsApp recebem a pendência
+            const zap = (await get(ref(db, raiz(id) + '/zap'))).val() || {};
+            Object.assign(upd, window.ctwZapCalcular(zap, lista, usuario(), raiz(id) + '/zap'));
+        }
     }
     Object.assign(upd, extra || {});
     if (!Object.keys(upd).length) return;
@@ -563,11 +604,11 @@ async function aplicar() {
         // quem voltou a aparecer no PDF deixa de ser "em falta"/"fora do estoque"
         const voltou = {};
         S.cl.casados.forEach(({ c }) => { if (APR.ignoradosCtw[c.id]) voltou[`${BASE}/ignoradosCtw/${c.id}`] = null; });
-        S.esg = calcEsgotados(presencaPdf(), duvidaPdf());          // esgotados / voltaram, em relação ao catálogo guardado
-        if (!S.esg.suspeito) Object.entries(S.esg.upd).forEach(([pid, v]) => { voltou[`${BASE}/esg/${pid}`] = v; });
+        S.esg = calcTodasEsg();          // esgotados / voltaram, em relação ao catálogo guardado de cada conta
+        Object.entries(S.esg).forEach(([id, e]) => { if (!e.suspeito) Object.entries(e.upd).forEach(([pid, v]) => { voltou[`${raiz(id)}/esg/${pid}`] = v; }); });
         await gravar(seguros, S.novosAliases, S.novosIgnoradosPdf, S.arquivo, 'importacao', voltou);
         Object.keys(voltou).filter(k => k.includes('/ignoradosCtw/')).forEach(k => delete APR.ignoradosCtw[k.split('/').pop()]);
-        if (!S.esg.suspeito) { aplicarEsgLocal(S.esg.upd); Object.assign(S.esg, contagemEsg()); }
+        Object.entries(S.esg).forEach(([id, e]) => { if (!e.suspeito) { aplicarEsgLocal(APR.contas[id].esg, e.upd); Object.assign(e, contagemEsg(APR.contas[id].esg)); } });
     } catch (e) {
         const regra = /permission/i.test(e.message || '') ? ' O Firebase precisa liberar escrita no caminho “settings/precosync” nas regras do banco.' : '';
         tela(`<div class="ps-msg ps-erro">Não consegui gravar (${esc(e.message)}). Nada foi alterado.${regra}</div><button type="button" class="ps-btn" data-act="previa">Voltar à prévia</button>`);
@@ -800,9 +841,13 @@ async function desfazer(id) {
             upd[`products/${pid}/valor`] = it.de; ok++;
         }
         upd[`${BASE}/log/${id}/desfeito`] = Date.now();
-        const zap = (await get(ref(getDb(), BASE + '/zap'))).val() || {};
         const nomes = new Map((window.products || []).map(p => [p.id, p.nome || '']));
-        Object.assign(upd, window.ctwZapCalcular(zap, Object.entries(log.itens || {}).filter(([pid]) => upd[`products/${pid}/valor`] !== undefined).map(([pid, it]) => ({ id: pid, nome: nomes.get(pid), de: it.para, para: it.de })), usuario()));
+        const lista = Object.entries(log.itens || {}).filter(([pid]) => upd[`products/${pid}/valor`] !== undefined).map(([pid, it]) => ({ id: pid, nome: nomes.get(pid), de: it.para, para: it.de }));
+        await carregarAprendizado();
+        for (const cid of Object.keys(APR.contas)) {
+            const zap = (await get(ref(getDb(), raiz(cid) + '/zap'))).val() || {};
+            Object.assign(upd, window.ctwZapCalcular(zap, lista, usuario(), raiz(cid) + '/zap'));
+        }
         await update(ref(getDb()), upd);
         tela(`<div class="ps-card ps-ok"><b>Importação desfeita</b><div class="ps-lin"><span>Preços restaurados</span><b>${ok}</b></div>${mexidos ? `<div class="ps-lin"><span>Mantidos (já tinham sido alterados depois)</span><b>${mexidos}</b></div>` : ''}</div><button type="button" class="ps-btn" data-act="inicio">Voltar</button>`);
     } catch (e) {
@@ -832,13 +877,17 @@ async function aoClicar(e) {
             if (cat) await aoEscolherCatalogo(cat, true);      // atualiza o catálogo guardado em silêncio e segue para o PDF
             return aoEscolherPdf(pdf);
         }
+        if (act === 'conta') { usarConta(b.dataset.id); ESC_.nova = false; return (overlay.querySelector('.ps-abas') ? telaZap(S_zapAba) : telaInicio()); }
+        if (act === 'novaconta') { ESC_.nova = true; await telaInicio(); const i = overlay.querySelector('#psNovaConta'); if (i) i.focus(); return; }
+        if (act === 'criarconta') { const i = overlay.querySelector('#psNovaConta'); await criarConta(i && i.value); ESC_.nova = false; return telaInicio(); }
         if (act === 'zapaba') return telaZap(b.dataset.aba);
         if (act === 'zap') return telaZap('preco');
         if (act === 'esgaplicar') {
             b.disabled = true;
-            const upd = {}; Object.entries(S.esg.upd).forEach(([pid, v]) => { upd[`${BASE}/esg/${pid}`] = v; });
-            await update(ref(getDb()), upd); aplicarEsgLocal(S.esg.upd);
-            S.esg = { ...S.esg, ...contagemEsg(), suspeito: false };
+            const cid = b.dataset.conta, e = S.esg[cid];
+            const upd = {}; Object.entries(e.upd).forEach(([pid, v]) => { upd[`${raiz(cid)}/esg/${pid}`] = v; });
+            await update(ref(getDb()), upd); aplicarEsgLocal(APR.contas[cid].esg, e.upd);
+            S.esg[cid] = { ...e, ...contagemEsg(APR.contas[cid].esg), suspeito: false };
             return telaRelatorio();
         }
         if (act === 'zapok' || act === 'esgdesativei' || act === 'esgreativei' || act === 'esgainda') {
@@ -846,14 +895,14 @@ async function aoClicar(e) {
             const id = b.dataset.id, upd = {};
             try {
                 if (act === 'zapok') {
-                    const z = ((await get(ref(getDb(), `${BASE}/zap/${id}`))).val()) || {};
-                    upd[`${BASE}/zap/${id}`] = null;
+                    const z = ((await get(ref(getDb(), `${raiz()}/zap/${id}`))).val()) || {};
+                    upd[`${raiz()}/zap/${id}`] = null;
                     await logZap({ tipo: 'preco', nome: z.nome || '', de: (z.de || 0) + catExtra(), para: (z.para || 0) + catExtra() }, upd);
                 } else {
-                    const e = ((await get(ref(getDb(), `${BASE}/esg/${id}`))).val()) || {};
-                    if (act === 'esgdesativei') { upd[`${BASE}/esg/${id}`] = { ...e, estado: 'desativado', desde: Date.now() }; await logZap({ tipo: 'desativar', nome: e.nome || '' }, upd); }
-                    else if (act === 'esgreativei') { upd[`${BASE}/esg/${id}`] = null; await logZap({ tipo: 'reativar', nome: e.nome || '' }, upd); }
-                    else upd[`${BASE}/esg/${id}`] = { ...e, estado: 'ainda', ate: Date.now() + DIAS_AINDA_TEM * 86400000 };
+                    const e = ((await get(ref(getDb(), `${raiz()}/esg/${id}`))).val()) || {};
+                    if (act === 'esgdesativei') { upd[`${raiz()}/esg/${id}`] = { ...e, estado: 'desativado', desde: Date.now() }; await logZap({ tipo: 'desativar', nome: e.nome || '' }, upd); }
+                    else if (act === 'esgreativei') { upd[`${raiz()}/esg/${id}`] = null; await logZap({ tipo: 'reativar', nome: e.nome || '' }, upd); }
+                    else upd[`${raiz()}/esg/${id}`] = { ...e, estado: 'ainda', ate: Date.now() + DIAS_AINDA_TEM * 86400000 };
                 }
                 await update(ref(getDb()), upd);
             } catch (er) { console.warn('[zap]', er.message); }
@@ -1015,21 +1064,22 @@ async function lerPrints(arquivos) {
 // Guarda o catálogo lido (produto do CTW → nome e preço no catálogo): é daí que sai o aviso de esgotado.
 // ZIP/CSV é exato e substitui tudo; prints podem ser parciais e só acrescentam/atualizam.
 async function guardarCatalogo(pares, origem) {
-    const db = getDb(), upd = {}, agora = Date.now();
+    const db = getDb(), upd = {}, agora = Date.now(), R = raiz(), conta = APR.contas[CONTA];
     const itens = {};
     pares.forEach(({ it, c }) => { itens[c.id] = { n: it.nome, p: it.preco }; });
     if (origem === 'zip') {
-        upd[`${BASE}/catalogo`] = { atualizado: agora, origem, itens };
-        Object.entries(APR.esg || {}).forEach(([pid, e]) => {            // saiu do catálogo e ninguém desativou: pendência não faz mais sentido
-            if (!itens[pid] && (e.estado === 'desativar' || e.estado === 'ainda')) upd[`${BASE}/esg/${pid}`] = null;
+        upd[`${R}/catalogo`] = { atualizado: agora, origem, itens };
+        Object.entries(conta.esg || {}).forEach(([pid, e]) => {            // saiu do catálogo e ninguém desativou: pendência não faz mais sentido
+            if (!itens[pid] && (e.estado === 'desativar' || e.estado === 'ainda')) upd[`${R}/esg/${pid}`] = null;
         });
     } else {
-        Object.entries(itens).forEach(([pid, v]) => { upd[`${BASE}/catalogo/itens/${pid}`] = v; });
-        upd[`${BASE}/catalogo/atualizado`] = agora; upd[`${BASE}/catalogo/origem`] = (APR.catalogo && APR.catalogo.origem) || origem;
+        Object.entries(itens).forEach(([pid, v]) => { upd[`${R}/catalogo/itens/${pid}`] = v; });
+        upd[`${R}/catalogo/atualizado`] = agora; upd[`${R}/catalogo/origem`] = (conta.catalogo && conta.catalogo.origem) || origem;
     }
     await update(ref(db), upd);
-    APR.catalogo = origem === 'zip' ? { atualizado: agora, origem, itens } : { atualizado: agora, origem: (APR.catalogo && APR.catalogo.origem) || origem, itens: { ...((APR.catalogo && APR.catalogo.itens) || {}), ...itens } };
-    Object.entries(upd).forEach(([k, v]) => { if (v === null && k.includes('/esg/')) delete APR.esg[k.split('/').pop()]; });
+    conta.catalogo = origem === 'zip' ? { atualizado: agora, origem, itens } : { atualizado: agora, origem: (conta.catalogo && conta.catalogo.origem) || origem, itens: { ...((conta.catalogo && conta.catalogo.itens) || {}), ...itens } };
+    Object.entries(upd).forEach(([k, v]) => { if (v === null && k.includes('/esg/')) delete conta.esg[k.split('/').pop()]; });
+    APR.catalogo = conta.catalogo;
 }
 
 async function concluirCatalogo(itens, extra, exato, silencioso) {
@@ -1236,10 +1286,11 @@ async function telaZap(aba) {
     let zap, esg, hist = {};
     try {
         const db = getDb();
-        [zap, esg] = (await Promise.all([get(ref(db, BASE + '/zap')), get(ref(db, BASE + '/esg'))])).map(x => x.val() || {});
-        if (aba === 'hist') hist = (await get(ref(db, BASE + '/zapLog'))).val() || {};
+        await carregarAprendizado();
+        [zap, esg] = (await Promise.all([get(ref(db, raiz() + '/zap')), get(ref(db, raiz() + '/esg'))])).map(x => x.val() || {});
+        if (aba === 'hist') hist = (await get(ref(db, raiz() + '/zapLog'))).val() || {};
     } catch (e) { return tela(`<div class="ps-msg ps-erro">Não consegui acessar o banco de dados (${esc(e.message)}).</div>`); }
-    APR.esg = esg;
+    if (APR.contas[CONTA]) APR.contas[CONTA].esg = APR.esg = esg;
     const extra = catExtra();
     const precos = Object.entries(zap).map(([id, z]) => ({ id, ...z }));
     const agora = Date.now();
@@ -1293,6 +1344,7 @@ async function telaZap(aba) {
             : '<div class="ps-msg">Ainda não há histórico. Ele guarda as últimas ' + MAX_ZAPLOG + ' correções.</div>';
     }
     tela(`
+      ${Object.keys(APR.contas).length > 1 ? chipsConta(false) : ''}
       <div class="ps-abas">${abas.map(([k, nome, n]) => `<button type="button" class="${k === aba ? 'on' : ''}" data-act="zapaba" data-aba="${k}">${nome}${n ? ' ' + n : ''}</button>`).join('')}</div>
       ${corpo}
       <button type="button" class="ps-btn" data-act="inicio">Conferir com o ZIP do catálogo</button>`);
@@ -1300,17 +1352,17 @@ async function telaZap(aba) {
 }
 let S_zapAba = 'preco';
 
-async function zapRemover(id) { await update(ref(getDb()), { [`${BASE}/zap/${id}`]: null }); }
+async function zapRemover(id) { await update(ref(getDb()), { [`${raiz()}/zap/${id}`]: null }); }
 
 // Alinha a lista com o que o ZIP mostrou: preço certo sai; preço errado entra (catálogo atual = preço lido − extra)
 async function zapAlinhar(pares, extra) {
     const db = getDb();
-    const atual = (await get(ref(db, BASE + '/zap'))).val() || {};
+    const atual = (await get(ref(db, raiz() + '/zap'))).val() || {};
     const upd = {}; let total = Object.keys(atual).length;
     pares.forEach(({ it, c }) => {
-        if (igual(it.preco, c.valor + extra)) { if (atual[c.id]) { upd[`${BASE}/zap/${c.id}`] = null; total--; } return; }
+        if (igual(it.preco, c.valor + extra)) { if (atual[c.id]) { upd[`${raiz()}/zap/${c.id}`] = null; total--; } return; }
         if (!atual[c.id]) { if (total >= 200) return; total++; }
-        upd[`${BASE}/zap/${c.id}`] = { nome: c.nome, de: Math.round((it.preco - extra) * 100) / 100, para: c.valor, quando: Date.now(), usuario: usuario(), origem: 'zip' };
+        upd[`${raiz()}/zap/${c.id}`] = { nome: c.nome, de: Math.round((it.preco - extra) * 100) / 100, para: c.valor, quando: Date.now(), usuario: usuario(), origem: 'zip' };
     });
     if (Object.keys(upd).length) await update(ref(db), upd);
 }

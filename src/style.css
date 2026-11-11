@@ -3790,3 +3790,6 @@ html:not(.ctw-dev) [data-dev-only] { display: none !important; }
 .ps-link { color: #34D399; font-weight: 600; font-size: 13px; cursor: pointer; }
 .ps-btn[disabled] { opacity: .45; }
 #psBuscaVinc { position: sticky; top: 0; z-index: 2; width: 100%; box-sizing: border-box; margin: 0 0 8px; background: var(--card-color, #17191E); }
+.ps-contas { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.ps-contas button { border: 1px solid var(--border-color, #262930); background: transparent; color: var(--text-color); border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 500; }
+.ps-contas button.on { background: #34D399; border-color: #34D399; color: #052E1F; font-weight: 700; }
