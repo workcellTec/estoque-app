@@ -251,7 +251,7 @@ function abrirOverlay(titulo) {
 function fechar() {
     if (overlay) { overlay.remove(); overlay = null; }
     document.documentElement.classList.remove('ps-aberto');
-    S = null; CAT = null;
+    S = null; CAT = null; ESC_.pdf = ESC_.cat = null;
 }
 
 function tela(html) {
@@ -260,6 +260,8 @@ function tela(html) {
 }
 
 const chip = (t, forte) => `<span class="ps-chip${forte ? ' ps-forte' : ''}">${esc(t)}</span>`;
+
+const ESC_ = { pdf: null, cat: null };   // arquivos escolhidos na entrada, ainda não analisados
 
 async function telaInicio() {
     const tit = overlay && overlay.querySelector('.ps-topo b'); if (tit) tit.textContent = 'Sincronizar preços';
@@ -281,23 +283,24 @@ async function telaInicio() {
         nPend = Object.keys(z.val() || {}).length + Object.values(e.val() || {}).filter(x => x.estado === 'desativar' || x.estado === 'reativar').length;
         cat = c.val();
     } catch (e) { /* painel segue sem os contadores */ }
+    const arqTxt = (f, vazio) => f ? `<div class="ps-nome">${esc(f.name)}</div><div class="ps-sub">${(f.size / 1024).toFixed(0)} KB · pronto para analisar</div>` : `<div class="ps-sub">${vazio}</div>`;
     tela(`
+      <div class="ps-sub">Um fluxo só: o PDF do Stock 2.0 atualiza os preços do CTW e o app já diz o que mudar, desativar ou reativar no WhatsApp.</div>
       <div class="ps-card">
-        <p>Gere o <b>Catálogo de produtos</b> no Stock 2.0 (PDF) e escolha o arquivo abaixo. Só o <b>valor</b> dos produtos do CTW é atualizado — cor, código, quantidade e nome ficam como estão.</p>
-        <label class="ps-btn ps-prim"><input type="file" id="psArquivo" accept="application/pdf,.pdf" hidden>Escolher PDF do Stock 2.0</label>
+        <div class="ps-passo"><span class="ps-n on">1</span><b>Lista do Stock 2.0 (PDF)</b></div>
+        <div class="ps-arq"><span class="ps-tipo ps-pdf">PDF</span><div class="ps-grow">${arqTxt(ESC_.pdf, 'Gere o “Catálogo de produtos” no Stock 2.0 e escolha o arquivo. Só o valor dos produtos do CTW é atualizado.')}</div>
+          <label class="ps-link"><input type="file" id="psArquivo" accept="application/pdf,.pdf" hidden>${ESC_.pdf ? 'Trocar' : 'Escolher'}</label></div>
       </div>
       <div class="ps-card">
-        <div class="ps-lin"><span>Alterar no WhatsApp</span><b>${nPend}</b></div>
-        <button type="button" class="ps-btn${nPend ? ' ps-prim' : ''}" data-act="zap">Abrir “Alterar no WhatsApp”</button>
-      </div>
-      <div class="ps-card">
-        <div class="ps-cap">Catálogo do WhatsApp</div>
-        ${cat ? `<div class="ps-lin"><span>Guardado ${tempoAtras(cat.atualizado)} (${cat.origem === 'zip' ? 'ZIP' : 'prints'})</span><b>${Object.keys(cat.itens || {}).length} produtos</b></div>` : '<div class="ps-sub">Ainda não guardado. Envie o ZIP (ou prints) uma vez para o app avisar os esgotados.</div>'}
-        <p>Informe o extra à vista (preço do catálogo = valor do CTW + extra) e envie o ZIP/CSV exportado (leitura exata) ou prints. O app guarda o catálogo; só precisa de um novo de vez em quando.</p>
+        <div class="ps-passo"><span class="ps-n">2</span><b class="ps-grow">Catálogo do WhatsApp</b><span class="ps-opc">opcional</span></div>
+        <div class="ps-sub">O app guarda o último catálogo importado. Só envie outro de vez em quando ou ao cadastrar produto novo.</div>
+        <div class="ps-arq"><span class="ps-tipo ps-zip">ZIP</span><div class="ps-grow">${ESC_.cat ? arqTxt(ESC_.cat, '') : (cat ? `<div class="ps-nome">Último: ${tempoAtras(cat.atualizado)} (${cat.origem === 'zip' ? 'ZIP' : 'prints'})</div><div class="ps-sub">${Object.keys(cat.itens || {}).length} produtos guardados</div>` : '<div class="ps-sub">Ainda não guardado. Envie o ZIP uma vez para o app avisar os esgotados.</div>')}</div>
+          <label class="ps-link"><input type="file" id="psCatArq" accept=".zip,.csv,application/zip,text/csv" hidden>${ESC_.cat || cat ? 'Atualizar' : 'Escolher'}</label></div>
         <div class="ps-lin"><span>Extra à vista (R$)</span><input type="text" inputmode="decimal" id="psCatExtra" class="ps-inp" value="${esc(String(catExtra()).replace('.', ','))}"></div>
-        <label class="ps-btn ps-prim"><input type="file" id="psCatArq" accept=".zip,.csv,application/zip,text/csv" hidden>Escolher arquivo do catálogo (ZIP/CSV)</label>
-        <label class="ps-btn"><input type="file" id="psPrints" accept="image/*" multiple hidden>Ou escolher prints do catálogo</label>
+        <label class="ps-link ps-esp"><input type="file" id="psPrints" accept="image/*" multiple hidden>Sem o ZIP? Usar prints do catálogo</label>
       </div>
+      <button type="button" class="ps-btn ps-prim" data-act="analisar"${ESC_.pdf || ESC_.cat ? '' : ' disabled'}>${ESC_.pdf ? 'Analisar tudo' : ESC_.cat ? 'Guardar catálogo' : 'Escolha o PDF para analisar'}</button>
+      <div class="ps-lin ps-esp"><span>Alterar no WhatsApp</span><button type="button" class="ps-mini${nPend ? ' ps-prim' : ''}" data-act="zap">${nPend ? nPend + ' pendentes · abrir' : 'Abrir'}</button></div>
       <div class="ps-card">
         <div class="ps-lin"><span>Produtos já vinculados</span><b>${nAl}</b></div>
         <button type="button" class="ps-btn" data-act="vinculos">Gerenciar vínculos e ignorados</button>
@@ -371,10 +374,10 @@ function aoDigitar(e) {
     if (e.target.id === 'psBuscaAdd' && S) { const box = overlay.querySelector('#psAddRes'); if (box) box.innerHTML = listaAdicionar(e.target.value); }
 }
 function aoMudar(e) {
-    if (e.target.id === 'psArquivo') aoEscolherPdf(e.target.files && e.target.files[0]);
+    if (e.target.id === 'psArquivo') { ESC_.pdf = (e.target.files && e.target.files[0]) || ESC_.pdf; telaInicio(); }
     if (e.target.id === 'psCatExtra') { const n = numero(e.target.value); try { localStorage.setItem('ctwCatExtra', String(n)); } catch (x) {} }
     if (e.target.id === 'psPrints') aoEscolherPrints(e.target.files);
-    if (e.target.id === 'psCatArq') aoEscolherCatalogo(e.target.files && e.target.files[0]);
+    if (e.target.id === 'psCatArq') { ESC_.cat = (e.target.files && e.target.files[0]) || ESC_.cat; telaInicio(); }
     if (S && e.target.dataset && e.target.dataset.sus !== undefined) {
         S.aceitar[e.target.dataset.sus] = e.target.checked;
         const bt = overlay.querySelector('[data-act="aplicar"]');
@@ -805,6 +808,15 @@ async function aoClicar(e) {
         if (act === 'desfazer') return desfazer(b.dataset.id);
         if (act === 'rmvinculo') { await removerVinculo(b.dataset.pid, b.dataset.nome); return telaVinculos(); }
         if (act === 'esquecerign') { await update(ref(getDb()), { [`${BASE}/ignoradosPdf`]: null, [`${BASE}/ignoradosCtw`]: null }); return telaVinculos(); }
+        if (act === 'analisar') {
+            const { pdf, cat } = ESC_;
+            if (!pdf && !cat) return;
+            extraDoCampo();
+            ESC_.pdf = ESC_.cat = null;
+            if (!pdf) return aoEscolherCatalogo(cat);
+            if (cat) await aoEscolherCatalogo(cat, true);      // atualiza o catálogo guardado em silêncio e segue para o PDF
+            return aoEscolherPdf(pdf);
+        }
         if (act === 'zapaba') return telaZap(b.dataset.aba);
         if (act === 'zap') return telaZap('preco');
         if (act === 'esgaplicar') {
@@ -1005,7 +1017,7 @@ async function guardarCatalogo(pares, origem) {
     Object.entries(upd).forEach(([k, v]) => { if (v === null && k.includes('/esg/')) delete APR.esg[k.split('/').pop()]; });
 }
 
-async function concluirCatalogo(itens, extra, exato) {
+async function concluirCatalogo(itens, extra, exato, silencioso) {
     const produtos = (window.products || []).filter(p => p && p.id);
     if (!produtos.length) throw new Error('O CTW ainda não carregou os produtos. Aguarde alguns segundos e tente de novo.');
     await carregarAprendizado();
@@ -1013,7 +1025,7 @@ async function concluirCatalogo(itens, extra, exato) {
     CAT.fila = CAT.perguntas.slice();
     if (exato) await zapAlinhar(CAT.certos.concat(CAT.errados), extra).catch(e => console.warn('[zap]', e.message));   // arquivo exato: a lista "Alterar no WhatsApp" passa a refletir o catálogo
     await guardarCatalogo(CAT.certos.concat(CAT.errados), exato ? 'zip' : 'prints').catch(e => console.warn('[catálogo]', e.message));
-    telaCatRelatorio();
+    if (!silencioso) telaCatRelatorio();
 }
 
 function extraDoCampo() {
@@ -1114,7 +1126,7 @@ async function textoDoZip(buf) {
     throw new Error('Não achei o arquivo items.csv dentro do ZIP.');
 }
 
-async function aoEscolherCatalogo(arq) {
+async function aoEscolherCatalogo(arq, silencioso) {
     if (!arq) return;
     try {
         const extra = extraDoCampo();
@@ -1122,7 +1134,7 @@ async function aoEscolherCatalogo(arq) {
         const txt = /\.zip$/i.test(arq.name) ? await textoDoZip(await arq.arrayBuffer()) : await arq.text();
         const itens = itensDoCsv(txt);
         if (!itens.length) throw new Error('Não encontrei produtos com preço nesse arquivo.');
-        await concluirCatalogo(itens, extra, true);
+        await concluirCatalogo(itens, extra, true, silencioso);
     } catch (e) {
         tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div><button type="button" class="ps-btn" data-act="inicio">Voltar</button>`);
     }
