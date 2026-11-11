@@ -187,8 +187,8 @@ async function criarConta(nome) {
     usarConta(id);
 }
 async function renomearConta(id, nome) {
-    nome = String(nome || '').trim().slice(0, 30); if (!nome || id === 'loja' || !APR.contas[id]) return;
-    await update(ref(getDb()), { [`${BASE}/contasNomes/${id}`]: nome });
+    nome = String(nome || '').trim().slice(0, 30); if (!nome || !APR.contas[id]) return;
+    await update(ref(getDb()), { [id === 'loja' ? `${BASE}/lojaNome` : `${BASE}/contasNomes/${id}`]: nome });   // a conta original guarda o nome à parte (os caminhos dela são os antigos)
     APR.contas[id].nome = nome;
 }
 async function excluirConta(id) {
@@ -204,8 +204,8 @@ async function carregarAprendizado() {
     const snap = await get(ref(getDb(), BASE));
     const v = snap.val() || {};
     APR = { aliases: v.aliases || {}, ignoradosPdf: v.ignoradosPdf || {}, ignoradosCtw: v.ignoradosCtw || {}, catAliases: v.catAliases || {}, catIgnorados: v.catIgnorados || {}, catalogo: v.catalogo || null, esg: v.esg || {}, contas: {}, contasZip: v.contasZip || {} };
-    APR.contas.loja = { nome: 'Loja', catalogo: v.catalogo || null, esg: v.esg || {}, zap: v.zap || {}, fixos: v.fixos || {} };
-    Object.entries(v.contasNomes || {}).forEach(([id, nome]) => { const d = (v.contas || {})[id] || {}; APR.contas[id] = { nome, catalogo: d.catalogo || null, esg: d.esg || {}, zap: d.zap || {}, fixos: d.fixos || {} }; });
+    APR.contas.loja = { nome: v.lojaNome || 'Loja', catalogo: v.catalogo || null, esg: v.esg || {}, zap: v.zap || {}, fixos: v.fixos || {} };
+    Object.entries(v.contasNomes || {}).forEach(([id, nome]) => { if (id === 'loja') return; const d = (v.contas || {})[id] || {}; APR.contas[id] = { nome, catalogo: d.catalogo || null, esg: d.esg || {}, zap: d.zap || {}, fixos: d.fixos || {} }; });
     usarConta(CONTA);
 }
 
@@ -927,9 +927,9 @@ async function telaAvContas(msg) {
       ${Object.entries(APR.contas).map(([id, c]) => `<div class="ps-card">
         <div class="ps-nome">${esc(c.nome)}</div>
         <div class="ps-sub">${c.catalogo ? `ZIP ${idadeTxt(c.catalogo)}` : 'Sem catálogo'} · ${totalPend(id)} pendência(s)${id === 'loja' ? ' · conta original' : ''}</div>
-        ${id === 'loja' ? '' : `<div class="ps-busca"><input type="text" id="psRen-${esc(id)}" value="${esc(c.nome)}" maxlength="30" autocomplete="off"></div>
+        <div class="ps-busca"><input type="text" id="psRen-${esc(id)}" value="${esc(c.nome)}" maxlength="30" autocomplete="off"></div>
         <button type="button" class="ps-btn" data-act="renomear" data-id="${esc(id)}">Salvar novo nome</button>
-        <button type="button" class="ps-btn ps-suave" data-act="excluirconta" data-id="${esc(id)}">Excluir esta conta…</button>`}
+        ${id === 'loja' ? '' : `<button type="button" class="ps-btn ps-suave" data-act="excluirconta" data-id="${esc(id)}">Excluir esta conta…</button>`}
       </div>`).join('')}
       <div class="ps-card"><div class="ps-nome">Nova conta</div>
         <div class="ps-busca"><input type="text" id="psNovaConta" placeholder="Nome (ex.: Colega)" maxlength="30" autocomplete="off"></div>
