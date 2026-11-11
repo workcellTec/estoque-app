@@ -114,11 +114,18 @@ let _zapOuvindo = false;
 window.ctwZapOuvir = function() {
     if (_zapOuvindo || !isAuthReady) return;
     _zapOuvindo = true;
+    let nZap = 0, nEsg = 0;
+    const pintar = () => {
+        const n = nZap + nEsg;
+        document.querySelectorAll('[data-zap-n]').forEach(el => { el.textContent = n ? String(n) : ''; el.hidden = !n; });
+    };
     onValue(ref(db, ZAP_PATH), snap => {
         window.ctwZapDados = snap.val() || {};
-        const n = Object.keys(window.ctwZapDados).length;
-        document.querySelectorAll('[data-zap-n]').forEach(el => { el.textContent = n ? String(n) : ''; el.hidden = !n; });
+        nZap = Object.keys(window.ctwZapDados).length; pintar();
     }, () => { _zapOuvindo = false; });
+    onValue(ref(db, ZAP_PATH.replace(/\/zap$/, '/esg')), snap => {
+        nEsg = Object.values(snap.val() || {}).filter(e => e && (e.estado === 'desativar' || e.estado === 'reativar')).length; pintar();
+    }, () => {});
 };
 
 // Adicione junto com suas variáveis globais

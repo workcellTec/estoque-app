@@ -166,12 +166,12 @@ async function lerPdf(arquivo) {
 
 // ── Estado e acesso ao banco ────────────────────────────────────
 let S = null;           // estado da importação em andamento
-let APR = { aliases: {}, ignoradosPdf: {}, ignoradosCtw: {}, catAliases: {}, catIgnorados: {} };
+let APR = { aliases: {}, ignoradosPdf: {}, ignoradosCtw: {}, catAliases: {}, catIgnorados: {}, catalogo: null, esg: {} };
 
 async function carregarAprendizado() {
     const snap = await get(ref(getDb(), BASE));
     const v = snap.val() || {};
-    APR = { aliases: v.aliases || {}, ignoradosPdf: v.ignoradosPdf || {}, ignoradosCtw: v.ignoradosCtw || {}, catAliases: v.catAliases || {}, catIgnorados: v.catIgnorados || {} };
+    APR = { aliases: v.aliases || {}, ignoradosPdf: v.ignoradosPdf || {}, ignoradosCtw: v.ignoradosCtw || {}, catAliases: v.catAliases || {}, catIgnorados: v.catIgnorados || {}, catalogo: v.catalogo || null, esg: v.esg || {} };
 }
 
 function usuario() { try { return localStorage.getItem('ctwUserProfile') || ''; } catch (e) { return ''; } }
@@ -275,13 +275,25 @@ async function telaInicio() {
         return;
     }
     const nAl = Object.keys(APR.aliases).length;
+    let nPend = 0, cat = null;
+    try {
+        const [z, e, c] = await Promise.all([get(ref(getDb(), BASE + '/zap')), get(ref(getDb(), BASE + '/esg')), get(ref(getDb(), BASE + '/catalogo'))]);
+        nPend = Object.keys(z.val() || {}).length + Object.values(e.val() || {}).filter(x => x.estado === 'desativar' || x.estado === 'reativar').length;
+        cat = c.val();
+    } catch (e) { /* painel segue sem os contadores */ }
     tela(`
       <div class="ps-card">
         <p>Gere o <b>Catálogo de produtos</b> no Stock 2.0 (PDF) e escolha o arquivo abaixo. Só o <b>valor</b> dos produtos do CTW é atualizado — cor, código, quantidade e nome ficam como estão.</p>
         <label class="ps-btn ps-prim"><input type="file" id="psArquivo" accept="application/pdf,.pdf" hidden>Escolher PDF do Stock 2.0</label>
       </div>
       <div class="ps-card">
-        <p>Conferir os preços do <b>catálogo do WhatsApp Business</b> (preço à vista = valor do CTW + extra). Use o arquivo exportado do catálogo (ZIP ou CSV): a leitura é exata. Sem o arquivo, dá para usar prints.</p>
+        <div class="ps-lin"><span>Alterar no WhatsApp</span><b>${nPend}</b></div>
+        <button type="button" class="ps-btn${nPend ? ' ps-prim' : ''}" data-act="zap">Abrir “Alterar no WhatsApp”</button>
+      </div>
+      <div class="ps-card">
+        <div class="ps-cap">Catálogo do WhatsApp</div>
+        ${cat ? `<div class="ps-lin"><span>Guardado ${tempoAtras(cat.atualizado)} (${cat.origem === 'zip' ? 'ZIP' : 'prints'})</span><b>${Object.keys(cat.itens || {}).length} produtos</b></div>` : '<div class="ps-sub">Ainda não guardado. Envie o ZIP (ou prints) uma vez para o app avisar os esgotados.</div>'}
+        <p>Informe o extra à vista (preço do catálogo = valor do CTW + extra) e envie o ZIP/CSV exportado (leitura exata) ou prints. O app guarda o catálogo; só precisa de um novo de vez em quando.</p>
         <div class="ps-lin"><span>Extra à vista (R$)</span><input type="text" inputmode="decimal" id="psCatExtra" class="ps-inp" value="${esc(String(catExtra()).replace('.', ','))}"></div>
         <label class="ps-btn ps-prim"><input type="file" id="psCatArq" accept=".zip,.csv,application/zip,text/csv" hidden>Escolher arquivo do catálogo (ZIP/CSV)</label>
         <label class="ps-btn"><input type="file" id="psPrints" accept="image/*" multiple hidden>Ou escolher prints do catálogo</label>
@@ -412,9 +424,89 @@ function telaPrevia() {
         ${inval.length ? `<div class="ps-lin"><span>Valor inválido no PDF (não aplico)</span><b>${inval.length}</b></div>` : ''}
         ${S.avisos.length ? `<details class="ps-det"><summary>${S.avisos.length} aviso(s) na leitura do PDF</summary>${S.avisos.map(a => `<div class="ps-sub">${esc(a)}</div>`).join('')}</details>` : ''}
       </div>
+      ${cartaoWhats(calcEsgotados(presencaPdf(), duvidaPdf()))}
       ${muda.length ? muda.map(linha).join('') : '<div class="ps-msg">Nenhum preço precisa mudar.</div>'}
       <button type="button" class="ps-btn ps-prim" data-act="aplicar">${muda.length ? `Aplicar ${nAplicar} preço(s)` : 'Concluir'}</button>
       <button type="button" class="ps-btn ps-suave" data-act="fechar">Cancelar (nada é alterado)</button>`);
+}
+
+// ── Esgotados: o que está no catálogo e não veio no PDF → desativar no WhatsApp ──
+// Estados por produto (settings/precosync/esg/{pid}): desativar (aviso pendente) → desativado (você confirmou)
+// → reativar (voltou ao PDF) → some quando você reativa. "ainda" = "ainda tem": não avisa até a data.
+const DIAS_AINDA_TEM = 15;
+const LIMITE_ESGOTADOS = 0.15;     // mais que isso de uma vez = provável PDF incompleto: pergunta antes
+const MAX_ZAPLOG = 40;
+
+function presencaPdf() {
+    const set = new Set(S.cl.reivindicado.keys());
+    (S.mud || []).forEach(x => set.add(x.id));
+    S.novosAliases.forEach(a => set.add(a.c.id));
+    return set;
+}
+
+// Produtos do CTW que podem ser a mesma coisa que um item do PDF ainda sem resposta: não conta como "ausente"
+function duvidaPdf() {
+    const set = new Set();
+    const ignorado = r => S.novosIgnoradosPdf.includes(r) || (r.codigo && APR.ignoradosPdf[chaveCodigo(r.codigo)]) || APR.ignoradosPdf[chaveNome(r.an)];
+    S.fila.concat(S.cl.semCtw).filter(r => !ignorado(r) && !(S.vinculados && S.vinculados.has(r.i)))
+        .forEach(r => candidatos(r, S.cl.ctw, S.cl.reivindicado, LIMIAR_PERGUNTA).forEach(x => set.add(x.c.id)));
+    return set;
+}
+
+function calcEsgotados(presenca, duvida) {
+    const cat = (APR.catalogo && APR.catalogo.itens) || {}, esg = APR.esg || {}, agora = Date.now();
+    const upd = {}; let novos = 0;
+    new Set([...Object.keys(cat), ...Object.keys(esg)]).forEach(pid => {
+        const e = esg[pid], c = cat[pid];
+        if (duvida.has(pid)) return;
+        if (presenca.has(pid)) {
+            if (e && e.estado === 'desativado') upd[pid] = { ...e, estado: 'reativar', desde: agora };
+            else if (e && (e.estado === 'desativar' || e.estado === 'ainda')) upd[pid] = null;
+            return;
+        }
+        if (!c && !(e && (e.estado === 'desativado' || e.estado === 'reativar'))) return;     // fora do catálogo e sem histórico
+        if (!e) { upd[pid] = { nome: c.n, preco: c.p, estado: 'desativar', desde: agora }; novos++; }
+        else if (e.estado === 'ainda' && (e.ate || 0) <= agora) { upd[pid] = { ...e, estado: 'desativar', desde: agora }; novos++; }
+        else if (e.estado === 'reativar') upd[pid] = { ...e, estado: 'desativado' };            // faltou de novo antes de você reativar
+    });
+    const final = { ...esg };
+    Object.entries(upd).forEach(([pid, v]) => { if (v === null) delete final[pid]; else final[pid] = v; });
+    const tam = Object.keys(cat).length;
+    return {
+        upd, novos,
+        suspeito: novos > Math.max(5, Math.ceil(tam * LIMITE_ESGOTADOS)),
+        desativar: Object.values(final).filter(e => e.estado === 'desativar').length,
+        reativar: Object.values(final).filter(e => e.estado === 'reativar').length
+    };
+}
+
+function contagemEsg() {
+    const v = Object.values(APR.esg || {});
+    return { desativar: v.filter(e => e.estado === 'desativar').length, reativar: v.filter(e => e.estado === 'reativar').length };
+}
+
+function aplicarEsgLocal(upd) {
+    APR.esg = APR.esg || {};
+    Object.entries(upd).forEach(([pid, v]) => { if (v === null) delete APR.esg[pid]; else APR.esg[pid] = v; });
+}
+
+function cartaoWhats(eg) {
+    if (!eg || !Object.keys(APR.catalogo && APR.catalogo.itens || {}).length) return '';
+    return `<div class="ps-card ${eg.suspeito ? 'ps-alerta' : ''}">
+        <div class="ps-cap">WhatsApp (catálogo)</div>
+        ${eg.suspeito ? `<div class="ps-aviso">${eg.novos} produtos do catálogo parecem esgotados de uma vez. O PDF veio completo? Nada é avisado até você confirmar.</div>
+          <button type="button" class="ps-btn ps-perigo" data-act="esgaplicar">Sim, o PDF está completo: avisar os esgotados</button>`
+        : `<div class="ps-lin"><span>Esgotaram (desativar no WhatsApp)</span><b>${eg.desativar}</b></div>`}
+        ${eg.reativar ? `<div class="ps-lin"><span>Voltaram ao estoque (reativar)</span><b>${eg.reativar}</b></div>` : ''}
+      </div>`;
+}
+
+async function logZap(entrada, upd) {
+    const db = getDb();
+    const log = (await get(ref(db, BASE + '/zapLog'))).val() || {};
+    const key = push(ref(db, BASE + '/zapLog')).key;
+    Object.keys(log).sort().slice(0, -(MAX_ZAPLOG - 1)).forEach(k => { upd[`${BASE}/zapLog/${k}`] = null; });
+    upd[`${BASE}/zapLog/${key}`] = { quando: Date.now(), usuario: usuario(), ...entrada };
 }
 
 // ── Aplicar ─────────────────────────────────────────────────────
@@ -463,8 +555,11 @@ async function aplicar() {
         // quem voltou a aparecer no PDF deixa de ser "em falta"/"fora do estoque"
         const voltou = {};
         S.cl.casados.forEach(({ c }) => { if (APR.ignoradosCtw[c.id]) voltou[`${BASE}/ignoradosCtw/${c.id}`] = null; });
+        S.esg = calcEsgotados(presencaPdf(), duvidaPdf());          // esgotados / voltaram, em relação ao catálogo guardado
+        if (!S.esg.suspeito) Object.entries(S.esg.upd).forEach(([pid, v]) => { voltou[`${BASE}/esg/${pid}`] = v; });
         await gravar(seguros, S.novosAliases, S.novosIgnoradosPdf, S.arquivo, 'importacao', voltou);
-        Object.keys(voltou).forEach(k => delete APR.ignoradosCtw[k.split('/').pop()]);
+        Object.keys(voltou).filter(k => k.includes('/ignoradosCtw/')).forEach(k => delete APR.ignoradosCtw[k.split('/').pop()]);
+        if (!S.esg.suspeito) { aplicarEsgLocal(S.esg.upd); Object.assign(S.esg, contagemEsg()); }
     } catch (e) {
         const regra = /permission/i.test(e.message || '') ? ' O Firebase precisa liberar escrita no caminho “settings/precosync” nas regras do banco.' : '';
         tela(`<div class="ps-msg ps-erro">Não consegui gravar (${esc(e.message)}). Nada foi alterado.${regra}</div><button type="button" class="ps-btn" data-act="previa">Voltar à prévia</button>`);
@@ -512,6 +607,8 @@ function telaRelatorio() {
         ${emFalta ? `<div class="ps-lin"><span>Em falta (escondidos por ${DIAS_EM_FALTA} dias, voltam depois)</span><b>${emFalta}</b></div>` : ''}
         ${faltam.length ? `<button type="button" class="ps-btn ps-prim" data-act="revisar">Ver e vincular manualmente</button>` : ''}
       </div>
+      ${cartaoWhats(S.esg)}
+      <button type="button" class="ps-btn ps-prim" data-act="zap">Abrir “Alterar no WhatsApp”</button>
       <button type="button" class="ps-btn" data-act="fechar">Fechar</button>`);
 }
 
@@ -708,7 +805,33 @@ async function aoClicar(e) {
         if (act === 'desfazer') return desfazer(b.dataset.id);
         if (act === 'rmvinculo') { await removerVinculo(b.dataset.pid, b.dataset.nome); return telaVinculos(); }
         if (act === 'esquecerign') { await update(ref(getDb()), { [`${BASE}/ignoradosPdf`]: null, [`${BASE}/ignoradosCtw`]: null }); return telaVinculos(); }
-        if (act === 'zapok') { b.disabled = true; await zapRemover(b.dataset.id); return telaZap(); }
+        if (act === 'zapaba') return telaZap(b.dataset.aba);
+        if (act === 'zap') return telaZap('preco');
+        if (act === 'esgaplicar') {
+            b.disabled = true;
+            const upd = {}; Object.entries(S.esg.upd).forEach(([pid, v]) => { upd[`${BASE}/esg/${pid}`] = v; });
+            await update(ref(getDb()), upd); aplicarEsgLocal(S.esg.upd);
+            S.esg = { ...S.esg, ...contagemEsg(), suspeito: false };
+            return telaRelatorio();
+        }
+        if (act === 'zapok' || act === 'esgdesativei' || act === 'esgreativei' || act === 'esgainda') {
+            b.disabled = true;
+            const id = b.dataset.id, upd = {};
+            try {
+                if (act === 'zapok') {
+                    const z = ((await get(ref(getDb(), `${BASE}/zap/${id}`))).val()) || {};
+                    upd[`${BASE}/zap/${id}`] = null;
+                    await logZap({ tipo: 'preco', nome: z.nome || '', de: (z.de || 0) + catExtra(), para: (z.para || 0) + catExtra() }, upd);
+                } else {
+                    const e = ((await get(ref(getDb(), `${BASE}/esg/${id}`))).val()) || {};
+                    if (act === 'esgdesativei') { upd[`${BASE}/esg/${id}`] = { ...e, estado: 'desativado', desde: Date.now() }; await logZap({ tipo: 'desativar', nome: e.nome || '' }, upd); }
+                    else if (act === 'esgreativei') { upd[`${BASE}/esg/${id}`] = null; await logZap({ tipo: 'reativar', nome: e.nome || '' }, upd); }
+                    else upd[`${BASE}/esg/${id}`] = { ...e, estado: 'ainda', ate: Date.now() + DIAS_AINDA_TEM * 86400000 };
+                }
+                await update(ref(getDb()), upd);
+            } catch (er) { console.warn('[zap]', er.message); }
+            return telaZap(S_zapAba);
+        }
         if (act === 'catfeito') {
             if (!CAT) return;
             const i = Number(b.dataset.i), x = CAT.errados.find(e => e.it.i === i);
@@ -862,6 +985,26 @@ async function lerPrints(arquivos) {
 }
 
 // Compara a lista lida (prints ou arquivo) com o CTW e abre o relatório
+// Guarda o catálogo lido (produto do CTW → nome e preço no catálogo): é daí que sai o aviso de esgotado.
+// ZIP/CSV é exato e substitui tudo; prints podem ser parciais e só acrescentam/atualizam.
+async function guardarCatalogo(pares, origem) {
+    const db = getDb(), upd = {}, agora = Date.now();
+    const itens = {};
+    pares.forEach(({ it, c }) => { itens[c.id] = { n: it.nome, p: it.preco }; });
+    if (origem === 'zip') {
+        upd[`${BASE}/catalogo`] = { atualizado: agora, origem, itens };
+        Object.entries(APR.esg || {}).forEach(([pid, e]) => {            // saiu do catálogo e ninguém desativou: pendência não faz mais sentido
+            if (!itens[pid] && (e.estado === 'desativar' || e.estado === 'ainda')) upd[`${BASE}/esg/${pid}`] = null;
+        });
+    } else {
+        Object.entries(itens).forEach(([pid, v]) => { upd[`${BASE}/catalogo/itens/${pid}`] = v; });
+        upd[`${BASE}/catalogo/atualizado`] = agora; upd[`${BASE}/catalogo/origem`] = (APR.catalogo && APR.catalogo.origem) || origem;
+    }
+    await update(ref(db), upd);
+    APR.catalogo = origem === 'zip' ? { atualizado: agora, origem, itens } : { atualizado: agora, origem: (APR.catalogo && APR.catalogo.origem) || origem, itens: { ...((APR.catalogo && APR.catalogo.itens) || {}), ...itens } };
+    Object.entries(upd).forEach(([k, v]) => { if (v === null && k.includes('/esg/')) delete APR.esg[k.split('/').pop()]; });
+}
+
 async function concluirCatalogo(itens, extra, exato) {
     const produtos = (window.products || []).filter(p => p && p.id);
     if (!produtos.length) throw new Error('O CTW ainda não carregou os produtos. Aguarde alguns segundos e tente de novo.');
@@ -869,6 +1012,7 @@ async function concluirCatalogo(itens, extra, exato) {
     CAT = { extra, itens, exato: !!exato, feitos: new Set(), ...classificarCat(itens, produtos, extra) };
     CAT.fila = CAT.perguntas.slice();
     if (exato) await zapAlinhar(CAT.certos.concat(CAT.errados), extra).catch(e => console.warn('[zap]', e.message));   // arquivo exato: a lista "Alterar no WhatsApp" passa a refletir o catálogo
+    await guardarCatalogo(CAT.certos.concat(CAT.errados), exato ? 'zip' : 'prints').catch(e => console.warn('[catálogo]', e.message));
     telaCatRelatorio();
 }
 
@@ -1045,6 +1189,7 @@ async function catResponder(act, id) {
         APR.catAliases[chaveNome(it.an)] = { pid: ct.id, spec: assinatura(it.an) };
         (igual(it.preco, ct.valor + c.extra) ? c.certos : c.errados).push({ it, c: ct });
         if (c.exato) await zapAlinhar([{ it, c: ct }], c.extra).catch(e => console.warn('[zap]', e.message));
+        await guardarCatalogo([{ it, c: ct }], 'prints').catch(e => console.warn('[catálogo]', e.message));   // acrescenta ao guardado, sem apagar o resto
     } else if (act === 'catnao') {
         await update(ref(getDb()), { [`${BASE}/catIgnorados/${chaveNome(it.an)}`]: true });
         APR.catIgnorados[chaveNome(it.an)] = true; c.ignorados.push(it);
@@ -1057,37 +1202,76 @@ async function catResponder(act, id) {
 // ou quando a conferência com o ZIP do catálogo mostra que o preço já está certo.
 const tempoAtras = t => { const m = Math.max(0, Math.round((Date.now() - t) / 60000)); return m < 60 ? `há ${m} min` : m < 1440 ? `há ${Math.round(m / 60)} h` : `há ${Math.round(m / 1440)} dia(s)`; };
 
-async function telaZap() {
+async function telaZap(aba) {
+    aba = aba || 'preco';
     const tit = overlay && overlay.querySelector('.ps-topo b'); if (tit) tit.textContent = 'Alterar no WhatsApp';
     tela('<div class="ps-msg">Carregando…</div>');
-    let zap;
-    try { zap = (await get(ref(getDb(), BASE + '/zap'))).val() || {}; }
-    catch (e) { return tela(`<div class="ps-msg ps-erro">Não consegui acessar o banco de dados (${esc(e.message)}).</div>`); }
+    let zap, esg, hist = {};
+    try {
+        const db = getDb();
+        [zap, esg] = (await Promise.all([get(ref(db, BASE + '/zap')), get(ref(db, BASE + '/esg'))])).map(x => x.val() || {});
+        if (aba === 'hist') hist = (await get(ref(db, BASE + '/zapLog'))).val() || {};
+    } catch (e) { return tela(`<div class="ps-msg ps-erro">Não consegui acessar o banco de dados (${esc(e.message)}).</div>`); }
+    APR.esg = esg;
     const extra = catExtra();
-    const lista = Object.entries(zap).map(([id, z]) => ({ id, ...z }));
+    const precos = Object.entries(zap).map(([id, z]) => ({ id, ...z }));
+    const agora = Date.now();
+    const desativar = Object.entries(esg).filter(([, e]) => e.estado === 'desativar').map(([id, e]) => ({ id, ...e }));
+    const reativar = Object.entries(esg).filter(([, e]) => e.estado === 'reativar').map(([id, e]) => ({ id, ...e }));
     const sobe = z => z.para > z.de;           // preço do CTW subiu: o catálogo está mais barato que deveria
-    const urgentes = lista.filter(sobe).length;
-    const grupos = new Map();
-    lista.forEach(z => { const g = colecaoDe(z.nome || '', ''); if (!grupos.has(g)) grupos.set(g, []); grupos.get(g).push(z); });
-    grupos.forEach(l => l.sort((a, b) => sobe(b) - sobe(a) || (b.quando || 0) - (a.quando || 0)));
-    const ordenados = [...grupos].sort((a, b) => ordemGrupo(a[0]) - ordemGrupo(b[0]));
-    const linha = z => `
+    const agrupar = (lista, nomeDe, ordenar) => {
+        const g = new Map();
+        lista.forEach(z => { const k = colecaoDe(nomeDe(z) || '', ''); if (!g.has(k)) g.set(k, []); g.get(k).push(z); });
+        g.forEach(l => l.sort(ordenar));
+        return [...g].sort((x, y) => ordemGrupo(x[0]) - ordemGrupo(y[0]));
+    };
+    const cab = (g, l, extraTxt) => `<div class="ps-cap ps-esp">${esc(g)} · ${l.length}${extraTxt || ''}</div>`;
+    const linhaPreco = z => `
         <div class="ps-it${sobe(z) ? ' ps-urg' : ''}"><div class="ps-grow">
           ${sobe(z) ? '<span class="ps-tag-urg">MAIS BARATO QUE DEVERIA</span>' : ''}
           <div class="ps-nome">${esc(z.nome)}</div>
           <div class="ps-sub">Catálogo está em ${brl(z.de + extra)} → <b>colocar ${brl(z.para + extra)}</b></div>
           <div class="ps-sub">${z.quando ? tempoAtras(z.quando) : ''}${z.usuario ? ' · ' + esc(z.usuario) : ''}</div></div>
           <button type="button" class="ps-mini" data-act="zapok" data-id="${esc(z.id)}">Já corrigi</button></div>`;
+    const linhaEsg = e => `
+        <div class="ps-it"><div class="ps-grow">
+          <div class="ps-nome">${esc(e.nome)}</div>
+          <div class="ps-sub">${e.estado === 'reativar' ? 'Voltou no Stock 2.0 · reative no catálogo' : `No catálogo por ${brl(e.preco)} · não veio no PDF`} · ${tempoAtras(e.desde || agora)}</div>
+          <div class="ps-acoes">
+            <button type="button" class="ps-mini ps-prim" data-act="${e.estado === 'reativar' ? 'esgreativei' : 'esgdesativei'}" data-id="${esc(e.id)}">${e.estado === 'reativar' ? 'Já reativei' : 'Já desativei'}</button>
+            ${e.estado === 'desativar' ? `<button type="button" class="ps-mini" data-act="esgainda" data-id="${esc(e.id)}">Ainda tem</button>` : ''}
+          </div></div></div>`;
+    const abas = [['preco', 'Preço', precos.length], ['desativar', 'Desativar', desativar.length], ['reativar', 'Reativar', reativar.length], ['hist', 'Histórico', 0]];
+    let corpo = '';
+    if (aba === 'preco') {
+        const ord = agrupar(precos, z => z.nome, (a, b) => sobe(b) - sobe(a) || (b.quando || 0) - (a.quando || 0));
+        const urg = precos.filter(sobe).length;
+        corpo = `<div class="ps-card ${precos.length ? 'ps-alerta' : 'ps-ok'}">
+            <div class="ps-lin"><span>Preços para corrigir</span><b>${precos.length}</b></div>
+            ${urg ? `<div class="ps-lin ps-urgente"><span>⚠ Mais baratos que deveriam</span><b>${urg}</b></div>` : ''}
+            <div class="ps-sub">Preço do catálogo = valor do CTW + ${brl(extra)}. A lista se atualiza sozinha quando um preço muda no CTW.</div></div>`
+            + (precos.length ? ord.map(([g, l]) => cab(g, l, l.some(sobe) ? ` · ⚠ ${l.filter(sobe).length}` : '') + l.map(linhaPreco).join('')).join('') : '<div class="ps-msg">Nenhum preço para corrigir. 🎉</div>');
+    } else if (aba === 'desativar' || aba === 'reativar') {
+        const lista = aba === 'desativar' ? desativar : reativar;
+        corpo = `<div class="ps-card ${lista.length ? 'ps-alerta' : 'ps-ok'}"><div class="ps-sub">${aba === 'desativar'
+            ? 'Estão no catálogo do WhatsApp e não vieram no Stock 2.0 de hoje. No CTW eles continuam normais. “Ainda tem” esconde o aviso por ' + DIAS_AINDA_TEM + ' dias.'
+            : 'Estavam desativados no WhatsApp e voltaram no Stock 2.0: reative no catálogo.'}</div></div>`
+            + (lista.length ? agrupar(lista, e => e.nome, (a, b) => (b.desde || 0) - (a.desde || 0)).map(([g, l]) => cab(g, l) + l.map(linhaEsg).join('')).join('') : `<div class="ps-msg">Nada para ${aba === 'desativar' ? 'desativar' : 'reativar'}. 🎉</div>`);
+    } else {
+        const h = Object.entries(hist).sort((a, b) => b[0].localeCompare(a[0])).map(([, v]) => v);
+        const rot = { preco: 'Preço corrigido', desativar: 'Desativado', reativar: 'Reativado' };
+        corpo = h.length ? h.map(x => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(x.nome || '')}</div>
+            <div class="ps-sub">${rot[x.tipo] || x.tipo}${x.tipo === 'preco' ? `: ${brl(x.de)} → ${brl(x.para)}` : ''}</div>
+            <div class="ps-sub">${new Date(x.quando).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}${x.usuario ? ' · ' + esc(x.usuario) : ''}</div></div></div>`).join('')
+            : '<div class="ps-msg">Ainda não há histórico. Ele guarda as últimas ' + MAX_ZAPLOG + ' correções.</div>';
+    }
     tela(`
-      <div class="ps-card ${lista.length ? 'ps-alerta' : 'ps-ok'}">
-        <div class="ps-lin"><span>Para corrigir no WhatsApp</span><b>${lista.length}</b></div>
-        ${urgentes ? `<div class="ps-lin ps-urgente"><span>⚠ Mais baratos que deveriam</span><b>${urgentes}</b></div>` : ''}
-        <div class="ps-sub">Preço do catálogo = valor do CTW + ${brl(extra)}. A lista se atualiza sozinha quando um preço muda no CTW.</div>
-      </div>
-      ${lista.length ? ordenados.map(([g, l]) => `<div class="ps-cap ps-esp">${esc(g)} · ${l.length}${l.some(sobe) ? ` · ⚠ ${l.filter(sobe).length}` : ''}</div>` + l.map(linha).join('')).join('')
-        : '<div class="ps-msg">Nada para corrigir no WhatsApp. 🎉</div>'}
+      <div class="ps-abas">${abas.map(([k, nome, n]) => `<button type="button" class="${k === aba ? 'on' : ''}" data-act="zapaba" data-aba="${k}">${nome}${n ? ' ' + n : ''}</button>`).join('')}</div>
+      ${corpo}
       <button type="button" class="ps-btn" data-act="inicio">Conferir com o ZIP do catálogo</button>`);
+    S_zapAba = aba;
 }
+let S_zapAba = 'preco';
 
 async function zapRemover(id) { await update(ref(getDb()), { [`${BASE}/zap/${id}`]: null }); }
 
@@ -1115,7 +1299,7 @@ function abrirZap() {
     if (!(window.ctwEhDev && window.ctwEhDev())) return;
     if (!getDb()) { if (window.showCustomModal) window.showCustomModal({ message: 'O banco de dados ainda está conectando. Tente de novo em alguns segundos.' }); return; }
     abrirOverlay('Alterar no WhatsApp');
-    telaZap();
+    telaZap('preco');
 }
 
 export { abrir, abrirZap };
