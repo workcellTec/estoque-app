@@ -26,6 +26,7 @@ const RUIDO = new Set(['DE', 'DO', 'DA', 'COM', 'GB', 'RAM', 'SSD', 'CELULAR', '
 const NAO_SINCRONIZAR = /N[AÃ]O\s*VENDER|TIRAR\s*PE[CÇ]AS|\bB\.?\s?O\.?\s+DE\s+PLACA/i;
 
 function semAcento(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+const norm = x => semAcento(x).toUpperCase().replace(/\s+/g, " ").trim();
 
 // Quebra o nome em: núcleo (modelo), armazenamento, RAM e estado (novo/seminovo).
 function analisar(nomeBruto) {
@@ -369,6 +370,10 @@ function resultadoBusca(q) {
 }
 
 function aoDigitar(e) {
+    if (e.target.id === 'psBuscaVinc') {
+        const q = norm(e.target.value).split(' ').filter(Boolean);
+        overlay.querySelectorAll('.ps-it[data-q]').forEach(el => { el.hidden = !q.every(t => el.dataset.q.includes(t)); });
+    }
     if (e.target.id === 'psBusca' && S) resultadoBusca(e.target.value);
     if (e.target.id === 'psBuscaPdf' && S && S.vinculo) resultadoBuscaPdf(e.target.value);
     if (e.target.id === 'psBuscaAdd' && S) { const box = overlay.querySelector('#psAddRes'); if (box) box.innerHTML = listaAdicionar(e.target.value); }
@@ -757,6 +762,9 @@ async function telaVinculos() {
     const al = Object.entries(APR.aliases).filter(([k, v]) => { const id = v.pid + '|' + v.nomeEstoque; if (vistos.has(id)) return false; vistos.add(id); return true; });
     const nIgP = Object.keys(APR.ignoradosPdf).length, nIgC = Object.keys(APR.ignoradosCtw).length, nIgCat = Object.keys(APR.catIgnorados).length;
     const nomeCtw = pid => { const c = (window.products || []).find(x => x && x.id === pid); return c ? c.nome : '(produto removido do CTW)'; };
+    const nomesCat = {};      // nome original do WhatsApp, quando o catálogo guardado ainda o tem
+    Object.values((APR.catalogo && APR.catalogo.itens) || {}).forEach(x => { try { nomesCat[chaveNome(analisar(x.n))] = x.n; } catch (e) {} });
+    const bonito = (k, v) => v.n || nomesCat[k] || k.replace(/^n/, '').replace(/_/g, ' ').replace(/\bS0\b|\bR0\b/g, '').replace(/\bS(\d+)\b/g, '$1GB').replace(/\bR(\d+)\b/g, '$1GB RAM').replace(/\s+/g, ' ').trim();
     const catVinc = Object.entries(APR.catAliases).sort((a, b) => nomeCtw(a[1].pid).localeCompare(nomeCtw(b[1].pid)));
     tela(`
       <div class="ps-card">
@@ -764,10 +772,11 @@ async function telaVinculos() {
         <div class="ps-lin"><span>Produtos do CTW marcados “em falta”</span><b>${nIgC}</b></div>
         ${(nIgP || nIgC) ? '<button type="button" class="ps-btn" data-act="esquecerign">Voltar a perguntar sobre esses itens</button>' : ''}
       </div>
-      ${catVinc.length ? `<div class="ps-cap ps-esp">Vínculos do catálogo do WhatsApp (${catVinc.length})</div>` + catVinc.map(([k, v]) => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(v.n || k.replace(/_/g, ' '))}</div><div class="ps-sub">= ${esc(nomeCtw(v.pid))}</div></div><button type="button" class="ps-mini" data-act="rmcatvin" data-k="${esc(k)}">Desvincular</button></div>`).join('') : ''}
+      <input type="search" id="psBuscaVinc" class="ps-inp ps-busca" placeholder="Buscar vínculo (nome do WhatsApp, Stock 2.0 ou CTW)…">
+      ${catVinc.length ? `<div class="ps-cap ps-esp">Vínculos do catálogo do WhatsApp (${catVinc.length})</div>` + catVinc.map(([k, v]) => `<div class="ps-it" data-q="${esc(norm(bonito(k, v) + ' ' + nomeCtw(v.pid)))}"><div class="ps-grow"><div class="ps-nome">${esc(bonito(k, v))}</div><div class="ps-sub">= ${esc(nomeCtw(v.pid))}</div></div><button type="button" class="ps-mini" data-act="rmcatvin" data-k="${esc(k)}">Desvincular</button></div>`).join('') : ''}
       ${nIgCat ? `<div class="ps-card"><div class="ps-lin"><span>Itens do catálogo marcados “não é do CTW”</span><b>${nIgCat}</b></div><button type="button" class="ps-btn" data-act="esquecercat">Voltar a perguntar sobre esses itens</button></div>` : ''}
       <div class="ps-cap ps-esp">Vínculos do Stock 2.0 (${al.length})</div>
-      ${al.map(([k, v]) => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(v.nomeEstoque)}</div><div class="ps-sub">= ${esc(v.nomeCtw)}</div></div><button type="button" class="ps-mini" data-act="rmvinculo" data-pid="${esc(v.pid)}" data-nome="${esc(v.nomeEstoque)}">Remover</button></div>`).join('') || '<div class="ps-msg">Nenhum vínculo ainda.</div>'}
+      ${al.map(([k, v]) => `<div class="ps-it" data-q="${esc(norm(v.nomeEstoque + ' ' + v.nomeCtw))}"><div class="ps-grow"><div class="ps-nome">${esc(v.nomeEstoque)}</div><div class="ps-sub">= ${esc(v.nomeCtw)}</div></div><button type="button" class="ps-mini" data-act="rmvinculo" data-pid="${esc(v.pid)}" data-nome="${esc(v.nomeEstoque)}">Remover</button></div>`).join('') || '<div class="ps-msg">Nenhum vínculo ainda.</div>'}
       <button type="button" class="ps-btn ps-suave" data-act="inicio">Voltar</button>`);
 }
 
