@@ -701,6 +701,7 @@ async function aoClicar(e) {
         if (act === 'rmvinculo') { await removerVinculo(b.dataset.pid, b.dataset.nome); return telaVinculos(); }
         if (act === 'esquecerign') { await update(ref(getDb()), { [`${BASE}/ignoradosPdf`]: null, [`${BASE}/ignoradosCtw`]: null }); return telaVinculos(); }
         if (act === 'catfeito') { if (CAT) { CAT.feitos.add(Number(b.dataset.i)); telaCatRelatorio(); } return; }
+        if (act === 'caturgentes') { if (CAT) { CAT.soUrgentes = !CAT.soUrgentes; telaCatRelatorio(); } return; }
         if (act === 'catperguntas') return CAT && telaCatPergunta();
         if (act === 'catrelatorio') return CAT && telaCatRelatorio();
         if (act === 'catmesmo' || act === 'catnao' || act === 'catdepois') { if (CAT) { b.disabled = true; await catResponder(act, b.dataset.id); } return; }
@@ -812,7 +813,7 @@ function interpretarResposta(txt) {
         const nome = String((x && x.nome) || '').replace(/\s+/g, ' ').trim(), preco = numero(x && x.preco);
         const k = analisar(nome).key + '|' + preco;
         if (!nome || preco <= 0 || vistos.has(k)) return;
-        vistos.add(k); itens.push({ nome, preco, an: analisar(nome) });
+        vistos.add(k); itens.push({ nome, preco, an: analisar(nome), colecao: colecaoDe(nome, '') });
     });
     return itens;
 }
@@ -891,10 +892,33 @@ function lerCsv(txt) {
     return linhas;
 }
 
+// Grupos do relatório. O arquivo exportado só traz a coleção de alguns produtos, então o grupo sai do nome
+// (ordem pedida: Poco, Redmi/Xiaomi, Samsung…); o que não casar usa a coleção do catálogo, se houver.
+const GRUPOS = [
+    [/\bpoco\b/i, 'Xiaomi Poco'],
+    [/redmi|xiaomi|\bmi\s?\d/i, 'Xiaomi Redmi / Mi'],
+    [/samsung|galaxy/i, 'Samsung'],
+    [/motorola|\bmoto\b/i, 'Motorola'],
+    [/iphone|apple|ipad|airpods|macbook/i, 'Apple'],
+    [/realme|honor|tecno|oppo|infinix|vivo\b/i, 'Realme / Honor / Tecno / Oppo'],
+    [/notebook|tablet|vivobook|nitro|ideapad|macbook/i, 'Notebooks e tablets'],
+    [/smartwatch|watch|haylou|rel[oó]gio|band\b/i, 'Smartwatch'],
+    [/\btv\b|smart\s?tv|polegadas|projetor/i, 'TVs'],
+    [/fone|buds|airdots|jbl|caixa de som|bombox|boombox|aiwa|alexa|headset|\bqcy\b/i, 'Áudio'],
+    [/carregador|cabo|capa|pel[ií]cula|suporte|caneta|adaptador|fonte\b/i, 'Carregadores e variedades']
+];
+function colecaoDe(nome, colecaoCatalogo) {
+    const g = GRUPOS.find(([re]) => re.test(nome));
+    if (g) return g[1];
+    const lista = String(colecaoCatalogo || '').split('|').map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    return lista.find(x => !/promo[cç]/i.test(x)) || 'Outros';
+}
+const ordemGrupo = g => { const i = GRUPOS.findIndex(x => x[1] === g); return i < 0 ? 99 : i; };
+
 function itensDoCsv(txt) {
     const linhas = lerCsv(txt.replace(/^\uFEFF/, '')).filter(l => l.some(c => c !== ''));
     const cab = (linhas.shift() || []).map(h => h.trim().toLowerCase());
-    const iT = cab.indexOf('title'), iP = cab.indexOf('price'), iPT = cab.indexOf('price_text');
+    const iT = cab.indexOf('title'), iP = cab.indexOf('price'), iPT = cab.indexOf('price_text'), iC = cab.indexOf('collections');
     if (iT < 0 || (iP < 0 && iPT < 0)) throw new Error('Esse arquivo não parece o catálogo exportado (faltam as colunas title e price).');
     const itens = [];
     linhas.forEach(l => {
@@ -903,7 +927,7 @@ function itensDoCsv(txt) {
         const valores = (String(l[iPT] || '').match(/[\d.]+,\d{2}/g) || []).map(numero);
         const preco = (iP >= 0 && numero(l[iP]) > 0) ? numero(l[iP]) : (valores[0] || 0);
         if (!nome || preco <= 0) return;
-        itens.push({ nome, preco, an: analisar(nome), de: valores.length > 1 ? valores[1] : 0 });
+        itens.push({ nome, preco, an: analisar(nome), de: valores.length > 1 ? valores[1] : 0, colecao: colecaoDe(nome, iC >= 0 ? l[iC] : '') });
     });
     return itens;
 }
@@ -946,20 +970,34 @@ async function aoEscolherCatalogo(arq) {
 
 function telaCatRelatorio() {
     const c = CAT, pend = c.errados.filter(x => !c.feitos.has(x.it.i));
+    const esperado = x => x.c.valor + c.extra;
+    const barato = x => x.it.preco < esperado(x) - 0.005;      // vendendo mais barato que deveria: urgente
+    const urgentes = pend.filter(barato).length;
+    const lista = c.soUrgentes ? pend.filter(barato) : pend;
+    // Agrupa por coleção do catálogo (na ordem em que aparecem); dentro de cada grupo, os urgentes primeiro
+    const grupos = new Map();
+    lista.forEach(x => { const g = x.it.colecao || 'Outros'; if (!grupos.has(g)) grupos.set(g, []); grupos.get(g).push(x); });
+    grupos.forEach(l => l.sort((a, b) => barato(b) - barato(a)));
+    const gruposOrd = [...grupos].sort((a, b) => ordemGrupo(a[0]) - ordemGrupo(b[0]));
+    const linha = x => `
+        <div class="ps-it${barato(x) ? ' ps-urg' : ''}"><div class="ps-grow">
+          ${barato(x) ? '<span class="ps-tag-urg">MAIS BARATO QUE DEVERIA</span>' : ''}
+          <div class="ps-nome">${esc(x.it.nome)}</div>
+          <div class="ps-sub">No catálogo ${brl(x.it.preco)}${x.it.de ? ` (em promoção, preço antigo ${brl(x.it.de)})` : ''} → <b>colocar ${brl(esperado(x))}</b></div>
+          <div class="ps-sub">CTW: ${esc(x.c.nome)} · ${brl(x.c.valor)}</div></div>
+          <button type="button" class="ps-mini" data-act="catfeito" data-i="${x.it.i}">Já corrigi</button></div>`;
     tela(`
       <div class="ps-card ${pend.length ? 'ps-alerta' : 'ps-ok'}">
         <div class="ps-lin"><span>Preço certo</span><b>${c.certos.length}</b></div>
         <div class="ps-lin"><span>Para corrigir no catálogo</span><b>${pend.length}</b></div>
+        ${urgentes ? `<div class="ps-lin ps-urgente"><span>⚠ Mais baratos que deveriam</span><b>${urgentes}</b></div>` : ''}
         <div class="ps-lin"><span>Nome duvidoso (sem resposta)</span><b>${c.fila.length}</b></div>
         <div class="ps-lin"><span>Sem par no CTW</span><b>${c.semPar.length}</b></div>
         <div class="ps-sub">Regra: preço do catálogo = valor do CTW + ${brl(c.extra)}</div>
       </div>
       ${c.fila.length ? `<button type="button" class="ps-btn ps-prim" data-act="catperguntas">Resolver ${c.fila.length} nome(s) duvidoso(s)</button>` : ''}
-      ${pend.length ? `<div class="ps-cap ps-esp">Corrija estes no catálogo</div>` + pend.map(x => `
-        <div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(x.it.nome)}</div>
-          <div class="ps-sub">No catálogo ${brl(x.it.preco)}${x.it.de ? ` (em promoção, preço antigo ${brl(x.it.de)})` : ''} → <b>colocar ${brl(x.c.valor + c.extra)}</b></div>
-          <div class="ps-sub">CTW: ${esc(x.c.nome)} · ${brl(x.c.valor)}</div></div>
-          <button type="button" class="ps-mini" data-act="catfeito" data-i="${x.it.i}">Já corrigi</button></div>`).join('')
+      ${urgentes ? `<button type="button" class="ps-btn${c.soUrgentes ? ' ps-perigo' : ''}" data-act="caturgentes">${c.soUrgentes ? 'Mostrar todos os para corrigir' : 'Mostrar só os mais baratos que deveriam'}</button>` : ''}
+      ${lista.length ? gruposOrd.map(([g, l]) => `<div class="ps-cap ps-esp">${esc(g)} · ${l.length}${l.some(barato) ? ` · ⚠ ${l.filter(barato).length}` : ''}</div>` + l.map(linha).join('')).join('')
         : '<div class="ps-msg">Nenhum preço para corrigir.</div>'}
       ${c.semPar.length ? `<details class="ps-det ps-esp"><summary>Sem par no CTW (${c.semPar.length})</summary>${c.semPar.map(i => `<div class="ps-sub">${esc(i.nome)} · ${brl(i.preco)}</div>`).join('')}</details>` : ''}
       <button type="button" class="ps-btn ps-suave" data-act="inicio">Voltar</button>`);
