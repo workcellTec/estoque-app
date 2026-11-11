@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-283'; // À vista (Pix/dinheiro) no Calcular por aparelho + texto universal
+const CACHE = 'ctw-284'; // À vista (Pix/dinheiro) no Calcular por aparelho + texto universal
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

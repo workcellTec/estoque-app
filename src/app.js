@@ -4545,11 +4545,13 @@ function renderTagManagementUI() {
             </div>
             <div class="mb-3">
                 <label class="form-label small">Texto antes</label>
-                <textarea class="form-control form-control-sm" rows="3" id="avistaAntesInput" placeholder="Ex.: Opa, tudo bem? Segue o valor:">${escapeHtml(avistaCfg.antes)}</textarea>
+                <textarea class="form-control form-control-sm" rows="3" id="avistaAntesInput" placeholder="Ex.: Opa, tudo bem? Segue o valor:"></textarea>
+                <div class="form-text small">Para deixar uma linha em branco antes do produto, aperte Enter uma vez no final deste texto (cada Enter a mais é mais uma linha em branco).</div>
             </div>
             <div class="mb-3">
                 <label class="form-label small">Texto depois</label>
-                <textarea class="form-control form-control-sm" rows="3" id="avistaDepoisInput" placeholder="Ex.: Qualquer dúvida estou à disposição!">${escapeHtml(avistaCfg.depois)}</textarea>
+                <textarea class="form-control form-control-sm" rows="3" id="avistaDepoisInput" placeholder="Ex.: Qualquer dúvida estou à disposição!"></textarea>
+                <div class="form-text small">Para deixar uma linha em branco depois do produto, aperte Enter uma vez no começo deste texto.</div>
             </div>
             <div class="text-end"><button class="btn btn-sm btn-primary" id="avistaSalvarBtn"><i class="bi bi-save-fill"></i> Salvar à vista</button></div>
         </div>
@@ -4576,12 +4578,15 @@ function renderTagManagementUI() {
     </div>
     `;
 
+    const avistaAntesEl = document.getElementById('avistaAntesInput'), avistaDepoisEl = document.getElementById('avistaDepoisInput');
+    if (avistaAntesEl) avistaAntesEl.value = avistaCfg.antes;
+    if (avistaDepoisEl) avistaDepoisEl.value = avistaCfg.depois;
     document.getElementById('avistaSalvarBtn')?.addEventListener('click', () => {
         const extra = Math.max(0, parseFloat(document.getElementById('avistaExtraInput').value) || 0);
         safeStorage.setItem(AVISTA_CFG_KEY, JSON.stringify({
             extra,
-            antes: document.getElementById('avistaAntesInput').value.trim(),
-            depois: document.getElementById('avistaDepoisInput').value.trim()
+            antes: document.getElementById('avistaAntesInput').value.replace(/\r/g, ''),
+            depois: document.getElementById('avistaDepoisInput').value.replace(/\r/g, '')
         }));
         if (typeof calculateAparelho === 'function') calculateAparelho();
         showCustomModal({ message: 'Configuração do à vista salva!' });
@@ -4716,6 +4721,7 @@ const AVISTA_TAGS_OFF_KEY = 'ctwAvistaTagsOff';
 function ctwAvistaCfg() {
     let c = {};
     try { c = JSON.parse(safeStorage.getItem(AVISTA_CFG_KEY) || '{}') || {}; } catch (e) { c = {}; }
+    // antes/depois guardam as quebras de linha exatamente como foram digitadas (sem trim)
     return { extra: Math.max(0, parseFloat(c.extra) || 0), antes: String(c.antes || ''), depois: String(c.depois || '') };
 }
 
@@ -4736,7 +4742,11 @@ function ctwAvistaTexto() {
     const corpo = linhas.map(l => `*${l.nome}* sai por *${brl(l.valor)}* a vista no dinheiro ou pix`).join('\n');
     // antes/depois só some quando TODOS os produtos do carrinho são de etiquetas desligadas
     const semTexto = linhas.length > 0 && linhas.every(l => l.tag && off[l.tag]);
-    return [semTexto ? '' : cfg.antes.trim(), corpo, semTexto ? '' : cfg.depois.trim()].filter(Boolean).join('\n');
+    let texto = corpo;
+    // Entre os blocos sempre há uma quebra; cada Enter que o usuário deixou no fim do "antes" ou no começo do "depois" vira uma linha em branco
+    if (!semTexto && cfg.antes.trim()) texto = cfg.antes + '\n' + texto;
+    if (!semTexto && cfg.depois.trim()) texto = texto + '\n' + cfg.depois;
+    return texto;
 }
 
 function loadTagTexts() {
