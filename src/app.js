@@ -5392,23 +5392,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
     document.getElementById('goToAdmin')?.addEventListener('click', () => showMainSection('administracao'));
-    document.getElementById('ctwSheetZap')?.addEventListener('click', () => {
-        window.ctwCarregarModulo('precosync').then(m => m.abrirZap()).catch(() => showCustomModal({ message: "Erro ao abrir a lista. Verifique a internet e tente de novo." }));
-    });
     document.getElementById('ctwSheetPrecos')?.addEventListener('click', () => {
-        ctwComSenha({
-            message: "Digite a senha para sincronizar preços:",
-            showPassword: true,
-            confirmText: "Acessar",
-            onConfirm: (password) => {
-                if (password === "220390") {
-                    window.ctwCarregarModulo('precosync').then(m => m.abrir()).catch(() => showCustomModal({ message: "Erro ao abrir a sincronização. Verifique a internet." }));
-                } else {
-                    showCustomModal({ message: "Senha incorreta." });
-                }
-            },
-            onCancel: () => {}
-        });
+        window.ctwCarregarModulo('precosync').then(m => m.abrir()).catch(() => showCustomModal({ message: "Erro ao abrir o módulo. Verifique a internet e tente de novo." }));
     });
 
     document.getElementById('backFromStock')?.addEventListener('click', () => showMainSection('main'));

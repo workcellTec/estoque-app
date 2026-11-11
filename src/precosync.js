@@ -167,7 +167,7 @@ async function lerPdf(arquivo) {
 
 // ── Estado e acesso ao banco ────────────────────────────────────
 let S = null;           // estado da importação em andamento
-let APR = { aliases: {}, ignoradosPdf: {}, ignoradosCtw: {}, catAliases: {}, catIgnorados: {}, catalogo: null, esg: {}, contas: {} };
+let APR = { aliases: {}, ignoradosPdf: {}, ignoradosCtw: {}, catAliases: {}, catIgnorados: {}, catalogo: null, esg: {}, contas: {}, contasZip: {} };
 
 // Contas de WhatsApp: cada uma tem catálogo, esgotados e lista de pendências próprios. "loja" é a original (caminhos antigos).
 // Vínculos de nomes são compartilhados. O PDF do Stock 2.0 alimenta todas as contas de uma vez.
@@ -183,20 +183,58 @@ async function criarConta(nome) {
     let id = semAcento(nome).toLowerCase().replace(/[^a-z0-9]+/g, '') || 'conta', k = id, n = 1;
     while (APR.contas[id]) id = k + (++n);
     await update(ref(getDb()), { [`${BASE}/contasNomes/${id}`]: nome });
-    APR.contas[id] = { nome, catalogo: null, esg: {} };
+    APR.contas[id] = { nome, catalogo: null, esg: {}, zap: {}, fixos: {} };
     usarConta(id);
+}
+async function renomearConta(id, nome) {
+    nome = String(nome || '').trim().slice(0, 30); if (!nome || id === 'loja' || !APR.contas[id]) return;
+    await update(ref(getDb()), { [`${BASE}/contasNomes/${id}`]: nome });
+    APR.contas[id].nome = nome;
+}
+async function excluirConta(id) {
+    if (id === 'loja' || !APR.contas[id]) return;
+    const upd = { [`${BASE}/contasNomes/${id}`]: null, [`${BASE}/contas/${id}`]: null };
+    Object.entries(APR.contasZip).forEach(([k, cid]) => { if (cid === id) upd[`${BASE}/contasZip/${k}`] = null; });
+    await update(ref(getDb()), upd);
+    delete APR.contas[id];
+    if (CONTA === id) usarConta('loja');
 }
 
 async function carregarAprendizado() {
     const snap = await get(ref(getDb(), BASE));
     const v = snap.val() || {};
-    APR = { aliases: v.aliases || {}, ignoradosPdf: v.ignoradosPdf || {}, ignoradosCtw: v.ignoradosCtw || {}, catAliases: v.catAliases || {}, catIgnorados: v.catIgnorados || {}, catalogo: v.catalogo || null, esg: v.esg || {}, contas: {} };
-    APR.contas.loja = { nome: 'Loja', catalogo: v.catalogo || null, esg: v.esg || {} };
-    Object.entries(v.contasNomes || {}).forEach(([id, nome]) => { const d = (v.contas || {})[id] || {}; APR.contas[id] = { nome, catalogo: d.catalogo || null, esg: d.esg || {} }; });
+    APR = { aliases: v.aliases || {}, ignoradosPdf: v.ignoradosPdf || {}, ignoradosCtw: v.ignoradosCtw || {}, catAliases: v.catAliases || {}, catIgnorados: v.catIgnorados || {}, catalogo: v.catalogo || null, esg: v.esg || {}, contas: {}, contasZip: v.contasZip || {} };
+    APR.contas.loja = { nome: 'Loja', catalogo: v.catalogo || null, esg: v.esg || {}, zap: v.zap || {}, fixos: v.fixos || {} };
+    Object.entries(v.contasNomes || {}).forEach(([id, nome]) => { const d = (v.contas || {})[id] || {}; APR.contas[id] = { nome, catalogo: d.catalogo || null, esg: d.esg || {}, zap: d.zap || {}, fixos: d.fixos || {} }; });
     usarConta(CONTA);
 }
 
 function usuario() { try { return localStorage.getItem('ctwUserProfile') || ''; } catch (e) { return ''; } }
+
+// ── Apoio: idade do catálogo, pendências por conta, aviso "Desfazer", navegação ──
+const DIAS_ANTIGO = 14;           // catálogo mais velho que isso: o aviso de esgotado pode estar errado
+const idadeDias = cat => (cat && cat.atualizado) ? Math.floor((Date.now() - cat.atualizado) / 86400000) : null;
+const idadeTxt = cat => { const d = idadeDias(cat); return d === null ? 'sem catálogo' : d === 0 ? 'de hoje' : d === 1 ? 'de há 1 dia' : `de há ${d} dias`; };
+const catAntigo = cat => { const d = idadeDias(cat); return d !== null && d > DIAS_ANTIGO; };
+function pend(id) {
+    const c = APR.contas[id] || {}, e = Object.values(c.esg || {});
+    return { preco: Object.keys(c.zap || {}).length, desativar: e.filter(x => x.estado === 'desativar').length, reativar: e.filter(x => x.estado === 'reativar').length };
+}
+const totalPend = id => { const p = pend(id); return p.preco + p.desativar + p.reativar; };
+
+let TELA = 'hub';                 // para o botão ‹ saber voltar
+let _toastT = null, _toastFn = null;
+function toast(msg, desfazer) {
+    if (!overlay) return;
+    clearTimeout(_toastT);
+    const velho = overlay.querySelector('.ps-toast'); if (velho) velho.remove();
+    _toastFn = desfazer || null;
+    const el = document.createElement('div'); el.className = 'ps-toast';
+    el.innerHTML = `<span>${esc(msg)}</span>${desfazer ? '<button type="button" data-act="toastdesfazer">Desfazer</button>' : ''}`;
+    overlay.appendChild(el);
+    _toastT = setTimeout(() => { el.remove(); _toastFn = null; }, 6000);
+}
+function titulo(t) { const el = overlay && overlay.querySelector('.ps-topo b'); if (el) el.textContent = t; }
 
 // ── Classificação ───────────────────────────────────────────────
 function classificar(linhasPdf, produtos) {
@@ -262,7 +300,7 @@ function abrirOverlay(titulo) {
     if (overlay) overlay.remove();
     overlay = document.createElement('div');
     overlay.className = 'ps-overlay';
-    overlay.innerHTML = `<div class="ps-topo"><button type="button" class="ps-x" data-act="fechar" aria-label="Fechar">‹</button><b>${esc(titulo || 'Sincronizar preços')}</b></div><div class="ps-corpo" id="psCorpo"></div>`;
+    overlay.innerHTML = `<div class="ps-topo"><button type="button" class="ps-x" data-act="voltar" aria-label="Voltar">‹</button><b>${esc(titulo || 'WhatsApp e Preços')}</b></div><div class="ps-corpo" id="psCorpo"></div>`;
     overlay.addEventListener('click', aoClicar);
     overlay.addEventListener('input', aoDigitar);
     overlay.addEventListener('change', aoMudar);
@@ -273,7 +311,7 @@ function abrirOverlay(titulo) {
 function fechar() {
     if (overlay) { overlay.remove(); overlay = null; }
     document.documentElement.classList.remove('ps-aberto');
-    S = null; CAT = null; ESC_.pdf = ESC_.cat = null;
+    S = null; CAT = null; ESC_.pdf = null; ESC_.zips = {}; clearTimeout(_toastT); _toastFn = null;
 }
 
 function tela(html) {
@@ -283,58 +321,101 @@ function tela(html) {
 
 const chip = (t, forte) => `<span class="ps-chip${forte ? ' ps-forte' : ''}">${esc(t)}</span>`;
 
-const ESC_ = { pdf: null, cat: null, nova: false };   // arquivos escolhidos na entrada, ainda não analisados
-const chipsConta = nova => `<div class="ps-contas">${Object.entries(APR.contas).map(([id, c]) => `<button type="button" class="${id === CONTA ? 'on' : ''}" data-act="conta" data-id="${esc(id)}">${esc(c.nome)}</button>`).join('')}${nova ? '<button type="button" data-act="novaconta">+ Nova conta</button>' : ''}</div>`;
+const ESC_ = { pdf: null, zips: {} };   // arquivos escolhidos, ainda não analisados: pdf e { conta: { nome, texto, pasta, nota } }
+const chipsContas = (comTotal, ativa = CONTA) => `<div class="ps-contas">${Object.entries(APR.contas).map(([id, c]) => `<button type="button" class="${id === ativa ? 'on' : ''}" data-act="conta" data-id="${esc(id)}">${esc(c.nome)}${comTotal ? ' · ' + totalPend(id) : ''}</button>`).join('')}</div>`;
 
+// ── 1 · Início ──────────────────────────────────────────────────
 async function telaInicio() {
-    const tit = overlay && overlay.querySelector('.ps-topo b'); if (tit) tit.textContent = 'Sincronizar preços';
+    TELA = 'hub'; titulo('WhatsApp e Preços');
     tela('<div class="ps-msg">Carregando…</div>');
-    let logs = [];
-    try {
-        await carregarAprendizado();
-        const snap = await get(query(ref(getDb(), BASE + '/log'), orderByKey(), limitToLast(5)));
-        const v = snap.val() || {};
-        logs = Object.keys(v).sort().reverse().map(id => ({ id, ...v[id] }));
-    } catch (e) {
-        tela(`<div class="ps-msg ps-erro">Não consegui acessar o banco de dados (${esc(e.message)}). Verifique a internet e tente de novo.</div>`);
-        return;
-    }
-    const nAl = Object.keys(APR.aliases).length;
-    let nPend = 0, cat = null;
-    try {
-        const [z, e, c] = await Promise.all([get(ref(getDb(), raiz() + '/zap')), get(ref(getDb(), raiz() + '/esg')), get(ref(getDb(), raiz() + '/catalogo'))]);
-        nPend = Object.keys(z.val() || {}).length + Object.values(e.val() || {}).filter(x => x.estado === 'desativar' || x.estado === 'reativar').length;
-        cat = c.val();
-    } catch (e) { /* painel segue sem os contadores */ }
-    const arqTxt = (f, vazio) => f ? `<div class="ps-nome">${esc(f.name)}</div><div class="ps-sub">${(f.size / 1024).toFixed(0)} KB · pronto para analisar</div>` : `<div class="ps-sub">${vazio}</div>`;
+    try { await carregarAprendizado(); }
+    catch (e) { return tela(`<div class="ps-msg ps-erro">Não consegui acessar o banco de dados (${esc(e.message)}). Verifique a internet e tente de novo.</div>`); }
+    const ids = Object.keys(APR.contas), conta = APR.contas[CONTA], p = pend(CONTA);
+    const avisos = ids.filter(id => !APR.contas[id].catalogo || catAntigo(APR.contas[id].catalogo));
     tela(`
-      <div class="ps-sub">Um fluxo só: o PDF do Stock 2.0 atualiza os preços do CTW e o app já diz o que mudar, desativar ou reativar no WhatsApp.</div>
+      <div class="ps-card ps-grande">
+        <div class="ps-cap">Passo 1</div>
+        <b class="ps-tit">Atualizar preços</b>
+        <p>Mande o PDF do Stock 2.0. O app atualiza o CTW e já diz o que fazer em cada WhatsApp.</p>
+        <button type="button" class="ps-btn ps-prim ps-grande" data-act="enviar">Começar</button>
+      </div>
+      <div class="ps-card ps-grande">
+        <div class="ps-cap">Passo 2 · Fazer no WhatsApp</div>
+        ${chipsContas(true)}
+        <div class="ps-tiles">
+          <div class="ps-tile"><b class="ps-c-verm">${p.preco}</b><span>Corrigir preço</span></div>
+          <div class="ps-tile"><b class="ps-c-amar">${p.desativar}</b><span>Desativar</span></div>
+          <div class="ps-tile"><b class="ps-c-azul">${p.reativar}</b><span>Reativar</span></div>
+        </div>
+        <button type="button" class="ps-btn" data-act="zap">Abrir a lista de ${esc(conta.nome)}</button>
+      </div>
+      ${avisos.map(id => `<div class="ps-aviso-card"><b>${APR.contas[id].catalogo ? `Catálogo de ${esc(APR.contas[id].nome)} está antigo` : `${esc(APR.contas[id].nome)} ainda não tem catálogo`}</b>
+        <span>${APR.contas[id].catalogo ? `O último ZIP é ${idadeTxt(APR.contas[id].catalogo)}. Os avisos de esgotado dessa conta podem estar errados.` : 'Sem o ZIP, essa conta não recebe aviso de esgotado.'}</span></div>`).join('')}
+      <button type="button" class="ps-btn ps-suave" data-act="avancado">Avançado ›</button>`);
+}
+
+// ── 2 · Atualizar preços (PDF + ZIP de cada conta) ──────────────
+function telaEnviar() {
+    TELA = 'enviar'; titulo('Atualizar preços');
+    const nZip = Object.keys(ESC_.zips).length;
+    const arq = (f, texto) => f ? `<div class="ps-nome">${esc(f.name)}</div><div class="ps-sub">${texto}</div>` : '';
+    tela(`
       <div class="ps-card">
-        <div class="ps-passo"><span class="ps-n on">1</span><b>Lista do Stock 2.0 (PDF)</b></div>
-        <div class="ps-arq"><span class="ps-tipo ps-pdf">PDF</span><div class="ps-grow">${arqTxt(ESC_.pdf, 'Gere o “Catálogo de produtos” no Stock 2.0 e escolha o arquivo. Só o valor dos produtos do CTW é atualizado.')}</div>
+        <div class="ps-passo"><span class="ps-n on">1</span><b>PDF do Stock 2.0</b></div>
+        <div class="ps-arq"><span class="ps-tipo ps-pdf">PDF</span><div class="ps-grow">${ESC_.pdf ? arq(ESC_.pdf, 'pronto para analisar') : '<div class="ps-sub">Escolha o “Catálogo de produtos” gerado no Stock 2.0.</div>'}</div>
           <label class="ps-link"><input type="file" id="psArquivo" accept="application/pdf,.pdf" hidden>${ESC_.pdf ? 'Trocar' : 'Escolher'}</label></div>
+        <div class="ps-sub">Vale para todas as contas de WhatsApp.</div>
       </div>
       <div class="ps-card">
-        <div class="ps-passo"><span class="ps-n">2</span><b class="ps-grow">Catálogo do WhatsApp</b><span class="ps-opc">opcional</span></div>
-        <div class="ps-sub">Cada WhatsApp tem o próprio catálogo e as próprias listas. Escolha para qual conta este arquivo vai:</div>
-        ${chipsConta(true)}
-        ${ESC_.nova ? '<div class="ps-lin"><input type="text" id="psNovaConta" class="ps-inp ps-busca" maxlength="30" placeholder="Nome da conta (ex.: Colega)"><button type="button" class="ps-mini ps-prim" data-act="criarconta">Criar</button></div>' : ''}
-        <div class="ps-sub">O app guarda o último catálogo importado dessa conta. Só envie outro de vez em quando ou ao cadastrar produto novo.</div>
-        <div class="ps-arq"><span class="ps-tipo ps-zip">ZIP</span><div class="ps-grow">${ESC_.cat ? arqTxt(ESC_.cat, '') : (cat ? `<div class="ps-nome">Último: ${tempoAtras(cat.atualizado)} (${cat.origem === 'zip' ? 'ZIP' : 'prints'})</div><div class="ps-sub">${Object.keys(cat.itens || {}).length} produtos guardados</div>` : '<div class="ps-sub">Ainda não guardado. Envie o ZIP uma vez para o app avisar os esgotados.</div>')}</div>
-          <label class="ps-link"><input type="file" id="psCatArq" accept=".zip,.csv,application/zip,text/csv" hidden>${ESC_.cat || cat ? 'Atualizar' : 'Escolher'}</label></div>
-        <div class="ps-lin"><span>Extra à vista (R$)</span><input type="text" inputmode="decimal" id="psCatExtra" class="ps-inp" value="${esc(String(catExtra()).replace('.', ','))}"></div>
-        <label class="ps-link ps-esp"><input type="file" id="psPrints" accept="image/*" multiple hidden>Sem o ZIP? Usar prints do catálogo</label>
+        <div class="ps-passo"><span class="ps-n">2</span><b class="ps-grow">Catálogo de cada WhatsApp</b><span class="ps-opc">opcional</span></div>
+        ${Object.entries(APR.contas).map(([id, c]) => { const z = ESC_.zips[id]; return `
+          <div class="ps-arq${!z && catAntigo(c.catalogo) ? ' ps-arq-aviso' : ''}"><div class="ps-grow">
+            <div class="ps-nome">${esc(c.nome)}</div>
+            <div class="ps-sub${!z && catAntigo(c.catalogo) ? ' ps-c-amar' : ''}">${z ? `${esc(z.nome)} · pronto para analisar${z.pasta ? '' : ''}` : c.catalogo ? `ZIP ${idadeTxt(c.catalogo)} · ${Object.keys(c.catalogo.itens || {}).length} produtos${catAntigo(c.catalogo) ? ' · antigo' : ''}` : 'Ainda sem ZIP'}</div>
+            ${z && z.nota ? `<div class="ps-sub ps-c-amar">${esc(z.nota)}</div>` : ''}</div>
+            <label class="ps-link"><input type="file" class="psZipIn" data-conta="${esc(id)}" accept=".zip,.csv,application/zip,text/csv" hidden>${z ? 'Trocar' : c.catalogo ? 'Atualizar' : 'Escolher'}</label></div>`; }).join('')}
+        <div class="ps-sub">Ao escolher um ZIP o app lê o nome da loja dentro do arquivo e já sabe de qual conta ele é.</div>
       </div>
-      <button type="button" class="ps-btn ps-prim" data-act="analisar"${ESC_.pdf || ESC_.cat ? '' : ' disabled'}>${ESC_.pdf ? 'Analisar tudo' : ESC_.cat ? 'Guardar catálogo' : 'Escolha o PDF para analisar'}</button>
-      <div class="ps-lin ps-esp"><span>Alterar no WhatsApp</span><button type="button" class="ps-mini${nPend ? ' ps-prim' : ''}" data-act="zap">${nPend ? nPend + ' pendentes · abrir' : 'Abrir'}</button></div>
-      <div class="ps-card">
-        <div class="ps-lin"><span>Produtos já vinculados</span><b>${nAl}</b></div>
-        <button type="button" class="ps-btn" data-act="vinculos">Gerenciar vínculos e ignorados</button>
-      </div>
-      ${logs.length ? `<div class="ps-cap ps-esp">Últimas alterações de preço</div>` + logs.map(l => `
-        <div class="ps-it"><div class="ps-grow"><div class="ps-nome">${l.tipo === 'vinculo' ? 'Vínculo manual' : 'Importação'} · ${Object.keys(l.itens || {}).length} preço(s)</div>
-          <div class="ps-sub">${new Date(l.quando).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}${l.usuario ? ' · ' + esc(l.usuario) : ''}${l.desfeito ? ' · desfeita' : ''}</div></div>
-          ${l.desfeito ? '' : `<button type="button" class="ps-mini" data-act="desfazer" data-id="${esc(l.id)}">Desfazer</button>`}</div>`).join('') : ''}`);
+      <button type="button" class="ps-btn ps-prim ps-grande" data-act="analisar"${ESC_.pdf || nZip ? '' : ' disabled'}>${ESC_.pdf ? 'Analisar' : nZip ? 'Guardar catálogo' : 'Escolha o PDF para analisar'}</button>`);
+}
+
+// Lê o ZIP/CSV agora (o texto fica na memória até "Analisar") e descobre de qual conta ele é pela pasta de dentro do ZIP
+async function aoEscolherZip(arq, cid) {
+    if (!arq) return;
+    tela('<div class="ps-msg">Lendo o arquivo…</div>');
+    try {
+        let texto, pasta = '';
+        if (/\.zip$/i.test(arq.name)) { const r = await lerZip(await arq.arrayBuffer()); texto = r.texto; pasta = r.pasta; }
+        else texto = await arq.text();
+        if (!itensDoCsv(texto).length) throw new Error('Não encontrei produtos com preço nesse arquivo.');
+        let alvo = cid, nota = '';
+        const chave = pasta ? chaveFb(norm(pasta)) : '';
+        const mapeada = chave && APR.contasZip[chave];
+        if (mapeada && APR.contas[mapeada] && mapeada !== cid) { alvo = mapeada; nota = `Reconhecido: este ZIP é da conta ${APR.contas[mapeada].nome}.`; }
+        else if (mapeada && APR.contas[mapeada]) nota = 'Conta confirmada pelo nome da loja no ZIP.';
+        ESC_.zips[alvo] = { nome: arq.name, texto, pasta, nota };
+    } catch (e) {
+        telaEnviar();
+        return overlay.querySelector('#psCorpo').insertAdjacentHTML('afterbegin', `<div class="ps-msg ps-erro">${esc(e.message)}</div>`);
+    }
+    telaEnviar();
+}
+
+async function analisarTudo() {
+    const { pdf, zips } = ESC_, ids = Object.keys(zips);
+    if (!pdf && !ids.length) return;
+    ESC_.pdf = null; ESC_.zips = {}; S = null; CAT = null;
+    for (const cid of ids) {
+        usarConta(cid);
+        tela(`<div class="ps-msg">Lendo o catálogo de ${esc(APR.contas[cid].nome)}…</div>`);
+        await importarCatalogo(zips[cid].texto, true);
+        const k = zips[cid].pasta ? chaveFb(norm(zips[cid].pasta)) : '';
+        if (k && APR.contasZip[k] !== cid) {                    // lembra: esta pasta é desta conta
+            await update(ref(getDb()), { [`${BASE}/contasZip/${k}`]: cid }); APR.contasZip[k] = cid;
+        }
+    }
+    if (!pdf) return fimCatalogo();
+    return aoEscolherPdf(pdf);
 }
 
 async function aoEscolherPdf(arq) {
@@ -359,6 +440,7 @@ function proximaPergunta() {
     const r = S.fila[0];
     const cands = candidatos(r, S.cl.ctw, S.cl.reivindicado, LIMIAR_PERGUNTA);
     if (!cands.length) { S.cl.semCtw.push(r); S.fila.shift(); return proximaPergunta(); }
+    S.fase = 'pdf'; TELA = 'pergunta'; titulo('É este produto?');
     const n = S.total - S.fila.length + 1;
     tela(`
       <div class="ps-prog">Pergunta ${n} de ${S.total}</div>
@@ -376,10 +458,11 @@ function proximaPergunta() {
         </button>`).join('')}
       <div class="ps-busca"><input type="search" id="psBusca" placeholder="Buscar outro produto do CTW…" autocomplete="off"></div>
       <div id="psBuscaRes"></div>
-      <button type="button" class="ps-btn ps-prim" data-act="addform" data-origem="pergunta" data-i="${r.i}">Adicionar ao CTW (editar nome e preço)</button>
+      <button type="button" class="ps-btn ps-prim" data-act="pular">Pular por agora</button>
       <button type="button" class="ps-btn" data-act="naoexiste">Não existe no CTW</button>
-      <button type="button" class="ps-btn ps-suave" data-act="pular">Decidir depois</button>
-      <button type="button" class="ps-btn ps-suave" data-act="pularresto">Pular todas as perguntas restantes (${S.fila.length})</button>`);
+      <button type="button" class="ps-btn ps-suave" data-act="maisopc">Mais opções ${S.maisOpc ? '⌃' : '›'}</button>
+      ${S.maisOpc ? `<button type="button" class="ps-btn" data-act="addform" data-origem="pergunta" data-i="${r.i}">Adicionar ao CTW (editar nome e preço)</button>
+      <button type="button" class="ps-btn" data-act="pularresto">Pular as ${S.fila.length} perguntas restantes</button>` : ''}`);
 }
 
 function resultadoBusca(q) {
@@ -404,15 +487,15 @@ function aoDigitar(e) {
     if (e.target.id === 'psBuscaAdd' && S) { const box = overlay.querySelector('#psAddRes'); if (box) box.innerHTML = listaAdicionar(e.target.value); }
 }
 function aoMudar(e) {
-    if (e.target.id === 'psArquivo') { ESC_.pdf = (e.target.files && e.target.files[0]) || ESC_.pdf; telaInicio(); }
+    if (e.target.id === 'psArquivo') { ESC_.pdf = (e.target.files && e.target.files[0]) || ESC_.pdf; telaEnviar(); }
+    if (e.target.classList && e.target.classList.contains('psZipIn')) aoEscolherZip(e.target.files && e.target.files[0], e.target.dataset.conta);
     if (e.target.id === 'psCatExtra') { const n = numero(e.target.value); try { localStorage.setItem('ctwCatExtra', String(n)); } catch (x) {} }
     if (e.target.id === 'psPrints') aoEscolherPrints(e.target.files);
-    if (e.target.id === 'psCatArq') { ESC_.cat = (e.target.files && e.target.files[0]) || ESC_.cat; telaInicio(); }
     if (S && e.target.dataset && e.target.dataset.sus !== undefined) {
         S.aceitar[e.target.dataset.sus] = e.target.checked;
         const bt = overlay.querySelector('[data-act="aplicar"]');
         const n = S.mud.filter(x => x.mudou && !x.invalido && (!x.suspeito || S.aceitar[x.id])).length;
-        if (bt && n) bt.textContent = `Aplicar ${n} preço(s)`;
+        if (bt && n) bt.textContent = `Atualizar ${n} preço(s) no CTW`;
     }
 }
 
@@ -435,6 +518,7 @@ function montarMudancas() {
 }
 
 function telaPrevia() {
+    TELA = 'previa'; titulo('Conferir antes de atualizar');
     S.mud = montarMudancas();
     const m = S.mud;
     const muda = m.filter(x => x.mudou && !x.invalido);
@@ -459,8 +543,8 @@ function telaPrevia() {
       </div>
       ${cartaoWhats(calcTodasEsg())}
       ${muda.length ? muda.map(linha).join('') : '<div class="ps-msg">Nenhum preço precisa mudar.</div>'}
-      <button type="button" class="ps-btn ps-prim" data-act="aplicar">${muda.length ? `Aplicar ${nAplicar} preço(s)` : 'Concluir'}</button>
-      <button type="button" class="ps-btn ps-suave" data-act="fechar">Cancelar (nada é alterado)</button>`);
+      <button type="button" class="ps-btn ps-prim" data-act="aplicar">${muda.length ? `Atualizar ${nAplicar} preço(s) no CTW` : 'Concluir'}</button>
+      <button type="button" class="ps-btn ps-suave" data-act="inicio">Cancelar (nada é alterado)</button>`);
 }
 
 // ── Esgotados: o que está no catálogo e não veio no PDF → desativar no WhatsApp ──
@@ -532,7 +616,7 @@ function calcTodasEsg() {
     return out;
 }
 
-function cartaoWhats(esgs) {
+function cartaoWhats(esgs, comBotao) {
     const ids = Object.keys(esgs || {});
     if (!ids.length) return '';
     return ids.map(id => {
@@ -540,19 +624,20 @@ function cartaoWhats(esgs) {
         return `<div class="ps-card ${eg.suspeito ? 'ps-alerta' : ''}">
         <div class="ps-cap">WhatsApp${multi ? ' · ' + esc(eg.nome) : ' (catálogo)'}</div>
         ${eg.suspeito ? `<div class="ps-aviso">${eg.novos} produtos do catálogo parecem esgotados de uma vez. O PDF veio completo? Nada é avisado até você confirmar.</div>
-          <button type="button" class="ps-btn ps-perigo" data-act="esgaplicar" data-conta="${esc(id)}">Sim, o PDF está completo: avisar os esgotados</button>`
+          ${comBotao ? `<button type="button" class="ps-btn ps-perigo" data-act="esgaplicar" data-conta="${esc(id)}">Sim, o PDF está completo: avisar os esgotados</button>` : ''}`
         : `<div class="ps-lin"><span>Esgotaram (desativar no WhatsApp)</span><b>${eg.desativar}</b></div>`}
         ${eg.reativar ? `<div class="ps-lin"><span>Voltaram ao estoque (reativar)</span><b>${eg.reativar}</b></div>` : ''}
       </div>`;
     }).join('');
 }
 
-async function logZap(entrada, upd) {
-    const db = getDb();
-    const log = (await get(ref(db, raiz() + '/zapLog'))).val() || {};
-    const key = push(ref(db, raiz() + '/zapLog')).key;
-    Object.keys(log).sort().slice(0, -(MAX_ZAPLOG - 1)).forEach(k => { upd[`${raiz()}/zapLog/${k}`] = null; });
-    upd[`${raiz()}/zapLog/${key}`] = { quando: Date.now(), usuario: usuario(), ...entrada };
+async function logZap(entrada, upd, cid = CONTA) {
+    const db = getDb(), R = raiz(cid);
+    const log = (await get(ref(db, R + '/zapLog'))).val() || {};
+    const key = push(ref(db, R + '/zapLog')).key;
+    Object.keys(log).sort().slice(0, -(MAX_ZAPLOG - 1)).forEach(k => { upd[`${R}/zapLog/${k}`] = null; });
+    upd[`${R}/zapLog/${key}`] = { quando: Date.now(), usuario: usuario(), ...entrada };
+    return key;
 }
 
 // ── Aplicar ─────────────────────────────────────────────────────
@@ -592,6 +677,7 @@ async function gravar(itens, aliases, ignoradosPdf, arquivo, tipo, extra) {
         antigos.forEach(k => { upd[`${BASE}/log/${k}`] = null; });
     }
     await update(ref(db), upd);       // tudo ou nada: preços + log + vínculos juntos
+    return itens.length ? logId : null;
 }
 
 async function aplicar() {
@@ -607,7 +693,7 @@ async function aplicar() {
         S.cl.casados.forEach(({ c }) => { if (APR.ignoradosCtw[c.id]) voltou[`${BASE}/ignoradosCtw/${c.id}`] = null; });
         S.esg = calcTodasEsg();          // esgotados / voltaram, em relação ao catálogo guardado de cada conta
         Object.entries(S.esg).forEach(([id, e]) => { if (!e.suspeito) Object.entries(e.upd).forEach(([pid, v]) => { voltou[`${raiz(id)}/esg/${pid}`] = v; }); });
-        await gravar(seguros, S.novosAliases, S.novosIgnoradosPdf, S.arquivo, 'importacao', voltou);
+        S.logId = await gravar(seguros, S.novosAliases, S.novosIgnoradosPdf, S.arquivo, 'importacao', voltou);
         Object.keys(voltou).filter(k => k.includes('/ignoradosCtw/')).forEach(k => delete APR.ignoradosCtw[k.split('/').pop()]);
         Object.entries(S.esg).forEach(([id, e]) => { if (!e.suspeito) { aplicarEsgLocal(APR.contas[id].esg, e.upd); Object.assign(e, contagemEsg(APR.contas[id].esg)); } });
     } catch (e) {
@@ -628,38 +714,48 @@ function ctwSemPdf() {
         && !(S.ctwDescartados && S.ctwDescartados.has(c.id)));
 }
 
-function telaRelatorio() {
-    const m = S.mud;
-    const semPerguntar = S.aplicados.filter(x => x.origem === 'igual' || x.origem === 'aprendido').length;
-    const confirmados = S.aplicados.filter(x => x.origem === 'confirmado' || x.origem === 'vinculo').length;
-    const semMudanca = m.filter(x => !x.mudou && !x.invalido).length;
-    const faltam = ctwSemPdf();
-    const emFalta = S.cl.ctw.filter(c => !S.cl.reivindicado.has(c.id) && ctwEscondido(c.id) && APR.ignoradosCtw[c.id].ate).length;
-    const poolPdf = poolSemCtw();
+async function telaRelatorio() {
+    TELA = 'resultado'; titulo('Pronto');
+    try { await carregarAprendizado(); } catch (e) { /* segue com o que já está na memória */ }
+    const aplic = S.aplicados.filter(x => x.origem !== 'vinculo' || x.para !== x.de);
+    const sobem = aplic.filter(x => x.para > x.de).length, descem = aplic.filter(x => x.para < x.de).length;
+    const ids = Object.keys(APR.contas);
+    const soma = k => ids.reduce((t, id) => t + pend(id)[k], 0);
+    const chipsP = k => `<div class="ps-chipsl">${ids.map(id => `<span>${esc(APR.contas[id].nome)} ${pend(id)[k]}</span>`).join('')}</div>`;
+    const urgentes = ids.reduce((t, id) => t + Object.values(APR.contas[id].zap || {}).filter(z => z.para > z.de).length, 0);
+    const emVarias = {};      // produto que esgotou em mais de uma conta
+    ids.forEach(id => Object.entries(APR.contas[id].esg || {}).forEach(([pid, e]) => { if (e.estado === 'desativar') (emVarias[pid] = emVarias[pid] || { nome: e.nome, contas: [] }).contas.push(APR.contas[id].nome); }));
+    const exemplos = Object.values(emVarias).filter(x => x.contas.length > 1).slice(0, 2);
+    const faltam = ctwSemPdf(), poolPdf = poolSemCtw();
+    const duvCat = CAT && CAT.fila ? CAT.fila.length : 0;
+    const suspeitas = Object.fromEntries(Object.entries(S.esg || {}).filter(([, e]) => e.suspeito));
+    const cartao = (cor, n, tit, sub, act, aba, extra) => `<button type="button" class="ps-resumo" data-act="${act}"${aba ? ` data-aba="${aba}"` : ''}><span class="ps-num ${cor}">${n}</span><span class="ps-grow"><b>${tit}</b><span class="ps-sub">${sub}</span>${extra || ''}</span><span class="ps-seta">›</span></button>`;
+    const semCat = ids.filter(id => !APR.contas[id].catalogo || catAntigo(APR.contas[id].catalogo));
     tela(`
-      <div class="ps-card ps-ok"><b>Importação concluída</b>
-        <div class="ps-lin"><span>Atualizados sem perguntar (nome igual ou já aprendido)</span><b>${semPerguntar}</b></div>
-        <div class="ps-lin"><span>Atualizados após sua confirmação</span><b>${confirmados}</b></div>
-        <div class="ps-lin"><span>Vínculos novos aprendidos</span><b>${S.novosAliases.length}</b></div>
-        ${S.criados ? `<div class="ps-lin"><span>Produtos novos adicionados ao CTW</span><b>${S.criados}</b></div>` : ''}
+      <div class="ps-sub">${esc(S.arquivo || '')}</div>
+      <div class="ps-resumo ps-feito"><span class="ps-num ps-c-verde">${aplic.length}</span><span class="ps-grow"><b>${aplic.length ? 'Preços atualizados no CTW' : 'Nenhum preço mudou no CTW'}</b>
+        <span class="ps-sub">${aplic.length ? `${sobem} subiram · ${descem} desceram` : 'Tudo já estava igual ao Stock 2.0'}</span></span>
+        ${aplic.length && S.logId ? `<button type="button" class="ps-link" data-act="desfazer" data-id="${esc(S.logId)}">Desfazer</button>` : ''}</div>
+      ${cartao('ps-c-verm', soma('preco'), 'Corrigir preço no WhatsApp', urgentes ? `${urgentes} estão mais baratos que deveriam` : 'Nenhum mais barato que deveria', 'zap', 'preco', chipsP('preco'))}
+      ${cartao('ps-c-amar', soma('desativar'), 'Sem estoque: desativar', 'Estão no catálogo e não vieram no PDF de hoje', 'zap', 'desativar', chipsP('desativar') + (exemplos.length ? `<span class="ps-sub">${exemplos.map(x => `${esc(x.nome)}: ativo em ${x.contas.map(esc).join(' e ')}`).join('<br>')}</span>` : ''))}
+      ${cartao('ps-c-azul', soma('reativar'), 'Voltaram: reativar', 'Estavam desativados e voltaram no PDF', 'zap', 'reativar', chipsP('reativar'))}
+      ${cartaoWhats(suspeitas, true)}
+      ${faltam.length ? cartao('ps-c-neutro', faltam.length, 'Produtos do CTW sem correspondência', 'Não achei no Stock 2.0 · o preço não foi mexido', 'revisar') : ''}
+      ${poolPdf.length ? cartao('ps-c-neutro', poolPdf.length, 'Itens do Stock 2.0 que não estão no CTW', 'Dá para adicionar ao CTW, se quiser', 'adicionar') : ''}
+      ${duvCat ? cartao('ps-c-neutro', duvCat, 'Nomes duvidosos do catálogo', 'O app pergunta uma vez e decora', 'catperguntas') : ''}
+      ${semCat.map(id => `<div class="ps-aviso-card"><b>${esc(APR.contas[id].nome)}: ${APR.contas[id].catalogo ? 'catálogo antigo' : 'sem catálogo'}</b><span>${APR.contas[id].catalogo ? `ZIP ${idadeTxt(APR.contas[id].catalogo)}: envie um novo para os avisos ficarem confiáveis.` : 'Envie o ZIP para essa conta receber aviso de esgotado.'}</span></div>`).join('')}
+      <details class="ps-det"><summary>Detalhes da importação</summary>
+        <div class="ps-lin"><span>Atualizados sem perguntar</span><b>${S.aplicados.filter(x => x.origem === 'igual' || x.origem === 'aprendido').length}</b></div>
+        <div class="ps-lin"><span>Atualizados após sua confirmação</span><b>${S.aplicados.filter(x => x.origem === 'confirmado' || x.origem === 'vinculo').length}</b></div>
+        <div class="ps-lin"><span>Nomes ligados novos</span><b>${S.novosAliases.length}</b></div>
+        ${S.criados ? `<div class="ps-lin"><span>Produtos adicionados ao CTW</span><b>${S.criados}</b></div>` : ''}
         ${S.excluidos ? `<div class="ps-lin"><span>Produtos excluídos do CTW</span><b>${S.excluidos}</b></div>` : ''}
-        <div class="ps-lin"><span>Já estavam com o preço certo</span><b>${semMudanca}</b></div>
-        ${S.pulados.length ? `<div class="ps-lin"><span>Variação grande não aplicada</span><b>${S.pulados.length}</b></div>` : ''}
-        ${S.mexidos.length ? `<div class="ps-lin"><span>Alterados por outra pessoa durante a importação (não mexi)</span><b>${S.mexidos.length}</b></div>` : ''}
-      </div>
-      <div class="ps-card">
-        <div class="ps-lin"><span>Itens do Stock 2.0 que não existem no CTW</span><b>${poolPdf.length}</b></div>
-        ${S.cl.naoVender.length ? `<div class="ps-lin"><span>Marcados “não vender / tirar peças” (ignorados)</span><b>${S.cl.naoVender.length}</b></div>` : ''}
-        ${poolPdf.length ? `<button type="button" class="ps-btn" data-act="adicionar">Ver lista e adicionar ao CTW (opcional)</button>` : ''}
-      </div>
-      <div class="ps-card ${faltam.length ? 'ps-alerta' : ''}">
-        <div class="ps-lin"><span>Produtos do CTW que não achei no Stock 2.0 (preço não mexido)</span><b>${faltam.length}</b></div>
-        ${emFalta ? `<div class="ps-lin"><span>Em falta (escondidos por ${DIAS_EM_FALTA} dias, voltam depois)</span><b>${emFalta}</b></div>` : ''}
-        ${faltam.length ? `<button type="button" class="ps-btn ps-prim" data-act="revisar">Ver e vincular manualmente</button>` : ''}
-      </div>
-      ${cartaoWhats(S.esg)}
-      <button type="button" class="ps-btn ps-prim" data-act="zap">Abrir “Alterar no WhatsApp”</button>
-      <button type="button" class="ps-btn" data-act="fechar">Fechar</button>`);
+        <div class="ps-lin"><span>Já estavam com o preço certo</span><b>${S.mud.filter(x => !x.mudou && !x.invalido).length}</b></div>
+        ${S.pulados.length ? `<div class="ps-lin"><span>Variação grande, não aplicada</span><b>${S.pulados.length}</b></div>` : ''}
+        ${S.mexidos.length ? `<div class="ps-lin"><span>Alterados por outra pessoa durante a importação</span><b>${S.mexidos.length}</b></div>` : ''}
+      </details>
+      <button type="button" class="ps-btn ps-prim ps-grande" data-act="zap">Ver o que fazer no WhatsApp</button>
+      <button type="button" class="ps-btn ps-suave" data-act="fechar">Fechar</button>`);
 }
 
 // ── Revisão manual: produto do CTW → item do Stock 2.0 ──────────
@@ -668,6 +764,8 @@ function proximoCtw() {
     if (S.vinculo && S.vinculo.c && fila[0] && fila[0].id !== S.vinculo.c.id) S.confirmaTodos = false;
     if (!fila.length) { S.vinculo = null; return telaRelatorio(); }
     const c = fila[0];
+    if (S.maisPara !== c.id) { S.maisOpc = false; S.maisPara = c.id; }
+    S.fase = 'ctw'; TELA = 'revisar'; titulo('Qual item do Stock 2.0?');
     const pool = S.cl.semCtw.concat(S.fila).filter(r => !S.vinculados || !S.vinculados.has(r.i));
     const cands = pool.map(r => ({ r, s: similaridade(r.an.nucleo, c.an.nucleo), d: diferencas(r.an, c.an) }))
         .filter(x => x.s >= LIMIAR_VINCULO)
@@ -680,11 +778,13 @@ function proximoCtw() {
       ${cands.map(x => botaoPdf(x.r, c, x.d)).join('') || '<div class="ps-cap">Nenhuma sugestão parecida.</div>'}
       <div class="ps-busca"><input type="search" id="psBuscaPdf" placeholder="Buscar na lista do Stock 2.0…" autocomplete="off"></div>
       <div id="psBuscaRes"></div>
-      <button type="button" class="ps-btn" data-act="emfalta">Em falta no estoque (esconder por ${DIAS_EM_FALTA} dias)</button>
-      ${fila.length > 1 ? `<button type="button" class="ps-btn${S.confirmaTodos ? ' ps-perigo' : ''}" data-act="emfaltatodos">${S.confirmaTodos ? `Confirmar: marcar os ${fila.length} como em falta` : `Marcar todos os ${fila.length} restantes como em falta`}</button>` : ''}
+      <button type="button" class="ps-btn ps-prim" data-act="pularctw">Pular por agora</button>
+      <button type="button" class="ps-btn" data-act="emfalta">Sem estoque agora</button>
+      <div class="ps-sub ps-centro">“Sem estoque agora” esconde este produto por ${DIAS_EM_FALTA} dias.</div>
+      <button type="button" class="ps-btn ps-suave" data-act="maisopc">Mais opções ${S.maisOpc ? '⌃' : '›'}</button>
+      ${S.maisOpc ? `${fila.length > 1 ? `<button type="button" class="ps-btn${S.confirmaTodos ? ' ps-perigo' : ''}" data-act="emfaltatodos">${S.confirmaTodos ? `Confirmar: ${fila.length} produtos sem estoque agora` : `Marcar os ${fila.length} restantes como sem estoque`}</button>` : ''}
       <button type="button" class="ps-btn ps-perigo" data-act="excluirctw">Não trabalhamos mais (excluir do CTW)</button>
-      <button type="button" class="ps-btn ps-suave" data-act="pularctw">Decidir depois</button>
-      <button type="button" class="ps-btn ps-suave" data-act="relatorio">Voltar ao relatório</button>`);
+      <button type="button" class="ps-btn ps-suave" data-act="relatorio">Voltar ao resultado</button>` : ''}`);
 }
 
 function botaoPdf(r, c, d) {
@@ -732,12 +832,12 @@ function listaAdicionar(q) {
 }
 
 function telaAdicionar() {
-    S.vinculo = null;
+    S.vinculo = null; TELA = 'adicionar'; titulo('Adicionar ao CTW');
     tela(`
       <div class="ps-prog">Itens do Stock 2.0 que não existem no CTW (${poolSemCtw().length})</div>
       <div class="ps-busca"><input type="search" id="psBuscaAdd" placeholder="Buscar…" autocomplete="off"></div>
       <div id="psAddRes" class="ps-col">${listaAdicionar('')}</div>
-      <button type="button" class="ps-btn ps-suave" data-act="relatorio">Voltar ao relatório</button>`);
+      <button type="button" class="ps-btn ps-suave" data-act="relatorio">Voltar ao resultado</button>`);
 }
 
 function telaFormAdicionar(r, origem) {
@@ -798,31 +898,122 @@ async function excluirProduto(c) {
     S.excluidos = (S.excluidos || 0) + 1;
 }
 
-// ── Vínculos e ignorados ────────────────────────────────────────
+// ── Avançado ────────────────────────────────────────────────────
+async function telaAvancado() {
+    TELA = 'avancado'; titulo('Avançado');
+    try { await carregarAprendizado(); } catch (e) { return tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div>`); }
+    const nLig = new Set(Object.values(APR.aliases).map(v => v.pid + '|' + v.nomeEstoque)).size + Object.keys(APR.catAliases).length;
+    const nFix = Object.values(APR.contas).reduce((t, c) => t + Object.keys(c.fixos || {}).length, 0);
+    const nIg = Object.keys(APR.ignoradosPdf).length + Object.keys(APR.ignoradosCtw).length + Object.keys(APR.catIgnorados).length;
+    const nomes = Object.values(APR.contas).map(c => c.nome).join(', ');
+    const lin = (act, tit, sub) => `<button type="button" class="ps-resumo" data-act="${act}"><span class="ps-grow"><b>${tit}</b><span class="ps-sub">${sub}</span></span><span class="ps-seta">›</span></button>`;
+    tela(`
+      <div class="ps-sub">Coisas que você quase não usa. Nada daqui atrapalha o dia a dia.</div>
+      ${lin('avcontas', 'Contas de WhatsApp', `${esc(nomes)} · criar, renomear`)}
+      <div class="ps-resumo"><span class="ps-grow"><b>Extra à vista</b><span class="ps-sub">Preço do catálogo = valor do CTW + extra</span></span>
+        <input type="text" id="psCatExtra" class="ps-inp ps-extra" inputmode="decimal" value="${esc(String(catExtra()).replace('.', ','))}" aria-label="Extra à vista em reais"></div>
+      ${lin('vinculos', 'Nomes ligados', `${nLig} · buscar, desligar o que ficou errado`)}
+      ${lin('avignorados', 'Sem estoque e ignorados', nIg ? `${nIg} · voltar a perguntar em massa` : 'Nada marcado')}
+      ${lin('avfixos', 'Preços mantidos de propósito', nFix ? `${nFix} produto(s) · voltar a avisar` : 'Nenhum')}
+      ${lin('avprints', 'Catálogo por prints', 'Só se você não tiver o ZIP')}
+      ${lin('avhist', 'Histórico', 'Importações de preço e o que foi feito no WhatsApp')}`);
+}
+
+async function telaAvContas(msg) {
+    TELA = 'av-contas'; titulo('Contas de WhatsApp');
+    try { await carregarAprendizado(); } catch (e) { return tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div>`); }
+    tela(`${msg ? `<div class="ps-msg">${esc(msg)}</div>` : ''}
+      <div class="ps-sub">Cada conta tem catálogo, avisos e histórico próprios. O PDF do Stock 2.0 vale para todas.</div>
+      ${Object.entries(APR.contas).map(([id, c]) => `<div class="ps-card">
+        <div class="ps-nome">${esc(c.nome)}</div>
+        <div class="ps-sub">${c.catalogo ? `ZIP ${idadeTxt(c.catalogo)}` : 'Sem catálogo'} · ${totalPend(id)} pendência(s)${id === 'loja' ? ' · conta original' : ''}</div>
+        ${id === 'loja' ? '' : `<div class="ps-busca"><input type="text" id="psRen-${esc(id)}" value="${esc(c.nome)}" maxlength="30" autocomplete="off"></div>
+        <button type="button" class="ps-btn" data-act="renomear" data-id="${esc(id)}">Salvar novo nome</button>
+        <button type="button" class="ps-btn ps-suave" data-act="excluirconta" data-id="${esc(id)}">Excluir esta conta…</button>`}
+      </div>`).join('')}
+      <div class="ps-card"><div class="ps-nome">Nova conta</div>
+        <div class="ps-busca"><input type="text" id="psNovaConta" placeholder="Nome (ex.: Colega)" maxlength="30" autocomplete="off"></div>
+        <button type="button" class="ps-btn ps-prim" data-act="criarconta">Criar conta</button></div>`);
+}
+
+function telaAvExcluirConta(id) {
+    TELA = 'av-contas'; const c = APR.contas[id]; if (!c) return telaAvContas();
+    tela(`<div class="ps-card"><div class="ps-cap">Excluir conta</div><div class="ps-nome">${esc(c.nome)}</div>
+      <div class="ps-aviso">Apaga o catálogo, as pendências e o histórico dessa conta. Os produtos do CTW e os nomes ligados não são mexidos. Não dá para desfazer.</div></div>
+      <button type="button" class="ps-btn ps-perigo" data-act="excluirconta2" data-id="${esc(id)}">Sim, excluir ${esc(c.nome)}</button>
+      <button type="button" class="ps-btn ps-suave" data-act="avcontas">Cancelar</button>`);
+}
+
+async function telaAvIgnorados() {
+    TELA = 'av-ign'; titulo('Sem estoque e ignorados');
+    try { await carregarAprendizado(); } catch (e) { return tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div>`); }
+    const bloco = (n, tit, sub, act) => `<div class="ps-card"><div class="ps-lin"><span>${tit}</span><b>${n}</b></div><div class="ps-sub">${sub}</div>${n ? `<button type="button" class="ps-btn" data-act="${act}">Voltar a perguntar (${n})</button>` : ''}</div>`;
+    tela(`
+      ${bloco(Object.keys(APR.ignoradosCtw).length, 'Produtos do CTW “sem estoque agora”', 'Voltam sozinhos depois de ' + DIAS_EM_FALTA + ' dias.', 'esquecerctw')}
+      ${bloco(Object.keys(APR.ignoradosPdf).length, 'Itens do Stock 2.0 “não existe no CTW”', 'O app não pergunta mais sobre eles.', 'esquecerpdf')}
+      ${bloco(Object.keys(APR.catIgnorados).length, 'Itens do catálogo “não é do CTW”', 'O app não pergunta mais sobre eles.', 'esquecercat')}`);
+}
+
+async function telaAvFixos() {
+    TELA = 'av-fixos'; titulo('Preços mantidos');
+    try { await carregarAprendizado(); } catch (e) { return tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div>`); }
+    const multi = Object.keys(APR.contas).length > 1;
+    const blocos = Object.entries(APR.contas).map(([cid, c]) => {
+        const l = Object.entries(c.fixos || {});
+        return l.length ? (multi ? `<div class="ps-cap ps-esp">${esc(c.nome)} · ${l.length}</div>` : '') + l.map(([id, f]) => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(f.nome)}</div><div class="ps-sub">Catálogo fica em ${brl(f.preco)} (CTW ${brl(f.ctw)}) · avisa se o CTW mudar</div></div><button type="button" class="ps-mini" data-act="fixodesfazer" data-conta="${esc(cid)}" data-id="${esc(id)}">Voltar a avisar</button></div>`).join('') : '';
+    }).join('');
+    tela(`<div class="ps-sub">Produtos que você deixou com o preço do WhatsApp diferente de propósito. O app só avisa de novo se o valor no CTW mudar.</div>${blocos || '<div class="ps-msg">Nenhum preço mantido.</div>'}`);
+}
+
+function telaAvPrints() {
+    TELA = 'av-prints'; titulo('Catálogo por prints');
+    tela(`
+      <div class="ps-sub">Use só se você não tiver o ZIP. Os prints são lidos por IA e podem ter erros; o ZIP é exato.</div>
+      ${Object.keys(APR.contas).length > 1 ? `<div class="ps-cap">Prints de qual conta?</div>${chipsContas(false)}` : ''}
+      <div class="ps-card"><div class="ps-nome">Prints do catálogo de ${esc(APR.contas[CONTA].nome)}</div>
+        <div class="ps-sub">Até ${CAT_MAX_PRINTS} imagens por vez, mostrando a lista de produtos com preço.</div>
+        <label class="ps-btn ps-prim ps-lbl"><input type="file" id="psPrints" accept="image/*" multiple hidden>Escolher prints</label></div>`);
+}
+
+async function telaAvHist() {
+    TELA = 'av-hist'; titulo('Histórico');
+    tela('<div class="ps-msg">Carregando…</div>');
+    let logs, zl;
+    try { await carregarAprendizado(); const db = getDb(); logs = (await get(ref(db, BASE + '/log'))).val() || {}; zl = (await get(ref(db, raiz() + '/zapLog'))).val() || {}; }
+    catch (e) { return tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div>`); }
+    const quando = t => new Date(t).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+    const imp = Object.entries(logs).sort((a, b) => b[0].localeCompare(a[0]));
+    const rot = { preco: 'Preço corrigido', desativar: 'Desativado', reativar: 'Reativado', fixo: 'Mantido de propósito' };
+    const h = Object.values(zl).sort((a, b) => (b.quando || 0) - (a.quando || 0));
+    tela(`
+      <div class="ps-cap">Importações de preço no CTW</div>
+      ${imp.map(([id, v]) => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(v.arquivo || (v.tipo === 'vinculo' ? 'Vínculo manual' : 'Importação'))}</div>
+        <div class="ps-sub">${Object.keys(v.itens || {}).length} preço(s) · ${quando(v.quando)}${v.usuario ? ' · ' + esc(v.usuario) : ''}${v.desfeito ? ' · desfeita' : ''}</div></div>
+        ${v.desfeito ? '' : `<button type="button" class="ps-mini" data-act="desfazer" data-id="${esc(id)}">Desfazer</button>`}</div>`).join('') || '<div class="ps-msg">Nenhuma importação ainda.</div>'}
+      <div class="ps-cap ps-esp">Feito no WhatsApp</div>
+      ${Object.keys(APR.contas).length > 1 ? chipsContas(false) : ''}
+      ${h.map(x => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(x.nome || '')}</div>
+        <div class="ps-sub">${rot[x.tipo] || esc(x.tipo)}${x.tipo === 'preco' ? `: ${brl(x.de)} → ${brl(x.para)}` : x.tipo === 'fixo' ? `: catálogo ${brl(x.de)} (o certo seria ${brl(x.para)})` : ''}</div>
+        <div class="ps-sub">${x.quando ? quando(x.quando) : ''}${x.usuario ? ' · ' + esc(x.usuario) : ''}</div></div></div>`).join('') || `<div class="ps-msg">Ainda não há histórico. Guarda as últimas ${MAX_ZAPLOG} ações.</div>`}`);
+}
+
 async function telaVinculos() {
+    TELA = 'av-vinc'; titulo('Nomes ligados');
     tela('<div class="ps-msg">Carregando…</div>');
     try { await carregarAprendizado(); } catch (e) { tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div>`); return; }
     const vistos = new Set();
     const al = Object.entries(APR.aliases).filter(([k, v]) => { const id = v.pid + '|' + v.nomeEstoque; if (vistos.has(id)) return false; vistos.add(id); return true; });
-    const nIgP = Object.keys(APR.ignoradosPdf).length, nIgC = Object.keys(APR.ignoradosCtw).length, nIgCat = Object.keys(APR.catIgnorados).length;
     const nomeCtw = pid => { const c = (window.products || []).find(x => x && x.id === pid); return c ? c.nome : '(produto removido do CTW)'; };
-    const nomesCat = {};      // nome original do WhatsApp, quando o catálogo guardado ainda o tem
-    Object.values((APR.catalogo && APR.catalogo.itens) || {}).forEach(x => { try { nomesCat[chaveNome(analisar(x.n))] = x.n; } catch (e) {} });
+    const nomesCat = {};      // nome original do WhatsApp, quando algum catálogo guardado ainda o tem
+    Object.values(APR.contas).forEach(c => Object.values((c.catalogo && c.catalogo.itens) || {}).forEach(x => { try { nomesCat[chaveNome(analisar(x.n))] = x.n; } catch (e) {} }));
     const bonito = (k, v) => v.n || nomesCat[k] || k.replace(/^n/, '').replace(/_/g, ' ').replace(/\bS0\b|\bR0\b/g, '').replace(/\bS(\d+)\b/g, '$1GB').replace(/\bR(\d+)\b/g, '$1GB RAM').replace(/\s+/g, ' ').trim();
     const catVinc = Object.entries(APR.catAliases).sort((a, b) => nomeCtw(a[1].pid).localeCompare(nomeCtw(b[1].pid)));
     tela(`
-      <div class="ps-card">
-        <div class="ps-lin"><span>Itens do Stock 2.0 marcados “não existe no CTW”</span><b>${nIgP}</b></div>
-        <div class="ps-lin"><span>Produtos do CTW marcados “em falta”</span><b>${nIgC}</b></div>
-        ${nIgC ? `<button type="button" class="ps-btn" data-act="esquecerctw">Voltar a perguntar só os “em falta” (${nIgC})</button>` : ''}
-        ${nIgP ? `<button type="button" class="ps-btn" data-act="esquecerpdf">Voltar a perguntar só os “não existe no CTW” (${nIgP})</button>` : ''}
-      </div>
-      <input type="search" id="psBuscaVinc" class="ps-inp ps-busca" placeholder="Buscar vínculo (nome do WhatsApp, Stock 2.0 ou CTW)…">
-      ${catVinc.length ? `<div class="ps-cap ps-esp">Vínculos do catálogo do WhatsApp (${catVinc.length})</div>` + catVinc.map(([k, v]) => `<div class="ps-it" data-q="${esc(norm(bonito(k, v) + ' ' + nomeCtw(v.pid)))}"><div class="ps-grow"><div class="ps-nome">${esc(bonito(k, v))}</div><div class="ps-sub">= ${esc(nomeCtw(v.pid))}</div></div><button type="button" class="ps-mini" data-act="rmcatvin" data-k="${esc(k)}">Desvincular</button></div>`).join('') : ''}
-      ${nIgCat ? `<div class="ps-card"><div class="ps-lin"><span>Itens do catálogo marcados “não é do CTW”</span><b>${nIgCat}</b></div><button type="button" class="ps-btn" data-act="esquecercat">Voltar a perguntar sobre esses itens</button></div>` : ''}
-      <div class="ps-cap ps-esp">Vínculos do Stock 2.0 (${al.length})</div>
-      ${al.map(([k, v]) => `<div class="ps-it" data-q="${esc(norm(v.nomeEstoque + ' ' + v.nomeCtw))}"><div class="ps-grow"><div class="ps-nome">${esc(v.nomeEstoque)}</div><div class="ps-sub">= ${esc(v.nomeCtw)}</div></div><button type="button" class="ps-mini" data-act="rmvinculo" data-pid="${esc(v.pid)}" data-nome="${esc(v.nomeEstoque)}">Remover</button></div>`).join('') || '<div class="ps-msg">Nenhum vínculo ainda.</div>'}
-      <button type="button" class="ps-btn ps-suave" data-act="inicio">Voltar</button>`);
+      <div class="ps-sub">Cada nome diferente de um mesmo produto fica ligado a ele. Desligue só o que ficou errado: o app volta a perguntar na próxima vez.</div>
+      <input type="search" id="psBuscaVinc" class="ps-inp ps-busca" placeholder="Buscar (nome do WhatsApp, Stock 2.0 ou CTW)…">
+      ${catVinc.length ? `<div class="ps-cap ps-esp">Nomes do WhatsApp (${catVinc.length})</div>` + catVinc.map(([k, v]) => `<div class="ps-it" data-q="${esc(norm(bonito(k, v) + ' ' + nomeCtw(v.pid)))}"><div class="ps-grow"><div class="ps-nome">${esc(bonito(k, v))}</div><div class="ps-sub">= ${esc(nomeCtw(v.pid))}</div></div><button type="button" class="ps-mini" data-act="rmcatvin" data-k="${esc(k)}">Desligar</button></div>`).join('') : ''}
+      <div class="ps-cap ps-esp">Nomes do Stock 2.0 (${al.length})</div>
+      ${al.map(([k, v]) => `<div class="ps-it" data-q="${esc(norm(v.nomeEstoque + ' ' + v.nomeCtw))}"><div class="ps-grow"><div class="ps-nome">${esc(v.nomeEstoque)}</div><div class="ps-sub">= ${esc(v.nomeCtw)}</div></div><button type="button" class="ps-mini" data-act="rmvinculo" data-pid="${esc(v.pid)}" data-nome="${esc(v.nomeEstoque)}">Desligar</button></div>`).join('') || '<div class="ps-msg">Nenhum nome ligado ainda.</div>'}`);
 }
 
 async function removerVinculo(pid, nomeEstoque) {
@@ -860,35 +1051,101 @@ async function desfazer(id) {
 }
 
 // ── Cliques ─────────────────────────────────────────────────────
+function voltar() {
+    if (TELA === 'hub') return fechar();
+    if (TELA.startsWith('av-')) return telaAvancado();
+    if ((TELA === 'revisar' || TELA === 'adicionar') && S && S.aplicados) return telaRelatorio();
+    return telaInicio();
+}
+
+// Executa uma ação da lista "Fazer no WhatsApp" e oferece "Desfazer" por 6 segundos
+async function acaoLista(act, id) {
+    const cid = CONTA, R = raiz(cid), db = getDb(), pz = `${R}/zap/${id}`, pe = `${R}/esg/${id}`, pf = `${R}/fixos/${id}`;
+    const antes = {};
+    for (const k of [pz, pe, pf]) antes[k] = (await get(ref(db, k))).val();
+    const z = antes[pz], e = antes[pe], upd = {}, extra = catExtra();
+    let log = null, nome = '';
+    if (act === 'zapok' && z) { nome = z.nome; upd[pz] = null; log = { tipo: 'preco', nome: z.nome || '', de: (z.de || 0) + extra, para: (z.para || 0) + extra }; }
+    else if (act === 'zapfixo' && z) {
+        nome = z.nome; upd[pf] = { nome: z.nome || '', preco: Math.round((z.de + extra) * 100) / 100, ctw: z.para, extra, quando: Date.now(), usuario: usuario() }; upd[pz] = null;
+        log = { tipo: 'fixo', nome: z.nome || '', de: z.de + extra, para: z.para + extra };
+    }
+    else if (act === 'esgdesativei' && e && e.estado === 'desativar') { nome = e.nome; upd[pe] = { ...e, estado: 'desativado', desde: Date.now() }; log = { tipo: 'desativar', nome: e.nome || '' }; }
+    else if (act === 'esgreativei' && e && e.estado === 'reativar') { nome = e.nome; upd[pe] = null; log = { tipo: 'reativar', nome: e.nome || '' }; }
+    else if (act === 'esgainda' && e && e.estado === 'desativar') { nome = e.nome; upd[pe] = { ...e, estado: 'ainda', ate: Date.now() + DIAS_AINDA_TEM * 86400000 }; }
+    else return telaZap(S_zapAba);               // outra pessoa já resolveu esse item
+    const desfeito = Object.keys(upd).reduce((o, k) => (o[k] = antes[k] === undefined ? null : antes[k], o), {});
+    const key = log ? await logZap(log, upd, cid) : null;
+    await update(ref(db), upd);
+    await telaZap(S_zapAba);
+    toast(`Feito: ${nome || 'item'}`, async () => {
+        if (key) desfeito[`${R}/zapLog/${key}`] = null;
+        await update(ref(db), desfeito);
+        await telaZap(S_zapAba);
+    });
+}
+
 async function aoClicar(e) {
     const b = e.target.closest('[data-act]'); if (!b) return;
     const act = b.dataset.act;
     try {
         if (act === 'fechar') return fechar();
+        if (act === 'voltar') return voltar();
         if (act === 'inicio') return telaInicio();
+        if (act === 'avancado') return telaAvancado();
+        if (act === 'enviar') return telaEnviar();
         if (act === 'vinculos') return telaVinculos();
+        if (act === 'avcontas') return telaAvContas();
+        if (act === 'avignorados') return telaAvIgnorados();
+        if (act === 'avfixos') return telaAvFixos();
+        if (act === 'avprints') return telaAvPrints();
+        if (act === 'avhist') return telaAvHist();
         if (act === 'desfazer') return desfazer(b.dataset.id);
+        if (act === 'toastdesfazer') {
+            const f = _toastFn; _toastFn = null; clearTimeout(_toastT);
+            const t = overlay.querySelector('.ps-toast'); if (t) t.remove();
+            if (f) await f();
+            return;
+        }
+        if (act === 'mais') { const m = b.closest('.ps-lc'), menu = m && m.querySelector('.ps-menu'); if (menu) menu.hidden = !menu.hidden; return; }
         if (act === 'rmvinculo') { await removerVinculo(b.dataset.pid, b.dataset.nome); return telaVinculos(); }
         if (act === 'rmcatvin') { const k = b.dataset.k; await update(ref(getDb()), { [`${BASE}/catAliases/${k}`]: null }); delete APR.catAliases[k]; return telaVinculos(); }
-        if (act === 'esquecercat') { await update(ref(getDb()), { [`${BASE}/catIgnorados`]: null }); APR.catIgnorados = {}; return telaVinculos(); }
-        if (act === 'esquecerctw') { await update(ref(getDb()), { [`${BASE}/ignoradosCtw`]: null }); APR.ignoradosCtw = {}; return telaVinculos(); }
-        if (act === 'esquecerpdf') { await update(ref(getDb()), { [`${BASE}/ignoradosPdf`]: null }); APR.ignoradosPdf = {}; return telaVinculos(); }
-        if (act === 'esquecerign') { await update(ref(getDb()), { [`${BASE}/ignoradosPdf`]: null, [`${BASE}/ignoradosCtw`]: null }); return telaVinculos(); }
+        if (act === 'esquecercat') { await update(ref(getDb()), { [`${BASE}/catIgnorados`]: null }); APR.catIgnorados = {}; return telaAvIgnorados(); }
+        if (act === 'esquecerctw') { await update(ref(getDb()), { [`${BASE}/ignoradosCtw`]: null }); APR.ignoradosCtw = {}; return telaAvIgnorados(); }
+        if (act === 'esquecerpdf') { await update(ref(getDb()), { [`${BASE}/ignoradosPdf`]: null }); APR.ignoradosPdf = {}; return telaAvIgnorados(); }
         if (act === 'analisar') {
-            const { pdf, cat } = ESC_;
-            if (!pdf && !cat) return;
+            if (!ESC_.pdf && !Object.keys(ESC_.zips).length) return;
             extraDoCampo();
-            ESC_.pdf = ESC_.cat = null;
-            if (!pdf) return aoEscolherCatalogo(cat);
-            if (cat) await aoEscolherCatalogo(cat, true);      // atualiza o catálogo guardado em silêncio e segue para o PDF
-            return aoEscolherPdf(pdf);
+            b.disabled = true;
+            return analisarTudo();
         }
-        if (act === 'conta') { usarConta(b.dataset.id); ESC_.nova = false; return (overlay.querySelector('.ps-abas') ? telaZap(S_zapAba) : telaInicio()); }
-        if (act === 'novaconta') { ESC_.nova = true; await telaInicio(); const i = overlay.querySelector('#psNovaConta'); if (i) i.focus(); return; }
-        if (act === 'criarconta') { const i = overlay.querySelector('#psNovaConta'); await criarConta(i && i.value); ESC_.nova = false; return telaInicio(); }
+        if (act === 'conta') {
+            usarConta(b.dataset.id);
+            if (TELA === 'zap') return telaZap(S_zapAba);
+            if (TELA === 'av-prints') return telaAvPrints();
+            if (TELA === 'av-hist') return telaAvHist();
+            return telaInicio();
+        }
+        if (act === 'criarconta') {
+            const i = overlay.querySelector('#psNovaConta');
+            if (!i || !i.value.trim()) throw new Error('Digite o nome da conta.');
+            await criarConta(i.value); return telaAvContas('Conta criada.');
+        }
+        if (act === 'renomear') {
+            const i = overlay.querySelector(`[id="psRen-${b.dataset.id}"]`);
+            if (!i || !i.value.trim()) throw new Error('Digite o nome da conta.');
+            await renomearConta(b.dataset.id, i.value); return telaAvContas('Nome salvo.');
+        }
+        if (act === 'excluirconta') return telaAvExcluirConta(b.dataset.id);
+        if (act === 'excluirconta2') { b.disabled = true; await excluirConta(b.dataset.id); return telaAvContas('Conta excluída.'); }
         if (act === 'zapaba') return telaZap(b.dataset.aba);
-        if (act === 'zap') return telaZap('preco');
+        if (act === 'zap') {
+            let aba = b.dataset.aba;
+            if (aba && pend(CONTA)[aba] === 0) { const o = Object.keys(APR.contas).find(id => pend(id)[aba] > 0); if (o) usarConta(o); }
+            return telaZap(aba);
+        }
         if (act === 'esgaplicar') {
+            if (!S) return;
             b.disabled = true;
             const cid = b.dataset.conta, e = S.esg[cid];
             const upd = {}; Object.entries(e.upd).forEach(([pid, v]) => { upd[`${raiz(cid)}/esg/${pid}`] = v; });
@@ -896,72 +1153,31 @@ async function aoClicar(e) {
             S.esg[cid] = { ...e, ...contagemEsg(APR.contas[cid].esg), suspeito: false };
             return telaRelatorio();
         }
-        if (act === 'zapfixo' || act === 'fixodesfazer') {
+        if (act === 'fixodesfazer') {
             b.disabled = true;
-            const id = b.dataset.id, upd = {}, extra = catExtra();
-            try {
-                if (act === 'zapfixo') {
-                    const z = ((await get(ref(getDb(), `${raiz()}/zap/${id}`))).val()) || {};
-                    upd[`${raiz()}/fixos/${id}`] = { nome: z.nome || '', preco: Math.round((z.de + extra) * 100) / 100, ctw: z.para, extra, quando: Date.now(), usuario: usuario() };
-                    upd[`${raiz()}/zap/${id}`] = null;
-                    await logZap({ tipo: 'fixo', nome: z.nome || '', de: z.de + extra, para: z.para + extra }, upd);
-                } else {
-                    const f = ((await get(ref(getDb(), `${raiz()}/fixos/${id}`))).val()) || {};
-                    upd[`${raiz()}/fixos/${id}`] = null;
-                    if (f.preco > 0 && f.ctw > 0) upd[`${raiz()}/zap/${id}`] = { nome: f.nome || '', de: Math.round((f.preco - (f.extra || extra)) * 100) / 100, para: f.ctw, quando: Date.now(), usuario: usuario() };
-                }
-                await update(ref(getDb()), upd);
-            } catch (er) { console.warn('[zap]', er.message); }
-            return telaZap(S_zapAba);
-        }
-        if (act === 'zapok' || act === 'esgdesativei' || act === 'esgreativei' || act === 'esgainda') {
-            b.disabled = true;
-            const id = b.dataset.id, upd = {};
-            try {
-                if (act === 'zapok') {
-                    const z = ((await get(ref(getDb(), `${raiz()}/zap/${id}`))).val()) || {};
-                    upd[`${raiz()}/zap/${id}`] = null;
-                    await logZap({ tipo: 'preco', nome: z.nome || '', de: (z.de || 0) + catExtra(), para: (z.para || 0) + catExtra() }, upd);
-                } else {
-                    const e = ((await get(ref(getDb(), `${raiz()}/esg/${id}`))).val()) || {};
-                    if (act === 'esgdesativei') { upd[`${raiz()}/esg/${id}`] = { ...e, estado: 'desativado', desde: Date.now() }; await logZap({ tipo: 'desativar', nome: e.nome || '' }, upd); }
-                    else if (act === 'esgreativei') { upd[`${raiz()}/esg/${id}`] = null; await logZap({ tipo: 'reativar', nome: e.nome || '' }, upd); }
-                    else upd[`${raiz()}/esg/${id}`] = { ...e, estado: 'ainda', ate: Date.now() + DIAS_AINDA_TEM * 86400000 };
-                }
-                await update(ref(getDb()), upd);
-            } catch (er) { console.warn('[zap]', er.message); }
-            return telaZap(S_zapAba);
-        }
-        if (act === 'catfeito') {
-            if (!CAT) return;
-            const i = Number(b.dataset.i), x = CAT.errados.find(e => e.it.i === i);
-            CAT.feitos.add(i);
-            if (x) await zapRemover(x.c.id).catch(() => {});
-            return telaCatRelatorio();
-        }
-        if (act === 'catfixo') {
-            if (!CAT) return;
-            const i = Number(b.dataset.i), x = CAT.errados.find(e => e.it.i === i); if (!x) return;
-            b.disabled = true;
-            const upd = {};
-            upd[`${raiz()}/fixos/${x.c.id}`] = { nome: x.c.nome, preco: x.it.preco, ctw: x.c.valor, extra: CAT.extra, quando: Date.now(), usuario: usuario() };
-            upd[`${raiz()}/zap/${x.c.id}`] = null;
-            await logZap({ tipo: 'fixo', nome: x.c.nome, de: x.it.preco, para: x.c.valor + CAT.extra }, upd);
+            const cid = b.dataset.conta || CONTA, id = b.dataset.id, upd = {}, R = raiz(cid), extra = catExtra();
+            const f = ((await get(ref(getDb(), `${R}/fixos/${id}`))).val()) || {};
+            upd[`${R}/fixos/${id}`] = null;
+            const de = Math.round((f.preco - (f.extra || extra)) * 100) / 100;
+            if (f.preco > 0 && f.ctw > 0 && !igual(de, f.ctw)) upd[`${R}/zap/${id}`] = { nome: f.nome || '', de, para: f.ctw, quando: Date.now(), usuario: usuario() };
             await update(ref(getDb()), upd);
-            CAT.errados = CAT.errados.filter(e => e !== x); CAT.fixos.push(x);
-            return telaCatRelatorio();
+            return telaAvFixos();
         }
-        if (act === 'caturgentes') { if (CAT) { CAT.soUrgentes = !CAT.soUrgentes; telaCatRelatorio(); } return; }
+        if (act === 'zapok' || act === 'zapfixo' || act === 'esgdesativei' || act === 'esgreativei' || act === 'esgainda') {
+            b.disabled = true;
+            return acaoLista(act, b.dataset.id);
+        }
         if (act === 'catperguntas') return CAT && telaCatPergunta();
-        if (act === 'catrelatorio') return CAT && telaCatRelatorio();
+        if (act === 'catfim') return catFim();
         if (act === 'catmesmo' || act === 'catnao' || act === 'catdepois') { if (CAT) { b.disabled = true; await catResponder(act, b.dataset.id); } return; }
         if (!S) return;
+        if (act === 'maisopc') { S.maisOpc = !S.maisOpc; return S.fase === 'pdf' ? proximaPergunta() : proximoCtw(); }
         if (act === 'mesmo') {
             const r = S.fila[0], c = S.cl.ctw.find(x => x.id === b.dataset.id);
             if (!r || !c || S.cl.reivindicado.has(c.id)) return;
             confirmarVinculo(r, c); S.fila.shift(); return proximaPergunta();
         }
-        // "Não existe no CTW" é lembrado (não pergunta mais); "Decidir depois" não grava nada e volta a perguntar
+        // "Não existe no CTW" é lembrado (não pergunta mais); "Pular por agora" não grava nada e volta a perguntar
         if (act === 'naoexiste') { const r = S.fila.shift(); S.novosIgnoradosPdf.push(r); S.cl.semCtw.push(r); return proximaPergunta(); }
         if (act === 'pular') { const r = S.fila.shift(); S.cl.semCtw.push(r); return proximaPergunta(); }
         if (act === 'pularresto') { S.pularResto = true; return telaPrevia(); }
@@ -1137,7 +1353,7 @@ async function concluirCatalogo(itens, extra, exato, silencioso) {
     CAT.errados = CAT.errados.filter(x => { if (fixoAtivo(fx[x.c.id], x)) { CAT.fixos.push(x); return false; } return true; });
     if (exato) await zapAlinhar(CAT.certos.concat(CAT.errados, CAT.fixos), extra).catch(e => console.warn('[zap]', e.message));   // arquivo exato: a lista "Alterar no WhatsApp" passa a refletir o catálogo
     await guardarCatalogo(CAT.certos.concat(CAT.errados, CAT.fixos), exato ? 'zip' : 'prints').catch(e => console.warn('[catálogo]', e.message));
-    if (!silencioso) telaCatRelatorio();
+    if (!silencioso) fimCatalogo();
 }
 
 function extraDoCampo() {
@@ -1216,7 +1432,7 @@ function itensDoCsv(txt) {
     return itens;
 }
 
-async function textoDoZip(buf) {
+async function lerZip(buf) {
     const dv = new DataView(buf), u8 = new Uint8Array(buf);
     let fim = -1;
     for (let i = u8.length - 22; i >= Math.max(0, u8.length - 70000); i--) if (dv.getUint32(i, true) === 0x06054b50) { fim = i; break; }
@@ -1228,70 +1444,32 @@ async function textoDoZip(buf) {
         const nome = new TextDecoder().decode(u8.subarray(pos + 46, pos + 46 + nl));
         if (/(^|\/)items\.csv$/i.test(nome)) {
             const ini = loc + 30 + dv.getUint16(loc + 26, true) + dv.getUint16(loc + 28, true), dados = u8.subarray(ini, ini + tam);
-            if (metodo === 0) return new TextDecoder().decode(dados);
+            const pasta = nome.includes('/') ? nome.slice(0, nome.indexOf('/')) : '';
+            if (metodo === 0) return { texto: new TextDecoder().decode(dados), pasta };
             if (metodo !== 8 || typeof DecompressionStream === 'undefined') throw new Error('Esse navegador não abre este ZIP. Extraia o items.csv e escolha ele.');
             const fluxo = new Blob([dados]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-            return new TextDecoder().decode(await new Response(fluxo).arrayBuffer());
+            return { texto: new TextDecoder().decode(await new Response(fluxo).arrayBuffer()), pasta };
         }
         pos += 46 + nl + el + cl;
     }
     throw new Error('Não achei o arquivo items.csv dentro do ZIP.');
 }
 
-async function aoEscolherCatalogo(arq, silencioso) {
-    if (!arq) return;
-    try {
-        const extra = extraDoCampo();
-        tela('<div class="ps-msg">Lendo o catálogo…</div>');
-        const txt = /\.zip$/i.test(arq.name) ? await textoDoZip(await arq.arrayBuffer()) : await arq.text();
-        const itens = itensDoCsv(txt);
-        if (!itens.length) throw new Error('Não encontrei produtos com preço nesse arquivo.');
-        await concluirCatalogo(itens, extra, true, silencioso);
-    } catch (e) {
-        tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div><button type="button" class="ps-btn" data-act="inicio">Voltar</button>`);
-    }
+async function importarCatalogo(texto, silencioso) {
+    const itens = itensDoCsv(texto);
+    if (!itens.length) throw new Error('Não encontrei produtos com preço nesse arquivo.');
+    await concluirCatalogo(itens, catExtra(), true, silencioso);
 }
 
-function telaCatRelatorio() {
-    const c = CAT, pend = c.errados.filter(x => !c.feitos.has(x.it.i));
-    const esperado = x => x.c.valor + c.extra;
-    const barato = x => x.it.preco < esperado(x) - 0.005;      // vendendo mais barato que deveria: urgente
-    const urgentes = pend.filter(barato).length;
-    const lista = c.soUrgentes ? pend.filter(barato) : pend;
-    // Agrupa por coleção do catálogo (na ordem em que aparecem); dentro de cada grupo, os urgentes primeiro
-    const grupos = new Map();
-    lista.forEach(x => { const g = x.it.colecao || 'Outros'; if (!grupos.has(g)) grupos.set(g, []); grupos.get(g).push(x); });
-    grupos.forEach(l => l.sort((a, b) => barato(b) - barato(a)));
-    const gruposOrd = [...grupos].sort((a, b) => ordemGrupo(a[0]) - ordemGrupo(b[0]));
-    const linha = x => `
-        <div class="ps-it${barato(x) ? ' ps-urg' : ''}"><div class="ps-grow">
-          ${barato(x) ? '<span class="ps-tag-urg">MAIS BARATO QUE DEVERIA</span>' : ''}
-          <div class="ps-nome">${esc(x.it.nome)}</div>
-          <div class="ps-sub">No catálogo ${brl(x.it.preco)}${x.it.de ? ` (em promoção, preço antigo ${brl(x.it.de)})` : ''} → <b>colocar ${brl(esperado(x))}</b></div>
-          <div class="ps-sub">CTW: ${esc(x.c.nome)} · ${brl(x.c.valor)}</div></div>
-          <div class="ps-col"><button type="button" class="ps-mini" data-act="catfeito" data-i="${x.it.i}">Já corrigi</button>
-          <button type="button" class="ps-mini ps-suave" data-act="catfixo" data-i="${x.it.i}">Manter assim</button></div></div>`;
-    tela(`
-      <div class="ps-card ${pend.length ? 'ps-alerta' : 'ps-ok'}">
-        <div class="ps-lin"><span>Preço certo</span><b>${c.certos.length}</b></div>
-        <div class="ps-lin"><span>Para corrigir no catálogo</span><b>${pend.length}</b></div>
-        ${urgentes ? `<div class="ps-lin ps-urgente"><span>⚠ Mais baratos que deveriam</span><b>${urgentes}</b></div>` : ''}
-        ${c.fixos && c.fixos.length ? `<div class="ps-lin"><span>Mantidos de propósito (avisa se o CTW mudar)</span><b>${c.fixos.length}</b></div>` : ''}
-        <div class="ps-lin"><span>Nome duvidoso (sem resposta)</span><b>${c.fila.length}</b></div>
-        <div class="ps-lin"><span>Sem par no CTW</span><b>${c.semPar.length}</b></div>
-        <div class="ps-sub">Regra: preço do catálogo = valor do CTW + ${brl(c.extra)}</div>
-      </div>
-      ${c.fila.length ? `<button type="button" class="ps-btn ps-prim" data-act="catperguntas">Resolver ${c.fila.length} nome(s) duvidoso(s)</button>` : ''}
-      ${urgentes ? `<button type="button" class="ps-btn${c.soUrgentes ? ' ps-perigo' : ''}" data-act="caturgentes">${c.soUrgentes ? 'Mostrar todos os para corrigir' : 'Mostrar só os mais baratos que deveriam'}</button>` : ''}
-      ${lista.length ? gruposOrd.map(([g, l]) => `<div class="ps-cap ps-esp">${esc(g)} · ${l.length}${l.some(barato) ? ` · ⚠ ${l.filter(barato).length}` : ''}</div>` + l.map(linha).join('')).join('')
-        : '<div class="ps-msg">Nenhum preço para corrigir.</div>'}
-      ${c.semPar.length ? `<details class="ps-det ps-esp"><summary>Sem par no CTW (${c.semPar.length})</summary>${c.semPar.map(i => `<div class="ps-sub">${esc(i.nome)} · ${brl(i.preco)}</div>`).join('')}</details>` : ''}
-      <button type="button" class="ps-btn ps-suave" data-act="inicio">Voltar</button>`);
-}
+// Depois de ler um catálogo sem PDF: perguntas de nome duvidoso (se houver) ou direto para a lista
+function fimCatalogo() { return CAT && CAT.fila.length ? telaCatPergunta() : telaZap(); }
+// Fim das perguntas de nome duvidoso: volta ao resultado do PDF (se houver) ou vai para a lista do WhatsApp
+function catFim() { return S && S.aplicados ? telaRelatorio() : telaZap(); }
 
 function telaCatPergunta() {
     const c = CAT, it = c.fila[0];
-    if (!it) return telaCatRelatorio();
+    if (!it) return catFim();
+    TELA = 'catperg'; titulo('É este produto?');
     const cands = candidatos(it, c.ctw, new Map(), LIMIAR_PERGUNTA);
     tela(`
       <div class="ps-prog">Nome duvidoso · faltam ${c.fila.length}</div>
@@ -1300,14 +1478,14 @@ function telaCatPergunta() {
       ${cands.map(x => `<button type="button" class="ps-cand" data-act="catmesmo" data-id="${esc(x.c.id)}">
           <span class="ps-nome">${esc(x.c.nome)}</span><span class="ps-sub">CTW ${brl(x.c.valor)} → catálogo deveria ser ${brl(x.c.valor + c.extra)}</span>
           ${x.d.length ? `<span class="ps-chips">${x.d.map(d => chip(d.t, d.forte)).join('')}</span>` : ''}</button>`).join('')}
+      <button type="button" class="ps-btn ps-prim" data-act="catdepois">Pular por agora</button>
       <button type="button" class="ps-btn" data-act="catnao">Não é do CTW (não perguntar mais)</button>
-      <button type="button" class="ps-btn ps-suave" data-act="catdepois">Decidir depois</button>
-      <button type="button" class="ps-btn ps-suave" data-act="catrelatorio">Ver relatório</button>`);
+      <button type="button" class="ps-btn ps-suave" data-act="catfim">Parar por aqui</button>`);
 }
 
 async function catResponder(act, id) {
     const c = CAT, it = c.fila.shift();
-    if (!it) return telaCatRelatorio();
+    if (!it) return catFim();
     if (act === 'catmesmo') {
         const ct = c.ctw.find(x => x.id === id);
         if (!ct) { c.fila.unshift(it); return telaCatPergunta(); }
@@ -1323,29 +1501,25 @@ async function catResponder(act, id) {
     return telaCatPergunta();
 }
 
-// ── Lista "Alterar no WhatsApp" (só perfil Dev) ──────────────────
-// Cada mudança de preço no CTW vira uma pendência (app.js: ctwZapCalcular). Sai quando você toca em "Já corrigi"
-// ou quando a conferência com o ZIP do catálogo mostra que o preço já está certo.
+// ── Fazer no WhatsApp (só perfil Dev) ───────────────────────────
+// Cada mudança de preço no CTW vira uma pendência (app.js: ctwZapCalcular). Sai quando você toca em "Já fiz"
+// ou quando o ZIP do catálogo mostra que o preço já está certo.
 const tempoAtras = t => { const m = Math.max(0, Math.round((Date.now() - t) / 60000)); return m < 60 ? `há ${m} min` : m < 1440 ? `há ${Math.round(m / 60)} h` : `há ${Math.round(m / 1440)} dia(s)`; };
+let S_zapAba = 'preco';
 
 async function telaZap(aba) {
-    aba = aba || 'preco';
-    const tit = overlay && overlay.querySelector('.ps-topo b'); if (tit) tit.textContent = 'Alterar no WhatsApp';
-    tela('<div class="ps-msg">Carregando…</div>');
-    let zap, esg, fixos = {}, hist = {};
-    try {
-        const db = getDb();
-        await carregarAprendizado();
-        [zap, esg] = (await Promise.all([get(ref(db, raiz() + '/zap')), get(ref(db, raiz() + '/esg'))])).map(x => x.val() || {});
-        fixos = (await get(ref(db, raiz() + '/fixos'))).val() || {};
-        if (aba === 'hist') hist = (await get(ref(db, raiz() + '/zapLog'))).val() || {};
-    } catch (e) { return tela(`<div class="ps-msg ps-erro">Não consegui acessar o banco de dados (${esc(e.message)}).</div>`); }
-    if (APR.contas[CONTA]) APR.contas[CONTA].esg = APR.esg = esg;
-    const extra = catExtra();
-    const precos = Object.entries(zap).map(([id, z]) => ({ id, ...z }));
-    const agora = Date.now();
-    const desativar = Object.entries(esg).filter(([, e]) => e.estado === 'desativar').map(([id, e]) => ({ id, ...e }));
-    const reativar = Object.entries(esg).filter(([, e]) => e.estado === 'reativar').map(([id, e]) => ({ id, ...e }));
+    const reabre = TELA === 'zap', corpo0 = overlay && overlay.querySelector('#psCorpo'), rolagem = reabre && corpo0 ? corpo0.scrollTop : 0;
+    TELA = 'zap'; titulo('Fazer no WhatsApp');
+    if (!reabre) tela('<div class="ps-msg">Carregando…</div>');
+    try { await carregarAprendizado(); }
+    catch (e) { return tela(`<div class="ps-msg ps-erro">Não consegui acessar o banco de dados (${esc(e.message)}).</div>`); }
+    if (!overlay || TELA !== 'zap') return;             // fechou ou mudou de tela enquanto carregava
+    const c = APR.contas[CONTA], p = pend(CONTA), extra = catExtra(), agora = Date.now();
+    if (!aba) aba = p.preco ? 'preco' : p.desativar ? 'desativar' : p.reativar ? 'reativar' : 'preco';
+    S_zapAba = aba;
+    const precos = Object.entries(c.zap || {}).map(([id, z]) => ({ id, ...z }));
+    const esg = Object.entries(c.esg || {}).map(([id, e]) => ({ id, ...e }));
+    const desativar = esg.filter(e => e.estado === 'desativar'), reativar = esg.filter(e => e.estado === 'reativar');
     const sobe = z => z.para > z.de;           // preço do CTW subiu: o catálogo está mais barato que deveria
     const agrupar = (lista, nomeDe, ordenar) => {
         const g = new Map();
@@ -1353,56 +1527,42 @@ async function telaZap(aba) {
         g.forEach(l => l.sort(ordenar));
         return [...g].sort((x, y) => ordemGrupo(x[0]) - ordemGrupo(y[0]));
     };
-    const cab = (g, l, extraTxt) => `<div class="ps-cap ps-esp">${esc(g)} · ${l.length}${extraTxt || ''}</div>`;
-    const linhaPreco = z => `
-        <div class="ps-it${sobe(z) ? ' ps-urg' : ''}"><div class="ps-grow">
+    const cab = (g, l) => `<div class="ps-cap ps-esp">${esc(g)} · ${l.length}</div>`;
+    const botoes = (acao, rotulo, id, menu) => `<div class="ps-lbtns"><button type="button" class="ps-ja" data-act="${acao}" data-id="${esc(id)}">${rotulo}</button>${menu ? '<button type="button" class="ps-mais" data-act="mais" aria-label="Mais opções">⋯</button>' : ''}</div>${menu ? `<div class="ps-menu" hidden>${menu}</div>` : ''}`;
+    const cartaoPreco = z => `
+        <div class="ps-lc${sobe(z) ? ' ps-lc-urg' : ''}">
           ${sobe(z) ? '<span class="ps-tag-urg">MAIS BARATO QUE DEVERIA</span>' : ''}
           <div class="ps-nome">${esc(z.nome)}</div>
-          <div class="ps-sub">Catálogo está em ${brl(z.de + extra)} → <b>colocar ${brl(z.para + extra)}</b></div>
-          <div class="ps-sub">${z.quando ? tempoAtras(z.quando) : ''}${z.usuario ? ' · ' + esc(z.usuario) : ''}</div></div>
-          <div class="ps-col"><button type="button" class="ps-mini" data-act="zapok" data-id="${esc(z.id)}">Já corrigi</button>
-          <button type="button" class="ps-mini ps-suave" data-act="zapfixo" data-id="${esc(z.id)}">Manter assim</button></div></div>`;
-    const linhaEsg = e => `
-        <div class="ps-it"><div class="ps-grow">
+          <div class="ps-sub2">Está ${brl(z.de + extra)} → mude para <b>${brl(z.para + extra)}</b></div>
+          ${sobe(z) ? '' : '<div class="ps-sub">Preço desceu · sem pressa</div>'}
+          <div class="ps-sub">${z.quando ? tempoAtras(z.quando) : ''}${z.usuario ? ' · ' + esc(z.usuario) : ''}</div>
+          ${botoes('zapok', 'Já fiz', z.id, `<button type="button" class="ps-btn" data-act="zapfixo" data-id="${esc(z.id)}">Manter assim</button><div class="ps-sub">Use quando o preço do catálogo está diferente de propósito. O app só avisa de novo se o CTW mudar.</div>`)}
+        </div>`;
+    const cartaoEsg = e => `
+        <div class="ps-lc">
           <div class="ps-nome">${esc(e.nome)}</div>
-          <div class="ps-sub">${e.estado === 'reativar' ? 'Voltou no Stock 2.0 · reative no catálogo' : `No catálogo por ${brl(e.preco)} · não veio no PDF`} · ${tempoAtras(e.desde || agora)}</div>
-          <div class="ps-acoes">
-            <button type="button" class="ps-mini ps-prim" data-act="${e.estado === 'reativar' ? 'esgreativei' : 'esgdesativei'}" data-id="${esc(e.id)}">${e.estado === 'reativar' ? 'Já reativei' : 'Já desativei'}</button>
-            ${e.estado === 'desativar' ? `<button type="button" class="ps-mini" data-act="esgainda" data-id="${esc(e.id)}">Ainda tem</button>` : ''}
-          </div></div></div>`;
-    const abas = [['preco', 'Preço', precos.length], ['desativar', 'Desativar', desativar.length], ['reativar', 'Reativar', reativar.length], ['hist', 'Histórico', 0]];
-    let corpo = '';
-    if (aba === 'preco') {
-        const ord = agrupar(precos, z => z.nome, (a, b) => sobe(b) - sobe(a) || (b.quando || 0) - (a.quando || 0));
-        const urg = precos.filter(sobe).length;
-        corpo = `<div class="ps-card ${precos.length ? 'ps-alerta' : 'ps-ok'}">
-            <div class="ps-lin"><span>Preços para corrigir</span><b>${precos.length}</b></div>
-            ${urg ? `<div class="ps-lin ps-urgente"><span>⚠ Mais baratos que deveriam</span><b>${urg}</b></div>` : ''}
-            <div class="ps-sub">Preço do catálogo = valor do CTW + ${brl(extra)}. A lista se atualiza sozinha quando um preço muda no CTW.</div></div>`
-            + (Object.keys(fixos).length ? `<details class="ps-det"><summary>Mantidos de propósito (${Object.keys(fixos).length})</summary>${Object.entries(fixos).map(([id, f]) => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(f.nome)}</div><div class="ps-sub">Catálogo fica em ${brl(f.preco)} (CTW ${brl(f.ctw)}) · avisa se o CTW mudar</div></div><button type="button" class="ps-mini" data-act="fixodesfazer" data-id="${esc(id)}">Voltar a avisar</button></div>`).join('')}</details>` : '')
-            + (precos.length ? ord.map(([g, l]) => cab(g, l, l.some(sobe) ? ` · ⚠ ${l.filter(sobe).length}` : '') + l.map(linhaPreco).join('')).join('') : '<div class="ps-msg">Nenhum preço para corrigir. 🎉</div>');
-    } else if (aba === 'desativar' || aba === 'reativar') {
+          <div class="ps-sub2">${e.estado === 'reativar' ? 'Voltou no Stock 2.0: reative no catálogo' : `Sem estoque · está no catálogo por ${brl(e.preco)}`}</div>
+          <div class="ps-sub">${tempoAtras(e.desde || agora)}</div>
+          ${e.estado === 'reativar' ? botoes('esgreativei', 'Já reativei', e.id)
+            : botoes('esgdesativei', 'Já desativei', e.id, `<button type="button" class="ps-btn" data-act="esgainda" data-id="${esc(e.id)}">Ainda tem estoque</button><div class="ps-sub">Não avisa de novo por ${DIAS_AINDA_TEM} dias.</div>`)}
+        </div>`;
+    const abas = [['preco', 'Preço', precos.length], ['desativar', 'Desativar', desativar.length], ['reativar', 'Reativar', reativar.length]];
+    let corpo;
+    if (aba === 'preco') corpo = precos.length ? agrupar(precos, z => z.nome, (a, b) => sobe(b) - sobe(a) || (b.quando || 0) - (a.quando || 0)).map(([g, l]) => cab(g, l) + l.map(cartaoPreco).join('')).join('') : '<div class="ps-msg">Nenhum preço para corrigir. 🎉</div>';
+    else {
         const lista = aba === 'desativar' ? desativar : reativar;
-        corpo = `<div class="ps-card ${lista.length ? 'ps-alerta' : 'ps-ok'}"><div class="ps-sub">${aba === 'desativar'
-            ? 'Estão no catálogo do WhatsApp e não vieram no Stock 2.0 de hoje. No CTW eles continuam normais. “Ainda tem” esconde o aviso por ' + DIAS_AINDA_TEM + ' dias.'
-            : 'Estavam desativados no WhatsApp e voltaram no Stock 2.0: reative no catálogo.'}</div></div>`
-            + (lista.length ? agrupar(lista, e => e.nome, (a, b) => (b.desde || 0) - (a.desde || 0)).map(([g, l]) => cab(g, l) + l.map(linhaEsg).join('')).join('') : `<div class="ps-msg">Nada para ${aba === 'desativar' ? 'desativar' : 'reativar'}. 🎉</div>`);
-    } else {
-        const h = Object.entries(hist).sort((a, b) => b[0].localeCompare(a[0])).map(([, v]) => v);
-        const rot = { preco: 'Preço corrigido', desativar: 'Desativado', reativar: 'Reativado', fixo: 'Mantido de propósito' };
-        corpo = h.length ? h.map(x => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(x.nome || '')}</div>
-            <div class="ps-sub">${rot[x.tipo] || x.tipo}${x.tipo === 'preco' ? `: ${brl(x.de)} → ${brl(x.para)}` : x.tipo === 'fixo' ? `: catálogo ${brl(x.de)} (o certo seria ${brl(x.para)})` : ''}</div>
-            <div class="ps-sub">${new Date(x.quando).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}${x.usuario ? ' · ' + esc(x.usuario) : ''}</div></div></div>`).join('')
-            : '<div class="ps-msg">Ainda não há histórico. Ele guarda as últimas ' + MAX_ZAPLOG + ' correções.</div>';
+        corpo = (aba === 'desativar' ? `<div class="ps-sub">Estão no catálogo do WhatsApp e não vieram no PDF do Stock 2.0. No CTW eles continuam normais.</div>` : `<div class="ps-sub">Estavam desativados no WhatsApp e voltaram no Stock 2.0.</div>`)
+            + (lista.length ? agrupar(lista, e => e.nome, (a, b) => (b.desde || 0) - (a.desde || 0)).map(([g, l]) => cab(g, l) + l.map(cartaoEsg).join('')).join('') : `<div class="ps-msg">Nada para ${aba === 'desativar' ? 'desativar' : 'reativar'}. 🎉</div>`);
     }
+    const aviso = !c.catalogo ? `<div class="ps-aviso-card"><b>${esc(c.nome)} ainda não tem catálogo</b><span>Sem o ZIP, essa conta não recebe aviso de esgotado.</span></div>`
+        : catAntigo(c.catalogo) ? `<div class="ps-aviso-card"><b>Catálogo de ${esc(c.nome)} ${idadeTxt(c.catalogo).replace('de há', 'com')}</b><span>Envie um ZIP novo para os avisos ficarem confiáveis.</span></div>` : '';
     tela(`
-      ${Object.keys(APR.contas).length > 1 ? chipsConta(false) : ''}
-      <div class="ps-abas">${abas.map(([k, nome, n]) => `<button type="button" class="${k === aba ? 'on' : ''}" data-act="zapaba" data-aba="${k}">${nome}${n ? ' ' + n : ''}</button>`).join('')}</div>
-      ${corpo}
-      <button type="button" class="ps-btn" data-act="inicio">Conferir com o ZIP do catálogo</button>`);
-    S_zapAba = aba;
+      ${Object.keys(APR.contas).length > 1 ? chipsContas(true) : ''}
+      <div class="ps-abas">${abas.map(([k, nome, n]) => `<button type="button" class="${k === aba ? 'on' : ''}" data-act="zapaba" data-aba="${k}">${nome} ${n}</button>`).join('')}</div>
+      ${aviso}${corpo}
+      <button type="button" class="ps-btn ps-suave" data-act="enviar">Enviar PDF ou ZIP novo</button>`);
+    const novo = overlay.querySelector('#psCorpo'); if (novo && rolagem) novo.scrollTop = rolagem;
 }
-let S_zapAba = 'preco';
 
 async function zapRemover(id) { await update(ref(getDb()), { [`${raiz()}/zap/${id}`]: null }); }
 
@@ -1430,16 +1590,10 @@ async function zapAlinhar(pares, extra) {
 
 // ── Entrada ─────────────────────────────────────────────────────
 function abrir() {
+    if (!(window.ctwEhDev && window.ctwEhDev())) return;
     if (!getDb()) { if (window.showCustomModal) window.showCustomModal({ message: 'O banco de dados ainda está conectando. Tente de novo em alguns segundos.' }); return; }
     abrirOverlay();
     telaInicio();
 }
 
-function abrirZap() {
-    if (!(window.ctwEhDev && window.ctwEhDev())) return;
-    if (!getDb()) { if (window.showCustomModal) window.showCustomModal({ message: 'O banco de dados ainda está conectando. Tente de novo em alguns segundos.' }); return; }
-    abrirOverlay('Alterar no WhatsApp');
-    telaZap('preco');
-}
-
-export { abrir, abrirZap };
+export { abrir };

@@ -3795,3 +3795,50 @@ html:not(.ctw-dev) [data-dev-only] { display: none !important; }
 .ps-contas button.on { background: #34D399; border-color: #34D399; color: #052E1F; font-weight: 700; }
 .ps-col { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
 .ps-mini.ps-suave { background: transparent; border: 1px solid var(--border-color, #262930); color: var(--text-secondary, #9AA0AB); }
+
+/* ── WhatsApp e Preços: módulo único ────────────────────────── */
+.ps-topo b { flex: 1; font-size: 20px; font-weight: 700; }
+.ps-x { width: 44px; height: 44px; border-radius: 14px; }
+.ps-grande { padding: 16px; }
+.ps-card.ps-grande { gap: 10px; border-radius: 20px; padding: 18px; }
+.ps-tit { font-size: 18px; }
+.ps-card.ps-grande .ps-btn { margin-top: 4px; min-height: 52px; }
+.ps-btn.ps-prim.ps-grande { min-height: 56px; border-radius: 16px; font-size: 16px; }
+.ps-btn { min-height: 50px; }
+.ps-lbl { cursor: pointer; }
+.ps-centro { text-align: center; }
+.ps-tiles { display: flex; gap: 8px; }
+.ps-tile { flex: 1; background: var(--tertiary-color); border: 1px solid var(--ui-cardbd); border-radius: 14px; padding: 10px 6px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.ps-tile b { font-size: 22px; }
+.ps-tile span { font-size: 12px; color: var(--ui-tx2); }
+.ps-c-verm { color: #F87171; } .ps-c-amar { color: #FBBF24; } .ps-c-azul { color: #60A5FA; } .ps-c-verde { color: #34D399; }
+.ps-aviso-card { background: rgba(251,191,36,.10); border: 1px solid rgba(251,191,36,.40); border-radius: 16px; padding: 12px 16px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.ps-aviso-card span { color: var(--ui-tx2); line-height: 1.4; }
+.ps-arq-aviso { border-color: rgba(251,191,36,.45); }
+.ps-arq .ps-link input { display: none; }
+.ps-resumo { display: flex; align-items: center; gap: 14px; width: 100%; box-sizing: border-box; text-align: left; background: var(--card-bg); border: 1px solid var(--ui-cardbd); border-radius: 16px; padding: 14px 16px; color: var(--text-color); font: inherit; }
+button.ps-resumo { cursor: pointer; }
+.ps-resumo .ps-grow { display: flex; flex-direction: column; gap: 2px; }
+.ps-resumo b { font-size: 15px; font-weight: 600; }
+.ps-seta { color: var(--ui-tx2); font-size: 18px; }
+.ps-num { min-width: 44px; height: 44px; border-radius: 12px; background: var(--secondary-color); font-size: 20px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.ps-chipsl { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.ps-chipsl span { font-size: 12px; color: var(--ui-tx2); background: var(--tertiary-color); border-radius: 999px; padding: 4px 10px; }
+.ps-extra { width: 84px; }
+.ps-lc { display: flex; flex-direction: column; gap: 4px; background: var(--card-bg); border: 1px solid var(--ui-cardbd); border-radius: 16px; padding: 14px; }
+.ps-lc.ps-lc-urg { background: var(--ui-bad-bg); border-color: rgba(248,113,113,.55); }
+.ps-lc .ps-tag-urg { align-self: flex-start; }
+.ps-sub2 { font-size: 13.5px; color: var(--ui-tx2); }
+.ps-sub2 b { color: var(--text-color); }
+.ps-lbtns { display: flex; gap: 8px; margin-top: 8px; }
+.ps-ja { flex: 1; height: 48px; border: 0; border-radius: 12px; background: #34D399; color: #052E1F; font-size: 15px; font-weight: 700; }
+.ps-mais { width: 56px; height: 48px; border: 1px solid var(--ui-edge); border-radius: 12px; background: transparent; color: var(--text-color); font-size: 20px; font-weight: 700; }
+.ps-menu { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.ps-menu[hidden] { display: none; }
+.ps-toast { position: absolute; left: 16px; right: 16px; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); min-height: 56px; border-radius: 16px; background: #F2F3F5; color: #0E0F12; display: flex; align-items: center; gap: 12px; padding: 0 18px; box-shadow: 0 8px 24px rgba(0,0,0,.35); z-index: 5; }
+.ps-toast span { flex: 1; font-size: 14px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps-toast button { border: 0; background: transparent; color: #047857; font-size: 14px; font-weight: 700; padding: 12px 4px; }
+.ps-abas { margin-bottom: 4px; }
+.ps-abas button { height: 42px; }
+.ps-it .ps-mini, .ps-col .ps-mini { min-height: 40px; }
+button.ps-link { border: 0; background: transparent; padding: 8px 4px; font: inherit; font-weight: 600; font-size: 14px; }
