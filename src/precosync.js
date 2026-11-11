@@ -166,12 +166,12 @@ async function lerPdf(arquivo) {
 
 // ── Estado e acesso ao banco ────────────────────────────────────
 let S = null;           // estado da importação em andamento
-let APR = { aliases: {}, ignoradosPdf: {}, ignoradosCtw: {} };
+let APR = { aliases: {}, ignoradosPdf: {}, ignoradosCtw: {}, catAliases: {}, catIgnorados: {} };
 
 async function carregarAprendizado() {
     const snap = await get(ref(getDb(), BASE));
     const v = snap.val() || {};
-    APR = { aliases: v.aliases || {}, ignoradosPdf: v.ignoradosPdf || {}, ignoradosCtw: v.ignoradosCtw || {} };
+    APR = { aliases: v.aliases || {}, ignoradosPdf: v.ignoradosPdf || {}, ignoradosCtw: v.ignoradosCtw || {}, catAliases: v.catAliases || {}, catIgnorados: v.catIgnorados || {} };
 }
 
 function usuario() { try { return localStorage.getItem('ctwUserProfile') || ''; } catch (e) { return ''; } }
@@ -251,7 +251,7 @@ function abrirOverlay() {
 function fechar() {
     if (overlay) { overlay.remove(); overlay = null; }
     document.documentElement.classList.remove('ps-aberto');
-    S = null;
+    S = null; CAT = null;
 }
 
 function tela(html) {
@@ -278,6 +278,11 @@ async function telaInicio() {
       <div class="ps-card">
         <p>Gere o <b>Catálogo de produtos</b> no Stock 2.0 (PDF) e escolha o arquivo abaixo. Só o <b>valor</b> dos produtos do CTW é atualizado — cor, código, quantidade e nome ficam como estão.</p>
         <label class="ps-btn ps-prim"><input type="file" id="psArquivo" accept="application/pdf,.pdf" hidden>Escolher PDF do Stock 2.0</label>
+      </div>
+      <div class="ps-card">
+        <p>Conferir os preços do <b>catálogo do WhatsApp Business</b> (preço à vista = valor do CTW + extra). Tire prints do catálogo e escolha as imagens.</p>
+        <div class="ps-lin"><span>Extra à vista (R$)</span><input type="text" inputmode="decimal" id="psCatExtra" class="ps-inp" value="${esc(String(catExtra()).replace('.', ','))}"></div>
+        <label class="ps-btn"><input type="file" id="psPrints" accept="image/*" multiple hidden>Escolher prints do catálogo</label>
       </div>
       <div class="ps-card">
         <div class="ps-lin"><span>Produtos já vinculados</span><b>${nAl}</b></div>
@@ -353,6 +358,8 @@ function aoDigitar(e) {
 }
 function aoMudar(e) {
     if (e.target.id === 'psArquivo') aoEscolherPdf(e.target.files && e.target.files[0]);
+    if (e.target.id === 'psCatExtra') { const n = numero(e.target.value); try { localStorage.setItem('ctwCatExtra', String(n)); } catch (x) {} }
+    if (e.target.id === 'psPrints') aoEscolherPrints(e.target.files);
     if (S && e.target.dataset && e.target.dataset.sus !== undefined) {
         S.aceitar[e.target.dataset.sus] = e.target.checked;
         const bt = overlay.querySelector('[data-act="aplicar"]');
@@ -691,6 +698,10 @@ async function aoClicar(e) {
         if (act === 'desfazer') return desfazer(b.dataset.id);
         if (act === 'rmvinculo') { await removerVinculo(b.dataset.pid, b.dataset.nome); return telaVinculos(); }
         if (act === 'esquecerign') { await update(ref(getDb()), { [`${BASE}/ignoradosPdf`]: null, [`${BASE}/ignoradosCtw`]: null }); return telaVinculos(); }
+        if (act === 'catfeito') { if (CAT) { CAT.feitos.add(Number(b.dataset.i)); telaCatRelatorio(); } return; }
+        if (act === 'catperguntas') return CAT && telaCatPergunta();
+        if (act === 'catrelatorio') return CAT && telaCatRelatorio();
+        if (act === 'catmesmo' || act === 'catnao' || act === 'catdepois') { if (CAT) { b.disabled = true; await catResponder(act, b.dataset.id); } return; }
         if (!S) return;
         if (act === 'mesmo') {
             const r = S.fila[0], c = S.cl.ctw.find(x => x.id === b.dataset.id);
@@ -745,6 +756,166 @@ async function aoClicar(e) {
         const c = overlay && overlay.querySelector('#psCorpo');
         if (c) c.insertAdjacentHTML('afterbegin', `<div class="ps-msg ps-erro">${esc(err.message)}</div>`);
     }
+}
+
+// ── Conferir catálogo do WhatsApp (prints) ──────────────────────
+const CAT_MAX_PX = 1600;
+const CAT_MAX_PRINTS = 10;
+const CAT_PROMPT = 'Estas imagens são capturas de tela do CATÁLOGO do WhatsApp Business de uma loja de celulares. ' +
+    'Leia TODOS os produtos visíveis, com o nome exatamente como aparece e o preço exatamente como escrito. ' +
+    'Responda SOMENTE com JSON no formato {"itens":[{"nome":"...","preco":"R$ 1.529,00"}]}. ' +
+    'Regras: não invente nem complete nomes; se o mesmo produto aparece em mais de uma imagem (a rolagem repete itens), liste UMA vez; ' +
+    'ignore produtos sem preço e textos da interface do WhatsApp.';
+let CAT = null;     // { itens, extra, certos, errados, perguntas, semPar, ignorados, feitos:Set, fila }
+
+function catExtra() {
+    try {
+        const salvo = localStorage.getItem('ctwCatExtra');
+        if (salvo !== null && salvo !== '' && isFinite(Number(salvo))) return Number(salvo);
+        const e = Number((JSON.parse(localStorage.getItem('ctwAvistaCfg') || '{}') || {}).extra);
+        return e > 0 ? e : 30;
+    } catch (e) { return 30; }
+}
+
+function numero(txt) {
+    let t = String(txt == null ? '' : txt).replace(/R\$|\s/g, '');
+    if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+    else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+    const n = parseFloat(t);
+    return isFinite(n) ? n : 0;
+}
+
+function imagemBase64(arq) {
+    return new Promise((resolve, reject) => {
+        const img = new Image(), url = URL.createObjectURL(arq);
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            const k = Math.min(1, CAT_MAX_PX / Math.max(img.width, img.height));
+            const c = document.createElement('canvas');
+            c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+            resolve(c.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não consegui abrir a imagem ' + arq.name)); };
+        img.src = url;
+    });
+}
+
+function interpretarResposta(txt) {
+    const i = txt.indexOf('{'), j = txt.lastIndexOf('}');
+    if (i < 0 || j <= i) throw new Error('A IA não devolveu a lista de produtos. Tente de novo (prints mais nítidos ajudam).');
+    let obj; try { obj = JSON.parse(txt.slice(i, j + 1)); } catch (e) { throw new Error('Não consegui entender a resposta da IA. Tente de novo.'); }
+    const vistos = new Set(), itens = [];
+    (Array.isArray(obj.itens) ? obj.itens : []).forEach(x => {
+        const nome = String((x && x.nome) || '').replace(/\s+/g, ' ').trim(), preco = numero(x && x.preco);
+        const k = analisar(nome).key + '|' + preco;
+        if (!nome || preco <= 0 || vistos.has(k)) return;
+        vistos.add(k); itens.push({ nome, preco, an: analisar(nome) });
+    });
+    return itens;
+}
+
+function classificarCat(itens, produtos, extra) {
+    const ctw = produtos.map(p => ({ p, id: p.id, nome: p.nome || '', valor: valorCtw(p), an: analisar(p.nome || '') }));
+    const porId = new Map(ctw.map(c => [c.id, c]));
+    const porKey = new Map();
+    ctw.forEach(c => { if (!porKey.has(c.an.key)) porKey.set(c.an.key, []); porKey.get(c.an.key).push(c); });
+    const out = { certos: [], errados: [], perguntas: [], semPar: [], ignorados: [] };
+    itens.forEach((it, i) => {
+        it.i = i;
+        if (APR.catIgnorados[chaveNome(it.an)]) { out.ignorados.push(it); return; }
+        const al = APR.catAliases[chaveNome(it.an)];
+        let c = al && porId.has(al.pid) && al.spec === assinatura(it.an) ? porId.get(al.pid) : null;
+        if (!c) { const iguais = porKey.get(it.an.key) || []; if (iguais.length === 1) c = iguais[0]; }
+        if (c) return out[igual(it.preco, c.valor + extra) ? 'certos' : 'errados'].push({ it, c });
+        const cands = candidatos(it, ctw, new Map(), LIMIAR_PERGUNTA);
+        (cands.length ? out.perguntas : out.semPar).push(it);
+    });
+    return { ...out, ctw };
+}
+
+async function lerPrints(arquivos) {
+    await window.ctwCarregarModulo('creditoscan');
+    if (typeof window.ctwIAVisao !== 'function') throw new Error('A leitura por IA não está disponível agora. Abra o CreditoScan uma vez e tente de novo.');
+    const content = [];
+    for (const f of arquivos) content.push({ type: 'image_url', image_url: { url: await imagemBase64(f) } });
+    content.push({ type: 'text', text: CAT_PROMPT });
+    return interpretarResposta(await window.ctwIAVisao([{ role: 'user', content }]));
+}
+
+async function aoEscolherPrints(lista) {
+    const arquivos = Array.from(lista || []);
+    if (!arquivos.length) return;
+    try {
+        if (arquivos.length > CAT_MAX_PRINTS) throw new Error(`Escolha até ${CAT_MAX_PRINTS} prints por vez.`);
+        const produtos = (window.products || []).filter(p => p && p.id);
+        if (!produtos.length) throw new Error('O CTW ainda não carregou os produtos. Aguarde alguns segundos e tente de novo.');
+        const campo = overlay && overlay.querySelector('#psCatExtra');
+        if (campo) { try { localStorage.setItem('ctwCatExtra', String(numero(campo.value))); } catch (x) {} }
+        const extra = catExtra();
+        tela(`<div class="ps-msg">Lendo ${arquivos.length} print(s) com a IA… pode levar cerca de 1 minuto.</div>`);
+        const itens = await lerPrints(arquivos);
+        if (!itens.length) throw new Error('Não encontrei produtos com preço nos prints. Eles mostram a lista do catálogo?');
+        await carregarAprendizado();
+        CAT = { extra, itens, feitos: new Set(), ...classificarCat(itens, produtos, extra) };
+        CAT.fila = CAT.perguntas.slice();
+        telaCatRelatorio();
+    } catch (e) {
+        tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div><button type="button" class="ps-btn" data-act="inicio">Voltar</button>`);
+    }
+}
+
+function telaCatRelatorio() {
+    const c = CAT, pend = c.errados.filter(x => !c.feitos.has(x.it.i));
+    tela(`
+      <div class="ps-card ${pend.length ? 'ps-alerta' : 'ps-ok'}">
+        <div class="ps-lin"><span>Preço certo</span><b>${c.certos.length}</b></div>
+        <div class="ps-lin"><span>Para corrigir no catálogo</span><b>${pend.length}</b></div>
+        <div class="ps-lin"><span>Nome duvidoso (sem resposta)</span><b>${c.fila.length}</b></div>
+        <div class="ps-lin"><span>Sem par no CTW</span><b>${c.semPar.length}</b></div>
+        <div class="ps-sub">Regra: preço do catálogo = valor do CTW + ${brl(c.extra)}</div>
+      </div>
+      ${c.fila.length ? `<button type="button" class="ps-btn ps-prim" data-act="catperguntas">Resolver ${c.fila.length} nome(s) duvidoso(s)</button>` : ''}
+      ${pend.length ? `<div class="ps-cap ps-esp">Corrija estes no catálogo</div>` + pend.map(x => `
+        <div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(x.it.nome)}</div>
+          <div class="ps-sub">No catálogo ${brl(x.it.preco)} → <b>colocar ${brl(x.c.valor + c.extra)}</b></div>
+          <div class="ps-sub">CTW: ${esc(x.c.nome)} · ${brl(x.c.valor)}</div></div>
+          <button type="button" class="ps-mini" data-act="catfeito" data-i="${x.it.i}">Já corrigi</button></div>`).join('')
+        : '<div class="ps-msg">Nenhum preço para corrigir.</div>'}
+      ${c.semPar.length ? `<details class="ps-det ps-esp"><summary>Sem par no CTW (${c.semPar.length})</summary>${c.semPar.map(i => `<div class="ps-sub">${esc(i.nome)} · ${brl(i.preco)}</div>`).join('')}</details>` : ''}
+      <button type="button" class="ps-btn ps-suave" data-act="inicio">Voltar</button>`);
+}
+
+function telaCatPergunta() {
+    const c = CAT, it = c.fila[0];
+    if (!it) return telaCatRelatorio();
+    const cands = candidatos(it, c.ctw, new Map(), LIMIAR_PERGUNTA);
+    tela(`
+      <div class="ps-prog">Nome duvidoso · faltam ${c.fila.length}</div>
+      <div class="ps-card"><div class="ps-cap">No catálogo</div><div class="ps-nome">${esc(it.nome)}</div><div class="ps-valor">${brl(it.preco)}</div></div>
+      <div class="ps-cap">É qual produto do CTW?</div>
+      ${cands.map(x => `<button type="button" class="ps-cand" data-act="catmesmo" data-id="${esc(x.c.id)}">
+          <span class="ps-nome">${esc(x.c.nome)}</span><span class="ps-sub">CTW ${brl(x.c.valor)} → catálogo deveria ser ${brl(x.c.valor + c.extra)}</span>
+          ${x.d.length ? `<span class="ps-chips">${x.d.map(d => chip(d.t, d.forte)).join('')}</span>` : ''}</button>`).join('')}
+      <button type="button" class="ps-btn" data-act="catnao">Não é do CTW (não perguntar mais)</button>
+      <button type="button" class="ps-btn ps-suave" data-act="catdepois">Decidir depois</button>
+      <button type="button" class="ps-btn ps-suave" data-act="catrelatorio">Ver relatório</button>`);
+}
+
+async function catResponder(act, id) {
+    const c = CAT, it = c.fila.shift();
+    if (!it) return telaCatRelatorio();
+    if (act === 'catmesmo') {
+        const ct = c.ctw.find(x => x.id === id);
+        if (!ct) { c.fila.unshift(it); return telaCatPergunta(); }
+        await update(ref(getDb()), { [`${BASE}/catAliases/${chaveNome(it.an)}`]: { pid: ct.id, spec: assinatura(it.an) } });
+        APR.catAliases[chaveNome(it.an)] = { pid: ct.id, spec: assinatura(it.an) };
+        (igual(it.preco, ct.valor + c.extra) ? c.certos : c.errados).push({ it, c: ct });
+    } else if (act === 'catnao') {
+        await update(ref(getDb()), { [`${BASE}/catIgnorados/${chaveNome(it.an)}`]: true });
+        APR.catIgnorados[chaveNome(it.an)] = true; c.ignorados.push(it);
+    } else c.semPar.push(it);   // "decidir depois": não grava; volta a perguntar na próxima conferência
+    return telaCatPergunta();
 }
 
 // ── Entrada ─────────────────────────────────────────────────────

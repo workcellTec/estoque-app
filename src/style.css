@@ -3747,6 +3747,7 @@ html.ctw-leve .ui-hero { background: var(--card-bg); border: 1px solid var(--ui-
 .ps-msg { padding: 14px; text-align: center; color: var(--ui-tx2); font-size: 14px; }
 .ps-erro { color: #FF6B6B; }
 .ps-busca input { width: 100%; box-sizing: border-box; border: 1px solid var(--ui-edge); background: var(--secondary-color); color: var(--text-color); border-radius: 12px; padding: 11px 12px; font-size: 15px; }
+.ps-inp { width: 90px; box-sizing: border-box; border: 1px solid var(--ui-edge); background: var(--secondary-color); color: var(--text-color); border-radius: 10px; padding: 7px 10px; font-size: 15px; text-align: right; }
 .ps-det summary { cursor: pointer; color: var(--primary-color); font-size: 14px; }
 .ps-det .ps-sub { padding: 3px 0; }
 .ps-mini { border: 0; background: var(--secondary-color); color: var(--text-color); border-radius: 10px; padding: 7px 10px; font-size: 13px; }

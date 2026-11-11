@@ -455,6 +455,9 @@
         return openRouterCall(OR_MODEL_VL, [{ role: 'user', content: content }], chave);
     }
 
+    // Leitura de imagens por outros módulos (Sincronizar preços > Conferir catálogo): mesma IA, mesmo servidor/chave.
+    window.ctwIAVisao = function (messages) { return openRouterCall(OR_MODEL_VL, messages); };
+
     // ── Qwen3-235B texto — análise financeira consistente ──
     async function aiCallTexto(prompt, chave) {
         return openRouterCall(OR_MODEL_TXT, [{ role: 'user', content: prompt }], chave);
