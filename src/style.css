@@ -3769,3 +3769,8 @@ html.ps-aberto .ui-nav { display: none; }
 :is(.ctw-ent-e, #mainMenu.ctw-ent-e, #calculatorContainer.ctw-ent-e, #contractContainer.ctw-ent-e, #stockContainer.ctw-ent-e, #administracao.ctw-ent-e, #clientsContainer.ctw-ent-e, #reposicaoContainer.ctw-ent-e, #repairsContainer.ctw-ent-e, #areaBookipWrapper.ctw-ent-e, #areaContratoWrapper.ctw-ent-e) { animation: ctw-ent-e .26s cubic-bezier(.22, 1, .36, 1) backwards !important; }
 :is(.ctw-ent-c, #mainMenu.ctw-ent-c, #calculatorContainer.ctw-ent-c, #contractContainer.ctw-ent-c, #stockContainer.ctw-ent-c, #administracao.ctw-ent-c, #clientsContainer.ctw-ent-c, #reposicaoContainer.ctw-ent-c, #repairsContainer.ctw-ent-c, #areaBookipWrapper.ctw-ent-c, #areaContratoWrapper.ctw-ent-c) { animation: ctw-ent-c .24s cubic-bezier(.22, 1, .36, 1) backwards !important; }
 @media (prefers-reduced-motion: reduce) { .ctw-ent-d, .ctw-ent-e, .ctw-ent-c { animation: none !important; } }
+
+/* Perfil Dev: o que é só dele fica escondido para os outros perfis */
+html:not(.ctw-dev) [data-dev-only] { display: none !important; }
+.ui-zapn { min-width: 22px; height: 22px; padding: 0 7px; box-sizing: border-box; border-radius: 11px; background: #E5383B; color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-right: 6px; }
+.ui-zapn[hidden] { display: none; }

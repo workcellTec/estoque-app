@@ -236,11 +236,11 @@ function candidatos(r, ctw, reivindicado, limiar) {
 // ── Interface ───────────────────────────────────────────────────
 let overlay = null;
 
-function abrirOverlay() {
+function abrirOverlay(titulo) {
     if (overlay) overlay.remove();
     overlay = document.createElement('div');
     overlay.className = 'ps-overlay';
-    overlay.innerHTML = `<div class="ps-topo"><button type="button" class="ps-x" data-act="fechar" aria-label="Fechar">‹</button><b>Sincronizar preços</b></div><div class="ps-corpo" id="psCorpo"></div>`;
+    overlay.innerHTML = `<div class="ps-topo"><button type="button" class="ps-x" data-act="fechar" aria-label="Fechar">‹</button><b>${esc(titulo || 'Sincronizar preços')}</b></div><div class="ps-corpo" id="psCorpo"></div>`;
     overlay.addEventListener('click', aoClicar);
     overlay.addEventListener('input', aoDigitar);
     overlay.addEventListener('change', aoMudar);
@@ -262,6 +262,7 @@ function tela(html) {
 const chip = (t, forte) => `<span class="ps-chip${forte ? ' ps-forte' : ''}">${esc(t)}</span>`;
 
 async function telaInicio() {
+    const tit = overlay && overlay.querySelector('.ps-topo b'); if (tit) tit.textContent = 'Sincronizar preços';
     tela('<div class="ps-msg">Carregando…</div>');
     let logs = [];
     try {
@@ -438,6 +439,10 @@ async function gravar(itens, aliases, ignoradosPdf, arquivo, tipo, extra) {
         upd[`${BASE}/ignoradosCtw/${c.id}`] = null;
     }
     for (const r of ignoradosPdf) upd[`${BASE}/ignoradosPdf/${r.codigo ? chaveCodigo(r.codigo) : chaveNome(r.an)}`] = { nome: r.nome, quando: Date.now() };
+    if (itens.length) {   // cada preço alterado vira pendência na lista "Alterar no WhatsApp"
+        const zap = (await get(ref(db, BASE + '/zap'))).val() || {};
+        Object.assign(upd, window.ctwZapCalcular(zap, itens.map(x => ({ id: x.id, nome: x.c.nome, de: x.de, para: Math.round(x.para * 100) / 100 })), usuario()));
+    }
     Object.assign(upd, extra || {});
     if (!Object.keys(upd).length) return;
     if (itens.length) {                // poda registros antigos junto com a gravação
@@ -682,6 +687,9 @@ async function desfazer(id) {
             upd[`products/${pid}/valor`] = it.de; ok++;
         }
         upd[`${BASE}/log/${id}/desfeito`] = Date.now();
+        const zap = (await get(ref(getDb(), BASE + '/zap'))).val() || {};
+        const nomes = new Map((window.products || []).map(p => [p.id, p.nome || '']));
+        Object.assign(upd, window.ctwZapCalcular(zap, Object.entries(log.itens || {}).filter(([pid]) => upd[`products/${pid}/valor`] !== undefined).map(([pid, it]) => ({ id: pid, nome: nomes.get(pid), de: it.para, para: it.de })), usuario()));
         await update(ref(getDb()), upd);
         tela(`<div class="ps-card ps-ok"><b>Importação desfeita</b><div class="ps-lin"><span>Preços restaurados</span><b>${ok}</b></div>${mexidos ? `<div class="ps-lin"><span>Mantidos (já tinham sido alterados depois)</span><b>${mexidos}</b></div>` : ''}</div><button type="button" class="ps-btn" data-act="inicio">Voltar</button>`);
     } catch (e) {
@@ -700,7 +708,14 @@ async function aoClicar(e) {
         if (act === 'desfazer') return desfazer(b.dataset.id);
         if (act === 'rmvinculo') { await removerVinculo(b.dataset.pid, b.dataset.nome); return telaVinculos(); }
         if (act === 'esquecerign') { await update(ref(getDb()), { [`${BASE}/ignoradosPdf`]: null, [`${BASE}/ignoradosCtw`]: null }); return telaVinculos(); }
-        if (act === 'catfeito') { if (CAT) { CAT.feitos.add(Number(b.dataset.i)); telaCatRelatorio(); } return; }
+        if (act === 'zapok') { b.disabled = true; await zapRemover(b.dataset.id); return telaZap(); }
+        if (act === 'catfeito') {
+            if (!CAT) return;
+            const i = Number(b.dataset.i), x = CAT.errados.find(e => e.it.i === i);
+            CAT.feitos.add(i);
+            if (x) await zapRemover(x.c.id).catch(() => {});
+            return telaCatRelatorio();
+        }
         if (act === 'caturgentes') { if (CAT) { CAT.soUrgentes = !CAT.soUrgentes; telaCatRelatorio(); } return; }
         if (act === 'catperguntas') return CAT && telaCatPergunta();
         if (act === 'catrelatorio') return CAT && telaCatRelatorio();
@@ -847,12 +862,13 @@ async function lerPrints(arquivos) {
 }
 
 // Compara a lista lida (prints ou arquivo) com o CTW e abre o relatório
-async function concluirCatalogo(itens, extra) {
+async function concluirCatalogo(itens, extra, exato) {
     const produtos = (window.products || []).filter(p => p && p.id);
     if (!produtos.length) throw new Error('O CTW ainda não carregou os produtos. Aguarde alguns segundos e tente de novo.');
     await carregarAprendizado();
-    CAT = { extra, itens, feitos: new Set(), ...classificarCat(itens, produtos, extra) };
+    CAT = { extra, itens, exato: !!exato, feitos: new Set(), ...classificarCat(itens, produtos, extra) };
     CAT.fila = CAT.perguntas.slice();
+    if (exato) await zapAlinhar(CAT.certos.concat(CAT.errados), extra).catch(e => console.warn('[zap]', e.message));   // arquivo exato: a lista "Alterar no WhatsApp" passa a refletir o catálogo
     telaCatRelatorio();
 }
 
@@ -962,7 +978,7 @@ async function aoEscolherCatalogo(arq) {
         const txt = /\.zip$/i.test(arq.name) ? await textoDoZip(await arq.arrayBuffer()) : await arq.text();
         const itens = itensDoCsv(txt);
         if (!itens.length) throw new Error('Não encontrei produtos com preço nesse arquivo.');
-        await concluirCatalogo(itens, extra);
+        await concluirCatalogo(itens, extra, true);
     } catch (e) {
         tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div><button type="button" class="ps-btn" data-act="inicio">Voltar</button>`);
     }
@@ -1028,11 +1044,64 @@ async function catResponder(act, id) {
         await update(ref(getDb()), { [`${BASE}/catAliases/${chaveNome(it.an)}`]: { pid: ct.id, spec: assinatura(it.an) } });
         APR.catAliases[chaveNome(it.an)] = { pid: ct.id, spec: assinatura(it.an) };
         (igual(it.preco, ct.valor + c.extra) ? c.certos : c.errados).push({ it, c: ct });
+        if (c.exato) await zapAlinhar([{ it, c: ct }], c.extra).catch(e => console.warn('[zap]', e.message));
     } else if (act === 'catnao') {
         await update(ref(getDb()), { [`${BASE}/catIgnorados/${chaveNome(it.an)}`]: true });
         APR.catIgnorados[chaveNome(it.an)] = true; c.ignorados.push(it);
     } else c.semPar.push(it);   // "decidir depois": não grava; volta a perguntar na próxima conferência
     return telaCatPergunta();
+}
+
+// ── Lista "Alterar no WhatsApp" (só perfil Dev) ──────────────────
+// Cada mudança de preço no CTW vira uma pendência (app.js: ctwZapCalcular). Sai quando você toca em "Já corrigi"
+// ou quando a conferência com o ZIP do catálogo mostra que o preço já está certo.
+const tempoAtras = t => { const m = Math.max(0, Math.round((Date.now() - t) / 60000)); return m < 60 ? `há ${m} min` : m < 1440 ? `há ${Math.round(m / 60)} h` : `há ${Math.round(m / 1440)} dia(s)`; };
+
+async function telaZap() {
+    const tit = overlay && overlay.querySelector('.ps-topo b'); if (tit) tit.textContent = 'Alterar no WhatsApp';
+    tela('<div class="ps-msg">Carregando…</div>');
+    let zap;
+    try { zap = (await get(ref(getDb(), BASE + '/zap'))).val() || {}; }
+    catch (e) { return tela(`<div class="ps-msg ps-erro">Não consegui acessar o banco de dados (${esc(e.message)}).</div>`); }
+    const extra = catExtra();
+    const lista = Object.entries(zap).map(([id, z]) => ({ id, ...z }));
+    const sobe = z => z.para > z.de;           // preço do CTW subiu: o catálogo está mais barato que deveria
+    const urgentes = lista.filter(sobe).length;
+    const grupos = new Map();
+    lista.forEach(z => { const g = colecaoDe(z.nome || '', ''); if (!grupos.has(g)) grupos.set(g, []); grupos.get(g).push(z); });
+    grupos.forEach(l => l.sort((a, b) => sobe(b) - sobe(a) || (b.quando || 0) - (a.quando || 0)));
+    const ordenados = [...grupos].sort((a, b) => ordemGrupo(a[0]) - ordemGrupo(b[0]));
+    const linha = z => `
+        <div class="ps-it${sobe(z) ? ' ps-urg' : ''}"><div class="ps-grow">
+          ${sobe(z) ? '<span class="ps-tag-urg">MAIS BARATO QUE DEVERIA</span>' : ''}
+          <div class="ps-nome">${esc(z.nome)}</div>
+          <div class="ps-sub">Catálogo está em ${brl(z.de + extra)} → <b>colocar ${brl(z.para + extra)}</b></div>
+          <div class="ps-sub">${z.quando ? tempoAtras(z.quando) : ''}${z.usuario ? ' · ' + esc(z.usuario) : ''}</div></div>
+          <button type="button" class="ps-mini" data-act="zapok" data-id="${esc(z.id)}">Já corrigi</button></div>`;
+    tela(`
+      <div class="ps-card ${lista.length ? 'ps-alerta' : 'ps-ok'}">
+        <div class="ps-lin"><span>Para corrigir no WhatsApp</span><b>${lista.length}</b></div>
+        ${urgentes ? `<div class="ps-lin ps-urgente"><span>⚠ Mais baratos que deveriam</span><b>${urgentes}</b></div>` : ''}
+        <div class="ps-sub">Preço do catálogo = valor do CTW + ${brl(extra)}. A lista se atualiza sozinha quando um preço muda no CTW.</div>
+      </div>
+      ${lista.length ? ordenados.map(([g, l]) => `<div class="ps-cap ps-esp">${esc(g)} · ${l.length}${l.some(sobe) ? ` · ⚠ ${l.filter(sobe).length}` : ''}</div>` + l.map(linha).join('')).join('')
+        : '<div class="ps-msg">Nada para corrigir no WhatsApp. 🎉</div>'}
+      <button type="button" class="ps-btn" data-act="inicio">Conferir com o ZIP do catálogo</button>`);
+}
+
+async function zapRemover(id) { await update(ref(getDb()), { [`${BASE}/zap/${id}`]: null }); }
+
+// Alinha a lista com o que o ZIP mostrou: preço certo sai; preço errado entra (catálogo atual = preço lido − extra)
+async function zapAlinhar(pares, extra) {
+    const db = getDb();
+    const atual = (await get(ref(db, BASE + '/zap'))).val() || {};
+    const upd = {}; let total = Object.keys(atual).length;
+    pares.forEach(({ it, c }) => {
+        if (igual(it.preco, c.valor + extra)) { if (atual[c.id]) { upd[`${BASE}/zap/${c.id}`] = null; total--; } return; }
+        if (!atual[c.id]) { if (total >= 200) return; total++; }
+        upd[`${BASE}/zap/${c.id}`] = { nome: c.nome, de: Math.round((it.preco - extra) * 100) / 100, para: c.valor, quando: Date.now(), usuario: usuario(), origem: 'zip' };
+    });
+    if (Object.keys(upd).length) await update(ref(db), upd);
 }
 
 // ── Entrada ─────────────────────────────────────────────────────
@@ -1042,4 +1111,11 @@ function abrir() {
     telaInicio();
 }
 
-export { abrir };
+function abrirZap() {
+    if (!(window.ctwEhDev && window.ctwEhDev())) return;
+    if (!getDb()) { if (window.showCustomModal) window.showCustomModal({ message: 'O banco de dados ainda está conectando. Tente de novo em alguns segundos.' }); return; }
+    abrirOverlay('Alterar no WhatsApp');
+    telaZap();
+}
+
+export { abrir, abrirZap };

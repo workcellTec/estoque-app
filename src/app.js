@@ -69,6 +69,58 @@ let currentUserProfile = localStorage.getItem('ctwUserProfile') || '';
 let teamProfilesList = {}; 
 window.teamProfilesList = teamProfilesList; // expõe desde o início
 
+// ── Perfil "Dev": sem a senha 220390 e com telas extras (marcado em Perfis e Usuários) ──
+window.ctwEhDev = function() {
+    const nome = (localStorage.getItem('ctwUserProfile') || '').trim().toLowerCase();
+    if (!nome) return false;
+    return Object.values(window.teamProfilesList || {}).some(p => p && p.dev === true && String(p.name || '').trim().toLowerCase() === nome);
+};
+window.ctwAplicarDev = function() {
+    const dev = window.ctwEhDev();
+    document.documentElement.classList.toggle('ctw-dev', dev);
+    if (dev && typeof window.ctwZapOuvir === 'function') window.ctwZapOuvir();
+};
+// Pede a senha de administrador; o perfil Dev entra direto (a função recebe a senha certa)
+window.ctwComSenha = function(cfg) {
+    if (window.ctwEhDev() && typeof cfg.onConfirm === 'function') return cfg.onConfirm('220390');
+    return showCustomModal(cfg);
+};
+
+// ── Lista "Alterar no WhatsApp": cada mudança de preço no CTW vira uma pendência no catálogo ──
+// Guarda o preço do CTW de antes (o catálogo estava em de + extra) e o novo; mudou de novo = só atualiza o novo;
+// voltou ao de antes = a pendência some. Dev vê e dá "Já corrigi".
+const ZAP_PATH = 'settings/precosync/zap';
+const ZAP_MAX = 200;
+window.ctwZapCalcular = function(atual, lista, usuario) {
+    const up = {}; let total = Object.keys(atual || {}).length;
+    (lista || []).forEach(m => {
+        const de0 = Number(m.de), para = Number(m.para);
+        if (!m.id || !(de0 > 0) || !(para > 0)) return;
+        const ex = atual && atual[m.id], de = ex ? Number(ex.de) : de0;
+        if (Math.abs(de - para) < 0.005) { if (ex) { up[`${ZAP_PATH}/${m.id}`] = null; total--; } return; }
+        if (!ex) { if (total >= ZAP_MAX) return; total++; }
+        up[`${ZAP_PATH}/${m.id}`] = { nome: m.nome || '', de, para, quando: Date.now(), usuario: usuario || '' };
+    });
+    return up;
+};
+window.ctwZapRegistrar = async function(lista) {
+    try {
+        const atual = (await get(ref(db, ZAP_PATH))).val() || {};
+        const up = window.ctwZapCalcular(atual, lista, localStorage.getItem('ctwUserProfile') || '');
+        if (Object.keys(up).length) await update(ref(db), up);
+    } catch (e) { console.warn('[Alterar no WhatsApp] não registrou:', e && e.message); }
+};
+let _zapOuvindo = false;
+window.ctwZapOuvir = function() {
+    if (_zapOuvindo || !isAuthReady) return;
+    _zapOuvindo = true;
+    onValue(ref(db, ZAP_PATH), snap => {
+        window.ctwZapDados = snap.val() || {};
+        const n = Object.keys(window.ctwZapDados).length;
+        document.querySelectorAll('[data-zap-n]').forEach(el => { el.textContent = n ? String(n) : ''; el.hidden = !n; });
+    }, () => { _zapOuvindo = false; });
+};
+
 // Adicione junto com suas variáveis globais
 let isSystemSwitching = false; // 🔒 Trava de segurança para o toggle
 
@@ -94,6 +146,7 @@ function carregarCacheEquipe() {
             // Popula teamProfilesList imediatamente (antes do Firebase responder)
             teamProfilesList = dados;
             window.teamProfilesList = dados; // expõe para módulos externos
+            if (typeof window.ctwAplicarDev === 'function') window.ctwAplicarDev();
             if (typeof renderizarEquipeNaTela === 'function') {
                 renderizarEquipeNaTela(dados);
                 console.log("⚡ Equipe carregada do Cache!");
@@ -186,6 +239,7 @@ function setupTeamProfilesListener() {
         if (data) {
             teamProfilesList = data;
             window.teamProfilesList = data; // expõe para módulos externos (syncSheetProfile, etc.)
+            window.ctwAplicarDev();
             salvarCacheEquipe(data);
             renderizarEquipeNaTela(data);
             // Recarrega avatar quando Firebase confirmar os dados (inclui avatarUrl)
@@ -220,6 +274,7 @@ function setupTeamProfilesListener() {
 window.setProfileConfirmed = function(name) {
     currentUserProfile = name;
     localStorage.setItem('ctwUserProfile', name);
+    window.ctwAplicarDev();
     if (window.ctwCSWidget) window.ctwCSWidget.publicar();   // widget do CreditoScan acompanha o perfil
     
     const displayMenu = document.getElementById('displayProfileName');
@@ -260,6 +315,7 @@ window.sairDoPerfil = function() {
                 // 1. Limpa o perfil salvo
                 currentUserProfile = '';
                 localStorage.removeItem('ctwUserProfile');
+                window.ctwAplicarDev();
                 if (window.ctwCSWidget) window.ctwCSWidget.publicar();   // widget do CreditoScan acompanha o perfil
 
                 // 2. Atualiza display
@@ -2029,7 +2085,12 @@ function loadProductsFromDB() {
 
 async function updateProductInDB(id, data) { 
     try { 
+        const antes = data && data.valor !== undefined ? products.find(p => p.id === id) : null;
         await update(ref(db, `products/${id}`), data); 
+        if (antes) {   // preço mudou: vira pendência na lista "Alterar no WhatsApp"
+            const num = v => typeof v === 'number' ? v : parseBrazilianCurrencyToFloat(v);
+            window.ctwZapRegistrar([{ id, nome: data.nome || antes.nome, de: num(antes.valor), para: num(data.valor) }]);
+        }
     } catch (error) { 
         console.error(`Erro ao atualizar: ${error.message}`); 
     } 
@@ -5298,7 +5359,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Estoque pede senha. Usado pela ferramenta "Estoque" do Início.
     // aoLiberar (opcional) roda só depois da senha certa, antes de abrir a tela.
     window.ctwAbrirEstoque = (aoLiberar) => {
-        showCustomModal({
+        ctwComSenha({
             message: "Digite a senha para acessar o Estoque:",
             showPassword: true,
             confirmText: "Acessar",
@@ -5314,8 +5375,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
     document.getElementById('goToAdmin')?.addEventListener('click', () => showMainSection('administracao'));
+    document.getElementById('ctwSheetZap')?.addEventListener('click', () => {
+        window.ctwCarregarModulo('precosync').then(m => m.abrirZap()).catch(() => showCustomModal({ message: "Erro ao abrir a lista. Verifique a internet e tente de novo." }));
+    });
     document.getElementById('ctwSheetPrecos')?.addEventListener('click', () => {
-        showCustomModal({
+        ctwComSenha({
             message: "Digite a senha para sincronizar preços:",
             showPassword: true,
             confirmText: "Acessar",
@@ -5955,7 +6019,7 @@ if (btnToggleRepassar) {
     const saveSettingsBtn = document.getElementById('saveSettingsBtn');
     if (saveSettingsBtn) {
         saveSettingsBtn?.addEventListener('click', () => {
-            showCustomModal({
+            ctwComSenha({
                 message: "Senha de Administrador:",
                 showPassword: true,
                 confirmText: "Salvar",
@@ -6105,7 +6169,7 @@ document.getElementById('admin-nav-buttons')?.addEventListener('click', e => {
 
     if (targetId === 'adminNotificationsContent' || targetId === 'adminSettingsContent') {
         // Pede senha para Notificações E Configurações
-        showCustomModal({
+        ctwComSenha({
             message: "Acesso Restrito. Senha:",
             showPassword: true,
             confirmText: "Acessar",
@@ -6165,7 +6229,7 @@ document.getElementById('admin-nav-buttons')?.addEventListener('click', e => {
         const saveTagBtn = e.target.closest('.save-tag-btn');
         if (deleteTagBtn) {
             const tagToDelete = deleteTagBtn.dataset.tag;
-            showCustomModal({
+            ctwComSenha({
                 message: "Digite a senha de administrador para excluir.",
                 showPassword: true,
                 confirmText: "Confirmar",
@@ -6198,7 +6262,7 @@ document.getElementById('admin-nav-buttons')?.addEventListener('click', e => {
             const newNameInput = container.querySelector('.tag-name-input');
             const newName = newNameInput.value.trim();
             if(originalName !== newName) {
-                showCustomModal({
+                ctwComSenha({
                     message: "Digite a senha de administrador para editar o nome.",
                     showPassword: true,
                     confirmText: "Confirmar",
@@ -12381,6 +12445,7 @@ window.updateNotificationUI  = updateNotificationUI;
 
     // Abre o painel com verificação de senha
     window.abrirGerenciarPerfis = function() {
+        if (window.ctwEhDev && window.ctwEhDev()) { _renderPerfilPanel(); return; }
         var ov = document.createElement('div');
         ov.id = '_gPerfisSenhaOv';
         ov.style.cssText = 'position:fixed;inset:0;z-index:25000;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:20px;';
@@ -12465,7 +12530,7 @@ window.updateNotificationUI  = updateNotificationUI;
             card.innerHTML = `
                 <div style="width:42px;height:42px;border-radius:50%;background:${cor};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.1rem;color:#fff;flex-shrink:0;">${p.name.charAt(0).toUpperCase()}</div>
                 <div style="flex:1;min-width:0;">
-                    <div style="font-weight:700;font-size:.9rem;color:var(--text-color);">${p.name} ${isCurrent ? '<span style="font-size:.6rem;background:#10b981;color:#fff;padding:1px 6px;border-radius:999px;vertical-align:middle;">VOCÊ</span>' : ''}</div>
+                    <div style="font-weight:700;font-size:.9rem;color:var(--text-color);">${p.name} ${p.dev === true ? '<span style="font-size:.6rem;background:#7c3aed;color:#fff;padding:1px 6px;border-radius:6px;margin-left:4px;">DEV</span>' : ''} ${isCurrent ? '<span style="font-size:.6rem;background:#10b981;color:#fff;padding:1px 6px;border-radius:999px;vertical-align:middle;">VOCÊ</span>' : ''}</div>
                     <div style="font-size:.72rem;color:var(--text-secondary);margin-top:2px;">${temSenha ? '🔐 Senha definida' : '🔓 Sem senha'}</div>
                 </div>
                 <button data-pid="${p.id}" data-pname="${p.name}" data-psenha="${p.senha||''}" class="_gPerfisEditBtn" style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);color:#3b82f6;border-radius:8px;padding:6px 10px;font-size:.72rem;cursor:pointer;white-space:nowrap;">✏️ Editar</button>
@@ -12534,6 +12599,11 @@ window.updateNotificationUI  = updateNotificationUI;
                     `}
                 </div>
 
+                <label style="display:flex;align-items:flex-start;gap:10px;background:rgba(255,255,255,0.04);border:1px solid var(--glass-border);border-radius:12px;padding:12px;cursor:pointer;">
+                    <input id="_editPerfilDev" type="checkbox" ${((window.teamProfilesList || {})[pid] || {}).dev === true ? 'checked' : ''} style="width:20px;height:20px;margin-top:2px;flex-shrink:0;">
+                    <span style="font-size:.78rem;color:var(--text-color);line-height:1.35;"><b>🛠 Perfil Dev</b><br><span style="color:var(--text-secondary);">Não pede a senha 220390 e mostra telas extras (Sincronizar preços e Alterar no WhatsApp).</span></span>
+                </label>
+
                 <div style="display:flex;gap:10px;">
                     <button id="_editPerfilCancel" class="btn btn-outline-secondary flex-fill">Cancelar</button>
                     <button id="_editPerfilSave"   class="btn btn-primary flex-fill">💾 Salvar</button>
@@ -12574,7 +12644,7 @@ window.updateNotificationUI  = updateNotificationUI;
             var novaSenha = senhaInp ? senhaInp.value : '';
             if(!novoNome) { alert('Nome obrigatório.'); return; }
 
-            var updates = { name: novoNome };
+            var updates = { name: novoNome, dev: document.getElementById('_editPerfilDev').checked ? true : null };
 
             if (_removerSenha) {
                 // Remove explicitamente a senha do Firebase

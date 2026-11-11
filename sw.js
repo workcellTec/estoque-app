@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-291'; // Catálogo: lista por família (Poco, Redmi, Samsung…) e urgência para preço abaixo
+const CACHE = 'ctw-292'; // Perfil Dev + lista Alterar no WhatsApp
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
