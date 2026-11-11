@@ -1558,6 +1558,9 @@ function calculateAparelho() {
     }
 
     let tableRows = "";
+    // À vista (Pix/dinheiro): não é "copyable-row" de propósito, pois fica fora da seleção múltipla
+    const totalAvista = ctwAvistaLinhas().reduce((t, l) => t + l.valor, 0);
+    tableRows += `<tr class="avista-row"><td>À vista</td><td>Pix ou dinheiro</td><td>${totalAvista.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td></tr>`;
     const debitTax = getRate(machine, brand, 0);
     if (debitTax !== null && debitTax !== undefined) {
         const valorBrutoDebito = valorBaseParaCalculo / (1 - debitTax / 100);
@@ -4504,6 +4507,7 @@ function renderTagManagementUI() {
     </div>
     `;
 
+    const tagsOff = ctwAvistaTagsOff();
     let tagsHtml = tags.map(tag => {
         if (tag === 'Nenhuma') return '';
         const savedText = tagTexts[tag] || '';
@@ -4517,6 +4521,10 @@ function renderTagManagementUI() {
                 <label class="form-label small">Texto Personalizado</label>
                 <textarea class="form-control form-control-sm tag-text-input" rows="3" placeholder="Texto para ${escapeHtml(tag)}">${escapeHtml(savedText)}</textarea>
             </div>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input tag-avista-off-input" type="checkbox" id="avistaOff-${escapeHtml(tag)}" ${tagsOff[tag] ? 'checked' : ''}>
+                <label class="form-check-label small" for="avistaOff-${escapeHtml(tag)}">Não usar o texto à vista (antes/depois) nesta etiqueta</label>
+            </div>
             <div class="text-end">
                 <button class="btn btn-sm btn-outline-danger delete-tag-btn" data-tag="${escapeHtml(tag)}"><i class="bi bi-trash"></i></button>
                 <button class="btn btn-sm btn-primary save-tag-btn" data-tag="${escapeHtml(tag)}"><i class="bi bi-save-fill"></i> Salvar</button>
@@ -4525,8 +4533,31 @@ function renderTagManagementUI() {
         `;
     }).join('');
     
+    const avistaCfg = ctwAvistaCfg();
+    const avistaHtml = `
+    <div class="admin-section w-100">
+        <h4 class="text-start"><i class="bi bi-cash-coin"></i> À vista (Pix ou dinheiro)</h4>
+        <p class="text-start text-secondary">Aparece acima do Débito em "Calcular por aparelho". Ao tocar, copia: <em>*Produto* sai por *valor* a vista no dinheiro ou pix</em>.</p>
+        <div class="p-3 mb-4 rounded" style="background-color: rgba(0,0,0,0.2);">
+            <div class="mb-3">
+                <label class="form-label small">Valor extra à vista (R$) — soma ao valor salvo, no lugar do extra do parcelado</label>
+                <input type="number" inputmode="decimal" step="0.01" min="0" class="form-control form-control-sm" id="avistaExtraInput" value="${avistaCfg.extra || ''}" placeholder="0">
+            </div>
+            <div class="mb-3">
+                <label class="form-label small">Texto antes</label>
+                <textarea class="form-control form-control-sm" rows="3" id="avistaAntesInput" placeholder="Ex.: Opa, tudo bem? Segue o valor:">${escapeHtml(avistaCfg.antes)}</textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label small">Texto depois</label>
+                <textarea class="form-control form-control-sm" rows="3" id="avistaDepoisInput" placeholder="Ex.: Qualquer dúvida estou à disposição!">${escapeHtml(avistaCfg.depois)}</textarea>
+            </div>
+            <div class="text-end"><button class="btn btn-sm btn-primary" id="avistaSalvarBtn"><i class="bi bi-save-fill"></i> Salvar à vista</button></div>
+        </div>
+    </div>`;
+
     container.innerHTML = `
     ${optionsHtml}
+    ${avistaHtml}
     <div class="admin-section w-100">
         <h4 class="text-start"><i class="bi bi-tags-fill"></i> Gerenciar Etiquetas e Textos</h4>
         <p class="text-start text-secondary">Adicione, edite ou remova etiquetas e seus textos personalizados.</p>
@@ -4544,6 +4575,17 @@ function renderTagManagementUI() {
         </div>
     </div>
     `;
+
+    document.getElementById('avistaSalvarBtn')?.addEventListener('click', () => {
+        const extra = Math.max(0, parseFloat(document.getElementById('avistaExtraInput').value) || 0);
+        safeStorage.setItem(AVISTA_CFG_KEY, JSON.stringify({
+            extra,
+            antes: document.getElementById('avistaAntesInput').value.trim(),
+            depois: document.getElementById('avistaDepoisInput').value.trim()
+        }));
+        if (typeof calculateAparelho === 'function') calculateAparelho();
+        showCustomModal({ message: 'Configuração do à vista salva!' });
+    });
 
     const invertToggle = document.getElementById('invertCopyOrderToggle');
     if (invertToggle) {
@@ -4666,6 +4708,37 @@ function renderScheduledNotificationsAdminList() {
         }
     });
 }
+// ── À vista (Pix/dinheiro): extra próprio + texto universal antes/depois ──
+// Fica no aparelho, como os textos das etiquetas. Etiquetas "desligadas" não levam o texto de antes/depois.
+const AVISTA_CFG_KEY = 'ctwAvistaCfg';
+const AVISTA_TAGS_OFF_KEY = 'ctwAvistaTagsOff';
+
+function ctwAvistaCfg() {
+    let c = {};
+    try { c = JSON.parse(safeStorage.getItem(AVISTA_CFG_KEY) || '{}') || {}; } catch (e) { c = {}; }
+    return { extra: Math.max(0, parseFloat(c.extra) || 0), antes: String(c.antes || ''), depois: String(c.depois || '') };
+}
+
+function ctwAvistaTagsOff() {
+    try { return JSON.parse(safeStorage.getItem(AVISTA_TAGS_OFF_KEY) || '{}') || {}; } catch (e) { return {}; }
+}
+
+// Uma linha por produto do carrinho: valor salvo + extra à vista (sem taxa de máquina, sem o extra oculto do parcelado)
+function ctwAvistaLinhas() {
+    const extra = ctwAvistaCfg().extra;
+    return carrinhoDeAparelhos.map(p => ({ nome: p.nome, tag: p.tag, valor: (parseFloat(p.valor) || 0) + extra }));
+}
+
+function ctwAvistaTexto() {
+    const cfg = ctwAvistaCfg(), off = ctwAvistaTagsOff();
+    const brl = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const linhas = ctwAvistaLinhas();
+    const corpo = linhas.map(l => `*${l.nome}* sai por *${brl(l.valor)}* a vista no dinheiro ou pix`).join('\n');
+    // antes/depois só some quando TODOS os produtos do carrinho são de etiquetas desligadas
+    const semTexto = linhas.length > 0 && linhas.every(l => l.tag && off[l.tag]);
+    return [semTexto ? '' : cfg.antes.trim(), corpo, semTexto ? '' : cfg.depois.trim()].filter(Boolean).join('\n');
+}
+
 function loadTagTexts() {
     try {
         const stored = safeStorage.getItem(TAG_TEXTS_KEY);
@@ -5455,6 +5528,22 @@ document.addEventListener('DOMContentLoaded', () => {
 document.getElementById('resultCalcularPorAparelho')?.addEventListener('click', (e) => {
     const toggle = document.getElementById('multiSelectToggle');
     const isMultiMode = toggle && toggle.checked;
+
+    if (e.target.closest('.avista-row') && carrinhoDeAparelhos.length > 0) {
+        const textoAvista = ctwAvistaTexto();
+        const area = document.createElement('textarea');
+        area.value = textoAvista;
+        document.body.appendChild(area);
+        area.select();
+        try { document.execCommand('copy'); } catch (err) { /* segue: o aviso abaixo confirma o resultado */ }
+        document.body.removeChild(area);
+        if (window.salvarHistoricoAparelho) {
+            window.salvarHistoricoAparelho(textoAvista, `À vista • ${carrinhoDeAparelhos.map(p => p.nome).join(' e ')}`);
+        }
+        showCustomModal({ message: 'À vista copiado!' });
+        return;
+    }
+
     const row = e.target.closest('.copyable-row');
     
     if (!row || carrinhoDeAparelhos.length === 0) return;
@@ -6046,6 +6135,8 @@ document.getElementById('admin-nav-buttons')?.addEventListener('click', e => {
                             currentTags = currentTags.filter(t => t !== tagToDelete);
                             await saveTagList(currentTags);
                             delete tagTexts[tagToDelete];
+                            const tagsOffDel = ctwAvistaTagsOff(); delete tagsOffDel[tagToDelete];
+                            safeStorage.setItem(AVISTA_TAGS_OFF_KEY, JSON.stringify(tagsOffDel));
                             safeStorage.setItem(TAG_TEXTS_KEY, JSON.stringify(tagTexts));
                         },
                         onCancel: () => {}
@@ -6124,6 +6215,10 @@ document.getElementById('admin-nav-buttons')?.addEventListener('click', e => {
         
         delete tagTexts[originalName];
         tagTexts[newName] = newText;
+        const tagsOff = ctwAvistaTagsOff();
+        delete tagsOff[originalName];
+        if (container.querySelector('.tag-avista-off-input')?.checked) tagsOff[newName] = true;
+        safeStorage.setItem(AVISTA_TAGS_OFF_KEY, JSON.stringify(tagsOff));
         await saveTagList(currentTags);
         safeStorage.setItem(TAG_TEXTS_KEY, JSON.stringify(tagTexts));
         
