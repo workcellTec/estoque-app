@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-287'; // Transições mais rápidas e sem efeito fantasma
+const CACHE = 'ctw-288'; // Transições: só entrada suave (sem tela fantasma)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

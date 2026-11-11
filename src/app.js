@@ -705,23 +705,6 @@ function ctwEntrar(el, tipo) {
 // Ordem das telas para decidir o sentido: Início → Taxas → Documentos → Mais → telas internas.
 const CTW_ORDEM_SECAO = { main: 0, calculator: 1, contract: 2, mais: 3 };
 function ctwOrdemSecao(id) { return id in CTW_ORDEM_SECAO ? CTW_ORDEM_SECAO[id] : 4; }
-// Saída: uma cópia visual (sem ids, sem eventos) da tela antiga desliza para fora por cima, enquanto a nova entra.
-function ctwFantasmaSaida(velho, rect, scroll, tipo, exibicao) {
-    if (!velho || !rect || rect.width < 10 || document.documentElement.classList.contains('ctw-leve')) return;
-    try { if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (e) {}
-    if (velho.getElementsByTagName('*').length > 1800) return;   // tela pesada: só a entrada anima
-    const g = velho.cloneNode(true);
-    g.removeAttribute('id');
-    g.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
-    g.className = 'ctw-fantasma ctw-sai-' + tipo;
-    g.setAttribute('aria-hidden', 'true');
-    g.style.cssText = 'position:fixed;top:' + rect.top + 'px;left:' + rect.left + 'px;width:' + rect.width + 'px;height:' + Math.max(rect.height > 40 ? Math.min(rect.height, window.innerHeight - Math.max(rect.top, 0)) : 0, window.innerHeight - Math.max(rect.top, 0)) + 'px;display:' + (exibicao || 'block') + ';';
-    document.body.appendChild(g);
-    g.scrollTop = scroll || window.scrollY || 0;
-    const rem = () => { if (g.parentNode) g.parentNode.removeChild(g); };
-    g.addEventListener('animationend', rem);
-    setTimeout(rem, 250);
-}
 // Sub-abas (pílulas): anima o conteúdo no sentido da aba, sem repetir logo após troca de seção.
 function ctwEntrarSubAba(el, ordem, chave) {
     const antes = window._ctwSubAbaAnterior || (window._ctwSubAbaAnterior = {});
@@ -735,11 +718,6 @@ function ctwEntrarSubAba(el, ordem, chave) {
 function showMainSection(sectionId) {
     if (!isAuthReady) return;
     const _secaoAnterior = currentMainSectionId;
-    const _velhoEl = _secaoAnterior !== sectionId ? document.getElementById(CTW_TELA_POR_SECAO[_secaoAnterior]) : null;
-    const _velhoVisivel = !!(_velhoEl && _velhoEl.getClientRects().length > 0 && !document.documentElement.classList.contains('ctw-leve'));
-    const _velhoRect = _velhoVisivel ? _velhoEl.getBoundingClientRect() : null;
-    const _velhoScroll = _velhoVisivel ? _velhoEl.scrollTop : 0;
-    const _velhoDisplay = _velhoVisivel ? getComputedStyle(_velhoEl).display : '';
     // (A saudação #ctwTopBar vive dentro do #mainMenu: aparece e some junto com a tela inicial,
     //  sem nenhum controle de display por JS.)
 
@@ -872,7 +850,6 @@ function showMainSection(sectionId) {
         const _o1 = ctwOrdemSecao(_secaoAnterior), _o2 = ctwOrdemSecao(sectionId);
         const _tp = _o2 > _o1 ? 'd' : (_o2 < _o1 ? 'e' : 'c');   // d = avança (nova vem da direita), e = volta
         ctwEntrar(document.getElementById(CTW_TELA_POR_SECAO[sectionId]), _tp);
-        if (_velhoVisivel) ctwFantasmaSaida(_velhoEl, _velhoRect, _velhoScroll, _tp, _velhoDisplay);
     }
     if (typeof window.ctwAoMudarSecao === 'function') window.ctwAoMudarSecao(sectionId);
 }
