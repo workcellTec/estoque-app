@@ -581,7 +581,8 @@ async function gravar(itens, aliases, ignoradosPdf, arquivo, tipo, extra) {
         const lista = itens.map(x => ({ id: x.id, nome: x.c.nome, de: x.de, para: Math.round(x.para * 100) / 100 }));
         for (const id of Object.keys(APR.contas)) {      // todas as contas de WhatsApp recebem a pendência
             const zap = (await get(ref(db, raiz(id) + '/zap'))).val() || {};
-            Object.assign(upd, window.ctwZapCalcular(zap, lista, usuario(), raiz(id) + '/zap'));
+            const fixos = (await get(ref(db, raiz(id) + '/fixos'))).val() || {};
+            Object.assign(upd, window.ctwZapCalcular(zap, lista, usuario(), raiz(id) + '/zap', fixos));
         }
     }
     Object.assign(upd, extra || {});
@@ -890,6 +891,24 @@ async function aoClicar(e) {
             S.esg[cid] = { ...e, ...contagemEsg(APR.contas[cid].esg), suspeito: false };
             return telaRelatorio();
         }
+        if (act === 'zapfixo' || act === 'fixodesfazer') {
+            b.disabled = true;
+            const id = b.dataset.id, upd = {}, extra = catExtra();
+            try {
+                if (act === 'zapfixo') {
+                    const z = ((await get(ref(getDb(), `${raiz()}/zap/${id}`))).val()) || {};
+                    upd[`${raiz()}/fixos/${id}`] = { nome: z.nome || '', preco: Math.round((z.de + extra) * 100) / 100, ctw: z.para, extra, quando: Date.now(), usuario: usuario() };
+                    upd[`${raiz()}/zap/${id}`] = null;
+                    await logZap({ tipo: 'fixo', nome: z.nome || '', de: z.de + extra, para: z.para + extra }, upd);
+                } else {
+                    const f = ((await get(ref(getDb(), `${raiz()}/fixos/${id}`))).val()) || {};
+                    upd[`${raiz()}/fixos/${id}`] = null;
+                    if (f.preco > 0 && f.ctw > 0) upd[`${raiz()}/zap/${id}`] = { nome: f.nome || '', de: Math.round((f.preco - (f.extra || extra)) * 100) / 100, para: f.ctw, quando: Date.now(), usuario: usuario() };
+                }
+                await update(ref(getDb()), upd);
+            } catch (er) { console.warn('[zap]', er.message); }
+            return telaZap(S_zapAba);
+        }
         if (act === 'zapok' || act === 'esgdesativei' || act === 'esgreativei' || act === 'esgainda') {
             b.disabled = true;
             const id = b.dataset.id, upd = {};
@@ -913,6 +932,18 @@ async function aoClicar(e) {
             const i = Number(b.dataset.i), x = CAT.errados.find(e => e.it.i === i);
             CAT.feitos.add(i);
             if (x) await zapRemover(x.c.id).catch(() => {});
+            return telaCatRelatorio();
+        }
+        if (act === 'catfixo') {
+            if (!CAT) return;
+            const i = Number(b.dataset.i), x = CAT.errados.find(e => e.it.i === i); if (!x) return;
+            b.disabled = true;
+            const upd = {};
+            upd[`${raiz()}/fixos/${x.c.id}`] = { nome: x.c.nome, preco: x.it.preco, ctw: x.c.valor, extra: CAT.extra, quando: Date.now(), usuario: usuario() };
+            upd[`${raiz()}/zap/${x.c.id}`] = null;
+            await logZap({ tipo: 'fixo', nome: x.c.nome, de: x.it.preco, para: x.c.valor + CAT.extra }, upd);
+            await update(ref(getDb()), upd);
+            CAT.errados = CAT.errados.filter(e => e !== x); CAT.fixos.push(x);
             return telaCatRelatorio();
         }
         if (act === 'caturgentes') { if (CAT) { CAT.soUrgentes = !CAT.soUrgentes; telaCatRelatorio(); } return; }
@@ -1088,8 +1119,11 @@ async function concluirCatalogo(itens, extra, exato, silencioso) {
     await carregarAprendizado();
     CAT = { extra, itens, exato: !!exato, feitos: new Set(), ...classificarCat(itens, produtos, extra) };
     CAT.fila = CAT.perguntas.slice();
-    if (exato) await zapAlinhar(CAT.certos.concat(CAT.errados), extra).catch(e => console.warn('[zap]', e.message));   // arquivo exato: a lista "Alterar no WhatsApp" passa a refletir o catálogo
-    await guardarCatalogo(CAT.certos.concat(CAT.errados), exato ? 'zip' : 'prints').catch(e => console.warn('[catálogo]', e.message));
+    const fx = (await get(ref(getDb(), raiz() + '/fixos'))).val() || {};
+    CAT.fixos = [];      // preço errado de propósito (e o CTW não mudou desde então): não é para corrigir
+    CAT.errados = CAT.errados.filter(x => { if (fixoAtivo(fx[x.c.id], x)) { CAT.fixos.push(x); return false; } return true; });
+    if (exato) await zapAlinhar(CAT.certos.concat(CAT.errados, CAT.fixos), extra).catch(e => console.warn('[zap]', e.message));   // arquivo exato: a lista "Alterar no WhatsApp" passa a refletir o catálogo
+    await guardarCatalogo(CAT.certos.concat(CAT.errados, CAT.fixos), exato ? 'zip' : 'prints').catch(e => console.warn('[catálogo]', e.message));
     if (!silencioso) telaCatRelatorio();
 }
 
@@ -1222,12 +1256,14 @@ function telaCatRelatorio() {
           <div class="ps-nome">${esc(x.it.nome)}</div>
           <div class="ps-sub">No catálogo ${brl(x.it.preco)}${x.it.de ? ` (em promoção, preço antigo ${brl(x.it.de)})` : ''} → <b>colocar ${brl(esperado(x))}</b></div>
           <div class="ps-sub">CTW: ${esc(x.c.nome)} · ${brl(x.c.valor)}</div></div>
-          <button type="button" class="ps-mini" data-act="catfeito" data-i="${x.it.i}">Já corrigi</button></div>`;
+          <div class="ps-col"><button type="button" class="ps-mini" data-act="catfeito" data-i="${x.it.i}">Já corrigi</button>
+          <button type="button" class="ps-mini ps-suave" data-act="catfixo" data-i="${x.it.i}">Manter assim</button></div></div>`;
     tela(`
       <div class="ps-card ${pend.length ? 'ps-alerta' : 'ps-ok'}">
         <div class="ps-lin"><span>Preço certo</span><b>${c.certos.length}</b></div>
         <div class="ps-lin"><span>Para corrigir no catálogo</span><b>${pend.length}</b></div>
         ${urgentes ? `<div class="ps-lin ps-urgente"><span>⚠ Mais baratos que deveriam</span><b>${urgentes}</b></div>` : ''}
+        ${c.fixos && c.fixos.length ? `<div class="ps-lin"><span>Mantidos de propósito (avisa se o CTW mudar)</span><b>${c.fixos.length}</b></div>` : ''}
         <div class="ps-lin"><span>Nome duvidoso (sem resposta)</span><b>${c.fila.length}</b></div>
         <div class="ps-lin"><span>Sem par no CTW</span><b>${c.semPar.length}</b></div>
         <div class="ps-sub">Regra: preço do catálogo = valor do CTW + ${brl(c.extra)}</div>
@@ -1283,11 +1319,12 @@ async function telaZap(aba) {
     aba = aba || 'preco';
     const tit = overlay && overlay.querySelector('.ps-topo b'); if (tit) tit.textContent = 'Alterar no WhatsApp';
     tela('<div class="ps-msg">Carregando…</div>');
-    let zap, esg, hist = {};
+    let zap, esg, fixos = {}, hist = {};
     try {
         const db = getDb();
         await carregarAprendizado();
         [zap, esg] = (await Promise.all([get(ref(db, raiz() + '/zap')), get(ref(db, raiz() + '/esg'))])).map(x => x.val() || {});
+        fixos = (await get(ref(db, raiz() + '/fixos'))).val() || {};
         if (aba === 'hist') hist = (await get(ref(db, raiz() + '/zapLog'))).val() || {};
     } catch (e) { return tela(`<div class="ps-msg ps-erro">Não consegui acessar o banco de dados (${esc(e.message)}).</div>`); }
     if (APR.contas[CONTA]) APR.contas[CONTA].esg = APR.esg = esg;
@@ -1310,7 +1347,8 @@ async function telaZap(aba) {
           <div class="ps-nome">${esc(z.nome)}</div>
           <div class="ps-sub">Catálogo está em ${brl(z.de + extra)} → <b>colocar ${brl(z.para + extra)}</b></div>
           <div class="ps-sub">${z.quando ? tempoAtras(z.quando) : ''}${z.usuario ? ' · ' + esc(z.usuario) : ''}</div></div>
-          <button type="button" class="ps-mini" data-act="zapok" data-id="${esc(z.id)}">Já corrigi</button></div>`;
+          <div class="ps-col"><button type="button" class="ps-mini" data-act="zapok" data-id="${esc(z.id)}">Já corrigi</button>
+          <button type="button" class="ps-mini ps-suave" data-act="zapfixo" data-id="${esc(z.id)}">Manter assim</button></div></div>`;
     const linhaEsg = e => `
         <div class="ps-it"><div class="ps-grow">
           <div class="ps-nome">${esc(e.nome)}</div>
@@ -1328,6 +1366,7 @@ async function telaZap(aba) {
             <div class="ps-lin"><span>Preços para corrigir</span><b>${precos.length}</b></div>
             ${urg ? `<div class="ps-lin ps-urgente"><span>⚠ Mais baratos que deveriam</span><b>${urg}</b></div>` : ''}
             <div class="ps-sub">Preço do catálogo = valor do CTW + ${brl(extra)}. A lista se atualiza sozinha quando um preço muda no CTW.</div></div>`
+            + (Object.keys(fixos).length ? `<details class="ps-det"><summary>Mantidos de propósito (${Object.keys(fixos).length})</summary>${Object.entries(fixos).map(([id, f]) => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(f.nome)}</div><div class="ps-sub">Catálogo fica em ${brl(f.preco)} (CTW ${brl(f.ctw)}) · avisa se o CTW mudar</div></div><button type="button" class="ps-mini" data-act="fixodesfazer" data-id="${esc(id)}">Voltar a avisar</button></div>`).join('')}</details>` : '')
             + (precos.length ? ord.map(([g, l]) => cab(g, l, l.some(sobe) ? ` · ⚠ ${l.filter(sobe).length}` : '') + l.map(linhaPreco).join('')).join('') : '<div class="ps-msg">Nenhum preço para corrigir. 🎉</div>');
     } else if (aba === 'desativar' || aba === 'reativar') {
         const lista = aba === 'desativar' ? desativar : reativar;
@@ -1337,9 +1376,9 @@ async function telaZap(aba) {
             + (lista.length ? agrupar(lista, e => e.nome, (a, b) => (b.desde || 0) - (a.desde || 0)).map(([g, l]) => cab(g, l) + l.map(linhaEsg).join('')).join('') : `<div class="ps-msg">Nada para ${aba === 'desativar' ? 'desativar' : 'reativar'}. 🎉</div>`);
     } else {
         const h = Object.entries(hist).sort((a, b) => b[0].localeCompare(a[0])).map(([, v]) => v);
-        const rot = { preco: 'Preço corrigido', desativar: 'Desativado', reativar: 'Reativado' };
+        const rot = { preco: 'Preço corrigido', desativar: 'Desativado', reativar: 'Reativado', fixo: 'Mantido de propósito' };
         corpo = h.length ? h.map(x => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(x.nome || '')}</div>
-            <div class="ps-sub">${rot[x.tipo] || x.tipo}${x.tipo === 'preco' ? `: ${brl(x.de)} → ${brl(x.para)}` : ''}</div>
+            <div class="ps-sub">${rot[x.tipo] || x.tipo}${x.tipo === 'preco' ? `: ${brl(x.de)} → ${brl(x.para)}` : x.tipo === 'fixo' ? `: catálogo ${brl(x.de)} (o certo seria ${brl(x.para)})` : ''}</div>
             <div class="ps-sub">${new Date(x.quando).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}${x.usuario ? ' · ' + esc(x.usuario) : ''}</div></div></div>`).join('')
             : '<div class="ps-msg">Ainda não há histórico. Ele guarda as últimas ' + MAX_ZAPLOG + ' correções.</div>';
     }
@@ -1355,11 +1394,20 @@ let S_zapAba = 'preco';
 async function zapRemover(id) { await update(ref(getDb()), { [`${raiz()}/zap/${id}`]: null }); }
 
 // Alinha a lista com o que o ZIP mostrou: preço certo sai; preço errado entra (catálogo atual = preço lido − extra)
+// Exceção "manter assim": vale enquanto o valor do CTW e o preço do catálogo continuam os mesmos de quando você decidiu
+const fixoAtivo = (f, x) => !!f && Math.abs(Number(f.ctw) - x.c.valor) < 0.005 && Math.abs(Number(f.preco) - x.it.preco) < 0.005;
+
 async function zapAlinhar(pares, extra) {
     const db = getDb();
     const atual = (await get(ref(db, raiz() + '/zap'))).val() || {};
+    const fixos = (await get(ref(db, raiz() + '/fixos'))).val() || {};
     const upd = {}; let total = Object.keys(atual).length;
     pares.forEach(({ it, c }) => {
+        const f = fixos[c.id];
+        if (f) {
+            if (fixoAtivo(f, { it, c })) { if (atual[c.id]) { upd[`${raiz()}/zap/${c.id}`] = null; total--; } return; }
+            upd[`${raiz()}/fixos/${c.id}`] = null;       // CTW ou catálogo mudaram: a exceção caiu
+        }
         if (igual(it.preco, c.valor + extra)) { if (atual[c.id]) { upd[`${raiz()}/zap/${c.id}`] = null; total--; } return; }
         if (!atual[c.id]) { if (total >= 200) return; total++; }
         upd[`${raiz()}/zap/${c.id}`] = { nome: c.nome, de: Math.round((it.preco - extra) * 100) / 100, para: c.valor, quando: Date.now(), usuario: usuario(), origem: 'zip' };

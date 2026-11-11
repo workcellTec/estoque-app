@@ -3793,3 +3793,5 @@ html:not(.ctw-dev) [data-dev-only] { display: none !important; }
 .ps-contas { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 .ps-contas button { border: 1px solid var(--border-color, #262930); background: transparent; color: var(--text-color); border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 500; }
 .ps-contas button.on { background: #34D399; border-color: #34D399; color: #052E1F; font-weight: 700; }
+.ps-col { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.ps-mini.ps-suave { background: transparent; border: 1px solid var(--border-color, #262930); color: var(--text-secondary, #9AA0AB); }

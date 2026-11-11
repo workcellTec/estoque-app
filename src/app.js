@@ -91,12 +91,19 @@ window.ctwComSenha = function(cfg) {
 // voltou ao de antes = a pendência some. Dev vê e dá "Já corrigi".
 const ZAP_PATH = 'settings/precosync/zap';
 const ZAP_MAX = 200;
-window.ctwZapCalcular = function(atual, lista, usuario, caminho) {
-    const base = caminho || ZAP_PATH;
+// fixos: preços do catálogo mantidos de propósito ({preco, ctw, extra}). Se o valor do CTW muda, a exceção cai e a pendência volta a aparecer,
+// comparando com o preço que o catálogo realmente tem (o fixo), não com "CTW + extra".
+window.ctwZapCalcular = function(atual, lista, usuario, caminho, fixos) {
+    const base = caminho || ZAP_PATH, fixBase = base.replace(/\/zap$/, '/fixos');
     const up = {}; let total = Object.keys(atual || {}).length;
     (lista || []).forEach(m => {
-        const de0 = Number(m.de), para = Number(m.para);
+        let de0 = Number(m.de); const para = Number(m.para);
         if (!m.id || !(de0 > 0) || !(para > 0)) return;
+        const fx = fixos && fixos[m.id];
+        if (fx && Math.abs(de0 - para) >= 0.005) {
+            up[`${fixBase}/${m.id}`] = null;
+            if (!(atual && atual[m.id]) && Math.abs(Number(fx.ctw) - de0) < 0.005) de0 = Number(fx.preco) - Number(fx.extra || 0);
+        }
         const ex = atual && atual[m.id], de = ex ? Number(ex.de) : de0;
         if (Math.abs(de - para) < 0.005) { if (ex) { up[`${base}/${m.id}`] = null; total--; } return; }
         if (!ex) { if (total >= ZAP_MAX) return; total++; }
@@ -112,7 +119,8 @@ window.ctwZapRegistrar = async function(lista) {
         const up = {}, quem = localStorage.getItem('ctwUserProfile') || '';
         for (const c of caminhos) {
             const atual = (await get(ref(db, c))).val() || {};
-            Object.assign(up, window.ctwZapCalcular(atual, lista, quem, c));
+            const fixos = (await get(ref(db, c.replace(/\/zap$/, '/fixos')))).val() || {};
+            Object.assign(up, window.ctwZapCalcular(atual, lista, quem, c, fixos));
         }
         if (Object.keys(up).length) await update(ref(db), up);
     } catch (e) { console.warn('[Alterar no WhatsApp] não registrou:', e && e.message); }
