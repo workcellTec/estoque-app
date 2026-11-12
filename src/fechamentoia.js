@@ -328,7 +328,7 @@ const tokens = s => Array.from(new Set(norm(s).split(/[^a-z0-9]+/).filter(t => t
 // em ordem: o texto como veio → sem as palavras de condição (novo, lacrado, seminovo...) → tirando palavras do fim, até achar.
 function variantesBusca(termo) {
     const orig = String(termo || '').trim(), v = [orig];
-    const limpo = norm(orig).replace(/\b(semi ?novo|novo|nova|lacrad[oa]|usad[oa]|vitrine|open ?box)\b/g, ' ').replace(/[-–—|,;:()]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const limpo = semCondicao(orig).replace(/[-–—|,;:()]+/g, ' ').replace(/\s+/g, ' ').trim();
     if (limpo && limpo !== norm(orig)) v.push(limpo);
     const t = limpo.split(' ');
     for (let n = t.length - 1; n >= 2; n--) v.push(t.slice(0, n).join(' '));
@@ -348,7 +348,8 @@ function buscarProdutos(termo, max) {
 // (settings/fechamentoAliases/{nome normalizado} → {pid, nome, ts}). Só o id do produto fica gravado: o valor sempre vem do CTW de hoje.
 const BASE_AL = 'settings/fechamentoAliases';
 let ALIASES = null, _alTent = 0;
-const chaveAlias = s => norm(s).replace(/[^a-z0-9]+/g, ' ').trim();
+const semCondicao = s => norm(s).replace(/\b(semi ?novo|novo|nova|lacrad[oa]|usad[oa]|vitrine|open ?box)\b/g, ' ');   // condição do aparelho não identifica o produto
+const chaveAlias = s => semCondicao(s).replace(/[^a-z0-9]+/g, ' ').trim();
 const chaveFb = s => chaveAlias(s).replace(/ /g, '_').slice(0, 120);
 
 async function carregarAliases() {
@@ -445,11 +446,12 @@ function estadoDeGarantia(doc, rec) {
 }
 
 // ── Formulário da garantia nova: Resumido / Detalhado (dev) ─────
-// Só dev, só garantia/recibo novos. Resumido = o formulário de sempre. Detalhado = produto, lista, total e pagamento num card só:
-// escolhe-se o produto (o custo o sistema já sabe), digita-se quanto o cliente pagou NO TOTAL (o valor unitário é opcional) e
-// lançam-se os pagamentos parciais por botões (Pix, Boleto, Troca, Débito, Crédito), podendo passar do total (a sobra é lucro
-// e o total sobe). Item sem valor próprio (ctwSemPreco) divide o total na proporção do custo. Em Detalhado as formas de
-// pagamento do documento são marcadas sozinhas, e o líquido é gravado ao salvar a garantia. Sem detalhar nada, salva como sempre.
+// Só dev, só garantia/recibo novos. Resumido = o formulário de sempre. Detalhado = três passos num card só, sem digitar valor de produto:
+//   1 Produtos: escolhidos do CTW (o custo o sistema já sabe); a IA do Zap preenche este mesmo card e mostra o que leu × o que escolheu;
+//   2 Pagamento: pagamentos parciais por botões (Pix/Dinheiro, Boleto, Troca, Débito, Crédito); o total da venda é a soma deles;
+//   3 Lucro: o que caiu na conta menos o custo, ao vivo.
+// O documento divide o total entre os produtos na proporção do custo (item.ctwSemPreco = "o valor vem do pagamento"). As formas de
+// pagamento do documento são marcadas sozinhas e o líquido é gravado ao salvar. Sem detalhar nada, a garantia salva como sempre.
 const CHECKS = { pix: 'pagPix', boleto: 'pagBoleto', troca: 'pagTroca', deb: 'pagDebito', cred: 'pagCredito' };
 const ROT_DOC = { pix: 'Dinheiro/Pix', boleto: 'Boleto', troca: 'Troca', deb: 'Débito', cred: 'Crédito' };
 const tipoForma = l => (l.k === 'cartao' ? (l.parc === 0 ? 'deb' : 'cred') : l.k === 'troca' ? 'troca' : l.boleto ? 'boleto' : 'pix');
@@ -457,29 +459,36 @@ const rotForma = l => (l.k === 'cartao' ? (l.parc === 0 ? 'Débito' : l.parc == 
 const ctwLista = () => (window.ctwBookipLista ? window.ctwBookipLista() : []);
 const totalGar = E => (E.garantia ? E.garantia.total : totalItens(E.lista));
 const qtdItem = i => Math.max(1, parseInt(i.qtd, 10) || 1);
+const itensForm = E => (E.lista || []).filter(i => i && !i.isSituation);
+const prodDe = (E, k) => ((E.itens || [])[k] || {}).prod || null;
+// ok = ligado ao CTW · duvida = ligado, mas a IA não teve certeza ("confira") · nao = sem produto (ou sem valor) no CTW
+const estadoDe = p => (!p || !(p.valor > 0) ? 'nao' : p.duvida ? 'duvida' : 'ok');
+const condDe = nome => (/semi ?novo/i.test(nome) ? 'Seminovo' : /novo|lacrad/i.test(nome) ? 'Novo / Lacrado' : '');
+const buscaInicial = nome => semCondicao(nome).replace(/[-–—|]+/g, ' ').replace(/\s+/g, ' ').trim();
+const produtoPorId = id => (window.products || []).find(x => String(x.id) === String(id));
+const refrescarForm = () => (window.ctwBookipRefrescar ? window.ctwBookipRefrescar() : renderCartaoForm());
 
-// Números do Detalhado. Total = o que o usuário digitou (ou, se todos os itens têm valor próprio, a soma deles).
-// Pagou mais que o total? O total sobe: total = maior entre o informado e a soma dos pagamentos.
+// Detalhado: total da venda = soma dos pagamentos. Faltam = itens sem produto (ou sem valor) no CTW.
 function totaisDet(E) {
-    const l = (E.lista || []).filter(i => i && !i.isSituation), livres = l.filter(i => i.ctwSemPreco);
-    const fixos = r2(l.filter(i => !i.ctwSemPreco).reduce((s, i) => s + (parseFloat(i.valor) || 0) * qtdItem(i), 0));
-    const dig = dinheiro(E.totalTxt) || 0, alvoItens = l.length && !livres.length ? fixos : 0, alvo = dig > 0 ? dig : alvoItens, soma = somaPagamentos(E);
-    return { l, livres, fixos, dig, alvoItens, alvo, soma, falta: alvo > 0 ? r2(alvo - soma) : 0, exc: alvo > 0 && soma > alvo + 0.004 ? r2(soma - alvo) : 0, total: Math.max(alvo, soma) };
+    const l = itensForm(E), faltam = l.filter((i, k) => estadoDe(prodDe(E, k)) === 'nao');
+    return { l, faltam, soma: somaPagamentos(E) };
 }
-const valorNovo = E => (E.novo === null ? Math.max(totaisDet(E).falta, 0) : (dinheiro(E.novo) || 0));
 
-// Itens do CTW sem valor próprio dividem o que sobra do total (depois dos itens com valor) na proporção do custo.
-// Mexe nos itens da lista do formulário (mesmos objetos) e devolve true se algum valor mudou.
+// O total da venda é dividido entre os produtos na proporção do custo (qtd × custo). Mexe nos itens da lista do formulário
+// (mesmos objetos) e devolve true se algum valor mudou. Sem total, ou com produto ainda sem custo, os valores ficam em 0.
 function aplicarPrecos(E) {
-    const t = totaisDet(E); if (!t.livres.length) return false;
-    const peso = i => { const p = (E.itens[t.l.indexOf(i)] || {}).prod || {}, c = p.hoje != null ? p.hoje : p.valor; return qtdItem(i) * (c > 0 ? c : 1); };
-    const resto = Math.max(0, r2(t.total - t.fixos)), somaPeso = t.livres.reduce((s, i) => s + peso(i), 0);
-    let dado = 0, mudou = false;
-    t.livres.forEach((i, k) => {
-        const doc = k === t.livres.length - 1 ? r2(resto - dado) : r2(resto * peso(i) / somaPeso);
-        dado = r2(dado + doc);
-        const un = r2(doc / qtdItem(i));
-        if (Math.abs((parseFloat(i.valor) || 0) - un) > 0.0001) { i.valor = un; mudou = true; }
+    const t = totaisDet(E), l = t.l, ok = l.length > 0 && !t.faltam.length && t.soma > 0;
+    const peso = l.map((i, k) => { const p = prodDe(E, k) || {}, c = p.hoje != null ? p.hoje : p.valor; return qtdItem(i) * (c > 0 ? c : 0); });
+    const somaPeso = peso.reduce((s, x) => s + x, 0);
+    const un = l.map((i, k) => (ok && somaPeso > 0 ? r2(r2(t.soma * peso[k] / somaPeso) / qtdItem(i)) : 0));
+    if (ok && somaPeso > 0) {                          // sobra de arredondamento vai para o último item de quantidade 1
+        const res = r2(t.soma - l.reduce((s, i, k) => s + un[k] * qtdItem(i), 0)), k1 = l.map(qtdItem).lastIndexOf(1);
+        if (Math.abs(res) >= 0.005 && k1 >= 0) un[k1] = r2(un[k1] + res);
+    }
+    let mudou = false;
+    l.forEach((i, k) => {
+        i.ctwSemPreco = true;
+        if (Math.abs((parseFloat(i.valor) || 0) - un[k]) > 0.0001) { i.valor = un[k]; mudou = true; }
     });
     return mudou;
 }
@@ -493,7 +502,7 @@ function taxaDe(maq, band, parc) {
 
 function novoRasc() {
     const E = novoEstado('rascunho');
-    E.lista = []; E.det = false; E.snap = null; E.novo = null; E.totalTxt = null; E.sheet = null; E.aviso = '';
+    E.lista = []; E.det = false; E.snap = null; E.novo = ''; E.busca = ''; E.cond = 'Novo / Lacrado'; E.abre = {}; E.sheet = null; E.aviso = '';
     return E;
 }
 const garantirRasc = () => RASC || (RASC = novoRasc());
@@ -504,9 +513,7 @@ function rascunhoDaIA(dados, lista) {
     E.lista = lista || [];
     sincItens(E, E.lista, null, true);
     E.pag = linhasDeIA(E, dados.pagamentosDetalhe);
-    const soma = somaPagamentos(E);                    // só pagamentos (sem produto lido): o total vira o que os pagamentos somam
-    if (soma > 0 && !E.lista.some(i => i && !i.isSituation)) E.totalTxt = fmtIn(soma);
-    E.det = E.pag.length > 0;                          // a IA leu pagamentos: já abre em Detalhado
+    E.det = E.pag.length > 0 && somaPagamentos(E) > 0;   // a IA leu pagamentos com valor: já abre em Detalhado (o valor do produto sai deles)
     renderCartaoForm(E.lista);
 }
 
@@ -516,7 +523,8 @@ function limparRascunho() {
 }
 
 function formaVisivel(lista) {
-    return ehDev() && window.ctwDocModo !== 'orcamento' && !(window.ctwBookipEditando && window.ctwBookipEditando()) && !(lista || []).some(i => i && i.isSituation);
+    const tipo = document.querySelector('input[name="tipoInput"]:checked');
+    return ehDev() && window.ctwDocModo !== 'orcamento' && !(window.ctwBookipEditando && window.ctwBookipEditando()) && !(lista || []).some(i => i && i.isSituation) && !(tipo && tipo.value === 'situacao');
 }
 
 // Em Detalhado o grupo "Forma(s) de Pagamento" some e as caixas são marcadas pelos pagamentos lançados
@@ -535,17 +543,15 @@ function sincChecks(E, ativo) {
     if (box) box.classList.add('fia-oculto');
 }
 
-function tirarHosts() { fundir(false); ['ctwLiqModo', 'ctwLiqPag'].forEach(id => { const h = document.getElementById(id); if (h) h.remove(); }); }
+function tirarHosts() { ocultarForm(false); ['ctwLiqModo', 'ctwLiqPag'].forEach(id => { const h = document.getElementById(id); if (h) h.remove(); }); }
 
-// Em Detalhado produto, lista, total e pagamento ficam num card só: a lista e o total entram no painel do produto
-// (e voltam para o lugar de sempre no Resumido). Os elementos são os mesmos, só mudam de pai: o app segue achando tudo pelo id.
-function fundir(on) {
-    const painel = document.getElementById('camposProduto'), topo = painel && (painel.closest('.p-3') || painel.parentElement);
-    const rot = document.getElementById('bookipItensLabel'), ul = document.getElementById('bookipListaItens');
-    const tot = document.getElementById('bookipTotalDisplay'), caixa = tot && (tot.closest('.text-end') || tot.parentElement);
-    if (!topo || !rot || !ul || !caixa) return;
-    if (on) { if (rot.parentElement !== topo) [rot, ul, caixa].forEach(n => topo.appendChild(n)); }
-    else if (rot.parentElement === topo) { let ref = topo; [rot, ul, caixa].forEach(n => { ref.insertAdjacentElement('afterend', n); ref = n; }); }
+// Em Detalhado o formulário de produto do app (busca, campos, botão) e a lista com o total saem de cena: o card do Detalhado
+// faz esse papel. Os elementos continuam no lugar (só escondidos), então o app e a IA do Zap seguem achando tudo pelo id.
+function ocultarForm(on) {
+    const tot = document.getElementById('bookipTotalDisplay'), add = document.getElementById('btnAdicionarItemLista');
+    [document.getElementById('camposProduto'), add && (add.closest('.col-12') || add.parentElement), document.getElementById('bookipItensLabel'),
+        document.getElementById('bookipListaItens'), tot && (tot.closest('.text-end') || tot.parentElement)]
+        .forEach(n => { if (n) n.classList.toggle('fia-oculto', !!on); });
 }
 
 function hostDe(id, ref, pos) {
@@ -570,15 +576,15 @@ function renderCartaoForm(lista) {
         APLICANDO = true; try { window.ctwBookipRefrescar(); } finally { APLICANDO = false; }
         return;
     }
-    fundir(E.det);
+    ocultarForm(E.det);
     hostDe('ctwLiqModo', topo, 'beforebegin'); hostDe('ctwLiqPag', topo, 'beforeend');
     const pag = document.getElementById('ctwLiqPag'), ativo = document.activeElement;
-    if (E.det && topo.lastElementChild !== pag) topo.appendChild(pag);       // o pagamento fica depois da lista e do total
-    const foco = ativo && pag.contains(ativo) && ativo.dataset && ativo.dataset.f ? { f: ativo.dataset.f, a: ativo.selectionStart, b: ativo.selectionEnd } : null;
+    if (E.det && topo.lastElementChild !== pag) topo.appendChild(pag);       // o card do Detalhado fica dentro do painel do produto
+    const foco = ativo && pag.contains(ativo) && ativo.dataset && ativo.dataset.f ? { f: ativo.dataset.f, i: ativo.dataset.i, a: ativo.selectionStart, b: ativo.selectionEnd } : null;
     document.getElementById('ctwLiqModo').innerHTML = htmlModo(E);
-    pag.innerHTML = E.det ? htmlPag(E) : '';
-    if (foco) {                                        // digitando o total: o campo é redesenhado, então o foco e o cursor voltam
-        const n = pag.querySelector('[data-f="' + foco.f + '"]');
+    pag.innerHTML = E.det ? htmlDetalhado(E) : '';
+    if (foco) {                                        // o card é redesenhado a cada mudança: o foco e o cursor do campo voltam
+        const n = pag.querySelector('[data-f="' + foco.f + '"]' + (foco.i != null ? '[data-i="' + foco.i + '"]' : ''));
         if (n) { n.focus({ preventScroll: true }); try { n.setSelectionRange(foco.a, foco.b); } catch (e) { /* campo sem seleção */ } }
     }
     sincChecks(E, E.det);
@@ -588,7 +594,7 @@ function htmlModo(E) {
     return `<div class="fia-seg" role="group" aria-label="Modo do pagamento">
         <button type="button" class="${E.det ? '' : 'on'}" data-liq="resumido">Resumido</button>
         <button type="button" class="${E.det ? 'on' : ''}" data-liq="detalhado">Detalhado <span class="fia-dev">Dev</span></button></div>
-      <div class="fia-t">${E.det ? 'Calcula o lucro: escolha os produtos e informe o que o cliente pagou.' : 'Igual ao de hoje, para venda rápida. Sem cálculo de lucro.'}</div>`;
+      <div class="fia-t">${E.det ? 'Escolha os produtos, lance os pagamentos e veja o lucro. Sem digitar valor de produto.' : 'Igual ao de hoje, para venda rápida. Sem cálculo de lucro.'}</div>`;
 }
 
 function subLinha(l) {
@@ -600,141 +606,176 @@ function subLinha(l) {
     return nomeMaq(l.maq) + (l.parc > 0 ? ' · ' + l.parc + 'x' : '') + (t == null ? ' · sem taxa cadastrada' : ' · cai ' + brl(r2(v * (1 - t / 100))));
 }
 
-function dicaTotal(E, t) {
-    const custo = baseTotal(E);
-    if (!(t.alvo > 0)) return { t: 'Esse valor vira o total do documento. O custo de cada produto o sistema já sabe.', c: '' };
-    if (!(custo > 0)) return { t: 'Nenhum item do CTW na lista: sem custo, não dá para calcular lucro.', c: '' };
-    if (t.livres.length && t.fixos > t.alvo + 0.004) return { t: 'O total é menor que a soma dos itens com valor próprio (' + brl(t.fixos) + ').', c: 'am' };
-    const d = r2(t.alvo - custo);
-    if (d > 0.004) return { t: brl(d) + ' acima do custo dos produtos (antes das taxas).', c: 'ok' };
-    if (d < -0.004) return { t: brl(-d) + ' abaixo do custo dos produtos: venda no prejuízo.', c: 'am' };
-    return { t: 'Igual ao custo dos produtos.', c: '' };
+const passo = (n, rot) => `<div class="fia-step"><i>${n}</i>${rot}</div>`;
+
+function htmlDetalhado(E) {
+    return htmlItensDet(E) + htmlPagamento(E) + htmlLucro(E);
 }
 
+// ── 1 · Produtos ─────────────────────────────────────────────────
+function htmlItensDet(E) {
+    const q = (E.busca || '').trim(), sug = q ? buscarProdutos(q, 5) : [];
+    const res = q ? `<div class="fia-res">${sug.length
+        ? sug.map(p => `<button type="button" data-liq="add" data-pid="${esc(p.id)}"><span>${esc(p.nome)}</span><i class="bi bi-plus-lg"></i></button>`).join('')
+        : '<div class="fia-t">Nada encontrado no CTW. Tente menos palavras.</div>'}</div>` : '';
+    const cond = c => `<button type="button" class="fia-tg${E.cond === c ? ' on' : ''}" data-liq="cond" data-c="${c}">${c}</button>`;
+    const cards = itensForm(E).map((item, k) => {
+        const p = prodDe(E, k) || {}, est = estadoDe(p), q2 = qtdItem(item), cd = condDe(item.nome);
+        const nome = est === 'nao' ? (p.id ? esc(p.nome) + ' · sem valor no CTW' : 'Não achei no CTW') : esc(p.nome) + (cd ? ' · ' + cd : '');
+        const escreveu = item.nome && (est === 'nao' || chaveAlias(item.nome) !== chaveAlias(p.nome || '')) ? `<span class="fia-lido">Você escreveu: ${esc(item.nome)}</span>` : '';
+        const sub = est === 'nao' ? 'Toque em “Escolher produto”' : 'custo ' + brl(p.valor) + (q2 > 1 ? ' cada' : '') + (p.hoje != null && p.valor !== p.hoje ? ' · corrigido' : '');
+        const doc = (parseFloat(item.valor) || 0) > 0 ? `<span class="fia-doc1">no documento ${brl(r2(item.valor * q2))}</span>` : '';
+        const acoes = est === 'ok' ? '' : `<div class="fia-ab">${est === 'duvida' ? `<button type="button" class="fia-sim" data-liq="certo" data-i="${k}">Está certo</button>` : ''}
+            <button type="button" data-liq="trocar" data-i="${k}">${est === 'nao' ? 'Escolher produto' : 'Trocar'}</button></div>`;
+        const aberto = E.abre && E.abre[k];
+        return `<div class="fia-it ${est}">
+          <div class="fia-ih"><span class="fia-ic">${est === 'ok' ? '✓' : est === 'duvida' ? '?' : '!'}</span>
+            <div class="fia-ig"><span class="fia-nm">${nome}</span>${escreveu}<small>${esc(sub)}</small></div>
+            <button type="button" class="fia-x" data-liq="tirar" data-i="${k}" aria-label="Remover produto"><i class="bi bi-trash"></i></button></div>
+          ${acoes}
+          <div class="fia-ib"><div class="fia-qty"><button type="button" data-liq="menos" data-i="${k}" aria-label="Menos">−</button><b>${q2}</b><button type="button" data-liq="mais" data-i="${k}" aria-label="Mais">+</button></div>
+            <div class="fia-id">${doc}<button type="button" class="fia-lk2" data-liq="imei" data-i="${k}">+ IMEI / cor</button></div></div>
+          ${aberto ? `<div class="fia-iv"><input class="form-control" data-f="obs" data-i="${k}" placeholder="IMEI / Serial" autocomplete="off" value="${esc(item.obs || '')}" aria-label="IMEI ou serial">
+            <input class="form-control" data-f="cor" data-i="${k}" placeholder="Cor" autocomplete="off" value="${esc(item.cor || '')}" aria-label="Cor"></div>` : ''}</div>`;
+    }).join('');
+    return `${passo(1, 'Produtos')}
+      <div class="fia-bw"><i class="bi bi-search"></i><input class="form-control" data-f="busca" placeholder="Buscar produto no CTW..." autocomplete="off" value="${esc(E.busca || '')}" aria-label="Buscar produto no CTW"></div>
+      ${res}
+      <div class="fia-cd"><span class="fia-t">No documento sai:</span>${cond('Novo / Lacrado')}${cond('Seminovo')}</div>
+      ${E.aviso ? `<div class="fia-t ok">${esc(E.aviso)}</div>` : ''}
+      ${cards ? `<div class="fia-ls">${cards}</div>` : '<div class="fia-t fia-vz0">Toque em um produto da busca para adicionar.</div>'}`;
+}
+
+// ── 2 · Pagamento ────────────────────────────────────────────────
 function dicaNovo(E) {
-    const t = totaisDet(E), ve = valorNovo(E);
-    if (!(t.alvo > 0)) return { t: 'Informe acima quanto o cliente pagou no total.', c: '' };
-    if (!(ve > 0)) return { t: 'Digite quanto o cliente pagou desta vez.', c: '' };
-    if (E.novo === null) return { t: 'Já veio o que falta. Pagou outro valor? Apague e digite.', c: '' };
-    if (ve > Math.max(t.falta, 0) + 0.004) return { t: 'Passou do total informado: o total sobe e a diferença vira lucro.', c: 'ok' };
-    return { t: 'Agora toque em como pagou.', c: '' };
-}
-
-// Sem item "livre", o documento soma os valores dos itens. Se o total for outro (digitado ou subido por pagamento a mais),
-// oferece ajustar: a diferença vai para o item (qtd 1) de maior valor.
-function ajusteDoc(E, t) {
-    if (t.livres.length || !t.l.length || !(t.total > 0) || Math.abs(t.total - t.fixos) < 0.01 || !window.ctwBookipRefrescar) return null;
-    const dif = r2(t.total - t.fixos);
-    const c = t.l.filter(i => qtdItem(i) === 1 && (parseFloat(i.valor) || 0) + dif > 0).sort((a, b) => (parseFloat(b.valor) || 0) - (parseFloat(a.valor) || 0))[0];
-    return c ? { c, dif } : null;
-}
-
-function htmlPag(E) {
-    const sec = '<h5 class="form-section-title mb-2 mt-3"><i class="bi bi-wallet2"></i> Pagamento</h5>';
     const t = totaisDet(E);
-    if (!t.l.length) return `${sec}<div class="fia-t fia-c0">Escolha um produto para informar como foi pago.</div>`;
-    const dt = dicaTotal(E, t), totalVal = E.totalTxt === null ? (t.alvoItens > 0 ? fmtIn(t.alvoItens) : '') : E.totalTxt, aj = ajusteDoc(E, t);
-    const campoTotal = `<div><div class="fia-lbl">Quanto o cliente pagou no total?</div>
-        <input class="form-control fia-money" inputmode="decimal" placeholder="0,00" autocomplete="off" data-f="total" value="${esc(totalVal)}" aria-label="Total pago pelo cliente">
-        <div class="fia-t${dt.c ? ' ' + dt.c : ''}">${esc(dt.t)}</div>
-        ${aj ? `<div class="fia-t">O documento soma ${brl(t.fixos)} e o cliente pagou ${brl(t.total)}.</div><button type="button" class="fia-b2" data-liq="excesso">Ajustar o documento para ${brl(t.total)}</button>` : ''}
-        ${E.aviso ? `<div class="fia-t ok">${esc(E.aviso)}</div>` : ''}</div>`;
-    let resumo = '';
-    if (t.alvo > 0) {
-        const pct = t.total > 0 ? Math.max(0, Math.min(100, Math.round(t.soma / t.total * 100))) : 0;
-        let st = 'Nada informado ainda', cls = '';
-        if (E.pag.length) {
-            if (t.falta > 0.004) { st = 'Faltam ' + brl(t.falta) + ' para o total'; cls = 'am'; }
-            else if (t.exc > 0) { st = '✓ Total subiu para ' + brl(t.soma) + ' (' + brl(t.exc) + ' a mais)'; cls = 'ok'; }
-            else { st = '✓ Total informado'; cls = 'ok'; }
-        }
-        resumo = `<div class="fia-pn">
-          <div class="fia-kv"><span>Total da venda</span><b>${brl(t.total)}</b></div>
-          <div class="fia-kv"><span>Já informado</span><b>${brl(t.soma)}</b></div>
-          <div class="fia-bar"><i style="width:${pct}%"></i></div>
-          <div class="fia-st ${cls}">${st}</div></div>`;
-    }
+    if (!t.l.length) return { t: 'Escolha os produtos primeiro, lá em cima.', c: '' };
+    if (dinheiro(E.novo) > 0) return { t: 'Agora toque em como foi pago.', c: 'ok' };
+    return { t: 'Digite quanto o cliente pagou e toque em como foi pago.', c: '' };
+}
+const novoPronto = E => totaisDet(E).l.length > 0 && dinheiro(E.novo) > 0;
+
+function htmlPagamento(E) {
+    const t = totaisDet(E), d = dicaNovo(E), pronto = novoPronto(E);
     const linhas = E.pag.length ? `<div class="fia-ls">${E.pag.map(l => `<div class="fia-li" data-liq="editar" data-id="${l.id}" role="button" tabindex="0">
         <div class="fia-lg"><span>${rotForma(l)}</span><small>${esc(subLinha(l))}</small></div>
         <b>${brl(dinheiro(l.valor) || 0)}</b>
-        <button type="button" class="fia-x" data-liq="rem" data-id="${l.id}" aria-label="Remover pagamento"><i class="bi bi-trash"></i></button></div>`).join('')}</div>` : '';
-    const ve = valorNovo(E), d = dicaNovo(E), pronto = t.alvo > 0 && ve > 0, campoVal = E.novo === null ? (ve > 0 ? fmtIn(ve) : '') : E.novo;
-    const botoes = [['pix', 'Pix'], ['boleto', 'Boleto'], ['troca', 'Troca'], ['deb', 'Débito'], ['cred', 'Crédito']]
+        <button type="button" class="fia-x" data-liq="rem" data-id="${l.id}" aria-label="Remover pagamento"><i class="bi bi-trash"></i></button></div>`).join('')}
+        <div class="fia-kv fia-tt"><span>Total da venda</span><b>${brl(t.soma)}</b></div></div>` : '';
+    const botoes = [['pix', 'Pix / Dinheiro'], ['boleto', 'Boleto'], ['troca', 'Troca'], ['deb', 'Débito'], ['cred', 'Crédito']]
         .map(b => `<button type="button" class="fia-fb${pronto ? '' : ' off'}" data-liq="forma" data-forma="${b[0]}">${b[1]}</button>`).join('');
-    const novo = `<div><div class="fia-lbl">${E.pag.length ? 'Quanto foi neste outro pagamento?' : 'Quanto foi neste pagamento?'}</div>
-        <input class="form-control fia-money" inputmode="decimal" placeholder="0,00" autocomplete="off" data-f="novo" value="${esc(campoVal)}" aria-label="Valor deste pagamento">
+    return `${passo(2, 'Pagamento')}${linhas}
+      <div><div class="fia-lbl">${E.pag.length ? 'Quanto foi neste outro pagamento?' : 'Quanto o cliente pagou?'}</div>
+        <input class="form-control fia-money" inputmode="decimal" placeholder="0,00" autocomplete="off" data-f="novo" value="${esc(E.novo)}" aria-label="Valor deste pagamento">
         <div class="fia-t${d.c ? ' ' + d.c : ''}" id="fiaPgDica">${esc(d.t)}</div></div>
-      <div><div class="fia-lbl">Como pagou?</div><div class="fia-fbs">${botoes}</div></div>`;
-    let fim = '';
-    if (t.alvo > 0 && E.pag.length && t.falta <= 0.004) {
-        const calc = calcular(E);
-        if (calc.erros.length) {
-            fim += `<div class="fia-pn fia-am">${Array.from(new Set(calc.erros.map(x => x.msg))).map(esc).join('<br>')}</div>`;
-        } else {
-            const r = calc.res, cl = r.lucro > 0 ? 'ok' : r.lucro < 0 ? 'neg' : '';
-            fim += `<div class="fia-pn fia-rs ${cl}"><div class="fia-t">Resultado desta venda</div>
-              <div class="fia-kv"><span>Caiu na conta</span><b>${brl(r.real)}</b></div>
-              <div class="fia-kv"><span>Custo dos produtos</span><b>${brl(r.base)}</b></div>
-              <div class="fia-lucro ${cl}">${sinal(r.lucro)}</div>
-              <div class="fia-t">${r.lucro < 0 ? 'prejuízo desta venda' : 'lucro extra desta venda'}</div></div>`;
-        }
-        fim += `<div class="fia-pn"><div class="fia-h">Custo de cada produto</div><div class="fia-t">Algum custava menos no dia da venda? Toque no lápis e corrija.</div>
-          ${E.itens.map((it, i) => {
-            const p = it.prod || {}, tem = p.valor > 0, mudou = p.hoje != null && p.valor !== p.hoje;
-            return `<div class="fia-ci"><span class="fia-cn">${esc(p.nome || it.nome)}</span>${tem
-                ? `<span class="fia-cv${mudou ? ' am' : ''}">${brl(p.valor)}${it.qtd > 1 ? ' (cada)' : ''}</span><button type="button" class="fia-x" data-liq="custo" data-i="${i}" aria-label="Corrigir custo"><i class="bi bi-pencil-fill"></i></button>`
-                : `<span class="fia-cv am">sem valor no CTW</span><button type="button" class="fia-b2" data-liq="buscar" data-i="${i}">Buscar</button>`}</div>`;
-        }).join('')}</div>`;
-    }
-    const usadas = Array.from(new Set(E.pag.map(l => ROT_DOC[tipoForma(l)])));
-    const doc = `<div class="fia-t fia-doc">Forma(s) de pagamento no documento: ${usadas.length ? esc(usadas.join(' + ')) : 'marcadas sozinhas conforme você informa o pagamento'}.</div>`;
-    return sec + campoTotal + resumo + linhas + novo + fim + doc;
+      <div class="fia-fbs">${botoes}</div>`;
 }
 
 // Digitando o valor deste pagamento: só atualiza dica e botões (o campo não é redesenhado, senão o teclado fecha)
 function atualizarNovo(E) {
     const h = document.getElementById('ctwLiqPag'); if (!h) return;
-    const d = dicaNovo(E), el = h.querySelector('#fiaPgDica'), ok = totaisDet(E).alvo > 0 && valorNovo(E) > 0;
+    const d = dicaNovo(E), el = h.querySelector('#fiaPgDica'), ok = novoPronto(E);
     if (el) { el.textContent = d.t; el.className = 'fia-t' + (d.c ? ' ' + d.c : ''); }
     h.querySelectorAll('.fia-fb').forEach(b => b.classList.toggle('off', !ok));
+}
+
+// ── 3 · Lucro (discreto: uma linha) ──────────────────────────────
+function htmlLucro(E) {
+    const t = totaisDet(E);
+    let corpo;
+    if (!t.l.length) corpo = '<div class="fia-t">Escolha os produtos para começar.</div>';
+    else if (t.faltam.length) corpo = `<div class="fia-t am">Falta escolher no CTW: ${t.faltam.map(i => esc(i.nome)).join(', ')}.</div>`;
+    else if (!E.pag.length) corpo = '<div class="fia-t">Lance o primeiro pagamento para ver o lucro.</div>';
+    else {
+        const calc = calcular(E);
+        if (calc.erros.length) corpo = `<div class="fia-t am">${Array.from(new Set(calc.erros.map(x => x.msg))).map(esc).join('<br>')}</div>`;
+        else {
+            const r = calc.res, cl = r.lucro > 0 ? 'ok' : r.lucro < 0 ? 'neg' : '';
+            corpo = `<div class="fia-kv"><span>Caiu na conta</span><b>${brl(r.real)}</b></div>
+              <div class="fia-kv"><span>Custo dos produtos</span><b>${brl(r.base)}</b></div>
+              <div class="fia-kv fia-lk"><span>${r.lucro < 0 ? 'Prejuízo' : 'Lucro'}</span><b class="${cl}">${sinal(r.lucro)}</b></div>
+              <div class="fia-t">Muda a cada pagamento que você lança.</div>`;
+        }
+    }
+    let custos = '';
+    if (t.l.length && !t.faltam.length && E.pag.length) {
+        custos = `<div class="fia-pn"><div class="fia-t">Algum produto custava menos no dia da venda? Toque no lápis.</div>
+          ${E.itens.map((it, i) => {
+            const p = it.prod || {}, mudou = p.hoje != null && p.valor !== p.hoje;
+            return `<div class="fia-ci"><span class="fia-cn">${esc(p.nome || it.nome)}</span><span class="fia-cv${mudou ? ' am' : ''}">${brl(p.valor)}${it.qtd > 1 ? ' (cada)' : ''}</span>
+              <button type="button" class="fia-x" data-liq="custo" data-i="${i}" aria-label="Corrigir custo"><i class="bi bi-pencil-fill"></i></button></div>`;
+        }).join('')}</div>`;
+    }
+    const usadas = Array.from(new Set(E.pag.map(l => ROT_DOC[tipoForma(l)])));
+    return `${passo(3, 'Lucro')}<div class="fia-pn fia-rs">${corpo}</div>${custos}
+      <div class="fia-t fia-doc">Forma(s) de pagamento no documento: ${usadas.length ? esc(usadas.join(' + ')) : 'marcadas sozinhas conforme você lança o pagamento'}.</div>`;
 }
 
 function aoFormEvento(e) {
     const E = RASC; if (!E) return;
     if (e.type === 'input') {
-        const f = e.target.dataset && e.target.dataset.f;
+        const f = e.target.dataset && e.target.dataset.f, i = parseInt(e.target.dataset && e.target.dataset.i, 10), item = itensForm(E)[i];
         if (f === 'novo') { E.novo = e.target.value; atualizarNovo(E); }
-        else if (f === 'total') { E.totalTxt = e.target.value; E.aviso = ''; renderCartaoForm(); }
+        else if (f === 'busca') { E.busca = e.target.value; renderCartaoForm(); }
+        else if ((f === 'obs' || f === 'cor') && item) item[f] = e.target.value;
         return;
     }
     const d = e.target.closest('[data-liq]'); if (!d) return;
-    const a = d.dataset.liq, id = d.dataset.id;
-    if (a === 'resumido' || a === 'detalhado') { E.det = a === 'detalhado'; E.aviso = ''; return renderCartaoForm(); }
+    const a = d.dataset.liq, id = d.dataset.id, k = parseInt(d.dataset.i, 10), item = itensForm(E)[k];
+    E.aviso = '';
+    if (a === 'resumido' || a === 'detalhado') { E.det = a === 'detalhado'; return renderCartaoForm(); }
+    if (a === 'add') return adicionarProduto(E, produtoPorId(d.dataset.pid));
+    if (a === 'cond') { E.cond = E.cond === d.dataset.c ? '' : d.dataset.c; return renderCartaoForm(); }
+    if (a === 'menos' || a === 'mais') { if (item) { item.qtd = Math.max(1, Math.min(99, qtdItem(item) + (a === 'mais' ? 1 : -1))); refrescarForm(); } return; }
+    if (a === 'tirar') { if (item) { ctwLista().splice(ctwLista().indexOf(item), 1); E.abre = {}; refrescarForm(); } return; }
+    if (a === 'imei') { E.abre[k] = !E.abre[k]; return renderCartaoForm(); }
+    if (a === 'certo') return confirmarProduto(E, k);
+    if (a === 'trocar') return item && abrirSheet(E, { tipo: 'produto', i: k, busca: buscaInicial(item.nome) });
     if (a === 'forma') return lancar(E, d.dataset.forma);
     if (a === 'editar') { const l = E.pag.find(x => String(x.id) === String(id)); return l && abrirSheet(E, sheetDeLinha(l)); }
-    if (a === 'rem') { E.pag = E.pag.filter(x => String(x.id) !== String(id)); E.aviso = ''; return renderCartaoForm(); }
-    if (a === 'custo') return abrirSheet(E, sheetDeCusto(E, parseInt(d.dataset.i, 10)));
-    if (a === 'buscar') { E.edIdx = parseInt(d.dataset.i, 10) || 0; E.volta = true; F = E; abrirOverlay(); return telaProduto(); }
-    if (a === 'excesso') return ajustarDoc(E);
+    if (a === 'rem') { E.pag = E.pag.filter(x => String(x.id) !== String(id)); return renderCartaoForm(); }
+    if (a === 'custo') return abrirSheet(E, sheetDeCusto(E, k));
+}
+
+// Produto escolhido na busca do card: entra na lista do formulário já ligado ao CTW, sem valor (ele sai dos pagamentos)
+function adicionarProduto(E, p) {
+    if (!p) return;
+    const nome = p.nome + (E.cond ? ' - ' + E.cond : ''), igual = itensForm(E).find(i => i.ctw && String(i.ctw.id) === String(p.id) && i.nome === nome);
+    if (igual) igual.qtd = Math.min(99, qtdItem(igual) + 1);      // mesmo produto e condição: soma na quantidade
+    else ctwLista().push({ nome, qtd: 1, valor: 0, cor: '', obs: '', isSituation: false, ctwSemPreco: true,
+        ctw: { id: p.id, nome: p.nome, valor: parseFloat(p.valor) || 0, manual: false, duvida: false } });
+    E.busca = '';
+    refrescarForm();
+}
+
+// "Está certo": a ligação deixa de ser dúvida e o app guarda o nome para as próximas leituras
+function confirmarProduto(E, k) {
+    const item = itensForm(E)[k], p = prodDe(E, k); if (!item || !p) return;
+    p.duvida = false; if (item.ctw) item.ctw.duvida = false;
+    aprender(item.nome, { id: p.id, nome: p.nome });
+    E.aviso = 'Guardei: da próxima vez que vier “' + item.nome + '”, já sei que é ' + p.nome + '.';
+    renderCartaoForm();
+}
+
+// Produto escolhido na gaveta ("Trocar" / "Escolher produto")
+function escolherProduto(E, k, p) {
+    const item = itensForm(E)[k]; if (!item || !p) return;
+    const valor = parseFloat(p.valor) || 0;
+    item.ctw = { id: p.id, nome: p.nome, valor, manual: false, duvida: false };
+    if (E.itens[k]) E.itens[k].prod = { nome: p.nome, id: p.id, valor, manual: false, duvida: false, lido: item.nome };
+    aprender(item.nome, { id: p.id, nome: p.nome });
+    E.aviso = 'Guardei: da próxima vez que vier “' + item.nome + '”, já sei que é ' + p.nome + '.';
 }
 
 function lancar(E, forma) {
-    const ve = valorNovo(E); if (!(totaisDet(E).alvo > 0) || !(ve > 0)) return;
+    const ve = dinheiro(E.novo) || 0; if (!novoPronto(E)) return;
     if (forma === 'pix' || forma === 'boleto') {
         E.pag.push(novaLinha(E, 'pix', { valor: fmtIn(ve), manual: true, boleto: forma === 'boleto' }));
-        E.novo = null; E.aviso = '';
+        E.novo = '';
         return renderCartaoForm();
     }
     if (forma === 'troca') return abrirSheet(E, { tipo: 'troca', valor: ve, aparelho: '', vtxt: '' });
     abrirSheet(E, { tipo: 'cartao', forma, valor: ve, maq: maqPadrao(), band: bandPadrao(), bandTocada: false, parc: forma === 'deb' ? 0 : null, vtxt: '' });
-}
-
-// "Ajustar o documento": o valor do documento passa a ser o total (a diferença vai para o item de maior valor)
-function ajustarDoc(E) {
-    const t = totaisDet(E), aj = ajusteDoc(E, t); if (!aj) return;
-    aj.c.valor = r2((parseFloat(aj.c.valor) || 0) + aj.dif);
-    E.aviso = `O documento agora soma ${brl(t.total)} (a diferença ficou em ${aj.c.nome}).`;
-    window.ctwBookipRefrescar();
 }
 
 // ── Gavetas (mesmo estilo das outras do app) ────────────────────
@@ -757,6 +798,7 @@ const campoValorSheet = sh => `<div class="fia-shl">Valor (R$)</div><input class
 
 function infoSheet(E) {
     const sh = E.sheet;
+    if (sh.tipo === 'produto') return { t: '', ok: false, rot: '' };
     if (sh.tipo === 'custo') {
         const ok = !sh.txt.trim() || dinheiro(sh.txt) > 0;
         return { t: ok ? '' : 'Informe um valor maior que zero.', ok, rot: 'Salvar' };
@@ -774,8 +816,22 @@ function infoSheet(E) {
     return { t: `Vai cair ${brl(r2(v * (1 - t / 100)))} na conta (taxa ${fmtTaxa(t)}).`, ok: true, rot };
 }
 
+function htmlResSheet(sh) {
+    const r = sh.busca && sh.busca.trim() ? buscarProdutos(sh.busca, 6) : [];
+    return r.length ? r.map(p => `<button type="button" data-sh="pick" data-pid="${esc(p.id)}"><span>${esc(p.nome)}</span><small>custo ${brl(parseFloat(p.valor) || 0)}</small></button>`).join('')
+        : '<div class="fia-t">Nada encontrado. Tente menos palavras (ex.: só o modelo).</div>';
+}
+
 function htmlSheet(E) {
     const sh = E.sheet, grab = '<div class="ui-grab"></div>';
+    if (sh.tipo === 'produto') {
+        const it = itensForm(E)[sh.i];
+        return `${grab}<div class="ui-sheet-title">Qual é o produto?</div>
+          ${it && it.nome ? `<div class="fia-t">Você escreveu: <span class="fia-lido">${esc(it.nome)}</span></div>` : ''}
+          <input class="form-control" data-f="sh-busca" placeholder="Buscar no CTW..." autocomplete="off" value="${esc(sh.busca)}" aria-label="Buscar no CTW">
+          <div class="fia-res" id="fiaShRes">${htmlResSheet(sh)}</div>
+          <div class="fia-t">Ao escolher, o app guarda: da próxima vez que vier esse nome, já sabe qual é.</div>`;
+    }
     const ok = '<button type="button" class="btn btn-primary w-100 fia-ok" data-sh="ok" id="fiaShOk"></button>';
     if (sh.tipo === 'cartao') {
         const deb = sh.forma === 'deb', ehPag = sh.maq === 'pagbank', max = MAX_PARC[sh.maq] || 18;
@@ -816,7 +872,7 @@ function pintarSheet(E) {
 
 // Digitar no campo da gaveta só atualiza a informação e o botão (sem redesenhar, para o teclado não fechar)
 function atualizarSheet(E) {
-    const w = document.getElementById('ctwLiqSheet'); if (!w || !E.sheet) return;
+    const w = document.getElementById('ctwLiqSheet'); if (!w || !E.sheet || E.sheet.tipo === 'produto') return;
     const i = infoSheet(E), inf = w.querySelector('#fiaShInfo'), b = w.querySelector('#fiaShOk');
     if (inf) { inf.textContent = i.t; inf.className = 'fia-t' + (i.am ? ' am' : ''); }
     if (b) { b.textContent = i.rot; b.disabled = !i.ok; }
@@ -848,6 +904,7 @@ function aoSheetEvento(e) {
     const E = RASC, sh = E && E.sheet; if (!sh) return;
     if (e.type === 'input') {
         const f = e.target.dataset && e.target.dataset.f; if (!f) return;
+        if (f === 'sh-busca') { sh.busca = e.target.value; const r = document.getElementById('fiaShRes'); if (r) r.innerHTML = htmlResSheet(sh); return; }
         if (f === 'sh-valor') sh.vtxt = e.target.value;
         else if (f === 'sh-aparelho') sh.aparelho = e.target.value;
         else if (f === 'sh-custo') sh.txt = e.target.value;
@@ -856,6 +913,7 @@ function aoSheetEvento(e) {
     const b = e.target.closest('[data-sh]'); if (!b) return;
     const a = b.dataset.sh;
     if (a === 'fechar') return fecharSheet();
+    if (a === 'pick') { escolherProduto(E, sh.i, produtoPorId(b.dataset.pid)); fecharSheet(); return renderCartaoForm(); }
     if (a === 'chip') {
         const c = b.dataset.c, v = b.dataset.v;
         if (c === 'maq') { sh.maq = v; if (sh.parc > (MAX_PARC[v] || 18)) sh.parc = null; }
@@ -887,14 +945,14 @@ function confirmarSheet(E) {
     } else if (sh.tipo === 'troca') o = { k: 'troca', valor: fmtIn(v), aparelho: sh.aparelho.trim(), manual: true };
     else o = { k: 'pix', valor: fmtIn(v), boleto: !!sh.boleto, manual: true };
     if (alvo) Object.assign(alvo, o); else E.pag.push(novaLinha(E, o.k, o));
-    E.novo = null; E.aviso = '';
+    E.novo = ''; E.aviso = '';
     fecharSheet(); renderCartaoForm();
 }
 
 // Chamado depois que a garantia é salva: grava o líquido ligado a ela (se o pagamento foi detalhado)
 async function aoSalvarGarantia(dados) {
     if (!RASC || !ehDev() || !dados || !dados.id) return;
-    const E = RASC, alvo = totaisDet(E).alvo;           // antes de limpar o rascunho
+    const E = RASC;
     // Produto escolhido na busca da garantia com nome diferente do digitado: ensina (o que a IA ligou sozinha não conta)
     (dados.items || []).forEach(i => { if (i && i.ctw && i.ctw.id && !i.ctw.auto && !i.ctw.duvida) aprender(i.nome, i.ctw); });
     limparRascunho();                                  // a garantia já existe: o rascunho cumpriu o papel
@@ -908,7 +966,6 @@ async function aoSalvarGarantia(dados) {
     const total = totalItens(dados.items), soma = somaPagamentos(E);
     r.res.garantia = { id: dados.id, doc: dados.docNumber || '', total };
     r.res.soma = soma; r.res.totalGarantia = total;
-    if (soma < (alvo > 0 ? alvo : total) - 0.005) r.res.parcial = true;    // ainda faltam pagamentos: o histórico mostra "incompleto" em vez de um lucro enganoso
     r.res.cliente = r.res.cliente || String(dados.nome || '').trim();
     await garantirMapa();
     await gravarRegistro(r.res, dados.id, Date.parse(dados.criadoEm) || Date.now());
@@ -1494,13 +1551,23 @@ function abrir() {
 // Pontos de ligação para o formulário da garantia (app.js chama estes nomes)
 carregarAliases();                                 // nomes ensinados prontos antes da leitura da IA
 window.ctwLiqRender = renderCartaoForm;
+document.addEventListener('change', e => { if (e.target && e.target.name === 'tipoInput') renderCartaoForm(); });   // produto ↔ situação: o card some/volta
 window.ctwLiqLimpar = limparRascunho;
 window.ctwLiqSalvar = aoSalvarGarantia;
 // Vínculo com o produto do CTW para itens que a IA preenche (o produto não foi escolhido na busca)
 // Detalhado ativo no formulário novo: o preço unitário do item é opcional (o total pago divide entre os itens)
-window.ctwLiqPrecoOpcional = () => ehDev() && !!RASC && RASC.det && formaVisivel(ctwLista());
 // Itens do CTW ainda sem valor (Detalhado sem total informado): a garantia não pode ser salva assim. Devolve a mensagem ou ''.
-window.ctwLiqValidar = lista => ((lista || []).some(i => i && i.ctwSemPreco && !(parseFloat(i.valor) > 0)) ? 'Informe quanto o cliente pagou no total (ou o valor de cada produto) antes de salvar.' : '');
+// Antes de salvar: no Detalhado todo produto precisa estar ligado ao CTW e ter pagamento lançado (sem isso o valor do documento não existe)
+window.ctwLiqValidar = lista => {
+    const E = RASC;
+    if (E && E.det && ehDev() && formaVisivel(lista)) {
+        sincItens(E, lista || [], null, true);
+        const t = totaisDet(E);
+        if (t.faltam.length) return 'Falta escolher no CTW: ' + t.faltam.map(i => i.nome).join(', ') + '. Toque em “Escolher produto” (ou volte ao Resumido).';
+        if (!(t.soma > 0)) return 'Lance pelo menos um pagamento no Detalhado (ou volte ao Resumido).';
+    }
+    return (lista || []).some(i => i && i.ctwSemPreco && !(parseFloat(i.valor) > 0)) ? 'Há produto sem valor no documento. Lance o pagamento ou volte ao Resumido.' : '';
+};
 window.ctwLiqAcharProduto = nome => { const p = acharProduto(String(nome || '').trim()); return p && p.id ? { id: p.id, nome: p.nome, valor: p.valor, duvida: !!p.duvida, auto: true } : null; };
 
 export { abrir, abrirDaGarantia, rascunhoDaIA, promptExtra, aoSalvarGarantia, decorarHistorico, removerDaGarantia, renderCartaoForm, limparRascunho };

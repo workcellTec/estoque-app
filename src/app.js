@@ -7366,8 +7366,6 @@ try {
     if(campoValor) {
         campoValor.value = valParaFormatar.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         campoValor.dispatchEvent(new Event('input')); // Acorda a máscara
-        // Detalhado (dev): o preço do item sai do total pago, então o valor fica em branco
-        if (window.ctwLiqPrecoOpcional && window.ctwLiqPrecoOpcional()) { campoValor.value = ''; campoValor.dispatchEvent(new Event('input')); }
     }
 
     // 2. FORÇA BRUTA: Some com a lista de resultados
@@ -7486,11 +7484,6 @@ try {
                     showCustomModal({ message: "Digite ou busque o nome do produto." });
                     return;
                 }
-                // Detalhado (dev): sem produto do CTW não há de onde tirar o valor — ele precisa ser digitado
-                if (!(valorFinal > 0) && !window._bookipProdCtw && window.ctwLiqPrecoOpcional && window.ctwLiqPrecoOpcional()) {
-                    showCustomModal({ message: "Produto fora do CTW: digite o valor dele ou escolha um produto do CTW." });
-                    return;
-                }
 
             // CRIA O OBJETO (Corrigido para usar valorFinal)
             itemObjeto = { 
@@ -7502,8 +7495,6 @@ try {
                 isSituation: false 
             };
             if (window._bookipProdCtw && window.ctwEhDev && window.ctwEhDev()) itemObjeto.ctw = window._bookipProdCtw;
-            // Detalhado (dev): item do CTW sem valor digitado recebe o preço do total pago (ctwSemPreco)
-            if (itemObjeto.ctw && !(valorFinal > 0) && window.ctwLiqPrecoOpcional && window.ctwLiqPrecoOpcional()) itemObjeto.ctwSemPreco = true;
             window._bookipProdCtw = null;
 
 
@@ -7579,7 +7570,6 @@ if (inputValorBookip) {
             bookipCartList.forEach((item, index) => {
                 const subtotal = item.valor * item.qtd;
                 total += subtotal;
-                const semValor = item.ctwSemPreco && !(subtotal > 0);   // Detalhado (dev): o valor sai do total pago
 
                 // Cria o elemento usando as classes do CSS que você acabou de colar
                 const li = document.createElement('div');
@@ -7599,7 +7589,7 @@ if (inputValorBookip) {
                     </div>
 
                     <div class="bk-actions-area">
-                        <div class="bk-price">${semValor ? '—' : 'R$ ' + subtotal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
+                        <div class="bk-price">R$ ${subtotal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
                         
                         <div class="bk-buttons">
                             <button class="btn-icon-circle btn-edit-c edit-item-bookip" data-index="${index}" title="Editar">
@@ -7660,7 +7650,7 @@ let valBruto = parseFloat(item.valor || 0);
 let campoInput = document.getElementById('bookipProdValorTemp');
 
 // 1. Formata e joga no input (ex: 2.500,00)
-campoInput.value = (item.ctwSemPreco && window.ctwLiqPrecoOpcional && window.ctwLiqPrecoOpcional()) ? '' : valBruto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+campoInput.value = valBruto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // 2. Acorda a máscara para permitir edição manual depois
 campoInput.dispatchEvent(new Event('input'));
@@ -10778,28 +10768,29 @@ window.abrirModalColarZapIA = function() {
                 <h5 class="mb-0 text-info"><i class="bi bi-stars"></i> Colar do Zap (IA)</h5>
                 <button class="btn-back" id="btnFecharZapIA"><i class="bi bi-x-lg"></i></button>
             </div>
-            <p class="text-secondary small text-start">Cole a mensagem do cliente (dados, produto, pagamento) e, se tiver, adicione uma foto do produto — a IA preenche tudo sozinha.</p>
+            <p class="text-secondary small text-start">Cole a mensagem do cliente (dados, produto, pagamento) e, se tiver, adicione a foto do produto — a IA preenche tudo sozinha.</p>
             <textarea id="textoZapIAInput" class="form-control mb-3" rows="8" placeholder="Ex: *Nome*: João... 200 a vista no pix + 12x de 199,00..."></textarea>
 
             <div class="mb-3">
                 <input type="file" id="zapIAFotoInput" accept="image/*" style="display:none">
-                <div id="zapIAFotoPreviewWrap" class="hidden" style="position:relative;margin-bottom:8px;">
-                    <img id="zapIAFotoPreview" src="" style="width:100%;max-height:180px;object-fit:contain;border-radius:10px;border:1px solid var(--glass-border);">
-                    <button type="button" id="btnZapIARemoverFoto" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:28px;height:28px;"><i class="bi bi-x-lg"></i></button>
+                ${ehDevZap ? '<input type="file" id="zapIAComprovInput" accept="image/*" multiple style="display:none">' : ''}
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-info" id="btnZapIASelecionarFoto" style="flex:1;border-radius:999px;font-size:13px;padding:8px 10px;">
+                        <i class="bi bi-camera-fill"></i> Foto do produto
+                    </button>
+                    ${ehDevZap ? `<button type="button" class="btn btn-sm btn-outline-info" id="btnZapIAComprov" style="flex:1;border-radius:999px;font-size:13px;padding:8px 10px;">
+                        <i class="bi bi-receipt"></i> Comprovantes
+                    </button>` : ''}
                 </div>
-                <button type="button" class="btn btn-sm btn-outline-info w-100" id="btnZapIASelecionarFoto">
-                    <i class="bi bi-camera-fill"></i> Adicionar foto do produto (opcional)
-                </button>
+                <div class="d-flex flex-wrap gap-2 mt-2">
+                    <div id="zapIAFotoPreviewWrap" class="hidden" style="position:relative;width:64px;height:64px;">
+                        <img id="zapIAFotoPreview" src="" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--glass-border);">
+                        <button type="button" id="btnZapIARemoverFoto" aria-label="Remover foto do produto" style="position:absolute;top:-6px;right:-6px;background:rgba(0,0,0,.75);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:11px;"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                    ${ehDevZap ? '<div id="zapIAComprovPreview" class="d-flex flex-wrap gap-2"></div>' : ''}
+                </div>
+                ${ehDevZap ? '<div class="text-secondary small mt-1">Comprovantes (maquininha/Pix): só a IA lê, não são anexados.</div>' : ''}
             </div>
-            ${ehDevZap ? `
-            <div class="mb-3">
-                <input type="file" id="zapIAComprovInput" accept="image/*" multiple style="display:none">
-                <div id="zapIAComprovPreview" class="d-flex flex-wrap gap-2 mb-2"></div>
-                <button type="button" class="btn btn-sm btn-outline-info w-100" id="btnZapIAComprov">
-                    <i class="bi bi-receipt"></i> Adicionar comprovantes (maquininha / Pix)
-                </button>
-                <div class="text-secondary small mt-1">Só a IA lê para preencher o pagamento detalhado; essas fotos não são anexadas na garantia.</div>
-            </div>` : ''}
 
             <button class="btn btn-info w-100" id="btnProcessarZapIA">
                 <i class="bi bi-magic"></i> Preencher com IA
