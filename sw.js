@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-310'; // Valor líquido: Detalhado em card único (total pago + parciais) e comprovantes no Colar do Zap (dev)
+const CACHE = 'ctw-311'; // Valor líquido: a busca ignora novo/lacrado/seminovo ao ligar o produto lido ao do CTW (dev)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

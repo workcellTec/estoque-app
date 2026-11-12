@@ -322,12 +322,27 @@ function montarFormulario(d) {
 
 // ── Produtos do CTW ─────────────────────────────────────────────
 // Pega o mais parecido; se a semelhança é fraca, marca "confira"
-const tokens = s => Array.from(new Set(norm(s).split(/[^a-z0-9]+/).filter(t => t.length > 1 && !['de', 'do', 'da', 'novo', 'nova', 'com'].includes(t))));
+const SEM_PESO = ['de', 'do', 'da', 'novo', 'nova', 'com', 'lacrado', 'lacrada', 'seminovo', 'semi', 'usado', 'usada', 'vitrine', 'open', 'box'];   // condição do aparelho não identifica o produto
+const tokens = s => Array.from(new Set(norm(s).split(/[^a-z0-9]+/).filter(t => t.length > 1 && !SEM_PESO.includes(t))));
+// A busca do app exige TODAS as palavras ("poco x8 pro 512/12 - novo lacrado" não acha "POCO X8 Pro 512/12"). Por isso tenta,
+// em ordem: o texto como veio → sem as palavras de condição (novo, lacrado, seminovo...) → tirando palavras do fim, até achar.
+function variantesBusca(termo) {
+    const orig = String(termo || '').trim(), v = [orig];
+    const limpo = norm(orig).replace(/\b(semi ?novo|novo|nova|lacrad[oa]|usad[oa]|vitrine|open ?box)\b/g, ' ').replace(/[-–—|,;:()]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (limpo && limpo !== norm(orig)) v.push(limpo);
+    const t = limpo.split(' ');
+    for (let n = t.length - 1; n >= 2; n--) v.push(t.slice(0, n).join(' '));
+    return v;
+}
 function buscarProdutos(termo, max) {
     const prods = window.products || [];
     if (!termo) return [];
-    const fuse = window._fuse;
-    return fuse ? fuse.search(termo).slice(0, max || 8).map(r => r.item) : prods.filter(p => norm(p.nome).includes(norm(termo))).slice(0, max || 8);
+    const fuse = window._fuse, lim = max || 8;
+    for (const q of variantesBusca(termo)) {
+        const r = fuse ? fuse.search(q).slice(0, lim).map(x => x.item) : prods.filter(p => norm(p.nome).includes(norm(q))).slice(0, lim);
+        if (r.length) return r;
+    }
+    return [];
 }
 // Nomes ensinados: quando o usuário liga na mão um nome lido a um produto do CTW, o vínculo fica guardado e vale nas próximas vezes
 // (settings/fechamentoAliases/{nome normalizado} → {pid, nome, ts}). Só o id do produto fica gravado: o valor sempre vem do CTW de hoje.
