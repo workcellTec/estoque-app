@@ -3934,3 +3934,14 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .fia-res.neg .fia-val { color: #FF6B6B; }
 .fia-duvl .ps-sub:first-of-type { color: #E0A030; }
 .fia-sub2 > :last-child { white-space: nowrap; }
+.fia-hpan { margin-top: 8px; background: var(--tertiary-color); border: 1px solid var(--ui-edge); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.fia-hpan p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ui-tx2); }
+.fia-hl { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 13px; }
+.fia-hl > span:first-child { min-width: 0; }
+.fia-hs { font-size: 12px; color: var(--ui-tx2); }
+.fia-hs span:last-child { color: var(--text-color); white-space: nowrap; }
+.fia-hl .fia-val { font-size: 22px; }
+.fia-hbtn .ps-grow { flex: 1; text-align: left; }
+.fia-fc { display: flex; flex-direction: column; gap: 10px; }
+.fia-fc .ps-card { border-color: var(--ui-edge); }
+.fia-fc .ps-link { align-self: center; border: 0; background: transparent; color: var(--ui-tx2); font-size: 13px; padding: 4px; }

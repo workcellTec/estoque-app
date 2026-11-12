@@ -79,6 +79,7 @@ window.ctwAplicarDev = function() {
     const dev = window.ctwEhDev();
     document.documentElement.classList.toggle('ctw-dev', dev);
     if (dev && typeof window.ctwZapOuvir === 'function') window.ctwZapOuvir();
+    if (dev && window.ctwCarregarModulo) window.ctwCarregarModulo('fechamentoia').then(m => m.renderCartaoForm()).catch(() => {});
 };
 // Pede a senha de administrador; o perfil Dev entra direto (a função recebe a senha certa)
 window.ctwComSenha = function(cfg) {
@@ -546,6 +547,8 @@ let products = [], fuse, selectedAparelhoValue = 0, fecharVendaPrecoBase = 0;
 let activeTagFilter = null; // Guarda a etiqueta selecionada (ex: 'Xiaomi')
 // --- CORREÇÃO: ADICIONE ESTA LINHA ---
 let bookipCartList = []; 
+window.ctwBookipLista = () => bookipCartList;                      // o valor líquido (dev) lê a lista do formulário
+window.ctwBookipEditando = () => !!currentEditingBookipId;         // e sabe se é uma edição (aí o cartão não aparece)
 // --- CORREÇÃO: ADICIONE ESTA LINHA ---
 let bookipListener = null; 
 
@@ -658,6 +661,7 @@ function ctwAplicarModoDoc(modo) {
     document.getElementById('blocoValidadeOrc')?.classList.toggle('hidden', !orc);
     const busca = document.getElementById('bookipHistorySearch');
     if (busca) busca.placeholder = orc ? 'Nome, CPF ou ORC...' : 'Nome, CPF ou Doc...';
+    if (window.ctwLiqRender) window.ctwLiqRender();   // cartão "Valor líquido" (dev) some no orçamento
 }
 
 // ADICIONE ESTA LINHA NOVA:
@@ -7319,6 +7323,7 @@ if (bookipToggle) {
             
             // Se digitar, já joga pro nome do produto caso não selecione nada
             document.getElementById('bookipProdNomeTemp').value = e.target.value;
+            window._bookipProdCtw = null;   // digitou de novo: o vínculo anterior não vale mais
             
             containerResultados.innerHTML = '';
             
@@ -7345,7 +7350,8 @@ if (bookipToggle) {
                         </div>`;
                     
                     item?.addEventListener('click', () => {
-
+                    // Vínculo com o produto do CTW (valor líquido, só dev): editar o nome depois não desfaz
+                    window._bookipProdCtw = { id: p.id, nome: p.nome, valor: parseFloat(p.valor) || 0 };
 
                                             // AQUI A MÁGICA: Chama a função que limpa o emoji antes de preencher
                     document.getElementById('bookipProdNomeTemp').value = limparTextoEmoji(p.nome);
@@ -7488,6 +7494,8 @@ try {
                 obs,
                 isSituation: false 
             };
+            if (window._bookipProdCtw && window.ctwEhDev && window.ctwEhDev()) itemObjeto.ctw = window._bookipProdCtw;
+            window._bookipProdCtw = null;
 
 
                 // Limpa os campos de produto
@@ -7653,6 +7661,7 @@ campoInput.dispatchEvent(new Event('input'));
 
                 document.getElementById('bookipProdCorTemp').value = item.cor;
                 document.getElementById('bookipProdObsTemp').value = item.obs;
+                window._bookipProdCtw = item.ctw || null;
 
                 editingItemIndex = idx; // Marca qual estamos mexendo
 
@@ -8027,7 +8036,6 @@ function loadBookipHistory() {
                         <div class="d-flex flex-column text-truncate" style="max-width: 160px;">
                             <span class="fw-bold">${item.nome}</span>
                             <span style="font-size: 0.75rem; color: ${textoCor}; font-weight: 700; text-transform: uppercase;">${textoStatus}</span>
-                            ${(devLiq && !isOrc && !isSituacao) ? `<span class="ctw-liq-head" data-id="${item.id}" data-dev-only></span>` : ''}
                         </div>
 
                         <div class="text-end ms-auto" style="min-width: 80px;">
@@ -10965,6 +10973,8 @@ function _preencherFormularioComDadosIA(d) {
 
     // --- Adiciona o item à lista automaticamente, se houver nome de produto ---
     if (d.produtoNome) {
+        // Dev: o produto lido pela IA já entra vinculado ao do CTW (marcado "confira" se a semelhança for fraca)
+        window._bookipProdCtw = (window.ctwEhDev && window.ctwEhDev() && window.ctwLiqAcharProduto) ? window.ctwLiqAcharProduto(d.produtoNome) : null;
         const btnAdd = document.getElementById('btnAdicionarItemLista');
         if (btnAdd) btnAdd.click();
     }
