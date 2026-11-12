@@ -7601,6 +7601,7 @@ if (inputValorBookip) {
         if (totalDisplay) {
             totalDisplay.innerText = total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         }
+        if (window.ctwLiqRender) window.ctwLiqRender(bookipCartList);   // cartão "Valor líquido" (dev) acompanha a lista
 
         // --- ATIVAR BOTÕES ---
 
@@ -7900,7 +7901,9 @@ function loadBookipHistory() {
             return;
         }
 
-        let html = `<div class="accordion w-100 history-accordion" id="bookipAccordion">` + 
+        const devLiq = !!(window.ctwEhDev && window.ctwEhDev());   // valor líquido (dev): perfis normais não recebem nada disso
+
+        let html = `<div class="accordion w-100 history-accordion" id="bookipAccordion">` +
                 fatia.map(item => {
             // --- 1. TRATAMENTO DE DATA ---
             let dataVisual = '---';
@@ -8024,6 +8027,7 @@ function loadBookipHistory() {
                         <div class="d-flex flex-column text-truncate" style="max-width: 160px;">
                             <span class="fw-bold">${item.nome}</span>
                             <span style="font-size: 0.75rem; color: ${textoCor}; font-weight: 700; text-transform: uppercase;">${textoStatus}</span>
+                            ${(devLiq && !isOrc && !isSituacao) ? `<span class="ctw-liq-head" data-id="${item.id}" data-dev-only></span>` : ''}
                         </div>
 
                         <div class="text-end ms-auto" style="min-width: 80px;">
@@ -8050,7 +8054,9 @@ function loadBookipHistory() {
                         <ul class="list-unstyled small mb-3">
                             ${(item.items || []).map(i => `<li>${escapeHtml(i.qtd)}x ${escapeHtml(i.nome)} - R$ ${parseFloat(i.valor).toFixed(2)}</li>`).join('')}
                         </ul>
-                        
+
+                        ${(devLiq && !isOrc && !isSituacao) ? `<div class="ctw-liq-slot mb-2" data-id="${item.id}" data-dev-only></div>` : ''}
+
                         <div class="d-flex justify-content-end gap-2 mt-2 flex-wrap">
 
                             ${(() => {
@@ -8098,7 +8104,8 @@ function loadBookipHistory() {
 
         container.innerHTML = html;
         reativarListeners();
-        
+        if (devLiq) window.ctwCarregarModulo('fechamentoia').then(m => m.decorarHistorico(container, listaCompletaCache)).catch(e => console.warn('[líquido] histórico:', e));
+
         const btnMore = document.getElementById('btnLoadMoreBookip');
         if (btnMore) btnMore?.addEventListener('click', () => { itensVisiveis += incremento; renderizarLote(); });
     }
@@ -8221,6 +8228,7 @@ function carregarDadosParaEdicao(item) {
 
     // 1. Mata o rascunho antigo
     localStorage.removeItem(ctwDocRascunhoKey());
+    if (window.ctwLiqLimpar) window.ctwLiqLimpar();   // rascunho do valor líquido (dev) é de uma garantia NOVA: nunca vale para uma edição
 
     // 2. PRIMEIRO: Troca a aba e deixa o sistema limpar o que quiser
     const toggle = document.getElementById('bookipModeToggle');
@@ -8520,6 +8528,11 @@ criadoPor: currentUserProfile || "Desconhecido",
                 await salvarClienteAutomatico({
                     nome: dados.nome, cpf: dados.cpf, tel: dados.tel, end: dados.end, email: dados.email
                 });
+            }
+
+            // VALOR LÍQUIDO (dev): grava o líquido lido pela IA junto da garantia. Falha aqui nunca desfaz a garantia.
+            if (!modoOrc && docType !== 'situacao' && !currentEditingBookipId && window.ctwLiqSalvar) {
+                try { await window.ctwLiqSalvar(dados); } catch (e) { console.warn('[líquido] não salvou:', e); }
             }
 
             // SUCESSO!
@@ -10847,7 +10860,12 @@ window.processarTextoZapIA = async function() {
             throw new Error('Módulo de IA ainda não carregou. Tente novamente em instantes.');
         }
         const imagens = foto ? [{ base64: foto }] : [];
-        const resposta = await window._ctwAiVision(imagens, texto, _buildPromptZapIA());
+        // Dev: a mesma leitura também traz os pagamentos para o valor líquido. Perfis normais: prompt idêntico ao de sempre.
+        let modLiq = null;
+        if (window.ctwEhDev && window.ctwEhDev()) {
+            try { modLiq = await window.ctwCarregarModulo('fechamentoia'); } catch (e) { console.warn('[líquido] módulo:', e); }
+        }
+        const resposta = await window._ctwAiVision(imagens, texto, _buildPromptZapIA() + (modLiq ? modLiq.promptExtra() : ''));
 
         // Extrai o JSON da resposta (a IA às vezes envolve em texto/markdown, mesmo pedindo pra não)
         const jsonMatch = resposta.match(/\{[\s\S]*\}/);
@@ -10855,6 +10873,7 @@ window.processarTextoZapIA = async function() {
         const dados = JSON.parse(jsonMatch[0]);
 
         _preencherFormularioComDadosIA(dados);
+        if (modLiq) { try { modLiq.rascunhoDaIA(dados, bookipCartList); } catch (e) { console.warn('[líquido] rascunho:', e); } }
 
         // FIX: fechar o modal (que tinha um textarea com foco e o teclado
         // aberto) podia deixar a tela com um deslocamento horizontal
@@ -10918,6 +10937,12 @@ function _preencherFormularioComDadosIA(d) {
         // de R$100.000 é praticamente impossível — nesse caso, assume erro
         // de conversão e corrige dividindo por 100.
         if (valor > 100000) valor = valor / 100;
+        // Dev (valor líquido): vários do mesmo produto → o total da venda é dividido pela quantidade (valor unitário × qtd = total)
+        const qtdIA = Math.floor(Number(d.produtoQtd));
+        if (window.ctwEhDev && window.ctwEhDev() && qtdIA >= 2 && qtdIA <= 99) {
+            const qEl = document.getElementById('bookipProdQtdTemp');
+            if (qEl) { qEl.value = qtdIA; valor = Math.round(valor / qtdIA * 100) / 100; }
+        }
         // FIX: o campo espera formato BRASILEIRO (vírgula decimal), lido
         // depois por uma função que trata todo "." como separador de
         // milhar. Preencher com toFixed(2) (formato americano, ex:
@@ -10973,8 +10998,9 @@ window.resetFormulariosBookip = function(opcoes) {
 
     // 👇 CORREÇÃO CRÍTICA AQUI 👇
     // Removi o 'window.' para ele limpar a variável REAL do módulo app.js
-    currentEditingBookipId = null; 
+    currentEditingBookipId = null;
     // 👆 AGORA ELE LIMPA DE VERDADE 👆
+    if (window.ctwLiqLimpar) window.ctwLiqLimpar();   // descarta o rascunho do valor líquido (dev)
 
     // Garante que o rascunho velho morra quando você pede um novo.
     if (!(opcoes && opcoes.manterRascunho) && typeof limparRascunhoBookipDefinitivo === 'function') {
@@ -11899,6 +11925,8 @@ async function moverParaLixeira(id) {
             // 2. Remove da pasta principal
             await remove(ref(db, `${colAtual}/${id}`));
             
+            // Valor líquido (dev): o registro ligado à garantia vai junto (recalcula-se se ela voltar)
+            if (window.ctwEhDev && window.ctwEhDev()) window.ctwCarregarModulo('fechamentoia').then(m => m.removerDaGarantia(id)).catch(() => {});
             showCustomModal({ message: "Item movido para a lixeira! 🗑️" });
         }
     } catch (error) {
