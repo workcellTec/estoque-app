@@ -7366,6 +7366,8 @@ try {
     if(campoValor) {
         campoValor.value = valParaFormatar.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         campoValor.dispatchEvent(new Event('input')); // Acorda a máscara
+        // Detalhado (dev): o preço do item sai do total pago, então o valor fica em branco
+        if (window.ctwLiqPrecoOpcional && window.ctwLiqPrecoOpcional()) { campoValor.value = ''; campoValor.dispatchEvent(new Event('input')); }
     }
 
     // 2. FORÇA BRUTA: Some com a lista de resultados
@@ -7484,6 +7486,11 @@ try {
                     showCustomModal({ message: "Digite ou busque o nome do produto." });
                     return;
                 }
+                // Detalhado (dev): sem produto do CTW não há de onde tirar o valor — ele precisa ser digitado
+                if (!(valorFinal > 0) && !window._bookipProdCtw && window.ctwLiqPrecoOpcional && window.ctwLiqPrecoOpcional()) {
+                    showCustomModal({ message: "Produto fora do CTW: digite o valor dele ou escolha um produto do CTW." });
+                    return;
+                }
 
             // CRIA O OBJETO (Corrigido para usar valorFinal)
             itemObjeto = { 
@@ -7495,6 +7502,8 @@ try {
                 isSituation: false 
             };
             if (window._bookipProdCtw && window.ctwEhDev && window.ctwEhDev()) itemObjeto.ctw = window._bookipProdCtw;
+            // Detalhado (dev): item do CTW sem valor digitado recebe o preço do total pago (ctwSemPreco)
+            if (itemObjeto.ctw && !(valorFinal > 0) && window.ctwLiqPrecoOpcional && window.ctwLiqPrecoOpcional()) itemObjeto.ctwSemPreco = true;
             window._bookipProdCtw = null;
 
 
@@ -7570,6 +7579,7 @@ if (inputValorBookip) {
             bookipCartList.forEach((item, index) => {
                 const subtotal = item.valor * item.qtd;
                 total += subtotal;
+                const semValor = item.ctwSemPreco && !(subtotal > 0);   // Detalhado (dev): o valor sai do total pago
 
                 // Cria o elemento usando as classes do CSS que você acabou de colar
                 const li = document.createElement('div');
@@ -7589,7 +7599,7 @@ if (inputValorBookip) {
                     </div>
 
                     <div class="bk-actions-area">
-                        <div class="bk-price">R$ ${subtotal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
+                        <div class="bk-price">${semValor ? '—' : 'R$ ' + subtotal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
                         
                         <div class="bk-buttons">
                             <button class="btn-icon-circle btn-edit-c edit-item-bookip" data-index="${index}" title="Editar">
@@ -7650,7 +7660,7 @@ let valBruto = parseFloat(item.valor || 0);
 let campoInput = document.getElementById('bookipProdValorTemp');
 
 // 1. Formata e joga no input (ex: 2.500,00)
-campoInput.value = valBruto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+campoInput.value = (item.ctwSemPreco && window.ctwLiqPrecoOpcional && window.ctwLiqPrecoOpcional()) ? '' : valBruto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // 2. Acorda a máscara para permitir edição manual depois
 campoInput.dispatchEvent(new Event('input'));
@@ -8363,6 +8373,9 @@ if (btnSave) {
             showCustomModal({ message: "A lista está vazia! Adicione itens primeiro." });
             return;
         }
+        // Detalhado (dev): item do CTW sem valor só vale com o total pago informado
+        const msgLiq = window.ctwLiqValidar ? window.ctwLiqValidar(bookipCartList) : '';
+        if (msgLiq) { showCustomModal({ message: msgLiq }); return; }
 
         // ── CAPCUT PREVIEW ──────────────────────────────────
         // Monta preview parcial com dados atuais do formulário
@@ -10753,8 +10766,11 @@ setTimeout(() => {
 // do produto (nome, cor, IMEI), forma de pagamento e valor total.
 // ============================================================
 window._zapIaFotoBase64 = null;
+window._zapIaComprovantes = [];   // dev: fotos de comprovantes (maquininha/Pix) só para a IA ler os pagamentos; não são anexadas
+const ZAP_IA_MAX_COMPROV = 4;
 
 window.abrirModalColarZapIA = function() {
+    const ehDevZap = !!(window.ctwEhDev && window.ctwEhDev());
     const modalHtml = `
     <div class="custom-modal-overlay active" id="modalZapIAOverlay" style="z-index: 10000;">
         <div class="custom-modal-content" style="max-width: 90%; width: 420px;">
@@ -10775,6 +10791,15 @@ window.abrirModalColarZapIA = function() {
                     <i class="bi bi-camera-fill"></i> Adicionar foto do produto (opcional)
                 </button>
             </div>
+            ${ehDevZap ? `
+            <div class="mb-3">
+                <input type="file" id="zapIAComprovInput" accept="image/*" multiple style="display:none">
+                <div id="zapIAComprovPreview" class="d-flex flex-wrap gap-2 mb-2"></div>
+                <button type="button" class="btn btn-sm btn-outline-info w-100" id="btnZapIAComprov">
+                    <i class="bi bi-receipt"></i> Adicionar comprovantes (maquininha / Pix)
+                </button>
+                <div class="text-secondary small mt-1">Só a IA lê para preencher o pagamento detalhado; essas fotos não são anexadas na garantia.</div>
+            </div>` : ''}
 
             <button class="btn btn-info w-100" id="btnProcessarZapIA">
                 <i class="bi bi-magic"></i> Preencher com IA
@@ -10786,6 +10811,7 @@ window.abrirModalColarZapIA = function() {
     const existente = document.getElementById('containerModalZapIA');
     if (existente) existente.remove();
     window._zapIaFotoBase64 = null;
+    window._zapIaComprovantes = [];
 
     const div = document.createElement('div');
     div.id = 'containerModalZapIA';
@@ -10818,6 +10844,46 @@ window.abrirModalColarZapIA = function() {
             document.getElementById('zapIAFotoPreviewWrap').classList.add('hidden');
             fotoInput.value = '';
         };
+
+        // Dev: vários comprovantes (maquininha/Pix). Cada um é reduzido como a foto do produto; os que não abrem são ignorados com aviso.
+        const comprovInput = document.getElementById('zapIAComprovInput');
+        if (comprovInput) {
+            const pintarComprov = () => {
+                const box = document.getElementById('zapIAComprovPreview'); if (!box) return;
+                box.innerHTML = window._zapIaComprovantes.map((b64, i) => `
+                    <div style="position:relative;width:64px;height:64px;">
+                        <img src="data:image/jpeg;base64,${b64}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--glass-border);">
+                        <button type="button" data-rm-comprov="${i}" aria-label="Remover comprovante" style="position:absolute;top:-6px;right:-6px;background:rgba(0,0,0,.75);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:11px;"><i class="bi bi-x-lg"></i></button>
+                    </div>`).join('');
+                const btn = document.getElementById('btnZapIAComprov');
+                if (btn) btn.disabled = window._zapIaComprovantes.length >= ZAP_IA_MAX_COMPROV;
+            };
+            document.getElementById('btnZapIAComprov').onclick = () => comprovInput.click();
+            document.getElementById('zapIAComprovPreview').onclick = (ev) => {
+                const b = ev.target.closest('[data-rm-comprov]'); if (!b) return;
+                window._zapIaComprovantes.splice(parseInt(b.dataset.rmComprov, 10), 1);
+                pintarComprov();
+            };
+            comprovInput.onchange = async (e) => {
+                const arquivos = Array.from(e.target.files || []); e.target.value = '';
+                if (!arquivos.length) return;
+                if (typeof window._ctwResizeToBase64 !== 'function') {
+                    showCustomModal({ message: 'Módulo de IA ainda carregando, tente novamente em instantes.' });
+                    return;
+                }
+                const livres = ZAP_IA_MAX_COMPROV - window._zapIaComprovantes.length;
+                if (arquivos.length > livres) showCustomModal({ message: `O limite é de ${ZAP_IA_MAX_COMPROV} comprovantes: usei só os ${livres} primeiros.` });
+                let falhou = 0;
+                for (const arq of arquivos.slice(0, Math.max(livres, 0))) {
+                    try {
+                        const b64 = await window._ctwResizeToBase64(arq);
+                        if (b64) window._zapIaComprovantes.push(b64); else falhou++;
+                    } catch (err) { falhou++; }
+                }
+                if (falhou) showCustomModal({ message: falhou === 1 ? 'Uma foto não abriu e foi ignorada.' : falhou + ' fotos não abriram e foram ignoradas.' });
+                pintarComprov();
+            };
+        }
 
         document.getElementById('btnProcessarZapIA').onclick = window.processarTextoZapIA;
     }, 100);
@@ -10854,7 +10920,8 @@ function _buildPromptZapIA() {
 window.processarTextoZapIA = async function() {
     const texto = document.getElementById('textoZapIAInput').value.trim();
     const foto = window._zapIaFotoBase64;
-    if (!texto && !foto) {
+    const comprovantes = (window.ctwEhDev && window.ctwEhDev()) ? (window._zapIaComprovantes || []) : [];
+    if (!texto && !foto && !comprovantes.length) {
         showCustomModal({ message: 'Cole o texto ou adicione uma foto do produto.' });
         return;
     }
@@ -10868,13 +10935,14 @@ window.processarTextoZapIA = async function() {
         if (typeof window._ctwAiVision !== 'function') {
             throw new Error('Módulo de IA ainda não carregou. Tente novamente em instantes.');
         }
-        const imagens = foto ? [{ base64: foto }] : [];
+        // 1ª imagem = foto do produto (se houver); as demais = comprovantes (só dev)
+        const imagens = (foto ? [{ base64: foto }] : []).concat(comprovantes.map(b => ({ base64: b })));
         // Dev: a mesma leitura também traz os pagamentos para o valor líquido. Perfis normais: prompt idêntico ao de sempre.
         let modLiq = null;
         if (window.ctwEhDev && window.ctwEhDev()) {
             try { modLiq = await window.ctwCarregarModulo('fechamentoia'); } catch (e) { console.warn('[líquido] módulo:', e); }
         }
-        const resposta = await window._ctwAiVision(imagens, texto, _buildPromptZapIA() + (modLiq ? modLiq.promptExtra() : ''));
+        const resposta = await window._ctwAiVision(imagens, texto, _buildPromptZapIA() + (modLiq ? modLiq.promptExtra({ produto: !!foto, comprovantes: comprovantes.length }) : ''));
 
         // Extrai o JSON da resposta (a IA às vezes envolve em texto/markdown, mesmo pedindo pra não)
         const jsonMatch = resposta.match(/\{[\s\S]*\}/);

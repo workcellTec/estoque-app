@@ -3983,3 +3983,6 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .fia-sh .fia-2 > .btn { flex: 1; }
 .fia-ok:disabled { background: var(--ui-track); color: #76767B; box-shadow: none; opacity: 1; }
 .fia-fc .form-control, .fia-sh .form-control { width: 100%; box-sizing: border-box; }
+.fia-fc:empty { display: none; }
+#ctwLiqPag { margin: 0; }
+.p-3 > #ctwLiqPag { margin-top: 4px; }
