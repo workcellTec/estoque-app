@@ -477,6 +477,8 @@ let G = null, GO = null, _gdT = null;
 const CLI0 = () => ({ nome: '', cpf: '', tel: '', nasc: '', end: '', email: '' });
 const novoG = () => Object.assign(novoEstado('detalhada'), { page: 1, cli: CLI0(), cliOpen: false, cond: 'Novo / Lacrado', dias: 365, busca: '', aviso: '', novo: '', open: 0, sh: null, foto: null, zap: { foto: null, comp: [], texto: '', erro: '', lendo: false }, salvando: false, limpar: false, cliente: '' });
 const DIAS_GAR = [[365, '1 ano (padrão)'], [180, '6 meses'], [120, '4 meses'], [30, '30 dias']];   // as mesmas opções da Garantia
+// Escolha entre poucas opções: botões do app (o seletor nativo do Android é feio e esconde o resto da tela).
+const gdSeg = (a, opts, sel, extra = '', cls = '') => `<div class="gd-seg${cls}" role="radiogroup">${opts.map(o => `<button type="button" role="radio" aria-checked="${o[0] === sel}" class="${o[0] === sel ? 'on' : ''}" data-gd="${a}" data-v="${esc(String(o[0]))}"${extra}>${esc(o[1])}</button>`).join('')}</div>`;
 const gdVazio = E => !E.itens.length && !E.pag.length && !Object.values(E.cli).some(v => String(v).trim());
 
 function gdGravar() {
@@ -555,13 +557,13 @@ function gdAbrirOverlay() {
     GO.className = 'gd'; GO.id = 'gdRoot'; GO.setAttribute('data-dev-only', '');
     GO.addEventListener('click', gdClique);
     GO.addEventListener('input', gdDigita);
-    GO.addEventListener('change', gdMuda);
     document.body.appendChild(GO);
     document.documentElement.classList.add('ps-aberto');
 }
 
 function gdFechar(salvo) {
     gdSheetFechar(true);
+    gdZapParar(); if (G && G.zap) G.zap.lendo = false;      // fechou a tela: a leitura da IA para de contar
     const sujo = G && G.salvando && !salvo;               // o formulário da Garantia foi preenchido e não chegou a salvar: volta limpo
     if (G) G.salvando = false;
     if (sujo && typeof window.resetFormulariosBookip === 'function') window.resetFormulariosBookip();
@@ -623,8 +625,8 @@ function gdItem(i) {
     const custo = i.edCusto
         ? `<div class="gd-ed"><input class="gd-in" id="gdcv-${i.id}" inputmode="decimal" placeholder="Custo do dia (R$)" autocomplete="off" value="${esc(fmtIn(p.valor))}" aria-label="Custo do dia"><button type="button" data-gd="custook" data-id="${i.id}">OK</button><button type="button" class="g" data-gd="custox" data-id="${i.id}">Cancelar</button></div>`
         : `<div class="gd-row"><span class="gd-l">${mud ? `Custo do dia <b>${brl(p.valor)}</b> (CTW ${brl(p.hoje)})` : `Custo no CTW <b>${brl(p.valor)}</b>`}</span><button class="gd-lk" type="button" data-gd="custo" data-id="${i.id}">${mud ? 'Mudar de novo' : 'Mudar custo'}</button></div>`;
-    return `<div class="gd-card"><div class="gd-ih"><span class="gd-ck">${ico('ok')}</span><div class="gd-nm"><b>${esc(semEmoji(p.nome))}</b>
-        <small><select class="gd-cs" data-f="cond" data-id="${i.id}" aria-label="Condição no documento">${CONDS.map(c => `<option${c === (i.cond || 'Sem condição') ? ' selected' : ''}>${c}</option>`).join('')}</select>${veio}</small></div>${rm}</div>
+    return `<div class="gd-card"><div class="gd-ih"><span class="gd-ck">${ico('ok')}</span><div class="gd-nm"><b>${esc(nomeDoc(i))}</b>${veio ? `<small>${veio.slice(3)}</small>` : ''}</div>${rm}</div>
+      ${gdSeg('cond', CONDS.map(c => [c, c]), i.cond || 'Sem condição', ` data-id="${i.id}"`)}
       ${custo}
       <div class="gd-r2"><input class="gd-in sm" data-f="obs" data-id="${i.id}" placeholder="IMEI / Serial" autocomplete="off" value="${esc(i.obs)}" aria-label="IMEI ou serial"><input class="gd-in sm" data-f="cor" data-id="${i.id}" placeholder="Cor" autocomplete="off" value="${esc(i.cor)}" aria-label="Cor"></div>
       <div class="gd-row"><span class="gd-l">Quantidade</span><div class="gd-stp"><button type="button" data-gd="menos" data-id="${i.id}" aria-label="Menos">−</button><span>${i.qtd}</span><button type="button" data-gd="mais" data-id="${i.id}" aria-label="Mais">+</button></div></div></div>`;
@@ -636,7 +638,7 @@ function gdP1() {
       <div class="gd-sec"><b>Produtos</b><span>${n ? n + (n === 1 ? ' item' : ' itens') : ''}</span></div>
       <div class="gd-sw">${ico('search')}<input id="gdBq" class="gd-in" placeholder="Buscar produto no CTW" autocomplete="off" value="${esc(G.busca)}" aria-label="Buscar produto no CTW"></div>
       <div class="gd-res" id="gdBres">${gdOpcoes(gdBusca(G.busca), 'data-gd="add" data-pid')}</div>
-      <div><label class="gd-lab" for="gdCd">Sai no documento como</label><select id="gdCd" class="gd-in">${CONDS.map(c => `<option${c === G.cond ? ' selected' : ''}>${c}</option>`).join('')}</select></div>
+      <div><span class="gd-lab">Produto novo entra no documento como</span>${gdSeg('gcond', CONDS.map(c => [c, c]), G.cond)}</div>
       ${G.itens.map(gdItem).join('')}
       ${n ? '' : '<p class="gd-msg c">Busque e toque no produto para adicionar.</p>'}
       ${gdVazio(G) ? '' : `<button class="gd-lk gd-zera" type="button" data-gd="zerar">${G.limpar ? 'Toque de novo para apagar tudo' : 'Começar de novo'}</button>`}`;
@@ -667,7 +669,7 @@ function gdP2() {
       <div><label class="gd-lab" for="gdNv">${G.pag.length ? 'Mais algum pagamento? Digite o valor' : 'Quanto o cliente pagou?'}</label>
         <div class="gd-er"><input id="gdNv" class="gd-in big" inputmode="decimal" placeholder="R$ 0,00" autocomplete="off" value="${esc(G.novo)}" aria-label="Valor do pagamento"><button class="gd-go inl${dinheiro(G.novo) > 0 ? '' : ' off'}" id="gdAdd" type="button" data-gd="addv">Adicionar</button></div></div>
       <div class="gd-sec"><b>Lucro</b></div><div class="gd-lucro" id="gdLucro"></div>
-      <div><label class="gd-lab" for="gdDias">Tempo de garantia</label><select id="gdDias" class="gd-in">${DIAS_GAR.map(d => `<option value="${d[0]}"${d[0] === G.dias ? ' selected' : ''}>${d[1]}</option>`).join('')}</select></div>`;
+      <div><span class="gd-lab">Tempo de garantia</span>${gdSeg('dias', DIAS_GAR, G.dias, '', ' two')}</div>`;
 }
 
 function gdResumo() {
@@ -707,7 +709,7 @@ function gdSheetFechar(sem) {
 
 const FORMAS = [['pix', 'Pix / Dinheiro'], ['boleto', 'Boleto'], ['troca', 'Troca'], ['deb', 'Débito'], ['cred', 'Crédito']];
 const gdChip = (a, v, rot) => `<button class="gd-chip" type="button" data-gd="${a}" data-v="${esc(v)}">${esc(rot)}</button>`;
-const gdSelMaq = h => `<div><label class="gd-lab" for="gdShM">Maquininha</label><select id="gdShM" class="gd-in" data-gd="shm">${maqsAtivas().map(m => `<option value="${m[0]}"${m[0] === h.maq ? ' selected' : ''}>${m[1]}</option>`).join('')}</select></div>`;
+const gdSelMaq = h => `<div><span class="gd-lab">Maquininha</span>${gdSeg('shm', maqsAtivas().map(m => [m[0], m[1]]), h.maq, '', ' two')}</div>`;
 
 function gdSheetPintar() {
     const h = G.sh; if (!h) return;
@@ -768,13 +770,11 @@ function gdSheetEvento(e) {
         else if (e.target.id === 'gdShA') h.apar = e.target.value;
         return;
     }
-    if (e.type === 'change') {
-        if (e.target.dataset.gd === 'shm') { h.maq = e.target.value; if (h.parc > (MAX_PARC[h.maq] || 18)) h.parc = null; h.err = ''; gdSheetPintar(); }
-        return;
-    }
-    const b = e.target.closest('[data-gd]'); if (!b || b.tagName === 'SELECT') return;
+    if (e.type === 'change') return;
+    const b = e.target.closest('[data-gd]'); if (!b) return;
     const a = b.dataset.gd, v = b.dataset.v;
     if (a === 'shx') return gdSheetFechar();
+    if (a === 'shm') { h.maq = v; if (h.parc > (MAX_PARC[h.maq] || 18)) h.parc = null; h.err = ''; return gdSheetPintar(); }
     if (a === 'shb') { h.err = ''; h.step = h.step === 'band' && h.forma === 'cred' ? 'parc' : 'forma'; return gdSheetPintar(); }
     if (a === 'shf') {
         if (h.edit && !(h.valor > 0)) { h.err = 'Informe um valor maior que zero.'; return gdSheetPintar(); }
@@ -811,6 +811,26 @@ ${produto ? 'A imagem 1 é a FOTO DO PRODUTO. ' : ''}${n ? `${produto ? 'As' : '
 - Os comprovantes servem para "pagamentos" (valor, parcelas, bandeira, maquininha). O mesmo comprovante em mais de uma foto conta uma vez.` : '';
 }
 
+const ZAP_LIMITE_S = 120;   // segundos COM o app aberto; passou disso, avisa em vez de ficar rodando sem fim
+const gdZapTempo = z => `${z.seg || 0} s · costuma levar de 10 a 40 s`;
+let _zapTick = null, _zapRun = 0;
+function gdZapParar() { clearInterval(_zapTick); _zapTick = null; _zapRun++; }
+// A IA não precisa da foto inteira: menos dados no envio (rede móvel) e leitura mais rápida. A original segue para o documento.
+function reduzirB64(b64, max) {
+    return new Promise(res => {
+        const img = new Image();
+        img.onload = () => {
+            const k = Math.min(1, max / Math.max(img.width, img.height));
+            if (k >= 1) return res(b64);
+            const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+            res(c.toDataURL('image/jpeg', 0.8).split(',')[1]);
+        };
+        img.onerror = () => res(b64);
+        img.src = 'data:image/jpeg;base64,' + b64;
+    });
+}
+
 function gdZapHtml() {
     const z = G.zap, ok = (n, t) => `${n ? '✓ ' : ''}${t}`;
     return `<div class="ui-grab"></div><div class="ui-sheet-title">Colar do Zap (IA)</div><p class="gd-sub">Cole a mensagem. A IA preenche cliente, produtos e pagamentos.</p>
@@ -819,7 +839,9 @@ function gdZapHtml() {
       <div class="gd-zr"><button type="button" class="${z.foto ? 'on' : ''}" data-gd="zf">${ico('cam')} ${ok(z.foto, 'Foto do produto')}</button><button type="button" class="${z.comp.length ? 'on' : ''}" data-gd="zc"${z.comp.length >= 4 ? ' disabled' : ''}>${ico('rec')} ${ok(z.comp.length, z.comp.length ? z.comp.length + (z.comp.length === 1 ? ' comprovante' : ' comprovantes') : 'Comprovantes')}</button></div>
       <p class="gd-sub" style="margin-top:-4px">A foto do produto vai anexada ao documento. Os comprovantes só a IA lê.${z.foto || z.comp.length ? ' <button type="button" class="gd-lk" data-gd="zlimpa">Remover fotos</button>' : ''}</p>
       ${z.erro ? `<p class="gd-msg am">${esc(z.erro)}</p>` : ''}
-      <button class="gd-go" type="button" data-gd="zrun"${z.lendo ? ' disabled' : ''}>${z.lendo ? 'Lendo…' : 'Preencher com IA'}</button>`;
+      ${z.lendo
+        ? `<div class="gd-load" role="status" aria-live="polite"><span class="gd-spin" aria-hidden="true"></span><div><b>Lendo com a IA…</b><small id="gdZseg">${esc(gdZapTempo(z))}</small></div></div><div class="gd-bar" aria-hidden="true"><i></i></div><button class="gd-lk gd-zera" type="button" data-gd="zcancel">Cancelar</button>`
+        : '<button class="gd-go" type="button" data-gd="zrun">Preencher com IA</button>'}`;
 }
 
 function gdZapAbrir() {
@@ -846,6 +868,7 @@ function gdZapEvento(e) {
     if (a === 'zc') return w.querySelector('#gdZc').click();
     if (a === 'zlimpa') { z.foto = null; z.comp = []; return gdZapAbrir(); }
     if (a === 'zrun') return gdZapLer();
+    if (a === 'zcancel') { gdZapParar(); z.lendo = false; z.erro = ''; return gdZapAbrir(); }
 }
 
 async function gdZapImg(arq, tipo) {
@@ -865,19 +888,32 @@ async function gdZapLer() {
     const texto = (z.texto || '').trim();
     if (z.lendo) return;
     if (!texto && !z.foto && !z.comp.length) { z.erro = 'Cole o texto ou adicione uma foto.'; return gdZapAbrir(); }
-    z.lendo = true; z.erro = ''; gdZapAbrir();
+    gdZapParar();
+    const run = _zapRun;                                    // se cancelar ou estourar o tempo, a resposta que chegar depois é ignorada
+    z.lendo = true; z.erro = ''; z.seg = 0; gdZapAbrir();
+    _zapTick = setInterval(() => {
+        if (run !== _zapRun) return;
+        if (!document.hidden) z.seg++;                      // só conta o tempo com o app aberto
+        const t = document.getElementById('gdZseg'); if (t) t.textContent = gdZapTempo(z);
+        if (z.seg >= ZAP_LIMITE_S) {
+            gdZapParar(); z.lendo = false; z.erro = 'A IA demorou mais de ' + Math.round(ZAP_LIMITE_S / 60) + ' minutos. Confira a internet e toque em Preencher de novo.';
+            if (G === estado && document.getElementById('gdSheet')) gdZapAbrir();
+        }
+    }, 1000);
     try {
         await window.ctwCarregarModulo('creditoscan');
         if (typeof window._ctwAiVision !== 'function') throw new Error('A leitura por IA não está disponível agora. Tente de novo em instantes.');
-        const imagens = (z.foto ? [{ base64: z.foto }] : []).concat(z.comp.map(b => ({ base64: b })));
+        const imagens = await Promise.all((z.foto ? [z.foto] : []).concat(z.comp).map(b => reduzirB64(b, 1024).then(base64 => ({ base64 }))));
         const resp = await window._ctwAiVision(imagens, texto, PROMPT_GD + gdTextoImagens(z.comp.length, !!z.foto));
-        if (G !== estado) return;
+        if (run !== _zapRun || G !== estado) return;
         const d = extrairJson(resp);
+        gdZapParar();
         gdAplicarZap(d);
         z.lendo = false;
         gdSheetFechar(); gdRender();
     } catch (e) {
-        if (G !== estado) return;
+        if (run !== _zapRun || G !== estado) return;
+        gdZapParar();
         z.lendo = false; z.erro = (e && e.message) || 'Não consegui ler agora. Tente de novo.';
         gdZapAbrir();
     }
@@ -940,6 +976,9 @@ function gdClique(e) {
         if (prob) { const h = GO.querySelector('.gd-help'); if (h) { h.classList.remove('flash'); void h.offsetWidth; h.classList.add('flash'); } return; }
         G.page = 2; G.aviso = ''; return gdRender();
     }
+    if (a === 'cond' && it) { it.cond = b.dataset.v === 'Sem condição' ? '' : b.dataset.v; return gdRender(true); }
+    if (a === 'gcond') { if (CONDS.includes(b.dataset.v)) G.cond = b.dataset.v; return gdRender(true); }
+    if (a === 'dias') { G.dias = parseInt(b.dataset.v, 10) || 365; return gdRender(true); }
     if (a === 'zap') return gdZapAbrir();
     if (a === 'cli') { G.cliOpen = true; gdRender(true); const n = GO.querySelector('#gdc-nome'); if (n) n.focus(); return; }
     if (a === 'cliok') { gdCompletaCliente(); G.cliOpen = false; return gdRender(true); }
@@ -1006,13 +1045,6 @@ function gdDigita(e) {
     else if (f === 'pbusca') { it.q = t.value; const r = GO.querySelector('#gdps-' + it.id); if (r) r.innerHTML = gdOpcoes(gdBusca(it.q), `data-gd="pick" data-id="${it.id}" data-pid`); }
 }
 
-function gdMuda(e) {
-    if (!G) return;
-    const t = e.target;
-    if (t.id === 'gdCd') { G.cond = t.value; gdPersistir(); return; }
-    if (t.id === 'gdDias') { G.dias = parseInt(t.value, 10) || 365; gdPersistir(); return; }
-    if (t.dataset && t.dataset.f === 'cond') { const it = gdItemPorId(t.dataset.id); if (it) { it.cond = t.value === 'Sem condição' ? '' : t.value; gdRender(true); } }
-}
 
 // ── Salvar ──────────────────────────────────────────────────────
 function gdSalvar() {
