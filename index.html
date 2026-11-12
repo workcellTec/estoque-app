@@ -76,7 +76,7 @@
          para a 1ª pintura, mas funciona igual em qualquer aparelho. -->
     <link href="bootstrap-icons-lite.css?v=1" rel="stylesheet"/>
     <link href="bootstrap-lite.css?v=1" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=124">
+    <link rel="stylesheet" href="style.css?v=125">
 
 
 
@@ -1760,7 +1760,7 @@
 
 
 <script src="ctw-ui.js?v=4" defer></script>
-<script src="app.js?v=1031" type="module" defer></script>
+<script src="app.js?v=1032" type="module" defer></script>
 <script>
 window.addEventListener('load', function() {
     var s = document.createElement('script');
@@ -1778,7 +1778,7 @@ window.addEventListener('load', function() {
             repairs:     () => import('./repairs.js?v=5').then(m => { window._repairsModule = m; return m; }),
             reposicao:   () => import('./reposicao.js').then(m => { window._reposicaoModule = m; return m; }),
             creditoscan: () => import('./creditoscan.js').then(m => { window._csReady = true; return m; }),
-            fechamentoia: () => import('./fechamentoia.js?v=9'),
+            fechamentoia: () => import('./fechamentoia.js?v=10'),
             precosync:   () => import('./precosync.js?v=25')   // só ao abrir Mais > WhatsApp e Preços (fora do carregamento em segundo plano)
         };
         const carregados = {};
@@ -1903,6 +1903,7 @@ window.addEventListener('load', function() {
     function tratarVoltar() {
         // === NIVEL 0: folhas ("Criar novo", "Alertas") fecham antes de qualquer tela ===
         if (typeof window._bdVoltar === 'function' && window._bdVoltar()) return true;
+        if (typeof window.ctwGdVoltar === 'function' && window.ctwGdVoltar()) return true;
         if (typeof window.ctwFecharListaSheet === 'function' && window.ctwFecharListaSheet()) return true;
         if (typeof window.ctwFecharFolhas === 'function' && window.ctwFecharFolhas()) return true;
 
@@ -2035,6 +2036,11 @@ window.addEventListener('load', function() {
             <div class="ui-grow">Modo leve<div class="ui-cap" id="ctwLeveSub">Desligado</div></div>
             <button type="button" class="ui-sw" id="ctwLeveSwitch" role="switch" aria-checked="false" aria-label="Modo leve"></button>
         </div>
+        <div class="ui-mrow" id="ctwSheetGd" data-dev-only>
+            <span class="ui-bub ui-bub-sm"><svg class="ui-ic ui-ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4"/></svg></span>
+            <div class="ui-grow">Garantia detalhada<div class="ui-cap" id="ctwGdSub">Aparece no botão +</div></div>
+            <button type="button" class="ui-sw" id="ctwGdSwitch" role="switch" aria-checked="true" aria-label="Garantia detalhada"></button>
+        </div>
         <button type="button" class="ui-mrow" id="ctwSheetNotif">
             <span class="ui-bub ui-bub-sm"><svg class="ui-ic ui-ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg></span>
             <div class="ui-grow">Notificações<div class="ui-cap" id="notifPrefLabelSheet">Carregando...</div></div>
@@ -2064,7 +2070,7 @@ window.addEventListener('load', function() {
             <span class="ui-grow">Sair</span>
         </button>
     </div>
-    <div class="ui-versao" id="ctwVersaoApp">Central Workcell · versão ctw-313</div>
+    <div class="ui-versao" id="ctwVersaoApp">Central Workcell · versão ctw-314</div>
 </div>
 
 <!-- ═══════════════════════════════════════════════
@@ -2097,6 +2103,10 @@ window.addEventListener('load', function() {
         <button type="button" class="ui-srow" data-criar="garantia">
             <span class="ui-bub"><svg class="ui-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg></span>
             <span class="ui-grow"><b>Garantia</b><small>Cliente, produtos e prazo</small></span><svg class="ui-ic ui-ic-s ui-mute" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+        <button type="button" class="ui-srow" id="ctwCriarGD" data-criar="garantiadet" data-dev-only>
+            <span class="ui-bub"><svg class="ui-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4"/></svg></span>
+            <span class="ui-grow"><b>Garantia detalhada</b><small>Com produtos do CTW e lucro</small></span><svg class="ui-ic ui-ic-s ui-mute" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
         </button>
         <button type="button" class="ui-srow" data-criar="contrato">
             <span class="ui-bub"><svg class="ui-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h6"/></svg></span>
@@ -3335,7 +3345,7 @@ window.addEventListener('load', function() {
                 sonda.remove();
                 var selo = document.createElement('div');
                 selo.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;font:10px/1.3 monospace;background:rgba(0,0,0,.8);color:#0f0;padding:3px 6px;pointer-events:none;';
-                selo.textContent = 'ctw-313 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
+                selo.textContent = 'ctw-314 | areaSeguraTopo=' + topo + 'px | saudacao=' + (r && r.width ? Math.round(r.top) + '→' + Math.round(r.bottom) + 'px' : 'oculta') +
                     ' | modo=' + (matchMedia('(display-mode: standalone)').matches ? 'app instalado' : 'navegador') + ' | tela=' + innerWidth + 'x' + innerHeight;
                 document.body.appendChild(selo);
             }, 2500);

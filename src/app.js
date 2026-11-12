@@ -79,7 +79,6 @@ window.ctwAplicarDev = function() {
     const dev = window.ctwEhDev();
     document.documentElement.classList.toggle('ctw-dev', dev);
     if (dev && typeof window.ctwZapOuvir === 'function') window.ctwZapOuvir();
-    if (dev && window.ctwCarregarModulo) window.ctwCarregarModulo('fechamentoia').then(m => m.renderCartaoForm()).catch(() => {});
 };
 // Pede a senha de administrador; o perfil Dev entra direto (a função recebe a senha certa)
 window.ctwComSenha = function(cfg) {
@@ -547,8 +546,6 @@ let products = [], fuse, selectedAparelhoValue = 0, fecharVendaPrecoBase = 0;
 let activeTagFilter = null; // Guarda a etiqueta selecionada (ex: 'Xiaomi')
 // --- CORREÇÃO: ADICIONE ESTA LINHA ---
 let bookipCartList = []; 
-window.ctwBookipLista = () => bookipCartList;                      // o valor líquido (dev) lê a lista do formulário
-window.ctwBookipEditando = () => !!currentEditingBookipId;         // e sabe se é uma edição (aí o cartão não aparece)
 // --- CORREÇÃO: ADICIONE ESTA LINHA ---
 let bookipListener = null; 
 
@@ -661,7 +658,6 @@ function ctwAplicarModoDoc(modo) {
     document.getElementById('blocoValidadeOrc')?.classList.toggle('hidden', !orc);
     const busca = document.getElementById('bookipHistorySearch');
     if (busca) busca.placeholder = orc ? 'Nome, CPF ou ORC...' : 'Nome, CPF ou Doc...';
-    if (window.ctwLiqRender) window.ctwLiqRender();   // cartão "Valor líquido" (dev) some no orçamento
 }
 
 // ADICIONE ESTA LINHA NOVA:
@@ -7323,7 +7319,6 @@ if (bookipToggle) {
             
             // Se digitar, já joga pro nome do produto caso não selecione nada
             document.getElementById('bookipProdNomeTemp').value = e.target.value;
-            window._bookipProdCtw = null;   // digitou de novo: o vínculo anterior não vale mais
             
             containerResultados.innerHTML = '';
             
@@ -7350,8 +7345,7 @@ if (bookipToggle) {
                         </div>`;
                     
                     item?.addEventListener('click', () => {
-                    // Vínculo com o produto do CTW (valor líquido, só dev): editar o nome depois não desfaz
-                    window._bookipProdCtw = { id: p.id, nome: p.nome, valor: parseFloat(p.valor) || 0 };
+
 
                                             // AQUI A MÁGICA: Chama a função que limpa o emoji antes de preencher
                     document.getElementById('bookipProdNomeTemp').value = limparTextoEmoji(p.nome);
@@ -7494,8 +7488,6 @@ try {
                 obs,
                 isSituation: false 
             };
-            if (window._bookipProdCtw && window.ctwEhDev && window.ctwEhDev()) itemObjeto.ctw = window._bookipProdCtw;
-            window._bookipProdCtw = null;
 
 
                 // Limpa os campos de produto
@@ -7609,7 +7601,6 @@ if (inputValorBookip) {
         if (totalDisplay) {
             totalDisplay.innerText = total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         }
-        if (window.ctwLiqRender) window.ctwLiqRender(bookipCartList);   // cartão "Valor líquido" (dev) acompanha a lista
 
         // --- ATIVAR BOTÕES ---
 
@@ -7661,7 +7652,6 @@ campoInput.dispatchEvent(new Event('input'));
 
                 document.getElementById('bookipProdCorTemp').value = item.cor;
                 document.getElementById('bookipProdObsTemp').value = item.obs;
-                window._bookipProdCtw = item.ctw || null;
 
                 editingItemIndex = idx; // Marca qual estamos mexendo
 
@@ -7678,7 +7668,6 @@ campoInput.dispatchEvent(new Event('input'));
 if(typeof salvarRascunhoBookip === 'function') window.salvarRascunhoBookip();
 
     }
-    window.ctwBookipRefrescar = atualizarListaVisualBookip;   // dev: o líquido pede para redesenhar a lista/total (ex.: "passar o total")
 
 
     // ============================================================
@@ -8237,7 +8226,6 @@ function carregarDadosParaEdicao(item) {
 
     // 1. Mata o rascunho antigo
     localStorage.removeItem(ctwDocRascunhoKey());
-    if (window.ctwLiqLimpar) window.ctwLiqLimpar();   // rascunho do valor líquido (dev) é de uma garantia NOVA: nunca vale para uma edição
 
     // 2. PRIMEIRO: Troca a aba e deixa o sistema limpar o que quiser
     const toggle = document.getElementById('bookipModeToggle');
@@ -8363,9 +8351,6 @@ if (btnSave) {
             showCustomModal({ message: "A lista está vazia! Adicione itens primeiro." });
             return;
         }
-        // Detalhado (dev): item do CTW sem valor só vale com o total pago informado
-        const msgLiq = window.ctwLiqValidar ? window.ctwLiqValidar(bookipCartList) : '';
-        if (msgLiq) { showCustomModal({ message: msgLiq }); return; }
 
         // ── CAPCUT PREVIEW ──────────────────────────────────
         // Monta preview parcial com dados atuais do formulário
@@ -8400,7 +8385,7 @@ if (btnSave) {
             docInfo: docInfoHtml,
         });
 
-        if (!confirmed) return; // usuário cancelou
+        if (!confirmed) { if (window.ctwGdPreviaCancelada) window.ctwGdPreviaCancelada(); return; } // usuário cancelou
         // ────────────────────────────────────────────────────
 
         // Feedback visual
@@ -8512,6 +8497,7 @@ criadoPor: currentUserProfile || "Desconhecido",
                 fotoUrl: window._bookipFotoUrl || "",
             };
             if (modoOrc) dados.validadeDias = ctwLerValidadeOrcamentoDoForm();
+            if (!modoOrc && window.ctwGdEmCurso && window.ctwGdEmCurso()) dados.detalhada = true;   // feita na Garantia detalhada (dev): só estas mostram o líquido no histórico
 
             // SALVA NO FIREBASE
             if (currentEditingBookipId) {
@@ -8538,11 +8524,12 @@ criadoPor: currentUserProfile || "Desconhecido",
             // SALVA CLIENTE (ROBÔ) — orçamento é só uma proposta: não cria cliente no cadastro
             if (!modoOrc) {
                 await salvarClienteAutomatico({
-                    nome: dados.nome, cpf: dados.cpf, tel: dados.tel, end: dados.end, email: dados.email
+                    nome: dados.nome, cpf: dados.cpf, tel: dados.tel, end: dados.end, email: dados.email,
+                    nasc: document.getElementById('bookipNascimento')?.value || ''
                 });
             }
 
-            // VALOR LÍQUIDO (dev): grava o líquido lido pela IA junto da garantia. Falha aqui nunca desfaz a garantia.
+            // VALOR LÍQUIDO (dev): a Garantia detalhada grava o líquido junto da garantia. Falha aqui nunca desfaz a garantia.
             if (!modoOrc && docType !== 'situacao' && !currentEditingBookipId && window.ctwLiqSalvar) {
                 try { await window.ctwLiqSalvar(dados); } catch (e) { console.warn('[líquido] não salvou:', e); }
             }
@@ -8752,7 +8739,8 @@ async function salvarClienteAutomatico(dados) {
     // 2. Dados
     // O e-mail também pode vir do contrato; como aqui é SET (substitui tudo), uma garantia
     // sem e-mail não pode apagar o que já está cadastrado.
-    const emailAtual = ((window.dbClientsCache || []).find(c => c.id === clienteId) || {}).email || '';
+    const cadastro = (window.dbClientsCache || []).find(c => c.id === clienteId) || {};
+    const emailAtual = cadastro.email || '';
     const dadosCliente = {
         id: clienteId,
         nome: dados.nome,
@@ -8760,6 +8748,7 @@ async function salvarClienteAutomatico(dados) {
         tel: dados.tel || '',
         end: dados.end || '',
         email: dados.email || emailAtual,
+        dataNascimento: dados.nasc || cadastro.dataNascimento || '',
         criadoPor: currentUserProfile || 'Desconhecido',
         ultimoCompra: new Date().toISOString()
     };
@@ -10756,11 +10745,8 @@ setTimeout(() => {
 // do produto (nome, cor, IMEI), forma de pagamento e valor total.
 // ============================================================
 window._zapIaFotoBase64 = null;
-window._zapIaComprovantes = [];   // dev: fotos de comprovantes (maquininha/Pix) só para a IA ler os pagamentos; não são anexadas
-const ZAP_IA_MAX_COMPROV = 4;
 
 window.abrirModalColarZapIA = function() {
-    const ehDevZap = !!(window.ctwEhDev && window.ctwEhDev());
     const modalHtml = `
     <div class="custom-modal-overlay active" id="modalZapIAOverlay" style="z-index: 10000;">
         <div class="custom-modal-content" style="max-width: 90%; width: 420px;">
@@ -10768,28 +10754,18 @@ window.abrirModalColarZapIA = function() {
                 <h5 class="mb-0 text-info"><i class="bi bi-stars"></i> Colar do Zap (IA)</h5>
                 <button class="btn-back" id="btnFecharZapIA"><i class="bi bi-x-lg"></i></button>
             </div>
-            <p class="text-secondary small text-start">Cole a mensagem do cliente (dados, produto, pagamento) e, se tiver, adicione a foto do produto — a IA preenche tudo sozinha.</p>
+            <p class="text-secondary small text-start">Cole a mensagem do cliente (dados, produto, pagamento) e, se tiver, adicione uma foto do produto — a IA preenche tudo sozinha.</p>
             <textarea id="textoZapIAInput" class="form-control mb-3" rows="8" placeholder="Ex: *Nome*: João... 200 a vista no pix + 12x de 199,00..."></textarea>
 
             <div class="mb-3">
                 <input type="file" id="zapIAFotoInput" accept="image/*" style="display:none">
-                ${ehDevZap ? '<input type="file" id="zapIAComprovInput" accept="image/*" multiple style="display:none">' : ''}
-                <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-sm btn-outline-info" id="btnZapIASelecionarFoto" style="flex:1;border-radius:999px;font-size:13px;padding:8px 10px;">
-                        <i class="bi bi-camera-fill"></i> Foto do produto
-                    </button>
-                    ${ehDevZap ? `<button type="button" class="btn btn-sm btn-outline-info" id="btnZapIAComprov" style="flex:1;border-radius:999px;font-size:13px;padding:8px 10px;">
-                        <i class="bi bi-receipt"></i> Comprovantes
-                    </button>` : ''}
+                <div id="zapIAFotoPreviewWrap" class="hidden" style="position:relative;margin-bottom:8px;">
+                    <img id="zapIAFotoPreview" src="" style="width:100%;max-height:180px;object-fit:contain;border-radius:10px;border:1px solid var(--glass-border);">
+                    <button type="button" id="btnZapIARemoverFoto" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:28px;height:28px;"><i class="bi bi-x-lg"></i></button>
                 </div>
-                <div class="d-flex flex-wrap gap-2 mt-2">
-                    <div id="zapIAFotoPreviewWrap" class="hidden" style="position:relative;width:64px;height:64px;">
-                        <img id="zapIAFotoPreview" src="" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--glass-border);">
-                        <button type="button" id="btnZapIARemoverFoto" aria-label="Remover foto do produto" style="position:absolute;top:-6px;right:-6px;background:rgba(0,0,0,.75);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:11px;"><i class="bi bi-x-lg"></i></button>
-                    </div>
-                    ${ehDevZap ? '<div id="zapIAComprovPreview" class="d-flex flex-wrap gap-2"></div>' : ''}
-                </div>
-                ${ehDevZap ? '<div class="text-secondary small mt-1">Comprovantes (maquininha/Pix): só a IA lê, não são anexados.</div>' : ''}
+                <button type="button" class="btn btn-sm btn-outline-info w-100" id="btnZapIASelecionarFoto">
+                    <i class="bi bi-camera-fill"></i> Adicionar foto do produto (opcional)
+                </button>
             </div>
 
             <button class="btn btn-info w-100" id="btnProcessarZapIA">
@@ -10802,7 +10778,6 @@ window.abrirModalColarZapIA = function() {
     const existente = document.getElementById('containerModalZapIA');
     if (existente) existente.remove();
     window._zapIaFotoBase64 = null;
-    window._zapIaComprovantes = [];
 
     const div = document.createElement('div');
     div.id = 'containerModalZapIA';
@@ -10835,46 +10810,6 @@ window.abrirModalColarZapIA = function() {
             document.getElementById('zapIAFotoPreviewWrap').classList.add('hidden');
             fotoInput.value = '';
         };
-
-        // Dev: vários comprovantes (maquininha/Pix). Cada um é reduzido como a foto do produto; os que não abrem são ignorados com aviso.
-        const comprovInput = document.getElementById('zapIAComprovInput');
-        if (comprovInput) {
-            const pintarComprov = () => {
-                const box = document.getElementById('zapIAComprovPreview'); if (!box) return;
-                box.innerHTML = window._zapIaComprovantes.map((b64, i) => `
-                    <div style="position:relative;width:64px;height:64px;">
-                        <img src="data:image/jpeg;base64,${b64}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--glass-border);">
-                        <button type="button" data-rm-comprov="${i}" aria-label="Remover comprovante" style="position:absolute;top:-6px;right:-6px;background:rgba(0,0,0,.75);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:11px;"><i class="bi bi-x-lg"></i></button>
-                    </div>`).join('');
-                const btn = document.getElementById('btnZapIAComprov');
-                if (btn) btn.disabled = window._zapIaComprovantes.length >= ZAP_IA_MAX_COMPROV;
-            };
-            document.getElementById('btnZapIAComprov').onclick = () => comprovInput.click();
-            document.getElementById('zapIAComprovPreview').onclick = (ev) => {
-                const b = ev.target.closest('[data-rm-comprov]'); if (!b) return;
-                window._zapIaComprovantes.splice(parseInt(b.dataset.rmComprov, 10), 1);
-                pintarComprov();
-            };
-            comprovInput.onchange = async (e) => {
-                const arquivos = Array.from(e.target.files || []); e.target.value = '';
-                if (!arquivos.length) return;
-                if (typeof window._ctwResizeToBase64 !== 'function') {
-                    showCustomModal({ message: 'Módulo de IA ainda carregando, tente novamente em instantes.' });
-                    return;
-                }
-                const livres = ZAP_IA_MAX_COMPROV - window._zapIaComprovantes.length;
-                if (arquivos.length > livres) showCustomModal({ message: `O limite é de ${ZAP_IA_MAX_COMPROV} comprovantes: usei só os ${livres} primeiros.` });
-                let falhou = 0;
-                for (const arq of arquivos.slice(0, Math.max(livres, 0))) {
-                    try {
-                        const b64 = await window._ctwResizeToBase64(arq);
-                        if (b64) window._zapIaComprovantes.push(b64); else falhou++;
-                    } catch (err) { falhou++; }
-                }
-                if (falhou) showCustomModal({ message: falhou === 1 ? 'Uma foto não abriu e foi ignorada.' : falhou + ' fotos não abriram e foram ignoradas.' });
-                pintarComprov();
-            };
-        }
 
         document.getElementById('btnProcessarZapIA').onclick = window.processarTextoZapIA;
     }, 100);
@@ -10911,8 +10846,7 @@ function _buildPromptZapIA() {
 window.processarTextoZapIA = async function() {
     const texto = document.getElementById('textoZapIAInput').value.trim();
     const foto = window._zapIaFotoBase64;
-    const comprovantes = (window.ctwEhDev && window.ctwEhDev()) ? (window._zapIaComprovantes || []) : [];
-    if (!texto && !foto && !comprovantes.length) {
+    if (!texto && !foto) {
         showCustomModal({ message: 'Cole o texto ou adicione uma foto do produto.' });
         return;
     }
@@ -10926,14 +10860,8 @@ window.processarTextoZapIA = async function() {
         if (typeof window._ctwAiVision !== 'function') {
             throw new Error('Módulo de IA ainda não carregou. Tente novamente em instantes.');
         }
-        // 1ª imagem = foto do produto (se houver); as demais = comprovantes (só dev)
-        const imagens = (foto ? [{ base64: foto }] : []).concat(comprovantes.map(b => ({ base64: b })));
-        // Dev: a mesma leitura também traz os pagamentos para o valor líquido. Perfis normais: prompt idêntico ao de sempre.
-        let modLiq = null;
-        if (window.ctwEhDev && window.ctwEhDev()) {
-            try { modLiq = await window.ctwCarregarModulo('fechamentoia'); } catch (e) { console.warn('[líquido] módulo:', e); }
-        }
-        const resposta = await window._ctwAiVision(imagens, texto, _buildPromptZapIA() + (modLiq ? modLiq.promptExtra({ produto: !!foto, comprovantes: comprovantes.length }) : ''));
+        const imagens = foto ? [{ base64: foto }] : [];
+        const resposta = await window._ctwAiVision(imagens, texto, _buildPromptZapIA());
 
         // Extrai o JSON da resposta (a IA às vezes envolve em texto/markdown, mesmo pedindo pra não)
         const jsonMatch = resposta.match(/\{[\s\S]*\}/);
@@ -10941,7 +10869,6 @@ window.processarTextoZapIA = async function() {
         const dados = JSON.parse(jsonMatch[0]);
 
         _preencherFormularioComDadosIA(dados);
-        if (modLiq) { try { modLiq.rascunhoDaIA(dados, bookipCartList); } catch (e) { console.warn('[líquido] rascunho:', e); } }
 
         // FIX: fechar o modal (que tinha um textarea com foco e o teclado
         // aberto) podia deixar a tela com um deslocamento horizontal
@@ -11005,12 +10932,6 @@ function _preencherFormularioComDadosIA(d) {
         // de R$100.000 é praticamente impossível — nesse caso, assume erro
         // de conversão e corrige dividindo por 100.
         if (valor > 100000) valor = valor / 100;
-        // Dev (valor líquido): vários do mesmo produto → o total da venda é dividido pela quantidade (valor unitário × qtd = total)
-        const qtdIA = Math.floor(Number(d.produtoQtd));
-        if (window.ctwEhDev && window.ctwEhDev() && qtdIA >= 2 && qtdIA <= 99) {
-            const qEl = document.getElementById('bookipProdQtdTemp');
-            if (qEl) { qEl.value = qtdIA; valor = Math.round(valor / qtdIA * 100) / 100; }
-        }
         // FIX: o campo espera formato BRASILEIRO (vírgula decimal), lido
         // depois por uma função que trata todo "." como separador de
         // milhar. Preencher com toFixed(2) (formato americano, ex:
@@ -11033,8 +10954,6 @@ function _preencherFormularioComDadosIA(d) {
 
     // --- Adiciona o item à lista automaticamente, se houver nome de produto ---
     if (d.produtoNome) {
-        // Dev: o produto lido pela IA já entra vinculado ao do CTW (marcado "confira" se a semelhança for fraca)
-        window._bookipProdCtw = (window.ctwEhDev && window.ctwEhDev() && window.ctwLiqAcharProduto) ? window.ctwLiqAcharProduto(d.produtoNome) : null;
         const btnAdd = document.getElementById('btnAdicionarItemLista');
         if (btnAdd) btnAdd.click();
     }
@@ -11060,6 +10979,44 @@ function _preencherFormularioComDadosIA(d) {
     }
 }
 
+// Garantia detalhada (dev): preenche o formulário da Garantia (que continua oculto) com dados prontos; quem salva é o botão de sempre.
+// Devolve { ocupado: true } se há uma garantia normal em andamento (a menos que spec.forcar).
+window.ctwPreencherGarantia = function(spec) {
+    const posSalvo = !document.getElementById('postSaveOptions')?.classList.contains('hidden');   // acabou de salvar uma: o formulário ainda guarda os dados dela
+    if (ctwEhOrcamento()) {
+        ctwTrocarModoDoc('garantia');                  // o que estava no orçamento vai para o rascunho dele
+    } else if (!spec.forcar && (currentEditingBookipId !== null || (ctwFormularioBookipTemDados() && !posSalvo))) {
+        return { ocupado: true };
+    }
+    window.isSimpleReceiptMode = false;
+    window.resetFormulariosBookip({ manterRascunho: true });
+    const c = spec.cli || {};
+    const campo = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+    campo('bookipNome', c.nome); campo('bookipCpf', c.cpf); campo('bookipTelefone', c.tel); campo('bookipEndereco', c.end); campo('bookipEmail', c.email);
+    if (c.nasc && /^\d{4}-\d{2}-\d{2}$/.test(c.nasc)) {
+        campo('bookipNascimento', c.nasc);
+        if (typeof window._bdSetValor === 'function') window._bdSetValor('bookipNascimento', 'bookipNascimentoBtn', 'bookipNascimentoLabel', c.nasc);
+    }
+    const selGar = document.getElementById('bookipGarantiaSelect');     // o prazo vem da tela; não pode herdar o que ficou no formulário
+    if (selGar && spec.dias) {
+        selGar.value = String(spec.dias);
+        if (selGar.value !== String(spec.dias)) selGar.value = '365';
+        const manual = document.getElementById('bookipGarantiaCustomInput');
+        if (manual) { manual.value = ''; manual.classList.add('hidden'); }
+    }
+    (spec.items || []).forEach(i => bookipCartList.push(i));
+    document.querySelectorAll('.check-pagamento').forEach(cb => { cb.checked = (spec.formas || []).includes(cb.id); });
+    atualizarListaVisualBookip();
+    if (spec.foto && typeof window._bookipHandlePhotoFile === 'function') {
+        try {
+            const bin = atob(spec.foto), bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            window._bookipHandlePhotoFile(new Blob([bytes], { type: 'image/jpeg' }));
+        } catch (e) { console.warn('Foto do produto não anexada:', e); }
+    }
+    return { ok: true };
+};
+
 // ============================================================
 // FUNÇÃO DE FAXINA (LIMPA TUDO: DADOS, VISUAL E RASCUNHO)
 // ============================================================
@@ -11068,9 +11025,8 @@ window.resetFormulariosBookip = function(opcoes) {
 
     // 👇 CORREÇÃO CRÍTICA AQUI 👇
     // Removi o 'window.' para ele limpar a variável REAL do módulo app.js
-    currentEditingBookipId = null;
+    currentEditingBookipId = null; 
     // 👆 AGORA ELE LIMPA DE VERDADE 👆
-    if (window.ctwLiqLimpar) window.ctwLiqLimpar();   // descarta o rascunho do valor líquido (dev)
 
     // Garante que o rascunho velho morra quando você pede um novo.
     if (!(opcoes && opcoes.manterRascunho) && typeof limparRascunhoBookipDefinitivo === 'function') {
@@ -11994,9 +11950,9 @@ async function moverParaLixeira(id) {
             
             // 2. Remove da pasta principal
             await remove(ref(db, `${colAtual}/${id}`));
-            
             // Valor líquido (dev): o registro ligado à garantia vai junto (recalcula-se se ela voltar)
             if (window.ctwEhDev && window.ctwEhDev()) window.ctwCarregarModulo('fechamentoia').then(m => m.removerDaGarantia(id)).catch(() => {});
+            
             showCustomModal({ message: "Item movido para a lixeira! 🗑️" });
         }
     } catch (error) {
@@ -13260,6 +13216,15 @@ window.updateNotificationUI  = updateNotificationUI;
         }
     }
 
+    // Garantia detalhada (dev): liga/desliga a linha escondida no "+" (localStorage 'ctwGdAtivo': '0' = desligada)
+    function gdLigado() { try { return localStorage.getItem('ctwGdAtivo') !== '0'; } catch (e) { return true; } }
+    function syncGd() {
+        var on = gdLigado(), sw = $('ctwGdSwitch'), sub = $('ctwGdSub'), linha = document.querySelector('[data-criar="garantiadet"]');
+        if (sw) { sw.setAttribute('aria-checked', on ? 'true' : 'false'); sw.classList.toggle('on', on); }
+        if (sub) sub.textContent = on ? 'Aparece no botão +' : 'Desligada';
+        if (linha) linha.hidden = !on;
+    }
+
     // Escolha manual: vale sempre, até ser trocada de novo
     window.ctwDefinirModoLeve = function(on) {
         document.documentElement.classList.toggle('ctw-leve', !!on);
@@ -13357,6 +13322,12 @@ window.updateNotificationUI  = updateNotificationUI;
             if (cs) cs.click();
             return;
         }
+        if (tipo === 'garantiadet') {
+            if (!window.ctwEhDev() || !gdLigado() || !isAuthReady) return;
+            window.ctwCarregarModulo('fechamentoia').then(function(m) { m.abrirGarantiaDet(); })
+                .catch(function() { if (window.showCustomModal) window.showCustomModal({ message: 'Não consegui abrir agora. Tente de novo.' }); });
+            return;
+        }
         window.ctwAbrirDoc(tipo);
     }
 
@@ -13439,6 +13410,11 @@ window.updateNotificationUI  = updateNotificationUI;
         });
         var linhaLeve = $('ctwSheetLeve');
         if (linhaLeve) linhaLeve.addEventListener('click', function() { window.ctwDefinirModoLeve(!leveAtivo()); });
+        var linhaGd = $('ctwSheetGd');
+        if (linhaGd) linhaGd.addEventListener('click', function() {
+            try { localStorage.setItem('ctwGdAtivo', gdLigado() ? '0' : '1'); } catch (e) {}
+            syncGd();
+        });
         var linhaNotif = $('ctwSheetNotif');
         if (linhaNotif) linhaNotif.addEventListener('click', function() { if (window.toggleNotifPref) window.toggleNotifPref(); });
         var linhaTrocar = $('ctwSheetTrocar');
@@ -13452,6 +13428,7 @@ window.updateNotificationUI  = updateNotificationUI;
         window.ctwAtualizarAlertas();
         syncSheetProfile();
         syncLeve();
+        syncGd();
         syncTema();
         setNavActive(ABA_DA_SECAO[currentMainSectionId] || '');
     }
@@ -13461,7 +13438,7 @@ window.updateNotificationUI  = updateNotificationUI;
         fecharFolhas();
         setNavActive(ABA_DA_SECAO[secao] || '');
         if (secao === 'main') syncGreeting();
-        if (secao === 'mais') { syncSheetProfile(); syncLeve(); syncTema(); }
+        if (secao === 'mais') { syncSheetProfile(); syncLeve(); syncGd(); syncTema(); }
     };
 
     // Init

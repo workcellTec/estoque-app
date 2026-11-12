@@ -5,7 +5,7 @@
 // Três portas de entrada, todas com a mesma conferência e o mesmo cálculo:
 //   • solto     — Taxas > Fechar venda > "Fechar venda IA" (texto/imagens → conferir → resultado)
 //   • garantia  — botão "Valor líquido" no histórico de recibos (parte da garantia já salva)
-//   • rascunho  — "Colar do Zap (IA)" na garantia nova: o líquido vai junto quando a garantia é salva
+//   • detalhada — "Garantia detalhada" (botão + do menu, só dev): tela própria que cria a garantia já com o líquido
 // Registros: settings/fechamentosIA/{perfil}/{id}. Os da garantia usam o id da própria garantia como chave
 // (recalcular atualiza o mesmo registro, nunca duplica). Nada disso vai no PDF nem aparece para outros perfis.
 // ================================================================
@@ -70,7 +70,6 @@ function chavePerfil() {
 // E (estado de uma conferência): modo, itens (produtos com o valor no CTW), pag (linhas de pagamento), cliente...
 let overlay = null, TELA = 'entrada', F = null, REG = [], FILTRO = 'semana';
 let _busy = false, _tk = 0, _salvando = false, _exc = null, _toastT = null, _toastFn = null;
-let RASC = null;                                   // rascunho do formulário da garantia nova (Colar do Zap IA)
 let MAPA = null, MAPA_TS = 0, CONT_H = null, LISTA_H = [];   // registros do perfil e histórico em tela
 
 const novoEstado = modo => ({ modo: modo || 'solto', texto: '', imgs: [], cliente: '', itens: [], pag: [], seq: 0, erros: [], avisosIA: [], erro: '', res: null, salvoId: null, salvoTs: null, garantia: null, edIdx: 0 });
@@ -95,10 +94,7 @@ function fechar() {
     clearTimeout(_toastT); _toastFn = null;
     if (overlay) { overlay.remove(); overlay = null; }
     document.documentElement.classList.remove('ps-aberto');
-    const eraRasc = F && F === RASC;
-    if (eraRasc) F.volta = false;
     F = null; REG = [];
-    if (eraRasc) renderCartaoForm();
 }
 
 function titulo(t) { const el = overlay && overlay.querySelector('.ps-topo b'); if (el) el.textContent = t; }
@@ -212,23 +208,6 @@ Responda APENAS com um JSON, sem texto antes ou depois, neste formato:
 REGRAS:
 ${REGRAS_PAG}
 - "cliente": a pessoa que está COMPRANDO (pagador do Pix, titular no extrato/print, nome na conversa ou no recibo). Nunca o nome da loja nem do vendedor. Se não achar, "".`;
-
-// Acrescentado ao prompt do "Colar do Zap (IA)" da garantia, só para dev
-function promptExtra(imgs) {
-    const n = (imgs && imgs.comprovantes) || 0;
-    const sobreImagens = n ? `\n\n=== IMAGENS ENVIADAS ===
-${imgs.produto ? `A imagem 1 é a FOTO DO PRODUTO. As ${n} imagem(ns) seguinte(s)` : `As ${n} imagem(ns) enviada(s) (NÃO há foto do produto)`} ${n > 1 ? 'são COMPROVANTES' : 'é COMPROVANTE'} de pagamento (recibo da maquininha ou comprovante de Pix).
-- Nome, cor e IMEI do produto saem só do texto${imgs.produto ? ' e da foto do produto' : ''}: nunca de um comprovante.
-- Os comprovantes servem para "pagamentosDetalhe" (valor, parcelas, bandeira, maquininha, e o valorTotal da venda). O mesmo comprovante em mais de uma foto conta uma vez.` : '';
-    return `${sobreImagens}\n\n=== INSTRUÇÕES ADICIONAIS (valor líquido da venda) ===
-Além de todos os campos acima, acrescente ao JSON a chave "pagamentosDetalhe": uma lista com UM item por pagamento da venda, só LENDO o que está escrito (não calcule taxa nem líquido), neste formato:
-[ ${FORMATO_PAG} ]
-REGRAS DOS PAGAMENTOS:
-${REGRAS_PAG}
-REGRA DA TROCA (vale para o valorTotal): se houver troca, o valor da troca TAMBÉM entra no valorTotal. valorTotal = dinheiro/Pix + total do cartão + troca. Exemplo: troca de 500 + 2000 em dinheiro = valorTotal 2500.
-Se a mensagem não trouxer pagamentos, "pagamentosDetalhe" deve ser [].
-Acrescente também a chave "produtoQtd": quantas unidades do produto foram vendidas (número inteiro). Se não estiver escrito, 1. O valorTotal continua sendo o total da venda inteira, não o preço de uma unidade.`;
-}
 
 function extrairJson(resp) {
     const m = String(resp || '').match(/\{[\s\S]*\}/);
@@ -396,7 +375,6 @@ function acharProduto(lido) {
 const totalItens = lista => r2((lista || []).filter(i => i && !i.isSituation).reduce((s, i) => s + (parseFloat(i.valor) || 0) * (parseInt(i.qtd, 10) || 1), 0));
 const baseItem = it => (it.prod && it.prod.valor > 0 ? r2(it.prod.valor * it.qtd) : 0);
 const baseTotal = E => r2(E.itens.reduce((s, it) => s + baseItem(it), 0));
-const nomeProdutos = E => { const n = E.itens.map(it => (it.prod && it.prod.nome) || it.nome).filter(Boolean); return (n[0] || 'Produto sem nome') + (n.length > 1 ? ` + ${n.length - 1}` : ''); };
 
 // Itens da garantia/lista do formulário → itens do estado. O produto do CTW vem, nesta ordem, de:
 // escolha já feita aqui → registro salvo (traz o custo do dia corrigido) → vínculo gravado no próprio item (ctw) → busca por nome (só no histórico, com "confira")
@@ -409,7 +387,7 @@ function sincItens(E, lista, salvos, semBusca) {
         let prod;
         if (ex && ex.prod && (ex.prod.id || ex.prod.manual)) prod = ex.prod;
         else if (sv) prod = { nome: sv.nomeCtw || sv.nome, id: sv.id || null, valor: Number(sv.valor) || 0, manual: !!sv.manual, duvida: false, lido: nome, hoje: sv.hoje != null ? Number(sv.hoje) : undefined };
-        else if (i.ctw) prod = { nome: i.ctw.nome || nome, id: i.ctw.id || null, valor: Number(i.ctw.valor) || 0, manual: !!i.ctw.manual, duvida: !!i.ctw.duvida, lido: nome };
+        else if (i.ctw) prod = { nome: i.ctw.nome || nome, id: i.ctw.id || null, valor: Number(i.ctw.valor) || parseFloat((produtoPorId(i.ctw.id) || {}).valor) || 0, manual: !!i.ctw.manual, duvida: !!i.ctw.duvida, lido: nome };
         else if (ex && ex.prod) prod = ex.prod;
         else prod = semBusca ? { nome, id: null, valor: null, manual: false, duvida: false, lido: nome } : acharProduto(nome);
         return { nome, qtd, valorG: parseFloat(i.valor) || 0, prod };
@@ -445,53 +423,25 @@ function estadoDeGarantia(doc, rec) {
     return E;
 }
 
-// ── Formulário da garantia nova: Resumido / Detalhado (dev) ─────
-// Só dev, só garantia/recibo novos. Resumido = o formulário de sempre. Detalhado = três passos num card só, sem digitar valor de produto:
-//   1 Produtos: escolhidos do CTW (o custo o sistema já sabe); a IA do Zap preenche este mesmo card e mostra o que leu × o que escolheu;
-//   2 Pagamento: pagamentos parciais por botões (Pix/Dinheiro, Boleto, Troca, Débito, Crédito); o total da venda é a soma deles;
-//   3 Lucro: o que caiu na conta menos o custo, ao vivo.
-// O documento divide o total entre os produtos na proporção do custo (item.ctwSemPreco = "o valor vem do pagamento"). As formas de
-// pagamento do documento são marcadas sozinhas e o líquido é gravado ao salvar. Sem detalhar nada, a garantia salva como sempre.
+// ── Garantia detalhada (dev) ────────────────────────────────────
+// Tela própria (cobre o app) em 2 páginas: 1 · cliente e produtos, 2 · pagamento e lucro.
+//   • Produtos escolhidos do CTW (o custo o app já sabe). O que a IA do Zap lê entra como "certo" só quando só pode ser aquele produto;
+//     nos outros casos aparece "Precisa de você" com as sugestões. Cada produto que a pessoa liga na mão é lembrado (aliases).
+//   • Pagamento: um valor, "Adicionar", e uma gaveta pergunta a forma/parcelas/bandeira. O total da venda é a soma dos pagamentos.
+//   • O documento mostra só valores brutos: o total é dividido entre os produtos na proporção do custo do CTW, sem emoji no nome.
+//   • Salvar preenche o formulário da Garantia (mesmo fluxo: prévia, número, cliente, foto, PDF) e o líquido vai junto.
+//   • Rascunho no aparelho (localStorage): fechar o app não perde nada. Liga/desliga em Mais (só dev).
+const GD_LS = 'ctwGdRascunho_v1', GD_SW = 'ctwGdAtivo', GD_IDADE = 48 * 3600 * 1000;
+const CONDS = ['Novo / Lacrado', 'Seminovo', 'Sem condição'];
 const CHECKS = { pix: 'pagPix', boleto: 'pagBoleto', troca: 'pagTroca', deb: 'pagDebito', cred: 'pagCredito' };
 const tipoForma = l => (l.k === 'cartao' ? (l.parc === 0 ? 'deb' : 'cred') : l.k === 'troca' ? 'troca' : l.boleto ? 'boleto' : 'pix');
 const rotForma = l => (l.k === 'cartao' ? (l.parc === 0 ? 'Débito' : l.parc == null ? 'Cartão' : 'Crédito ' + l.parc + 'x') : l.k === 'troca' ? 'Troca' : l.boleto ? 'Boleto' : 'Pix / Dinheiro');
-const ctwLista = () => (window.ctwBookipLista ? window.ctwBookipLista() : []);
-const totalGar = E => (E.garantia ? E.garantia.total : totalItens(E.lista));
-const qtdItem = i => Math.max(1, parseInt(i.qtd, 10) || 1);
-const itensForm = E => (E.lista || []).filter(i => i && !i.isSituation);
-const prodDe = (E, k) => ((E.itens || [])[k] || {}).prod || null;
-// ok = ligado ao CTW · duvida = ligado, mas a IA não teve certeza ("confira") · nao = sem produto (ou sem valor) no CTW
-const estadoDe = p => (!p || !(p.valor > 0) ? 'nao' : p.duvida ? 'duvida' : 'ok');
+const semEmoji = t => String(t == null ? '' : t).replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\p{Regional_Indicator}️‍⃣]/gu, '').replace(/\s+/g, ' ').trim();
 const condDe = nome => (/semi ?novo/i.test(nome) ? 'Seminovo' : /novo|lacrad/i.test(nome) ? 'Novo / Lacrado' : '');
-const buscaInicial = nome => semCondicao(nome).replace(/[-–—|]+/g, ' ').replace(/\s+/g, ' ').trim();
 const produtoPorId = id => (window.products || []).find(x => String(x.id) === String(id));
-const refrescarForm = () => (window.ctwBookipRefrescar ? window.ctwBookipRefrescar() : renderCartaoForm());
-
-// Detalhado: total da venda = soma dos pagamentos. Faltam = itens sem produto (ou sem valor) no CTW.
-function totaisDet(E) {
-    const l = itensForm(E), faltam = l.filter((i, k) => estadoDe(prodDe(E, k)) === 'nao');
-    return { l, faltam, soma: somaPagamentos(E) };
-}
-
-// O total da venda é dividido entre os produtos na proporção do custo (qtd × custo). Mexe nos itens da lista do formulário
-// (mesmos objetos) e devolve true se algum valor mudou. Sem total, ou com produto ainda sem custo, os valores ficam em 0.
-function aplicarPrecos(E) {
-    const t = totaisDet(E), l = t.l, ok = l.length > 0 && !t.faltam.length && t.soma > 0;
-    const peso = l.map((i, k) => { const p = prodDe(E, k) || {}, c = p.hoje != null ? p.hoje : p.valor; return qtdItem(i) * (c > 0 ? c : 0); });
-    const somaPeso = peso.reduce((s, x) => s + x, 0);
-    const un = l.map((i, k) => (ok && somaPeso > 0 ? r2(r2(t.soma * peso[k] / somaPeso) / qtdItem(i)) : 0));
-    if (ok && somaPeso > 0) {                          // sobra de arredondamento vai para o último item de quantidade 1
-        const res = r2(t.soma - l.reduce((s, i, k) => s + un[k] * qtdItem(i), 0)), k1 = l.map(qtdItem).lastIndexOf(1);
-        if (Math.abs(res) >= 0.005 && k1 >= 0) un[k1] = r2(un[k1] + res);
-    }
-    let mudou = false;
-    l.forEach((i, k) => {
-        i.ctwSemPreco = true;
-        if (Math.abs((parseFloat(i.valor) || 0) - un[k]) > 0.0001) { i.valor = un[k]; mudou = true; }
-    });
-    return mudou;
-}
-let APLICANDO = false;
+const gdAtivo = () => ehDev() && lsGet(GD_SW) !== '0';
+const resolvido = i => !!(i.prod && i.prod.id && i.prod.valor > 0);
+const nomeBusca = p => String(p.nome || '');   // na busca o emoji do CTW fica (ajuda a achar); no cartão e no documento ele sai
 
 function taxaDe(maq, band, parc) {
     if (!window._areRatesLoaded || typeof window._getRate !== 'function') return null;
@@ -499,458 +449,637 @@ function taxaDe(maq, band, parc) {
     return typeof t === 'number' && isFinite(t) ? t : null;
 }
 
-function novoRasc() {
-    const E = novoEstado('rascunho');
-    E.lista = []; E.det = false; E.snap = null; E.novo = ''; E.busca = ''; E.cond = 'Novo / Lacrado'; E.abre = {}; E.sheet = null; E.aviso = '';
+const IC = {
+    back: '<path d="M15 6l-6 6 6 6"/>', del: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>', plus: '<path d="M12 5v14M5 12h14"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>', ok: '<path d="M5 12l5 5 9-10"/>', chat: '<path d="M4 5h16v11H9l-5 4z"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>', pen: '<path d="M4 20l4-1 11-11-3-3L5 16l-1 4zM14 7l3 3"/>', chev: '<path d="M9 6l6 6-6 6"/>',
+    cam: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>', rec: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>'
+};
+const ico = n => `<svg class="gd-i" viewBox="0 0 24 24" aria-hidden="true">${IC[n]}</svg>`;
+
+// ── Produto lido → produto do CTW ───────────────────────────────
+// Só é "certo" quando existe UM produto que cobre todas as palavras (o nome ensinado antes vale direto). Senão: sugestões, e quem escolhe é a pessoa.
+const cobertura = (tl, nomeProd) => { const tp = tokens(nomeProd); return tl.length ? tl.filter(t => tp.some(x => x === t || x.startsWith(t))).length / tl.length : 0; };
+const paraProd = (p, lido) => ({ nome: p.nome, id: p.id, valor: parseFloat(p.valor) || 0, manual: false, duvida: false, lido });
+
+function interpretar(lido) {
+    const al = aliasDe(lido); if (al && al.valor > 0) return { prod: al, sug: [] };
+    const tl = tokens(lido), cands = [];
+    buscarProdutos(lido, 8).forEach(p => { const c = cobertura(tl, p.nome); if (c >= 0.5) cands.push({ p, c }); });
+    cands.sort((a, b) => b.c - a.c);
+    const cheios = cands.filter(x => x.c === 1);
+    if (cheios.length === 1 && parseFloat(cheios[0].p.valor) > 0) return { prod: paraProd(cheios[0].p, lido), sug: [] };
+    return { prod: null, sug: cands.slice(0, 3).map(x => x.p) };
+}
+
+// ── Estado e rascunho ───────────────────────────────────────────
+let G = null, GO = null, _gdT = null;
+const CLI0 = () => ({ nome: '', cpf: '', tel: '', nasc: '', end: '', email: '' });
+const novoG = () => Object.assign(novoEstado('detalhada'), { page: 1, cli: CLI0(), cliOpen: false, cond: 'Novo / Lacrado', dias: 365, busca: '', aviso: '', novo: '', open: 0, sh: null, foto: null, zap: { foto: null, comp: [], texto: '', erro: '', lendo: false }, salvando: false, limpar: false, cliente: '' });
+const DIAS_GAR = [[365, '1 ano (padrão)'], [180, '6 meses'], [120, '4 meses'], [30, '30 dias']];   // as mesmas opções da Garantia
+const gdVazio = E => !E.itens.length && !E.pag.length && !Object.values(E.cli).some(v => String(v).trim());
+
+function gdGravar() {
+    if (!G) return;
+    try {
+        if (gdVazio(G)) { localStorage.removeItem(GD_LS); return; }
+        const s = { v: 1, ts: Date.now(), page: G.page, cli: G.cli, cond: G.cond, dias: G.dias, seq: G.seq, novo: G.novo,
+            itens: G.itens.map(i => ({ id: i.id, nome: i.nome, qtd: i.qtd, cond: i.cond, cor: i.cor, obs: i.obs, prod: i.prod, sug: (i.sug || []).map(p => p.id) })), pag: G.pag };
+        localStorage.setItem(GD_LS, JSON.stringify(s));
+    } catch (e) { /* sem armazenamento: o rascunho só não existe */ }
+}
+const gdPersistir = () => { clearTimeout(_gdT); _gdT = setTimeout(gdGravar, 300); };
+function gdLimparRasc() { clearTimeout(_gdT); try { localStorage.removeItem(GD_LS); } catch (e) { /* nada a limpar */ } }
+
+function gdRestaurar() {
+    let s = null;
+    try { s = JSON.parse(localStorage.getItem(GD_LS) || 'null'); } catch (e) { s = null; }
+    if (!s || s.v !== 1 || !s.ts || Date.now() - s.ts > GD_IDADE || !Array.isArray(s.itens) || !Array.isArray(s.pag)) return null;
+    const E = novoG();
+    E.page = s.page === 2 ? 2 : 1; E.cli = Object.assign(CLI0(), s.cli || {}); E.cond = CONDS.includes(s.cond) ? s.cond : E.cond; E.dias = DIAS_GAR.some(d => d[0] === s.dias) ? s.dias : E.dias; E.novo = String(s.novo || '');
+    E.itens = s.itens.map(i => ({ id: i.id, nome: i.nome || '', qtd: Math.max(1, parseInt(i.qtd, 10) || 1), cond: CONDS.includes(i.cond) ? i.cond : '', cor: i.cor || '', obs: i.obs || '',
+        prod: i.prod && i.prod.id ? i.prod : null, sug: (i.sug || []).map(produtoPorId).filter(Boolean), q: '', edCusto: false }));
+    E.pag = s.pag; E.seq = Math.max(Number(s.seq) || 0, ...E.itens.map(i => i.id || 0), ...E.pag.map(l => l.id || 0));
+    if (gdVazio(E)) return null;
+    E.aviso = 'Recuperei o que você já tinha preenchido.';
     return E;
 }
-const garantirRasc = () => RASC || (RASC = novoRasc());
 
-function rascunhoDaIA(dados, lista) {
-    const E = RASC = novoRasc();
-    E.cliente = String(dados.nome || '').trim();
-    E.lista = lista || [];
-    sincItens(E, E.lista, null, true);
-    E.pag = linhasDeIA(E, dados.pagamentosDetalhe);
-    E.det = E.pag.length > 0 && somaPagamentos(E) > 0;   // a IA leu pagamentos com valor: já abre em Detalhado (o valor do produto sai deles)
-    renderCartaoForm(E.lista);
-}
-
-function limparRascunho() {
-    RASC = null;
-    fecharSheet(true); tirarHosts(); sincChecks(null, false);
-}
-
-function formaVisivel(lista) {
-    const tipo = document.querySelector('input[name="tipoInput"]:checked');
-    return ehDev() && window.ctwDocModo !== 'orcamento' && !(window.ctwBookipEditando && window.ctwBookipEditando()) && !(lista || []).some(i => i && i.isSituation) && !(tipo && tipo.value === 'situacao');
-}
-
-// Em Detalhado o grupo "Forma(s) de Pagamento" some e as caixas são marcadas pelos pagamentos lançados
-// (sem nenhum lançado, valem as que já estavam marcadas). Voltando ao Resumido, o que estava marcado antes é devolvido.
-function sincChecks(E, ativo) {
-    const rot = document.getElementById('bookipPagamentoLabel'), box = rot && rot.parentElement;
-    const caixas = Object.values(CHECKS).map(id => document.getElementById(id)).filter(Boolean);
-    if (!ativo) {
-        if (E && E.snap) { caixas.forEach(c => { c.checked = E.snap.includes(c.id); }); E.snap = null; }
-        if (box) box.classList.remove('fia-oculto');
-        return;
-    }
-    if (!E.snap) E.snap = caixas.filter(c => c.checked).map(c => c.id);
-    const usadas = new Set(E.pag.map(l => CHECKS[tipoForma(l)]));
-    caixas.forEach(c => { c.checked = E.pag.length ? usadas.has(c.id) : E.snap.includes(c.id); });
-    if (box) box.classList.add('fia-oculto');
-}
-
-function tirarHosts() { ocultarForm(false); ['ctwLiqModo', 'ctwLiqPag'].forEach(id => { const h = document.getElementById(id); if (h) h.remove(); }); }
-
-// Em Detalhado o formulário de produto do app (busca, campos, botão) e a lista com o total saem de cena: o card do Detalhado
-// faz esse papel. Os elementos continuam no lugar (só escondidos), então o app e a IA do Zap seguem achando tudo pelo id.
-function ocultarForm(on) {
-    const tot = document.getElementById('bookipTotalDisplay'), add = document.getElementById('btnAdicionarItemLista');
-    [document.getElementById('camposProduto'), add && (add.closest('.col-12') || add.parentElement), document.getElementById('bookipItensLabel'),
-        document.getElementById('bookipListaItens'), tot && (tot.closest('.text-end') || tot.parentElement)]
-        .forEach(n => { if (n) n.classList.toggle('fia-oculto', !!on); });
-}
-
-function hostDe(id, ref, pos) {
-    let h = document.getElementById(id);
-    if (!h) {
-        h = document.createElement('div'); h.id = id; h.className = 'fia-fc'; h.setAttribute('data-dev-only', '');
-        ['click', 'input'].forEach(t => h.addEventListener(t, aoFormEvento));
-        ref.insertAdjacentElement(pos, h);
-    }
-    return h;
-}
-
-function renderCartaoForm(lista) {
-    const l = lista || ctwLista();
-    const painel = document.getElementById('camposProduto'), total = document.getElementById('bookipTotalDisplay');
-    const topo = painel && (painel.closest('.p-3') || painel.parentElement), fim = total && (total.closest('.text-end') || total.parentElement);
-    if (!topo || !fim || !document.getElementById('bookipItensLabel') || !formaVisivel(l)) { tirarHosts(); fecharSheet(true); sincChecks(RASC, false); return; }
-    const E = garantirRasc();
-    E.lista = l; E.erros = []; sincItens(E, l, null, true);
-    if (E.det && !APLICANDO && window.ctwBookipRefrescar && aplicarPrecos(E)) {
-        // os valores dos itens mudaram: a lista é redesenhada e chama este render de novo (já com tudo no lugar)
-        APLICANDO = true; try { window.ctwBookipRefrescar(); } finally { APLICANDO = false; }
-        return;
-    }
-    ocultarForm(E.det);
-    hostDe('ctwLiqModo', topo, 'beforebegin'); hostDe('ctwLiqPag', topo, 'beforeend');
-    const pag = document.getElementById('ctwLiqPag'), ativo = document.activeElement;
-    if (E.det && topo.lastElementChild !== pag) topo.appendChild(pag);       // o card do Detalhado fica dentro do painel do produto
-    const foco = ativo && pag.contains(ativo) && ativo.dataset && ativo.dataset.f ? { f: ativo.dataset.f, i: ativo.dataset.i, a: ativo.selectionStart, b: ativo.selectionEnd } : null;
-    document.getElementById('ctwLiqModo').innerHTML = htmlModo(E);
-    pag.innerHTML = E.det ? htmlDetalhado(E) : '';
-    if (foco) {                                        // o card é redesenhado a cada mudança: o foco e o cursor do campo voltam
-        const n = pag.querySelector('[data-f="' + foco.f + '"]' + (foco.i != null ? '[data-i="' + foco.i + '"]' : ''));
-        if (n) { n.focus({ preventScroll: true }); try { n.setSelectionRange(foco.a, foco.b); } catch (e) { /* campo sem seleção */ } }
-    }
-    sincChecks(E, E.det);
-}
-
-function htmlModo(E) {
-    return `<div class="fia-seg" role="group" aria-label="Modo do pagamento">
-        <button type="button" class="${E.det ? '' : 'on'}" data-liq="resumido">Resumido</button>
-        <button type="button" class="${E.det ? 'on' : ''}" data-liq="detalhado">Detalhado <span class="fia-dev">Dev</span></button></div>
-      ${E.det ? '' : '<div class="fia-t">Igual ao de hoje, para venda rápida. Sem cálculo de lucro.</div>'}`;
-}
-
-// Segunda linha de um pagamento lançado: só o que ajuda (cartão: quanto cai; troca: aparelho; incompleto: o que falta)
-function subLinha(l) {
-    const v = dinheiro(l.valor) || 0;
-    if (l.k === 'troca') return l.aparelho || 'toque para informar o aparelho';
-    if (l.k === 'pix') return '';
-    if (l.parc == null || (l.maq !== 'pagbank' && !l.band)) return 'toque para completar';
-    const t = taxaDe(l.maq, l.band, l.parc);
-    return t == null ? 'sem taxa cadastrada' : 'cai ' + brl(r2(v * (1 - t / 100)));
-}
-
-const passo = (rot, dir) => `<div class="fia-step"><span>${rot}</span>${dir ? `<b>${dir}</b>` : ''}</div>`;
-
-function htmlDetalhado(E) {
-    return htmlItensDet(E) + htmlPagamento(E) + htmlLucro(E);
-}
-
-// ── Produtos ─────────────────────────────────────────────────────
-function htmlItensDet(E) {
-    const q = (E.busca || '').trim(), sug = q ? buscarProdutos(q, 5) : [];
-    const res = q ? `<div class="fia-res">${sug.length
-        ? sug.map(p => `<button type="button" data-liq="add" data-pid="${esc(p.id)}"><span>${esc(p.nome)}</span><i class="bi bi-plus-lg"></i></button>`).join('')
-        : '<div class="fia-t">Nada no CTW com esse nome. Tente menos palavras.</div>'}</div>` : '';
-    const cond = c => `<button type="button" class="fia-tg${E.cond === c ? ' on' : ''}" data-liq="cond" data-c="${c}">${c}</button>`;
-    const cards = itensForm(E).map((item, k) => {
-        const p = prodDe(E, k) || {}, est = estadoDe(p), q2 = qtdItem(item), cd = condDe(item.nome);
-        const nome = est === 'nao' ? (p.id ? esc(p.nome) : 'Não achei no CTW') : esc(p.nome);
-        const lido = item.nome && (est === 'nao' || chaveAlias(item.nome) !== chaveAlias(p.nome || '')) ? `Você escreveu: ${esc(item.nome)}` : '';
-        const sub = est === 'nao' && p.id ? 'sem valor no CTW' : est === 'ok' && cd ? cd : '';
-        const acoes = est === 'ok' ? '' : `<div class="fia-ab">${est === 'duvida' ? `<button type="button" class="fia-sim" data-liq="certo" data-i="${k}">Está certo</button>` : ''}
-            <button type="button" data-liq="trocar" data-i="${k}">${est === 'nao' ? 'Escolher produto' : 'Trocar'}</button></div>`;
-        return `<div class="fia-it ${est}">
-          <div class="fia-ih"><span class="fia-ic ${est}"></span>
-            <div class="fia-ig"><span class="fia-nm">${nome}</span>${lido ? `<span class="fia-lido">${lido}</span>` : ''}${sub ? `<small>${esc(sub)}</small>` : ''}</div>
-            <div class="fia-qty"><button type="button" data-liq="menos" data-i="${k}" aria-label="Menos">−</button><b>${q2}</b><button type="button" data-liq="mais" data-i="${k}" aria-label="Mais">+</button></div>
-            <button type="button" class="fia-x" data-liq="tirar" data-i="${k}" aria-label="Remover produto"><i class="bi bi-trash"></i></button></div>
-          ${acoes}
-          <div class="fia-iv"><input class="form-control" data-f="obs" data-i="${k}" placeholder="IMEI / Serial" autocomplete="off" value="${esc(item.obs || '')}" aria-label="IMEI ou serial">
-            <input class="form-control" data-f="cor" data-i="${k}" placeholder="Cor" autocomplete="off" value="${esc(item.cor || '')}" aria-label="Cor"></div></div>`;
-    }).join('');
-    return `${passo('Produtos')}
-      <div class="fia-bw"><i class="bi bi-search"></i><input class="form-control" data-f="busca" placeholder="Buscar produto no CTW..." autocomplete="off" value="${esc(E.busca || '')}" aria-label="Buscar produto no CTW"></div>
-      ${res}
-      <div class="fia-cd">${cond('Novo / Lacrado')}${cond('Seminovo')}</div>
-      ${E.aviso ? `<div class="fia-t ok">${esc(E.aviso)}</div>` : ''}
-      ${cards ? `<div class="fia-ls">${cards}</div>` : ''}`;
-}
-
-// ── Pagamento ────────────────────────────────────────────────────
-const novoPronto = E => totaisDet(E).l.length > 0 && dinheiro(E.novo) > 0;
-
-function htmlPagamento(E) {
-    const t = totaisDet(E), pronto = novoPronto(E);
-    const linhas = E.pag.length ? `<div class="fia-ls">${E.pag.map(l => { const sub = subLinha(l); return `<div class="fia-li" data-liq="editar" data-id="${l.id}" role="button" tabindex="0">
-        <div class="fia-lg"><span>${rotForma(l)}</span>${sub ? `<small>${esc(sub)}</small>` : ''}</div>
-        <b>${brl(dinheiro(l.valor) || 0)}</b>
-        <button type="button" class="fia-x" data-liq="rem" data-id="${l.id}" aria-label="Remover pagamento"><i class="bi bi-trash"></i></button></div>`; }).join('')}</div>` : '';
-    const b = (f, rot, cls) => `<button type="button" class="fia-fb ${cls}${pronto ? '' : ' off'}" data-liq="forma" data-forma="${f}">${rot}</button>`;
-    return `${passo('Pagamento', E.pag.length ? 'Total ' + brl(t.soma) : '')}${linhas}
-      <input class="form-control fia-money" inputmode="decimal" placeholder="${E.pag.length ? 'Quanto foi neste outro pagamento?' : 'Quanto o cliente pagou?'}" autocomplete="off" data-f="novo" value="${esc(E.novo)}" aria-label="Valor deste pagamento">
-      <div class="fia-fbs">${b('pix', 'Pix / Dinheiro', 'c2')}${b('boleto', 'Boleto', 'c2')}${b('troca', 'Troca', 'c2')}${b('deb', 'Débito', 'c3')}${b('cred', 'Crédito', 'c3')}</div>`;
-}
-
-// Digitando o valor deste pagamento: só liga/desliga os botões (o campo não é redesenhado, senão o teclado fecha)
-function atualizarNovo(E) {
-    const h = document.getElementById('ctwLiqPag'); if (!h) return;
-    const ok = novoPronto(E);
-    h.querySelectorAll('.fia-fb').forEach(b => b.classList.toggle('off', !ok));
-}
-
-// ── Lucro: um cartão só; o custo de cada produto abre sob demanda ─
-function htmlLucro(E) {
-    const t = totaisDet(E);
-    let corpo = '', pronto = false;
-    if (!t.l.length) corpo = '<div class="fia-t">Escolha os produtos para ver o lucro.</div>';
-    else if (t.faltam.length) corpo = `<div class="fia-t am">Falta escolher no CTW: ${t.faltam.map(i => esc(i.nome)).join(', ')}.</div>`;
-    else if (!E.pag.length) corpo = '<div class="fia-t">Lance o primeiro pagamento para ver o lucro.</div>';
-    else {
-        const calc = calcular(E);
-        if (calc.erros.length) corpo = `<div class="fia-t am">${Array.from(new Set(calc.erros.map(x => x.msg))).map(esc).join('<br>')}</div>`;
-        else {
-            const r = calc.res, cl = r.lucro > 0 ? 'ok' : r.lucro < 0 ? 'neg' : '';
-            pronto = true;
-            corpo = `<div class="fia-lc"><div><small>${r.lucro < 0 ? 'Prejuízo' : 'Lucro'}</small><b class="${cl}">${sinal(r.lucro)}</b></div>
-              <div class="fia-lr"><span>Caiu na conta <b>${brl(r.real)}</b></span><span>Custo <b>${brl(r.base)}</b></span></div></div>`;
-        }
-    }
-    const aberto = pronto && E.abre && E.abre.custo;
-    const custos = aberto ? `<div class="fia-cs"><div class="fia-t">Algum produto custava menos no dia da venda? Toque no lápis.</div>
-          ${E.itens.map((it, i) => {
-            const p = it.prod || {}, mudou = p.hoje != null && p.valor !== p.hoje;
-            return `<div class="fia-ci"><span class="fia-cn">${esc(p.nome || it.nome)}</span><span class="fia-cv${mudou ? ' am' : ''}">${brl(p.valor)}${it.qtd > 1 ? ' (cada)' : ''}</span>
-              <button type="button" class="fia-x" data-liq="custo" data-i="${i}" aria-label="Corrigir custo"><i class="bi bi-pencil-fill"></i></button></div>`;
-        }).join('')}</div>` : '';
-    return `<div class="fia-pn fia-rs">${corpo}${pronto ? `<button type="button" class="fia-lk2" data-liq="custos">${aberto ? 'Fechar custos' : 'Ajustar custo dos produtos'}</button>` : ''}${custos}</div>`;
-}
-
-function aoFormEvento(e) {
-    const E = RASC; if (!E) return;
-    if (e.type === 'input') {
-        const f = e.target.dataset && e.target.dataset.f, i = parseInt(e.target.dataset && e.target.dataset.i, 10), item = itensForm(E)[i];
-        if (f === 'novo') { E.novo = e.target.value; atualizarNovo(E); }
-        else if (f === 'busca') { E.busca = e.target.value; renderCartaoForm(); }
-        else if ((f === 'obs' || f === 'cor') && item) item[f] = e.target.value;
-        return;
-    }
-    const d = e.target.closest('[data-liq]'); if (!d) return;
-    const a = d.dataset.liq, id = d.dataset.id, k = parseInt(d.dataset.i, 10), item = itensForm(E)[k];
-    E.aviso = '';
-    if (a === 'resumido' || a === 'detalhado') { E.det = a === 'detalhado'; return renderCartaoForm(); }
-    if (a === 'add') return adicionarProduto(E, produtoPorId(d.dataset.pid));
-    if (a === 'cond') { E.cond = E.cond === d.dataset.c ? '' : d.dataset.c; return renderCartaoForm(); }
-    if (a === 'menos' || a === 'mais') { if (item) { item.qtd = Math.max(1, Math.min(99, qtdItem(item) + (a === 'mais' ? 1 : -1))); refrescarForm(); } return; }
-    if (a === 'tirar') { if (item) { ctwLista().splice(ctwLista().indexOf(item), 1); refrescarForm(); } return; }
-    if (a === 'custos') { E.abre.custo = !E.abre.custo; return renderCartaoForm(); }
-    if (a === 'certo') return confirmarProduto(E, k);
-    if (a === 'trocar') return item && abrirSheet(E, { tipo: 'produto', i: k, busca: buscaInicial(item.nome) });
-    if (a === 'forma') return lancar(E, d.dataset.forma);
-    if (a === 'editar') { const l = E.pag.find(x => String(x.id) === String(id)); return l && abrirSheet(E, sheetDeLinha(l)); }
-    if (a === 'rem') { E.pag = E.pag.filter(x => String(x.id) !== String(id)); return renderCartaoForm(); }
-    if (a === 'custo') return abrirSheet(E, sheetDeCusto(E, k));
-}
-
-// Produto escolhido na busca do card: entra na lista do formulário já ligado ao CTW, sem valor (ele sai dos pagamentos)
-function adicionarProduto(E, p) {
-    if (!p) return;
-    const nome = p.nome + (E.cond ? ' - ' + E.cond : ''), igual = itensForm(E).find(i => i.ctw && String(i.ctw.id) === String(p.id) && i.nome === nome);
-    if (igual) igual.qtd = Math.min(99, qtdItem(igual) + 1);      // mesmo produto e condição: soma na quantidade
-    else ctwLista().push({ nome, qtd: 1, valor: 0, cor: '', obs: '', isSituation: false, ctwSemPreco: true,
-        ctw: { id: p.id, nome: p.nome, valor: parseFloat(p.valor) || 0, manual: false, duvida: false } });
-    E.busca = '';
-    refrescarForm();
-}
-
-// "Está certo": a ligação deixa de ser dúvida e o app guarda o nome para as próximas leituras
-function confirmarProduto(E, k) {
-    const item = itensForm(E)[k], p = prodDe(E, k); if (!item || !p) return;
-    p.duvida = false; if (item.ctw) item.ctw.duvida = false;
-    aprender(item.nome, { id: p.id, nome: p.nome });
-    E.aviso = 'Guardei: da próxima vez que vier “' + item.nome + '”, já sei que é ' + p.nome + '.';
-    renderCartaoForm();
-}
-
-// Produto escolhido na gaveta ("Trocar" / "Escolher produto")
-function escolherProduto(E, k, p) {
-    const item = itensForm(E)[k]; if (!item || !p) return;
-    const valor = parseFloat(p.valor) || 0;
-    item.ctw = { id: p.id, nome: p.nome, valor, manual: false, duvida: false };
-    if (E.itens[k]) E.itens[k].prod = { nome: p.nome, id: p.id, valor, manual: false, duvida: false, lido: item.nome };
-    aprender(item.nome, { id: p.id, nome: p.nome });
-    E.aviso = 'Guardei: da próxima vez que vier “' + item.nome + '”, já sei que é ' + p.nome + '.';
-}
-
-function lancar(E, forma) {
-    const ve = dinheiro(E.novo) || 0; if (!novoPronto(E)) return;
-    if (forma === 'pix' || forma === 'boleto') {
-        E.pag.push(novaLinha(E, 'pix', { valor: fmtIn(ve), manual: true, boleto: forma === 'boleto' }));
-        E.novo = '';
-        return renderCartaoForm();
-    }
-    if (forma === 'troca') return abrirSheet(E, { tipo: 'troca', valor: ve, aparelho: '', vtxt: '' });
-    abrirSheet(E, { tipo: 'cartao', forma, valor: ve, maq: maqPadrao(), band: bandPadrao(), bandTocada: false, parc: forma === 'deb' ? 0 : null, vtxt: '' });
-}
-
-// ── Gavetas (mesmo estilo das outras do app) ────────────────────
-const sheetDeLinha = l => {
-    if (l.k === 'cartao') {
-        const deb = l.parc === 0;
-        return { tipo: 'cartao', forma: deb ? 'deb' : 'cred', editId: l.id, vtxt: l.valor, maq: l.maq, band: l.band || bandPadrao(), bandTocada: !l.bandDuv && !!l.band, parc: l.parc };
-    }
-    if (l.k === 'troca') return { tipo: 'troca', editId: l.id, vtxt: l.valor, aparelho: l.aparelho };
-    return { tipo: 'pix', editId: l.id, vtxt: l.valor, boleto: !!l.boleto };
+// ── Cálculo ─────────────────────────────────────────────────────
+const totalGar = E => (E.garantia ? E.garantia.total : 0);
+const calcG = () => { G.cliente = G.cli.nome; return calcular(G); };
+const pendentes = () => G.itens.filter(i => !resolvido(i));
+// A condição escolhida entra no fim do nome; se o nome do CTW já termina com uma condição ("... NOVO"), ela sai para não repetir.
+const nomeDoc = i => {
+    const nome = semEmoji(i.prod.nome).trim(), comCond = i.cond && i.cond !== 'Sem condição';
+    return comCond ? nome.replace(/[\s-]*\b(semi ?novo|novo|nova|lacrad[oa]|usad[oa]|vitrine|open ?box)\s*$/i, '').trim() + ' - ' + i.cond : nome;
 };
 
-function sheetDeCusto(E, i) {
-    const p = (E.itens[i] && E.itens[i].prod) || {};
-    return { tipo: 'custo', i, txt: p.hoje != null && p.valor !== p.hoje || (p.manual && !p.id) ? fmtIn(p.valor) : '' };
-}
-
-const chip = (c, v, rot, on) => `<button type="button" class="fia-chip${on ? ' on' : ''}" data-sh="chip" data-c="${c}" data-v="${esc(v)}">${esc(rot)}</button>`;
-const campoValorSheet = sh => `<div class="fia-shl">Valor (R$)</div><input class="form-control fia-money" inputmode="decimal" placeholder="0,00" autocomplete="off" data-f="sh-valor" value="${esc(sh.vtxt)}" aria-label="Valor">`;
-
-function infoSheet(E) {
-    const sh = E.sheet;
-    if (sh.tipo === 'produto') return { t: '', ok: false, rot: '' };
-    if (sh.tipo === 'custo') {
-        const ok = !sh.txt.trim() || dinheiro(sh.txt) > 0;
-        return { t: ok ? '' : 'Informe um valor maior que zero.', ok, rot: 'Salvar' };
+// O total da venda (soma dos pagamentos) é dividido entre os produtos na proporção do custo no CTW (qtd × custo). Sobra de centavos: vai para
+// uma unidade avulsa, assim a soma do documento fecha exatamente com os pagamentos.
+function itensDoDoc() {
+    const l = G.itens, soma = somaPagamentos(G);
+    const peso = l.map(i => i.qtd * (i.prod.hoje != null ? i.prod.hoje : i.prod.valor));
+    const sp = peso.reduce((s, x) => s + x, 0);
+    const un = l.map((i, k) => (sp > 0 ? r2(r2(soma * peso[k] / sp) / i.qtd) : 0));
+    const linhas = l.map((i, k) => ({ nome: nomeDoc(i), qtd: i.qtd, valor: un[k], cor: semEmoji(i.cor), obs: String(i.obs || '').trim(), isSituation: false, ctw: { id: i.prod.id, nome: i.prod.nome } }));
+    const res = r2(soma - linhas.reduce((s, x) => s + x.valor * x.qtd, 0));
+    if (Math.abs(res) >= 0.005) {
+        const k = linhas.map(x => x.qtd).lastIndexOf(1);
+        if (k >= 0) linhas[k].valor = r2(linhas[k].valor + res);
+        else {
+            const j = linhas.length - 1;                      // todos com mais de uma unidade: uma unidade vira linha própria com a diferença
+            linhas[j].qtd -= 1;
+            linhas.splice(j + 1, 0, Object.assign({}, linhas[j], { qtd: 1, valor: r2(linhas[j].valor + res) }));
+        }
     }
-    const v = r2(sh.editId ? dinheiro(sh.vtxt) || 0 : sh.valor);
-    if (sh.tipo !== 'cartao') return { t: '', ok: v > 0, rot: sh.editId ? 'Salvar' : sh.tipo === 'troca' ? 'Lançar troca' : 'Lançar' };
-    const deb = sh.forma === 'deb', ehPag = sh.maq === 'pagbank';
-    const rot = sh.editId ? 'Salvar' : deb ? 'Lançar débito' : 'Lançar crédito' + (sh.parc ? ' ' + sh.parc + 'x' : '');
-    if (!(v > 0)) return { t: 'Informe o valor.', ok: false, rot };
-    if (!deb && sh.parc == null) return { t: '', ok: false, rot: 'Escolha as vezes' };
-    if (!ehPag && !sh.band) return { t: '', ok: false, rot: 'Escolha a bandeira' };
-    if (!window._areRatesLoaded) return { t: 'As taxas ainda estão carregando.', ok: false, rot };
-    const t = taxaDe(sh.maq, sh.band, deb ? 0 : sh.parc);
-    if (t == null) return { t: `Não há taxa cadastrada para ${nomeMaq(sh.maq)}${ehPag ? '' : ' ' + nomeBand(sh.band)} ${rotParc(deb ? 0 : sh.parc)}. Cadastre em Taxas ou mude a escolha.`, ok: false, rot, am: true };
-    return { t: `Vai cair ${brl(r2(v * (1 - t / 100)))} na conta (taxa ${fmtTaxa(t)}).`, ok: true, rot };
+    return linhas;
 }
 
-function htmlResSheet(sh) {
-    const r = sh.busca && sh.busca.trim() ? buscarProdutos(sh.busca, 6) : [];
-    return r.length ? r.map(p => `<button type="button" data-sh="pick" data-pid="${esc(p.id)}"><span>${esc(p.nome)}</span><small>custo ${brl(parseFloat(p.valor) || 0)}</small></button>`).join('')
-        : '<div class="fia-t">Nada encontrado. Tente menos palavras (ex.: só o modelo).</div>';
+// Primeiro motivo que impede de seguir. page: 1 (continuar) ou 2 (salvar)
+function gdProblema(page) {
+    if (!G.itens.length) return 'Adicione pelo menos um produto.';
+    const p = pendentes().length;
+    if (p) return 'Falta definir ' + p + (p === 1 ? ' produto.' : ' produtos.');
+    if (page === 1) return '';
+    if (!G.pag.length) return 'Lance o pagamento do cliente.';
+    const c = calcG();
+    if (c.erros.length) return c.erros[0].msg;
+    return somaPagamentos(G) > 0 ? '' : 'Lance o pagamento do cliente.';
 }
 
-function htmlSheet(E) {
-    const sh = E.sheet, grab = '<div class="ui-grab"></div>';
-    if (sh.tipo === 'produto') {
-        const it = itensForm(E)[sh.i];
-        return `${grab}<div class="ui-sheet-title">Qual é o produto?</div>
-          ${it && it.nome ? `<div class="fia-t">Você escreveu: <span class="fia-lido">${esc(it.nome)}</span></div>` : ''}
-          <input class="form-control" data-f="sh-busca" placeholder="Buscar no CTW..." autocomplete="off" value="${esc(sh.busca)}" aria-label="Buscar no CTW">
-          <div class="fia-res" id="fiaShRes">${htmlResSheet(sh)}</div>
-          <div class="fia-t">Ao escolher, o app guarda: da próxima vez que vier esse nome, já sabe qual é.</div>`;
+// ── Interface ───────────────────────────────────────────────────
+function gdAbrirOverlay() {
+    if (GO) GO.remove();
+    GO = document.createElement('div');
+    GO.className = 'gd'; GO.id = 'gdRoot'; GO.setAttribute('data-dev-only', '');
+    GO.addEventListener('click', gdClique);
+    GO.addEventListener('input', gdDigita);
+    GO.addEventListener('change', gdMuda);
+    document.body.appendChild(GO);
+    document.documentElement.classList.add('ps-aberto');
+}
+
+function gdFechar(salvo) {
+    gdSheetFechar(true);
+    const sujo = G && G.salvando && !salvo;               // o formulário da Garantia foi preenchido e não chegou a salvar: volta limpo
+    if (G) G.salvando = false;
+    if (sujo && typeof window.resetFormulariosBookip === 'function') window.resetFormulariosBookip();
+    clearTimeout(_gdT);
+    if (!salvo) gdGravar();
+    if (GO) { GO.remove(); GO = null; }
+    document.documentElement.classList.remove('ps-aberto');
+    if (salvo) G = null;
+}
+
+function gdRender(manter) {
+    if (!GO || !G) return;
+    const corpo = GO.querySelector('.gd-bd'), y = corpo ? corpo.scrollTop : 0;
+    const p1 = G.page === 1, prob = gdProblema(G.page);
+    const ft = p1
+        ? `<p class="gd-help">${esc(prob)}</p><button class="gd-go${prob ? ' off' : ''}" type="button" data-gd="next">Continuar para o pagamento</button>`
+        : `<p class="gd-help">${esc(prob)}</p><button class="gd-go${prob ? ' off' : ''}" type="button" data-gd="salvar"${G.salvando ? ' disabled' : ''}>${G.salvando ? 'Salvando…' : 'Salvar garantia'}</button>`;
+    GO.innerHTML = `<div class="gd-hd"><button class="gd-bk" type="button" data-gd="voltar" aria-label="Voltar">${ico('back')}</button><h2>Garantia detalhada</h2>
+        <button class="gd-zapb" type="button" data-gd="zap">${ico('chat')} Colar do Zap</button></div>
+      <div class="gd-steps"><button type="button" class="${p1 ? 'on' : ''}" data-gd="p1">1 · Cliente e produtos</button><button type="button" class="${p1 ? '' : 'on'}" data-gd="p2">2 · Pagamento</button></div>
+      <div class="gd-bd">${p1 ? gdP1() : gdP2()}</div><div class="gd-ft">${ft}</div>`;
+    const novo = GO.querySelector('.gd-bd');
+    if (manter && novo) novo.scrollTop = y;
+    if (!p1) gdResumo();
+    gdPersistir();
+}
+
+// ── Página 1 · cliente e produtos ───────────────────────────────
+function gdCliente() {
+    const c = G.cli;
+    if (!G.cliOpen) return `<button class="gd-cliente" type="button" data-gd="cli"><span class="gd-av">${ico('user')}</span><span class="gd-gr"><small>Cliente</small>${c.nome ? `<b>${esc(c.nome)}</b>` : '<b class="ph">Toque para preencher os dados</b>'}</span>${ico('pen')}</button>`;
+    const f = (k, rot, ph, tp) => `<div><label class="gd-lab" for="gdc-${k}">${rot}</label><input class="gd-in sm" id="gdc-${k}" data-ck="${k}" ${tp ? `type="${tp}" ` : ''}placeholder="${ph}" autocomplete="off" value="${esc(c[k])}"></div>`;
+    return `<div class="gd-cform"><b class="gd-ct">Dados do cliente</b>${f('nome', 'Nome', 'Nome do cliente')}<div class="gd-res" id="gdCres"></div>
+      <div class="gd-r2">${f('cpf', 'CPF', '000.000.000-00')}${f('tel', 'Telefone', '(62) 9XXXX-XXXX', 'tel')}</div>
+      ${f('nasc', 'Nascimento', '', 'date')}${f('end', 'Endereço', 'Endereço completo')}${f('email', 'E-mail', 'cliente@email.com', 'email')}
+      <button class="gd-go" type="button" data-gd="cliok">Pronto</button></div>`;
+}
+
+const gdOpcoes = (lista, attr) => lista.map(p => `<button class="gd-op" type="button" ${attr}="${esc(p.id)}"><span>${esc(nomeBusca(p))}</span><small>custo ${brl(parseFloat(p.valor) || 0)}</small></button>`).join('');
+const gdBusca = txt => (String(txt || '').trim() ? buscarProdutos(txt, 5) : []);
+
+function gdItem(i) {
+    const rm = `<button class="gd-ib" type="button" data-gd="del" data-id="${i.id}" aria-label="Remover produto">${ico('del')}</button>`;
+    if (!resolvido(i)) {
+        if (i.prod && i.prod.id) {                          // ligado ao CTW, mas sem valor lá: o custo precisa ser informado
+            return `<div class="gd-card"><div class="gd-ih"><div class="gd-nm"><span class="gd-need">Sem valor no CTW</span><b>${esc(semEmoji(i.prod.nome))}</b></div>${rm}</div>
+              <p class="gd-was">Este produto está sem valor no CTW. Informe quanto ele custa.</p>
+              <div class="gd-ed"><input class="gd-in" id="gdcv-${i.id}" inputmode="decimal" placeholder="Custo (R$)" autocomplete="off" aria-label="Custo do produto"><button type="button" data-gd="custook" data-id="${i.id}">OK</button></div></div>`;
+        }
+        const sug = (i.sug || []).map((p, k) => `<button class="gd-op${k === 0 ? ' mais' : ''}" type="button" data-gd="pick" data-id="${i.id}" data-pid="${esc(p.id)}"><span>${k === 0 ? '<i class="gd-tag">Mais provável</i>' : ''}${esc(nomeBusca(p))}</span><small>custo ${brl(parseFloat(p.valor) || 0)}</small></button>`).join('');
+        return `<div class="gd-card"><div class="gd-ih"><div class="gd-nm"><span class="gd-need">Precisa de você</span></div>${rm}</div>
+          <p class="gd-q">Qual é este produto?</p><p class="gd-was">Veio escrito: <b>${esc(i.nome)}</b></p>
+          ${sug ? `<div class="gd-res">${sug}</div>` : '<p class="gd-was">Não achei nenhum parecido no CTW. Busque abaixo.</p>'}
+          <div class="gd-sw">${ico('search')}<input class="gd-in" data-f="pbusca" data-id="${i.id}" placeholder="${sug ? 'Nenhum desses? Buscar outro' : 'Buscar no CTW'}" autocomplete="off" value="${esc(i.q || '')}" aria-label="Buscar produto no CTW"></div>
+          <div class="gd-res" id="gdps-${i.id}">${gdOpcoes(gdBusca(i.q), `data-gd="pick" data-id="${i.id}" data-pid`)}</div></div>`;
     }
-    const ok = '<button type="button" class="btn btn-primary w-100 fia-ok" data-sh="ok" id="fiaShOk"></button>';
-    if (sh.tipo === 'cartao') {
-        const deb = sh.forma === 'deb', ehPag = sh.maq === 'pagbank', max = MAX_PARC[sh.maq] || 18;
-        let vezes = '';
-        for (let n = 1; n <= max; n++) vezes += chip('parc', n, n + 'x', sh.parc === n);
-        return `${grab}<div class="ui-sheet-title">${deb ? 'Débito' : 'Crédito'}${sh.editId ? '' : ' · ' + brl(sh.valor)}</div>
-          ${sh.editId ? campoValorSheet(sh) : ''}
-          <div class="fia-shl">Maquininha</div><div class="fia-chips">${maqsAtivas().map(m => chip('maq', m[0], m[1], sh.maq === m[0])).join('')}</div>
-          ${ehPag ? '' : `<div class="fia-shl">Bandeira</div><div class="fia-chips">${BANDEIRAS.map(b => chip('band', b[0], b[1], sh.band === b[0])).join('')}</div>`}
-          ${deb ? '' : `<div class="fia-shl">Em quantas vezes?</div><div class="fia-chips fia-vz">${vezes}</div>`}
-          <div class="fia-t" id="fiaShInfo"></div>${ok}`;
-    }
-    if (sh.tipo === 'troca') {
-        return `${grab}<div class="ui-sheet-title">Troca${sh.editId ? '' : ' · ' + brl(sh.valor)}</div>
-          ${sh.editId ? campoValorSheet(sh) : ''}
-          <div class="fia-shl">Qual aparelho o cliente deu?</div>
-          <input class="form-control" placeholder="Ex.: Samsung A15" autocomplete="off" data-f="sh-aparelho" value="${esc(sh.aparelho)}" aria-label="Aparelho da troca">
-          <div class="fia-t">A troca conta como dinheiro, pelo valor combinado.</div>${ok}`;
-    }
-    if (sh.tipo === 'pix') {
-        return `${grab}<div class="ui-sheet-title">${sh.boleto ? 'Boleto' : 'Pix / Dinheiro'}</div>${campoValorSheet(sh)}
-          <div class="fia-chips">${chip('tipo', 'pix', 'Pix / Dinheiro', !sh.boleto)}${chip('tipo', 'boleto', 'Boleto', sh.boleto)}</div>${ok}`;
-    }
-    const it = E.itens[sh.i] || { nome: '', prod: {} }, p = it.prod || {}, hoje = p.hoje != null ? p.hoje : p.valor;
-    return `${grab}<div class="ui-sheet-title">${esc(p.nome || it.nome)}</div>
-      <div class="fia-t">${p.id ? `No CTW hoje custa <b>${brl(hoje)}</b>. Se no dia da venda custava menos, escreva quanto era.` : 'Valor deste produto no CTW. Corrija se for outro.'}</div>
-      <input class="form-control fia-money" inputmode="decimal" placeholder="${esc(fmtIn(hoje))}" autocomplete="off" data-f="sh-custo" value="${esc(sh.txt)}" aria-label="Custo no dia da venda">
-      <div class="fia-t am" id="fiaShInfo"></div>
-      <div class="fia-2"><button type="button" class="btn btn-outline-secondary" data-sh="hoje">Usar o de hoje</button>${ok}</div>`;
+    const p = i.prod, mud = p.hoje != null && p.hoje !== p.valor;
+    const veio = i.nome && chaveAlias(i.nome) !== chaveAlias(p.nome) ? ` · veio: ${esc(i.nome)}` : '';
+    const custo = i.edCusto
+        ? `<div class="gd-ed"><input class="gd-in" id="gdcv-${i.id}" inputmode="decimal" placeholder="Custo do dia (R$)" autocomplete="off" value="${esc(fmtIn(p.valor))}" aria-label="Custo do dia"><button type="button" data-gd="custook" data-id="${i.id}">OK</button><button type="button" class="g" data-gd="custox" data-id="${i.id}">Cancelar</button></div>`
+        : `<div class="gd-row"><span class="gd-l">${mud ? `Custo do dia <b>${brl(p.valor)}</b> (CTW ${brl(p.hoje)})` : `Custo no CTW <b>${brl(p.valor)}</b>`}</span><button class="gd-lk" type="button" data-gd="custo" data-id="${i.id}">${mud ? 'Mudar de novo' : 'Mudar custo'}</button></div>`;
+    return `<div class="gd-card"><div class="gd-ih"><span class="gd-ck">${ico('ok')}</span><div class="gd-nm"><b>${esc(semEmoji(p.nome))}</b>
+        <small><select class="gd-cs" data-f="cond" data-id="${i.id}" aria-label="Condição no documento">${CONDS.map(c => `<option${c === (i.cond || 'Sem condição') ? ' selected' : ''}>${c}</option>`).join('')}</select>${veio}</small></div>${rm}</div>
+      ${custo}
+      <div class="gd-r2"><input class="gd-in sm" data-f="obs" data-id="${i.id}" placeholder="IMEI / Serial" autocomplete="off" value="${esc(i.obs)}" aria-label="IMEI ou serial"><input class="gd-in sm" data-f="cor" data-id="${i.id}" placeholder="Cor" autocomplete="off" value="${esc(i.cor)}" aria-label="Cor"></div>
+      <div class="gd-row"><span class="gd-l">Quantidade</span><div class="gd-stp"><button type="button" data-gd="menos" data-id="${i.id}" aria-label="Menos">−</button><span>${i.qtd}</span><button type="button" data-gd="mais" data-id="${i.id}" aria-label="Mais">+</button></div></div></div>`;
 }
 
-function pintarSheet(E) {
-    const w = document.getElementById('ctwLiqSheet'), s = w && w.querySelector('.ui-sheet');
-    if (!s || !E.sheet) return;
-    s.innerHTML = htmlSheet(E);
-    atualizarSheet(E);
+function gdP1() {
+    const n = G.itens.length;
+    return `${G.aviso ? `<div class="gd-ban">${G.aviso}</div>` : ''}${gdCliente()}
+      <div class="gd-sec"><b>Produtos</b><span>${n ? n + (n === 1 ? ' item' : ' itens') : ''}</span></div>
+      <div class="gd-sw">${ico('search')}<input id="gdBq" class="gd-in" placeholder="Buscar produto no CTW" autocomplete="off" value="${esc(G.busca)}" aria-label="Buscar produto no CTW"></div>
+      <div class="gd-res" id="gdBres">${gdOpcoes(gdBusca(G.busca), 'data-gd="add" data-pid')}</div>
+      <div><label class="gd-lab" for="gdCd">Sai no documento como</label><select id="gdCd" class="gd-in">${CONDS.map(c => `<option${c === G.cond ? ' selected' : ''}>${c}</option>`).join('')}</select></div>
+      ${G.itens.map(gdItem).join('')}
+      ${n ? '' : '<p class="gd-msg c">Busque e toque no produto para adicionar.</p>'}
+      ${gdVazio(G) ? '' : `<button class="gd-lk gd-zera" type="button" data-gd="zerar">${G.limpar ? 'Toque de novo para apagar tudo' : 'Começar de novo'}</button>`}`;
 }
 
-// Digitar no campo da gaveta só atualiza a informação e o botão (sem redesenhar, para o teclado não fechar)
-function atualizarSheet(E) {
-    const w = document.getElementById('ctwLiqSheet'); if (!w || !E.sheet || E.sheet.tipo === 'produto') return;
-    const i = infoSheet(E), inf = w.querySelector('#fiaShInfo'), b = w.querySelector('#fiaShOk');
-    if (inf) { inf.textContent = i.t; inf.className = 'fia-t' + (i.am ? ' am' : ''); }
-    if (b) { b.textContent = i.rot; b.disabled = !i.ok; }
+// ── Página 2 · pagamento e lucro ────────────────────────────────
+const taxaTxt = t => t.toFixed(1).replace('.', ',') + '%';
+function gdLinhaPag(l) {
+    const v = dinheiro(l.valor) || 0, ab = G.open === l.id, ehPag = l.maq === 'pagbank';
+    const inc = l.k === 'cartao' && (l.parc == null || (!ehPag && !l.band));
+    let det;
+    if (l.k === 'cartao') {
+        const t = inc ? null : taxaDe(l.maq, l.band, l.parc);
+        det = `<div>Maquininha <b>${esc(nomeMaq(l.maq))}</b>${ehPag ? '' : ` · Bandeira <b>${esc(l.band ? nomeBand(l.band) : 'não informada')}</b>`}</div>` +
+            (inc ? '<div class="gd-am">Falta completar: toque em Alterar.</div>' : t == null ? '<div class="gd-am">Sem taxa cadastrada para essa combinação.</div>' : `<div>Cai <b>${brl(r2(v * (1 - t / 100)))}</b> na conta (taxa ${taxaTxt(t)})</div>`);
+    } else if (l.k === 'troca') det = `<div>Aparelho <b>${esc(l.aparelho || 'não informado')}</b></div>`;
+    else det = '<div>Cai o valor cheio</div>';
+    return `<div class="gd-pl${ab ? ' open' : ''}"><button class="gd-plh" type="button" data-gd="topay" data-id="${l.id}" aria-expanded="${ab}"><b>${brl(v)}</b><span>${esc(rotForma(l))}${l.k === 'cartao' && l.band && !ehPag ? ' · ' + esc(nomeBand(l.band)) : ''}${inc ? ' · <i class="gd-am">completar</i>' : ''}</span>${ico('chev')}</button>
+      ${ab ? `<div class="gd-pld">${det}<div class="gd-acts"><button type="button" data-gd="altpay" data-id="${l.id}">Alterar</button><button type="button" class="rm" data-gd="rempay" data-id="${l.id}">Remover</button></div></div>` : ''}</div>`;
 }
 
-function abrirSheet(E, sh) {
-    fecharSheet(true);
-    E.sheet = sh;
+function gdP2() {
+    const n = G.itens.reduce((s, i) => s + i.qtd, 0);
+    return `${G.aviso ? `<div class="gd-ban">${G.aviso}</div>` : ''}
+      <div class="gd-row"><div><span class="gd-l">Cliente</span><div class="gd-cn">${esc(G.cli.nome || 'Sem nome (sai como Consumidor)')}</div></div><span class="gd-l">${n} ${n === 1 ? 'produto' : 'produtos'}</span></div>
+      <div class="gd-sec"><b>Pagamento</b><span class="gd-tot" id="gdTot"></span></div>
+      ${G.pag.map(gdLinhaPag).join('')}
+      <div><label class="gd-lab" for="gdNv">${G.pag.length ? 'Mais algum pagamento? Digite o valor' : 'Quanto o cliente pagou?'}</label>
+        <div class="gd-er"><input id="gdNv" class="gd-in big" inputmode="decimal" placeholder="R$ 0,00" autocomplete="off" value="${esc(G.novo)}" aria-label="Valor do pagamento"><button class="gd-go inl${dinheiro(G.novo) > 0 ? '' : ' off'}" id="gdAdd" type="button" data-gd="addv">Adicionar</button></div></div>
+      <div class="gd-sec"><b>Lucro</b></div><div class="gd-lucro" id="gdLucro"></div>
+      <div><label class="gd-lab" for="gdDias">Tempo de garantia</label><select id="gdDias" class="gd-in">${DIAS_GAR.map(d => `<option value="${d[0]}"${d[0] === G.dias ? ' selected' : ''}>${d[1]}</option>`).join('')}</select></div>`;
+}
+
+function gdResumo() {
+    const tot = GO && GO.querySelector('#gdTot'), lu = GO && GO.querySelector('#gdLucro');
+    const soma = somaPagamentos(G);
+    if (tot) tot.textContent = soma > 0 ? 'Total ' + brl(soma) : '';
+    if (!lu) return;
+    if (!G.pag.length) { lu.innerHTML = '<p class="gd-msg">Lance o primeiro pagamento para ver o lucro.</p>'; return; }
+    const c = calcG();
+    if (c.erros.length) { lu.innerHTML = `<p class="gd-msg am">${Array.from(new Set(c.erros.map(x => x.msg))).map(esc).join('<br>')}</p>`; return; }
+    const r = c.res, cl = r.lucro < 0 ? 'neg' : 'pos';
+    lu.innerHTML = `<div class="gd-big"><small>${r.lucro < 0 ? 'Prejuízo' : 'Lucro'}</small><b class="${cl}">${sinal(r.lucro)}</b></div><hr>
+      <div class="gd-ln"><span>Total da venda</span><b>${brl(soma)}</b></div><div class="gd-ln"><span>Caiu na conta</span><b>${brl(r.real)}</b></div><div class="gd-ln"><span>Custo dos produtos</span><b>${brl(r.base)}</b></div>
+      <button class="gd-lk" type="button" data-gd="irprod">Mudar o custo de algum produto</button>`;
+}
+
+// ── Gaveta de pagamento: uma pergunta de cada vez ────────────────
+function gdSheet(html) {
+    gdSheetFechar(true);
     const w = document.createElement('div');
-    w.id = 'ctwLiqSheet'; w.className = 'ui-sheet-wrap'; w.setAttribute('role', 'dialog'); w.setAttribute('aria-modal', 'true');
-    w.innerHTML = '<button type="button" class="ui-dim" data-sh="fechar" aria-label="Fechar"></button><div class="ui-sheet fia-sh"></div>';
-    ['click', 'input'].forEach(t => w.addEventListener(t, aoSheetEvento));
+    w.id = 'gdSheet'; w.className = 'ui-sheet-wrap'; w.setAttribute('role', 'dialog'); w.setAttribute('aria-modal', 'true');
+    w.innerHTML = `<button type="button" class="ui-dim" data-gd="shx" aria-label="Fechar"></button><div class="ui-sheet gd-sh"><div class="ui-grab"></div>${html}</div>`;
+    ['click', 'input', 'change'].forEach(t => w.addEventListener(t, gdSheetEvento));
     document.body.appendChild(w);
-    pintarSheet(E);
     void w.offsetHeight;
     w.classList.add('ui-open');
+    return w;
 }
-
-function fecharSheet(sem) {
-    const w = document.getElementById('ctwLiqSheet'); if (!w) return;
-    if (RASC) RASC.sheet = null;
+function gdSheetFechar(sem) {
+    const w = document.getElementById('gdSheet'); if (!w) return;
     w.id = '';
+    if (G) G.sh = null;
     if (sem) { w.remove(); return; }
     w.classList.remove('ui-open');
     setTimeout(() => w.remove(), 280);
 }
 
-function aoSheetEvento(e) {
-    const E = RASC, sh = E && E.sheet; if (!sh) return;
-    if (e.type === 'input') {
-        const f = e.target.dataset && e.target.dataset.f; if (!f) return;
-        if (f === 'sh-busca') { sh.busca = e.target.value; const r = document.getElementById('fiaShRes'); if (r) r.innerHTML = htmlResSheet(sh); return; }
-        if (f === 'sh-valor') sh.vtxt = e.target.value;
-        else if (f === 'sh-aparelho') sh.aparelho = e.target.value;
-        else if (f === 'sh-custo') sh.txt = e.target.value;
-        return atualizarSheet(E);
+const FORMAS = [['pix', 'Pix / Dinheiro'], ['boleto', 'Boleto'], ['troca', 'Troca'], ['deb', 'Débito'], ['cred', 'Crédito']];
+const gdChip = (a, v, rot) => `<button class="gd-chip" type="button" data-gd="${a}" data-v="${esc(v)}">${esc(rot)}</button>`;
+const gdSelMaq = h => `<div><label class="gd-lab" for="gdShM">Maquininha</label><select id="gdShM" class="gd-in" data-gd="shm">${maqsAtivas().map(m => `<option value="${m[0]}"${m[0] === h.maq ? ' selected' : ''}>${m[1]}</option>`).join('')}</select></div>`;
+
+function gdSheetPintar() {
+    const h = G.sh; if (!h) return;
+    const v = brl(h.valor), ehPag = h.maq === 'pagbank', voltar = h.step !== 'forma' ? '<button class="gd-back" type="button" data-gd="shb">‹ Voltar</button>' : '';
+    let tit, sub, corpo;
+    if (h.step === 'forma') {
+        tit = 'Como foi pago?'; sub = h.edit ? '' : `<b>${v}</b>`;
+        corpo = (h.edit ? `<div><label class="gd-lab" for="gdShV">Valor</label><input id="gdShV" class="gd-in" inputmode="decimal" autocomplete="off" value="${esc(fmtIn(h.valor))}" aria-label="Valor do pagamento"></div>` : '') +
+            FORMAS.map(f => `<button class="gd-op" type="button" data-gd="shf" data-v="${f[0]}"><span>${f[1]}</span></button>`).join('');
+    } else if (h.step === 'parc') {
+        const max = MAX_PARC[h.maq] || 18; let g = '';
+        for (let n = 1; n <= max; n++) g += gdChip('shp', n, n + 'x');
+        tit = 'Em quantas vezes?'; sub = `<b>${v}</b> · Crédito`;
+        corpo = `${gdSelMaq(h)}<div class="gd-g4">${g}</div>`;
+    } else if (h.step === 'band') {
+        tit = 'Qual a bandeira?'; sub = `<b>${v}</b> · ${h.forma === 'cred' ? 'Crédito ' + h.parc + 'x' : 'Débito'}`;
+        corpo = `${gdSelMaq(h)}${ehPag ? '<p class="gd-msg">O PagBank não pede a bandeira.</p><button class="gd-go" type="button" data-gd="shl">Lançar</button>' : `<div class="gd-g2">${BANDEIRAS.map(b => gdChip('shb2', b[0], b[1])).join('')}</div>`}`;
+    } else {
+        tit = 'Qual aparelho o cliente deu?'; sub = `<b>${v}</b> · Troca`;
+        corpo = `<input class="gd-in" id="gdShA" placeholder="Ex.: iPhone 11 64GB" autocomplete="off" value="${esc(h.apar)}" aria-label="Aparelho recebido"><button class="gd-go" type="button" data-gd="shl">Lançar troca</button>`;
     }
-    const b = e.target.closest('[data-sh]'); if (!b) return;
-    const a = b.dataset.sh;
-    if (a === 'fechar') return fecharSheet();
-    if (a === 'pick') { escolherProduto(E, sh.i, produtoPorId(b.dataset.pid)); fecharSheet(); return renderCartaoForm(); }
-    if (a === 'chip') {
-        const c = b.dataset.c, v = b.dataset.v;
-        if (c === 'maq') { sh.maq = v; if (sh.parc > (MAX_PARC[v] || 18)) sh.parc = null; }
-        else if (c === 'band') { sh.band = v; sh.bandTocada = true; }
-        else if (c === 'parc') sh.parc = parseInt(v, 10);
-        else if (c === 'tipo') sh.boleto = v === 'boleto';
-        return pintarSheet(E);
-    }
-    if (a === 'hoje') { sh.txt = ''; return confirmarSheet(E); }
-    if (a === 'ok') return confirmarSheet(E);
+    const w = document.getElementById('gdSheet') || gdSheet('');
+    w.querySelector('.ui-sheet').innerHTML = `<div class="ui-grab"></div>${voltar}<div class="ui-sheet-title">${tit}</div>${sub ? `<p class="gd-sub">${sub}</p>` : ''}${corpo}${h.err ? `<p class="gd-msg am">${esc(h.err)}</p>` : ''}`;
 }
 
-function confirmarSheet(E) {
-    const sh = E.sheet, i = infoSheet(E); if (!sh || !i.ok) return;
-    if (sh.tipo === 'custo') {
-        const p = E.itens[sh.i] && E.itens[sh.i].prod;
-        if (p) {
-            const hoje = p.hoje != null ? p.hoje : p.valor, v = dinheiro(sh.txt);
-            if (!sh.txt.trim() || r2(v) === r2(hoje)) { p.valor = hoje; delete p.hoje; if (p.id) p.manual = false; }
-            else { p.hoje = hoje; p.valor = r2(v); p.manual = true; p.duvida = false; }
-        }
-        fecharSheet(); return renderCartaoForm();
-    }
-    const v = r2(sh.editId ? dinheiro(sh.vtxt) : sh.valor), alvo = sh.editId ? E.pag.find(x => String(x.id) === String(sh.editId)) : null;
+function gdAbrirPag(valor, edit) {
+    const l = edit ? G.pag.find(x => x.id === edit) : null;
+    gdSheet('');
+    G.sh = { step: 'forma', valor, edit: edit || 0, forma: '', parc: null, maq: (l && l.maq) || maqPadrao(), band: (l && l.band) || bandPadrao(), apar: (l && l.aparelho) || '', err: '' };
+    gdSheetPintar();
+}
+
+function gdLancar() {
+    const h = G.sh; if (!h) return;
+    const v = r2(h.valor);
+    if (!(v > 0)) { h.err = 'Informe um valor maior que zero.'; return gdSheetPintar(); }
     let o;
-    if (sh.tipo === 'cartao') {
-        const deb = sh.forma === 'deb', ehPag = sh.maq === 'pagbank';
-        o = { k: 'cartao', valor: fmtIn(v), parc: deb ? 0 : sh.parc, band: ehPag ? '' : sh.band, maq: sh.maq, bandDuv: !ehPag && !sh.bandTocada, parcDuv: false, manual: true };
-    } else if (sh.tipo === 'troca') o = { k: 'troca', valor: fmtIn(v), aparelho: sh.aparelho.trim(), manual: true };
-    else o = { k: 'pix', valor: fmtIn(v), boleto: !!sh.boleto, manual: true };
-    if (alvo) Object.assign(alvo, o); else E.pag.push(novaLinha(E, o.k, o));
-    E.novo = ''; E.aviso = '';
-    fecharSheet(); renderCartaoForm();
+    if (h.forma === 'pix' || h.forma === 'boleto') o = { k: 'pix', valor: fmtIn(v), boleto: h.forma === 'boleto', manual: true };
+    else if (h.forma === 'troca') o = { k: 'troca', valor: fmtIn(v), aparelho: h.apar.trim(), manual: true };
+    else {
+        const deb = h.forma === 'deb', ehPag = h.maq === 'pagbank', parc = deb ? 0 : h.parc;
+        if (!window._areRatesLoaded) { h.err = 'As taxas ainda estão carregando. Tente de novo em instantes.'; return gdSheetPintar(); }
+        if (taxaDe(h.maq, ehPag ? '' : h.band, parc) == null) { h.err = `Não há taxa cadastrada para ${nomeMaq(h.maq)}${ehPag ? '' : ' ' + nomeBand(h.band)} ${rotParc(parc)}. Cadastre em Taxas ou mude a escolha.`; return gdSheetPintar(); }
+        o = { k: 'cartao', valor: fmtIn(v), parc, band: ehPag ? '' : h.band, maq: h.maq, bandDuv: false, parcDuv: false, manual: true };
+    }
+    const alvo = h.edit ? G.pag.find(x => x.id === h.edit) : null;
+    if (alvo) { ['boleto', 'aparelho', 'parc', 'band'].forEach(k => delete alvo[k]); Object.assign(alvo, o); G.open = alvo.id; }
+    else { const nl = novaLinha(G, o.k, o); G.pag.push(nl); G.novo = ''; }
+    G.aviso = '';
+    gdSheetFechar(); gdRender(true);
 }
 
-// Chamado depois que a garantia é salva: grava o líquido ligado a ela (se o pagamento foi detalhado)
-async function aoSalvarGarantia(dados) {
-    if (!RASC || !ehDev() || !dados || !dados.id) return;
-    const E = RASC;
-    // Produto escolhido na busca da garantia com nome diferente do digitado: ensina (o que a IA ligou sozinha não conta)
-    (dados.items || []).forEach(i => { if (i && i.ctw && i.ctw.id && !i.ctw.auto && !i.ctw.duvida) aprender(i.nome, i.ctw); });
-    limparRascunho();                                  // a garantia já existe: o rascunho cumpriu o papel
-    if (!E.det || !E.pag.length) return;               // Resumido ou nada lançado: nada a gravar (dá para informar depois, pelo histórico)
-    sincItens(E, dados.items, null, true);
-    const r = calcular(E);
-    if (r.erros.length) {
-        if (window.showCustomModal) window.showCustomModal({ message: 'Garantia salva. O valor líquido NÃO foi salvo: ' + r.erros[0].msg + ' Abra o histórico, expanda o card e toque em “Dev · Valor líquido” para completar.' });
+function gdSheetEvento(e) {
+    if (e.currentTarget.dataset.k === 'zap') return gdZapEvento(e);
+    const h = G && G.sh; if (!h) return;
+    if (e.type === 'input') {
+        if (e.target.id === 'gdShV') h.valor = dinheiro(e.target.value) || 0;
+        else if (e.target.id === 'gdShA') h.apar = e.target.value;
         return;
     }
-    const total = totalItens(dados.items), soma = somaPagamentos(E);
-    r.res.garantia = { id: dados.id, doc: dados.docNumber || '', total };
-    r.res.soma = soma; r.res.totalGarantia = total;
-    r.res.cliente = r.res.cliente || String(dados.nome || '').trim();
-    await garantirMapa();
-    await gravarRegistro(r.res, dados.id, Date.parse(dados.criadoEm) || Date.now());
+    if (e.type === 'change') {
+        if (e.target.dataset.gd === 'shm') { h.maq = e.target.value; if (h.parc > (MAX_PARC[h.maq] || 18)) h.parc = null; h.err = ''; gdSheetPintar(); }
+        return;
+    }
+    const b = e.target.closest('[data-gd]'); if (!b || b.tagName === 'SELECT') return;
+    const a = b.dataset.gd, v = b.dataset.v;
+    if (a === 'shx') return gdSheetFechar();
+    if (a === 'shb') { h.err = ''; h.step = h.step === 'band' && h.forma === 'cred' ? 'parc' : 'forma'; return gdSheetPintar(); }
+    if (a === 'shf') {
+        if (h.edit && !(h.valor > 0)) { h.err = 'Informe um valor maior que zero.'; return gdSheetPintar(); }
+        h.forma = v; h.err = '';
+        if (v === 'pix' || v === 'boleto') return gdLancar();
+        h.step = v === 'troca' ? 'apar' : v === 'cred' ? 'parc' : 'band';
+        return gdSheetPintar();
+    }
+    if (a === 'shp') { h.parc = parseInt(v, 10); h.err = ''; if (h.maq === 'pagbank') return gdLancar(); h.step = 'band'; return gdSheetPintar(); }
+    if (a === 'shb2') { h.band = v; return gdLancar(); }
+    if (a === 'shl') return gdLancar();
 }
+
+// ── Colar do Zap (IA) ───────────────────────────────────────────
+const PROMPT_GD = `Você lê uma mensagem de WhatsApp de uma VENDA de celulares/aparelhos em uma loja brasileira (e, se houver, imagens) para preencher uma garantia. Sua tarefa é SOMENTE LER e copiar. NÃO calcule taxa, líquido, lucro nem some nada.
+
+Responda APENAS com um JSON válido, sem texto antes ou depois, neste formato:
+{
+ "cliente": {"nome": "", "cpf": "", "telefone": "", "nascimento": "AAAA-MM-DD", "endereco": "", "email": ""},
+ "produtos": [ {"nome": "nome do aparelho como está escrito, sem emoji e sem a cor", "condicao": "novo" | "seminovo" | "", "qtd": 1, "cor": "", "imei": ""} ],
+ "pagamentos": [ ${FORMATO_PAG} ]
+}
+
+REGRAS:
+- "cliente": a pessoa que está COMPRANDO. Nunca o nome da loja nem do vendedor. Campo que não aparece fica "". "nascimento" só se tiver o ano completo.
+- "produtos": UM item para cada produto diferente. "2x redmi 13c" = qtd 2. Se o mesmo produto aparece de novo com outra cor ou IMEI, é outro item com qtd 1. "condicao": "novo" se estiver escrito novo/lacrado, "seminovo" se estiver escrito seminovo/usado, senão "". Não inclua a condição no "nome". "imei": só IMEI/serial, nunca outro texto.
+- "valorTotal" não existe aqui: o total é a soma dos pagamentos.
+${REGRAS_PAG}`;
+
+function gdTextoImagens(n, produto) {
+    return n || produto ? `\n\n=== IMAGENS ENVIADAS ===
+${produto ? 'A imagem 1 é a FOTO DO PRODUTO. ' : ''}${n ? `${produto ? 'As' : 'As'} ${n} imagem(ns) ${produto ? 'seguinte(s)' : 'enviada(s)'} ${n > 1 ? 'são COMPROVANTES' : 'é COMPROVANTE'} de pagamento (recibo da maquininha ou comprovante de Pix).` : ''}
+- Nome, cor e IMEI do produto saem só do texto${produto ? ' e da foto do produto' : ''}: nunca de um comprovante. A foto pode mostrar na caixa a capacidade e a RAM: use no nome no formato "<Modelo> <armazenamento>GB/<RAM>GB".
+- Os comprovantes servem para "pagamentos" (valor, parcelas, bandeira, maquininha). O mesmo comprovante em mais de uma foto conta uma vez.` : '';
+}
+
+function gdZapHtml() {
+    const z = G.zap, ok = (n, t) => `${n ? '✓ ' : ''}${t}`;
+    return `<div class="ui-grab"></div><div class="ui-sheet-title">Colar do Zap (IA)</div><p class="gd-sub">Cole a mensagem. A IA preenche cliente, produtos e pagamentos.</p>
+      <textarea class="gd-ta" id="gdZt" rows="6" placeholder="Ex.: Carlos Henrique, CPF 123..., 2x redmi 13c novo, 3500 no pix + 1000 em 3x no cartão" aria-label="Mensagem do cliente">${esc(z.texto)}</textarea>
+      <input type="file" id="gdZf" accept="image/*" hidden><input type="file" id="gdZc" accept="image/*" multiple hidden>
+      <div class="gd-zr"><button type="button" class="${z.foto ? 'on' : ''}" data-gd="zf">${ico('cam')} ${ok(z.foto, 'Foto do produto')}</button><button type="button" class="${z.comp.length ? 'on' : ''}" data-gd="zc"${z.comp.length >= 4 ? ' disabled' : ''}>${ico('rec')} ${ok(z.comp.length, z.comp.length ? z.comp.length + (z.comp.length === 1 ? ' comprovante' : ' comprovantes') : 'Comprovantes')}</button></div>
+      <p class="gd-sub" style="margin-top:-4px">A foto do produto vai anexada ao documento. Os comprovantes só a IA lê.${z.foto || z.comp.length ? ' <button type="button" class="gd-lk" data-gd="zlimpa">Remover fotos</button>' : ''}</p>
+      ${z.erro ? `<p class="gd-msg am">${esc(z.erro)}</p>` : ''}
+      <button class="gd-go" type="button" data-gd="zrun"${z.lendo ? ' disabled' : ''}>${z.lendo ? 'Lendo…' : 'Preencher com IA'}</button>`;
+}
+
+function gdZapAbrir() {
+    let w = document.getElementById('gdSheet');
+    if (!w || w.dataset.k !== 'zap') { w = gdSheet(''); w.dataset.k = 'zap'; }
+    const ta = w.querySelector('#gdZt'), foco = ta && document.activeElement === ta;
+    w.querySelector('.ui-sheet').innerHTML = gdZapHtml();
+    if (foco) w.querySelector('#gdZt').focus();
+}
+
+function gdZapEvento(e) {
+    const z = G && G.zap; if (!z) return;
+    if (e.type === 'input') { if (e.target.id === 'gdZt') z.texto = e.target.value; return; }
+    if (e.type === 'change') {
+        const f = Array.from(e.target.files || []); e.target.value = '';
+        if (e.target.id === 'gdZf' && f[0]) gdZapImg(f[0], 'foto');
+        else if (e.target.id === 'gdZc') f.slice(0, 4 - z.comp.length).reduce((p, x) => p.then(() => gdZapImg(x, 'comp')), Promise.resolve());
+        return;
+    }
+    const b = e.target.closest('[data-gd]'); if (!b || b.disabled) return;
+    const a = b.dataset.gd, w = e.currentTarget;
+    if (a === 'shx') return gdSheetFechar();
+    if (a === 'zf') return w.querySelector('#gdZf').click();
+    if (a === 'zc') return w.querySelector('#gdZc').click();
+    if (a === 'zlimpa') { z.foto = null; z.comp = []; return gdZapAbrir(); }
+    if (a === 'zrun') return gdZapLer();
+}
+
+async function gdZapImg(arq, tipo) {
+    const z = G && G.zap; if (!z) return;
+    if (typeof window._ctwResizeToBase64 !== 'function') { z.erro = 'O módulo de IA ainda está carregando. Tente de novo em instantes.'; return gdZapAbrir(); }
+    try {
+        const b64 = await window._ctwResizeToBase64(arq);
+        if (!b64) throw new Error('foto');
+        if (tipo === 'foto') z.foto = b64; else z.comp.push(b64);
+        z.erro = '';
+    } catch (e) { z.erro = 'Uma foto não abriu e foi ignorada.'; }
+    if (document.getElementById('gdSheet')) gdZapAbrir();
+}
+
+async function gdZapLer() {
+    const z = G.zap, estado = G;
+    const texto = (z.texto || '').trim();
+    if (z.lendo) return;
+    if (!texto && !z.foto && !z.comp.length) { z.erro = 'Cole o texto ou adicione uma foto.'; return gdZapAbrir(); }
+    z.lendo = true; z.erro = ''; gdZapAbrir();
+    try {
+        await window.ctwCarregarModulo('creditoscan');
+        if (typeof window._ctwAiVision !== 'function') throw new Error('A leitura por IA não está disponível agora. Tente de novo em instantes.');
+        const imagens = (z.foto ? [{ base64: z.foto }] : []).concat(z.comp.map(b => ({ base64: b })));
+        const resp = await window._ctwAiVision(imagens, texto, PROMPT_GD + gdTextoImagens(z.comp.length, !!z.foto));
+        if (G !== estado) return;
+        const d = extrairJson(resp);
+        gdAplicarZap(d);
+        z.lendo = false;
+        gdSheetFechar(); gdRender();
+    } catch (e) {
+        if (G !== estado) return;
+        z.lendo = false; z.erro = (e && e.message) || 'Não consegui ler agora. Tente de novo.';
+        gdZapAbrir();
+    }
+}
+
+const soDigitos = s => String(s || '').replace(/\D/g, '');
+function fmtCpf(s) { const d = soDigitos(s); return d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : String(s || '').trim(); }
+
+// Cliente já cadastrado (mesmo CPF, telefone ou nome): completa só o que a mensagem não trouxe
+function gdCadastro(c) {
+    const lista = window.dbClientsCache || [], cpf = soDigitos(c.cpf), tel = soDigitos(c.tel), nome = norm(c.nome);
+    return lista.find(x => (cpf.length === 11 && soDigitos(x.cpf) === cpf) || (tel.length >= 10 && soDigitos(x.tel) === tel) || (nome && norm(x.nome) === nome)) || null;
+}
+function gdCompletaCliente() {
+    const x = gdCadastro(G.cli); if (!x) return;
+    const c = G.cli;
+    if (!c.nome) c.nome = x.nome || ''; if (!c.cpf) c.cpf = x.cpf || ''; if (!c.tel) c.tel = x.tel || '';
+    if (!c.end) c.end = x.end || ''; if (!c.email) c.email = x.email || ''; if (!c.nasc) c.nasc = x.dataNascimento || '';
+}
+
+function gdAplicarZap(d) {
+    const c = d.cliente || {};
+    G.cli = { nome: String(c.nome || '').trim().slice(0, 80), cpf: fmtCpf(c.cpf), tel: soDigitos(c.telefone), nasc: /^\d{4}-\d{2}-\d{2}$/.test(c.nascimento || '') ? c.nascimento : '', end: String(c.endereco || '').trim(), email: String(c.email || '').trim() };
+    gdCompletaCliente();
+    G.itens = []; G.pag = []; G.open = 0; G.novo = '';
+    (Array.isArray(d.produtos) ? d.produtos : []).slice(0, 20).forEach(p => {
+        const lido = String(p && p.nome || '').trim(); if (!lido) return;
+        const r = interpretar(lido), cond = /seminovo|usado/i.test(p.condicao) ? 'Seminovo' : /novo|lacrad/i.test(p.condicao) ? 'Novo / Lacrado' : (condDe(lido) || G.cond);
+        gdPutItem({ nome: lido, qtd: Math.max(1, Math.min(99, parseInt(p.qtd, 10) || 1)), cond, cor: semEmoji(p.cor), obs: String(p.imei || '').trim(), prod: r.prod, sug: r.sug });
+    });
+    G.pag = linhasDeIA(G, d.pagamentos);
+    G.foto = G.zap.foto;
+    const n = pendentes().length, t = G.itens.length;
+    G.aviso = `A IA leu a mensagem: <b>cliente</b>, <b>${t} ${t === 1 ? 'produto' : 'produtos'}</b> (${t - n} certo${t - n === 1 ? '' : 's'}${n ? `, <b>${n} ${n === 1 ? 'precisa' : 'precisam'} de você</b>` : ''}) e <b>${G.pag.length} ${G.pag.length === 1 ? 'pagamento' : 'pagamentos'}</b>.`;
+    G.page = 1; G.cliOpen = false;
+}
+
+// Mesmo produto do CTW na mesma condição vira quantidade (não uma linha nova)
+function gdPutItem(o) {
+    const igual = o.prod && G.itens.find(i => i.prod && i.prod.id === o.prod.id && (i.cond || '') === (o.cond || '') && !i.cor && !i.obs && !o.cor && !o.obs);
+    if (igual) { igual.qtd = Math.min(99, igual.qtd + o.qtd); return igual; }
+    const it = Object.assign({ id: ++G.seq, q: '', edCusto: false, sug: [] }, o);
+    G.itens.push(it);
+    return it;
+}
+
+// ── Eventos ─────────────────────────────────────────────────────
+const gdItemPorId = id => G.itens.find(i => String(i.id) === String(id));
+const gdAprendeu = (it, p) => { aprender(it.nome, { id: p.id, nome: p.nome }); G.aviso = `Guardei: da próxima vez que vier “${esc(it.nome)}”, já sei que é ${esc(semEmoji(p.nome))}.`; };
+
+function gdClique(e) {
+    const b = e.target.closest('[data-gd]'); if (!b || b.tagName === 'SELECT' || b.disabled) return;
+    if (!G) return;
+    const a = b.dataset.gd, id = b.dataset.id, it = id != null ? gdItemPorId(id) : null;
+    if (a !== 'zerar' && G.limpar) G.limpar = false;
+    if (a === 'voltar') { if (G.page === 2) { G.page = 1; return gdRender(); } return gdFechar(); }
+    if (a === 'p1') { G.page = 1; return gdRender(); }
+    if (a === 'p2' || a === 'next') {
+        const prob = gdProblema(1);
+        if (prob) { const h = GO.querySelector('.gd-help'); if (h) { h.classList.remove('flash'); void h.offsetWidth; h.classList.add('flash'); } return; }
+        G.page = 2; G.aviso = ''; return gdRender();
+    }
+    if (a === 'zap') return gdZapAbrir();
+    if (a === 'cli') { G.cliOpen = true; gdRender(true); const n = GO.querySelector('#gdc-nome'); if (n) n.focus(); return; }
+    if (a === 'cliok') { gdCompletaCliente(); G.cliOpen = false; return gdRender(true); }
+    if (a === 'cad') { const x = (window.dbClientsCache || []).find(c => String(c.id) === String(b.dataset.cid)); if (x) { G.cli = { nome: x.nome || '', cpf: x.cpf || '', tel: x.tel || '', nasc: x.dataNascimento || '', end: x.end || '', email: x.email || '' }; } return gdRender(true); }
+    if (a === 'add') {
+        const p = produtoPorId(b.dataset.pid); if (!p) return;
+        if (!(parseFloat(p.valor) > 0)) { G.aviso = 'Este produto está sem valor no CTW. Informe o custo no cartão dele.'; }
+        else G.aviso = '';
+        gdPutItem({ nome: semEmoji(p.nome), qtd: 1, cond: G.cond === 'Sem condição' ? '' : G.cond, cor: '', obs: '', prod: paraProd(p, semEmoji(p.nome)), sug: [] });
+        G.busca = ''; return gdRender(true);
+    }
+    if (a === 'pick' && it) {
+        const p = produtoPorId(b.dataset.pid); if (!p) return;
+        it.prod = paraProd(p, it.nome); it.sug = []; it.q = '';
+        if (parseFloat(p.valor) > 0) gdAprendeu(it, p); else G.aviso = 'Este produto está sem valor no CTW. Informe o custo no cartão dele.';
+        return gdRender(true);
+    }
+    if (a === 'del' && it) { G.itens = G.itens.filter(x => x !== it); return gdRender(true); }
+    if (a === 'menos' && it) { it.qtd = Math.max(1, it.qtd - 1); return gdRender(true); }
+    if (a === 'mais' && it) { it.qtd = Math.min(99, it.qtd + 1); return gdRender(true); }
+    if (a === 'custo' && it) { it.edCusto = true; gdRender(true); const c = GO.querySelector('#gdcv-' + it.id); if (c) c.focus(); return; }
+    if (a === 'custox' && it) { it.edCusto = false; return gdRender(true); }
+    if (a === 'custook' && it) {
+        const c = GO.querySelector('#gdcv-' + it.id), v = dinheiro(c && c.value), p = it.prod;
+        if (!p) return;
+        if (!p.id || !(p.valor > 0)) {                       // produto do CTW sem valor: o custo informado vira o valor dele
+            if (!(v > 0)) { if (c) c.focus(); return; }
+            p.valor = r2(v); p.manual = true; it.edCusto = false; return gdRender(true);
+        }
+        const hoje = p.hoje != null ? p.hoje : p.valor;
+        if (c && c.value.trim() && !(v > 0)) { c.focus(); return; }
+        if (!c || !c.value.trim() || r2(v) === r2(hoje)) { p.valor = hoje; delete p.hoje; p.manual = false; }
+        else { p.hoje = hoje; p.valor = r2(v); p.manual = true; }
+        it.edCusto = false; return gdRender(true);
+    }
+    if (a === 'zerar') {
+        if (!G.limpar) { G.limpar = true; return gdRender(true); }
+        gdLimparRasc(); const z = G.zap; G = novoG(); G.zap = z; return gdRender();
+    }
+    if (a === 'topay') { const l = Number(id); G.open = G.open === l ? 0 : l; return gdRender(true); }
+    if (a === 'rempay') { G.pag = G.pag.filter(x => String(x.id) !== String(id)); G.open = 0; return gdRender(true); }
+    if (a === 'altpay') { const l = G.pag.find(x => String(x.id) === String(id)); if (l) gdAbrirPag(dinheiro(l.valor) || 0, l.id); return; }
+    if (a === 'addv') { const v = dinheiro(G.novo); if (v > 0) gdAbrirPag(r2(v), 0); return; }
+    if (a === 'irprod') { G.page = 1; G.aviso = 'Toque em “Mudar custo” no produto que custou diferente no dia da venda.'; return gdRender(); }
+    if (a === 'salvar') return gdSalvar();
+}
+
+function gdDigita(e) {
+    if (!G) return;
+    const t = e.target, ck = t.dataset && t.dataset.ck, f = t.dataset && t.dataset.f;
+    if (ck) {
+        G.cli[ck] = t.value; gdPersistir();
+        if (ck === 'nome') {
+            const q = norm(t.value).trim(), r = GO.querySelector('#gdCres');
+            const ach = q.length >= 2 ? (window.dbClientsCache || []).filter(c => norm(c.nome).includes(q) && norm(c.nome) !== q).slice(0, 4) : [];
+            if (r) r.innerHTML = ach.map(c => `<button class="gd-op" type="button" data-gd="cad" data-cid="${esc(c.id)}"><span>${esc(c.nome)}</span><small>${esc(c.cpf || c.tel || 'cadastrado')}</small></button>`).join('');
+        }
+        return;
+    }
+    if (t.id === 'gdBq') { G.busca = t.value; const r = GO.querySelector('#gdBres'); if (r) r.innerHTML = gdOpcoes(gdBusca(G.busca), 'data-gd="add" data-pid'); return; }
+    if (t.id === 'gdNv') { G.novo = t.value; const b = GO.querySelector('#gdAdd'); if (b) b.classList.toggle('off', !(dinheiro(G.novo) > 0)); gdPersistir(); return; }
+    const it = t.dataset && t.dataset.id != null ? gdItemPorId(t.dataset.id) : null; if (!it) return;
+    if (f === 'obs' || f === 'cor') { it[f] = t.value; gdPersistir(); }
+    else if (f === 'pbusca') { it.q = t.value; const r = GO.querySelector('#gdps-' + it.id); if (r) r.innerHTML = gdOpcoes(gdBusca(it.q), `data-gd="pick" data-id="${it.id}" data-pid`); }
+}
+
+function gdMuda(e) {
+    if (!G) return;
+    const t = e.target;
+    if (t.id === 'gdCd') { G.cond = t.value; gdPersistir(); return; }
+    if (t.id === 'gdDias') { G.dias = parseInt(t.value, 10) || 365; gdPersistir(); return; }
+    if (t.dataset && t.dataset.f === 'cond') { const it = gdItemPorId(t.dataset.id); if (it) { it.cond = t.value === 'Sem condição' ? '' : t.value; gdRender(true); } }
+}
+
+// ── Salvar ──────────────────────────────────────────────────────
+function gdSalvar() {
+    const prob = gdProblema(2);
+    if (prob) { const h = GO.querySelector('.gd-help'); if (h) { h.classList.remove('flash'); void h.offsetWidth; h.classList.add('flash'); } return; }
+    const sv = document.getElementById('btnSaveBookip');
+    if (typeof window.ctwPreencherGarantia !== 'function' || !sv) { window.showCustomModal && window.showCustomModal({ message: 'A Garantia ainda está carregando. Tente de novo em instantes.' }); return; }
+    if (sv.disabled) return;                               // uma garantia está sendo gravada agora
+    const spec = { cli: G.cli, dias: G.dias, items: itensDoDoc(), formas: Array.from(new Set(G.pag.map(l => CHECKS[tipoForma(l)]))), foto: G.foto };
+    const ir = forcar => {
+        if (!G) return;
+        const r = window.ctwPreencherGarantia(Object.assign({ forcar: !!forcar || G.salvando }, spec));   // G.salvando: o formulário já é desta tela (tentativa anterior falhou)
+        if (r && r.ocupado) return window.showCustomModal({ message: 'Há uma garantia normal em andamento. Se continuar, ela será substituída por esta.', confirmText: 'Continuar', onConfirm: () => ir(true) });
+        G.salvando = true;                                 // o formulário da Garantia agora é desta tela
+        sv.click();                                        // mesmo fluxo da Garantia: prévia → número → cliente → foto → PDF
+    };
+    ir(false);
+}
+
+// A prévia da Garantia foi cancelada: o formulário volta limpo e esta tela continua como estava
+function gdPreviaCancelada() {
+    if (!G || !G.salvando) return;
+    G.salvando = false;
+    if (typeof window.resetFormulariosBookip === 'function') window.resetFormulariosBookip({ manterRascunho: true });
+}
+
+// Chamado pela Garantia depois que o documento foi salvo: grava o líquido ligado a ele, fecha esta tela e mostra a Garantia salva
+async function aoSalvarGarantia(dados) {
+    if (!G || !G.salvando || !ehDev() || !dados || !dados.id) return;
+    const E = G;
+    try {
+        const r = calcG();
+        if (r.erros.length) throw new Error(r.erros[0].msg);
+        r.res.garantia = { id: dados.id, doc: dados.docNumber || '', total: totalItens(dados.items) };
+        r.res.soma = somaPagamentos(E); r.res.totalGarantia = r.res.garantia.total;
+        r.res.cliente = r.res.cliente || String(dados.nome || '').trim();
+        await garantirMapa();
+        await gravarRegistro(r.res, dados.id, Date.parse(dados.criadoEm) || Date.now());
+    } catch (e) {
+        if (window.showCustomModal) window.showCustomModal({ message: 'Garantia salva. O valor líquido NÃO foi salvo: ' + ((e && e.message) || 'erro de conexão') + ' Abra o histórico, expanda o card e toque em “Dev · Valor líquido” para completar.' });
+    } finally {
+        gdLimparRasc();
+        gdFechar(true);
+        if (window.ctwAbrirDoc) window.ctwAbrirDoc('garantia');
+    }
+}
+
+// Botão voltar do celular: fecha a gaveta, volta uma página ou fecha a tela (o rascunho fica guardado)
+function gdVoltar() {
+    if (!GO) return false;
+    const pv = document.getElementById('ctwSavePreviewOverlay'), sv = document.getElementById('btnSaveBookip');
+    if (G && G.salvando && ((pv && !pv.classList.contains('hidden')) || (sv && sv.disabled))) return true;   // salvando agora: o voltar não pode desmontar a tela por baixo
+    if (document.getElementById('gdSheet')) gdSheetFechar();
+    else if (G && G.page === 2) { G.page = 1; gdRender(); }
+    else gdFechar();
+    return true;
+}
+
+function abrirGarantiaDet() {
+    if (!gdAtivo()) return;
+    if (!getDb()) { if (window.showCustomModal) window.showCustomModal({ message: 'O banco de dados ainda está conectando. Tente de novo em alguns segundos.' }); return; }
+    carregarAliases();
+    G = gdRestaurar() || novoG();
+    gdAbrirOverlay();
+    gdRender();
+}
+
 
 // ── 2 · Conferir ────────────────────────────────────────────────
 const campo = (rot, html, extra) => `<div class="fia-c${extra ? ' ' + extra : ''}"><div class="fia-cl">${rot}</div>${html}</div>`;
@@ -1376,8 +1505,8 @@ function htmlPainelHist(doc, rec) {
 
 function pintarSlot(s) {
     const doc = LISTA_H.find(d => d.id === s.dataset.id);
-    if (!doc || !ehDocValido(doc)) { s.innerHTML = ''; return; }
-    const rec = MAPA && MAPA.data[doc.id], aberto = s.dataset.aberto === '1';
+    const rec = doc && MAPA && MAPA.data[doc.id], aberto = s.dataset.aberto === '1';
+    if (!doc || !ehDocValido(doc) || !(doc.detalhada || rec)) { s.innerHTML = ''; return; }   // só garantias feitas na Detalhada (ou que já têm líquido)
     let cls = '', lado = 'sem cálculo';
     if (rec) {
         const mudou = Math.abs((Number(rec.totalGarantia) || 0) - totalItens(doc.items)) >= 0.01;
@@ -1529,26 +1658,11 @@ function abrir() {
     telaEntrada();
 }
 
-// Pontos de ligação para o formulário da garantia (app.js chama estes nomes)
+// Pontos de ligação com o app (app.js e index.html chamam estes nomes)
 carregarAliases();                                 // nomes ensinados prontos antes da leitura da IA
-window.ctwLiqRender = renderCartaoForm;
-document.addEventListener('change', e => { if (e.target && e.target.name === 'tipoInput') renderCartaoForm(); });   // produto ↔ situação: o card some/volta
-window.ctwLiqLimpar = limparRascunho;
 window.ctwLiqSalvar = aoSalvarGarantia;
-// Vínculo com o produto do CTW para itens que a IA preenche (o produto não foi escolhido na busca)
-// Detalhado ativo no formulário novo: o preço unitário do item é opcional (o total pago divide entre os itens)
-// Itens do CTW ainda sem valor (Detalhado sem total informado): a garantia não pode ser salva assim. Devolve a mensagem ou ''.
-// Antes de salvar: no Detalhado todo produto precisa estar ligado ao CTW e ter pagamento lançado (sem isso o valor do documento não existe)
-window.ctwLiqValidar = lista => {
-    const E = RASC;
-    if (E && E.det && ehDev() && formaVisivel(lista)) {
-        sincItens(E, lista || [], null, true);
-        const t = totaisDet(E);
-        if (t.faltam.length) return 'Falta escolher no CTW: ' + t.faltam.map(i => i.nome).join(', ') + '. Toque em “Escolher produto” (ou volte ao Resumido).';
-        if (!(t.soma > 0)) return 'Lance pelo menos um pagamento no Detalhado (ou volte ao Resumido).';
-    }
-    return (lista || []).some(i => i && i.ctwSemPreco && !(parseFloat(i.valor) > 0)) ? 'Há produto sem valor no documento. Lance o pagamento ou volte ao Resumido.' : '';
-};
-window.ctwLiqAcharProduto = nome => { const p = acharProduto(String(nome || '').trim()); return p && p.id ? { id: p.id, nome: p.nome, valor: p.valor, duvida: !!p.duvida, auto: true } : null; };
+window.ctwGdEmCurso = () => !!(G && G.salvando);
+window.ctwGdPreviaCancelada = gdPreviaCancelada;
+window.ctwGdVoltar = gdVoltar;
 
-export { abrir, abrirDaGarantia, rascunhoDaIA, promptExtra, aoSalvarGarantia, decorarHistorico, removerDaGarantia, renderCartaoForm, limparRascunho };
+export { abrir, abrirDaGarantia, abrirGarantiaDet, aoSalvarGarantia, decorarHistorico, removerDaGarantia, gdAtivo };
