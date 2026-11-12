@@ -612,6 +612,7 @@
         <!-- ══ ZONA FIXA ══
              Teclado nunca cobre esta área.
              Contém TODOS os campos de digitação. -->
+        <button type="button" class="fv-ia-btn" id="fv_ia_open" data-dev-only><i class="bi bi-stars"></i> Fechar venda IA <span>Dev</span></button>
         <div class="fv-top">
             <div class="fv-grid">
 
@@ -754,6 +755,10 @@
 
     // ── Eventos ───────────────────────────────────────────────────
     function bindEvents() {
+        el('fv_ia_open')?.addEventListener('click', () => {
+            window.ctwCarregarModulo('fechamentoia').then(m => m.abrir())
+                .catch(() => window.showCustomModal && window.showCustomModal({ message: 'Erro ao abrir o módulo. Verifique a internet e tente de novo.' }));
+        });
         el('fv_installments')?.addEventListener('input', () => {
             syncInstLabel(); renderInstBtns(); calculate();
         });

@@ -3,7 +3,7 @@
 # Uso: sh build.sh <pasta-do-codigo-legivel> <pasta-de-saida>
 set -e
 SRC="$1"; OUT="$2"
-JS="ctw-ui.js app.js notifications.js Bookip.js fecharVenda.js repairs.js reposicao.js creditoscan.js StockCount.js precosync.js"
+JS="ctw-ui.js app.js notifications.js Bookip.js fecharVenda.js repairs.js reposicao.js creditoscan.js StockCount.js precosync.js fechamentoia.js"
 rm -rf "$OUT"; mkdir -p "$OUT/src"
 # tudo que não é código compactável vai igual
 for f in "$SRC"/*; do b=$(basename "$f"); [ -f "$f" ] && cp "$f" "$OUT/$b"; done
