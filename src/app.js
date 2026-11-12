@@ -129,7 +129,7 @@ let _zapOuvindo = false;
 window.ctwZapOuvir = function() {
     if (_zapOuvindo || !isAuthReady) return;
     _zapOuvindo = true;
-    const conta = d => Object.keys((d && d.zap) || {}).length + Object.values((d && d.esg) || {}).filter(e => e && (e.estado === 'desativar' || e.estado === 'reativar')).length;
+    const conta = d => Object.keys((d && d.zap) || {}).length + Object.values((d && d.esg) || {}).filter(e => e && (e.estado === 'desativar' || e.estado === 'reativar' || e.estado === 'adicionar')).length;
     onValue(ref(db, 'settings/precosync'), snap => {
         const v = snap.val() || {};
         window.ctwZapDados = v.zap || {};
