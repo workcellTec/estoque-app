@@ -324,9 +324,44 @@ function buscarProdutos(termo, max) {
     const fuse = window._fuse;
     return fuse ? fuse.search(termo).slice(0, max || 8).map(r => r.item) : prods.filter(p => norm(p.nome).includes(norm(termo))).slice(0, max || 8);
 }
+// Nomes ensinados: quando o usuário liga na mão um nome lido a um produto do CTW, o vínculo fica guardado e vale nas próximas vezes
+// (settings/fechamentoAliases/{nome normalizado} → {pid, nome, ts}). Só o id do produto fica gravado: o valor sempre vem do CTW de hoje.
+const BASE_AL = 'settings/fechamentoAliases';
+let ALIASES = null, _alTent = 0;
+const chaveAlias = s => norm(s).replace(/[^a-z0-9]+/g, ' ').trim();
+const chaveFb = s => chaveAlias(s).replace(/ /g, '_').slice(0, 120);
+
+async function carregarAliases() {
+    if (ALIASES) return;
+    const db = getDb();
+    if (!db) { if (++_alTent < 10) setTimeout(carregarAliases, 3000); return; }
+    try { const v = (await get(ref(db, BASE_AL))).val(); ALIASES = v && typeof v === 'object' ? v : {}; }
+    catch (e) { console.warn('[líquido] não li os nomes aprendidos:', e.message); if (++_alTent < 10) setTimeout(carregarAliases, 5000); }
+}
+
+function aliasDe(lido) {
+    const a = ALIASES && ALIASES[chaveFb(lido)];
+    const p = a && (window.products || []).find(x => String(x.id) === String(a.pid));
+    return p ? { nome: p.nome, id: p.id, valor: parseFloat(p.valor) || 0, manual: false, duvida: false, lido, aprendido: true } : null;
+}
+
+// Ensina: só quando o nome lido é de fato diferente do nome do produto (ignora emoji, acento e pontuação)
+async function aprender(lido, prod) {
+    const db = getDb(), k = chaveFb(lido);
+    if (!db || !prod || !prod.id || !k || chaveAlias(lido) === chaveAlias(prod.nome)) return false;
+    if (!ALIASES) await carregarAliases();
+    if (!ALIASES) ALIASES = {};
+    if (ALIASES[k] && String(ALIASES[k].pid) === String(prod.id)) return false;
+    const val = { pid: String(prod.id), nome: String(prod.nome || ''), ts: Date.now() };
+    ALIASES[k] = val;
+    try { await set(ref(db, `${BASE_AL}/${k}`), val); return true; }
+    catch (e) { console.warn('[líquido] não gravei o nome aprendido:', e.message); return false; }
+}
+
 function acharProduto(lido) {
     const base = { nome: lido, id: null, valor: null, manual: false, duvida: false, lido };
     if (!lido) return base;
+    const ens = aliasDe(lido); if (ens) return ens;
     const tl = tokens(lido);
     let melhor = null, cob = 0;
     buscarProdutos(lido, 5).forEach(p => {
@@ -767,6 +802,8 @@ function confirmarSheet(E) {
 async function aoSalvarGarantia(dados) {
     if (!RASC || !ehDev() || !dados || !dados.id) return;
     const E = RASC;
+    // Produto escolhido na busca da garantia com nome diferente do digitado: ensina (o que a IA ligou sozinha não conta)
+    (dados.items || []).forEach(i => { if (i && i.ctw && i.ctw.id && !i.ctw.auto && !i.ctw.duvida) aprender(i.nome, i.ctw); });
     limparRascunho();                                  // a garantia já existe: o rascunho cumpriu o papel
     if (!E.det || !E.pag.length) return;               // Resumido ou nada lançado: nada a gravar (dá para informar depois, pelo histórico)
     sincItens(E, dados.items, null, true);
@@ -840,7 +877,7 @@ function htmlProdutos() {
     const linhas = itens.map((it, i) => {
         const p = it.prod || { nome: '', valor: null }, tem = p.valor > 0;
         let info;
-        if (tem) info = `valor no CTW ${brl(p.valor)}${it.qtd > 1 ? ` × ${it.qtd} = ${brl(baseItem(it))}` : ''}${p.manual ? ' · digitado por você' : ''}`;
+        if (tem) info = `valor no CTW ${brl(p.valor)}${it.qtd > 1 ? ` × ${it.qtd} = ${brl(baseItem(it))}` : ''}${p.manual ? ' · digitado por você' : p.aprendido ? ' · ligado por você antes' : ''}`;
         else info = p.valor === 0 && p.id ? 'este produto está sem valor no CTW' : 'não achei no CTW';
         const duv = !p.manual && (p.duvida || !tem);
         return `<div class="fia-prod${duv ? ' fia-duvl' : ''}">
@@ -1288,8 +1325,13 @@ function aoClicar(e) {
     if (act === 'trocarprod') { F.edIdx = parseInt(b.dataset.i, 10) || 0; return telaProduto(); }
     if (act === 'escprod') {
         const p = (window.products || []).find(x => String(x.id) === String(id)), it = F.itens[F.edIdx]; if (!p || !it) return;
+        const lido = (it.prod && it.prod.lido) || it.nome;
         it.prod = { nome: p.nome, id: p.id, valor: parseFloat(p.valor) || 0, manual: false, duvida: false, lido: it.prod && it.prod.lido };
-        return F.volta ? fechar() : telaConferir();
+        const ensinou = aprender(lido, p), voltou = F.volta;
+        if (voltou) return fechar();
+        telaConferir();
+        ensinou.then(ok => { if (ok && overlay) toast(`Aprendi: “${lido}” é “${p.nome}”.`); });
+        return;
     }
     if (act === 'usarmanual') {
         const it = F.itens[F.edIdx]; if (!it) return;
@@ -1357,10 +1399,11 @@ function abrir() {
 }
 
 // Pontos de ligação para o formulário da garantia (app.js chama estes nomes)
+carregarAliases();                                 // nomes ensinados prontos antes da leitura da IA
 window.ctwLiqRender = renderCartaoForm;
 window.ctwLiqLimpar = limparRascunho;
 window.ctwLiqSalvar = aoSalvarGarantia;
 // Vínculo com o produto do CTW para itens que a IA preenche (o produto não foi escolhido na busca)
-window.ctwLiqAcharProduto = nome => { const p = acharProduto(String(nome || '').trim()); return p && p.id ? { id: p.id, nome: p.nome, valor: p.valor, duvida: !!p.duvida } : null; };
+window.ctwLiqAcharProduto = nome => { const p = acharProduto(String(nome || '').trim()); return p && p.id ? { id: p.id, nome: p.nome, valor: p.valor, duvida: !!p.duvida, auto: true } : null; };
 
 export { abrir, abrirDaGarantia, rascunhoDaIA, promptExtra, aoSalvarGarantia, decorarHistorico, removerDaGarantia, renderCartaoForm, limparRascunho };

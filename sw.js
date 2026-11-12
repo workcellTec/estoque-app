@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-308'; // Valor líquido: Resumido/Detalhado na garantia, pagamento por botões e gavetas (dev)
+const CACHE = 'ctw-309'; // Valor líquido: aprende o nome do produto quando você liga na mão (dev)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
