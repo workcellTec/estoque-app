@@ -7678,6 +7678,7 @@ campoInput.dispatchEvent(new Event('input'));
 if(typeof salvarRascunhoBookip === 'function') window.salvarRascunhoBookip();
 
     }
+    window.ctwBookipRefrescar = atualizarListaVisualBookip;   // dev: o líquido pede para redesenhar a lista/total (ex.: "passar o total")
 
 
     // ============================================================
