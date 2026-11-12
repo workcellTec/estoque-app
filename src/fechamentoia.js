@@ -453,7 +453,6 @@ function estadoDeGarantia(doc, rec) {
 // O documento divide o total entre os produtos na proporção do custo (item.ctwSemPreco = "o valor vem do pagamento"). As formas de
 // pagamento do documento são marcadas sozinhas e o líquido é gravado ao salvar. Sem detalhar nada, a garantia salva como sempre.
 const CHECKS = { pix: 'pagPix', boleto: 'pagBoleto', troca: 'pagTroca', deb: 'pagDebito', cred: 'pagCredito' };
-const ROT_DOC = { pix: 'Dinheiro/Pix', boleto: 'Boleto', troca: 'Troca', deb: 'Débito', cred: 'Crédito' };
 const tipoForma = l => (l.k === 'cartao' ? (l.parc === 0 ? 'deb' : 'cred') : l.k === 'troca' ? 'troca' : l.boleto ? 'boleto' : 'pix');
 const rotForma = l => (l.k === 'cartao' ? (l.parc === 0 ? 'Débito' : l.parc == null ? 'Cartão' : 'Crédito ' + l.parc + 'x') : l.k === 'troca' ? 'Troca' : l.boleto ? 'Boleto' : 'Pix / Dinheiro');
 const ctwLista = () => (window.ctwBookipLista ? window.ctwBookipLista() : []);
@@ -594,96 +593,83 @@ function htmlModo(E) {
     return `<div class="fia-seg" role="group" aria-label="Modo do pagamento">
         <button type="button" class="${E.det ? '' : 'on'}" data-liq="resumido">Resumido</button>
         <button type="button" class="${E.det ? 'on' : ''}" data-liq="detalhado">Detalhado <span class="fia-dev">Dev</span></button></div>
-      <div class="fia-t">${E.det ? 'Escolha os produtos, lance os pagamentos e veja o lucro. Sem digitar valor de produto.' : 'Igual ao de hoje, para venda rápida. Sem cálculo de lucro.'}</div>`;
+      ${E.det ? '' : '<div class="fia-t">Igual ao de hoje, para venda rápida. Sem cálculo de lucro.</div>'}`;
 }
 
+// Segunda linha de um pagamento lançado: só o que ajuda (cartão: quanto cai; troca: aparelho; incompleto: o que falta)
 function subLinha(l) {
     const v = dinheiro(l.valor) || 0;
-    if (l.k === 'troca') return (l.aparelho || 'aparelho não informado') + ' · conta como dinheiro';
-    if (l.k === 'pix') return 'cai o valor cheio';
-    if (l.parc == null || (l.maq !== 'pagbank' && !l.band)) return 'toque para completar (parcelas ou bandeira)';
+    if (l.k === 'troca') return l.aparelho || 'toque para informar o aparelho';
+    if (l.k === 'pix') return '';
+    if (l.parc == null || (l.maq !== 'pagbank' && !l.band)) return 'toque para completar';
     const t = taxaDe(l.maq, l.band, l.parc);
-    return nomeMaq(l.maq) + (l.parc > 0 ? ' · ' + l.parc + 'x' : '') + (t == null ? ' · sem taxa cadastrada' : ' · cai ' + brl(r2(v * (1 - t / 100))));
+    return t == null ? 'sem taxa cadastrada' : 'cai ' + brl(r2(v * (1 - t / 100)));
 }
 
-const passo = (n, rot) => `<div class="fia-step"><i>${n}</i>${rot}</div>`;
+const passo = (rot, dir) => `<div class="fia-step"><span>${rot}</span>${dir ? `<b>${dir}</b>` : ''}</div>`;
 
 function htmlDetalhado(E) {
     return htmlItensDet(E) + htmlPagamento(E) + htmlLucro(E);
 }
 
-// ── 1 · Produtos ─────────────────────────────────────────────────
+// ── Produtos ─────────────────────────────────────────────────────
 function htmlItensDet(E) {
     const q = (E.busca || '').trim(), sug = q ? buscarProdutos(q, 5) : [];
     const res = q ? `<div class="fia-res">${sug.length
         ? sug.map(p => `<button type="button" data-liq="add" data-pid="${esc(p.id)}"><span>${esc(p.nome)}</span><i class="bi bi-plus-lg"></i></button>`).join('')
-        : '<div class="fia-t">Nada encontrado no CTW. Tente menos palavras.</div>'}</div>` : '';
+        : '<div class="fia-t">Nada no CTW com esse nome. Tente menos palavras.</div>'}</div>` : '';
     const cond = c => `<button type="button" class="fia-tg${E.cond === c ? ' on' : ''}" data-liq="cond" data-c="${c}">${c}</button>`;
     const cards = itensForm(E).map((item, k) => {
         const p = prodDe(E, k) || {}, est = estadoDe(p), q2 = qtdItem(item), cd = condDe(item.nome);
-        const nome = est === 'nao' ? (p.id ? esc(p.nome) + ' · sem valor no CTW' : 'Não achei no CTW') : esc(p.nome) + (cd ? ' · ' + cd : '');
-        const escreveu = item.nome && (est === 'nao' || chaveAlias(item.nome) !== chaveAlias(p.nome || '')) ? `<span class="fia-lido">Você escreveu: ${esc(item.nome)}</span>` : '';
-        const sub = est === 'nao' ? 'Toque em “Escolher produto”' : 'custo ' + brl(p.valor) + (q2 > 1 ? ' cada' : '') + (p.hoje != null && p.valor !== p.hoje ? ' · corrigido' : '');
-        const doc = (parseFloat(item.valor) || 0) > 0 ? `<span class="fia-doc1">no documento ${brl(r2(item.valor * q2))}</span>` : '';
+        const nome = est === 'nao' ? (p.id ? esc(p.nome) : 'Não achei no CTW') : esc(p.nome);
+        const lido = item.nome && (est === 'nao' || chaveAlias(item.nome) !== chaveAlias(p.nome || '')) ? `Você escreveu: ${esc(item.nome)}` : '';
+        const sub = est === 'nao' && p.id ? 'sem valor no CTW' : est === 'ok' && cd ? cd : '';
         const acoes = est === 'ok' ? '' : `<div class="fia-ab">${est === 'duvida' ? `<button type="button" class="fia-sim" data-liq="certo" data-i="${k}">Está certo</button>` : ''}
             <button type="button" data-liq="trocar" data-i="${k}">${est === 'nao' ? 'Escolher produto' : 'Trocar'}</button></div>`;
-        const aberto = E.abre && E.abre[k];
         return `<div class="fia-it ${est}">
-          <div class="fia-ih"><span class="fia-ic">${est === 'ok' ? '✓' : est === 'duvida' ? '?' : '!'}</span>
-            <div class="fia-ig"><span class="fia-nm">${nome}</span>${escreveu}<small>${esc(sub)}</small></div>
+          <div class="fia-ih"><span class="fia-ic ${est}"></span>
+            <div class="fia-ig"><span class="fia-nm">${nome}</span>${lido ? `<span class="fia-lido">${lido}</span>` : ''}${sub ? `<small>${esc(sub)}</small>` : ''}</div>
+            <div class="fia-qty"><button type="button" data-liq="menos" data-i="${k}" aria-label="Menos">−</button><b>${q2}</b><button type="button" data-liq="mais" data-i="${k}" aria-label="Mais">+</button></div>
             <button type="button" class="fia-x" data-liq="tirar" data-i="${k}" aria-label="Remover produto"><i class="bi bi-trash"></i></button></div>
           ${acoes}
-          <div class="fia-ib"><div class="fia-qty"><button type="button" data-liq="menos" data-i="${k}" aria-label="Menos">−</button><b>${q2}</b><button type="button" data-liq="mais" data-i="${k}" aria-label="Mais">+</button></div>
-            <div class="fia-id">${doc}<button type="button" class="fia-lk2" data-liq="imei" data-i="${k}">+ IMEI / cor</button></div></div>
-          ${aberto ? `<div class="fia-iv"><input class="form-control" data-f="obs" data-i="${k}" placeholder="IMEI / Serial" autocomplete="off" value="${esc(item.obs || '')}" aria-label="IMEI ou serial">
-            <input class="form-control" data-f="cor" data-i="${k}" placeholder="Cor" autocomplete="off" value="${esc(item.cor || '')}" aria-label="Cor"></div>` : ''}</div>`;
+          <div class="fia-iv"><input class="form-control" data-f="obs" data-i="${k}" placeholder="IMEI / Serial" autocomplete="off" value="${esc(item.obs || '')}" aria-label="IMEI ou serial">
+            <input class="form-control" data-f="cor" data-i="${k}" placeholder="Cor" autocomplete="off" value="${esc(item.cor || '')}" aria-label="Cor"></div></div>`;
     }).join('');
-    return `${passo(1, 'Produtos')}
+    return `${passo('Produtos')}
       <div class="fia-bw"><i class="bi bi-search"></i><input class="form-control" data-f="busca" placeholder="Buscar produto no CTW..." autocomplete="off" value="${esc(E.busca || '')}" aria-label="Buscar produto no CTW"></div>
       ${res}
-      <div class="fia-cd"><span class="fia-t">No documento sai:</span>${cond('Novo / Lacrado')}${cond('Seminovo')}</div>
+      <div class="fia-cd">${cond('Novo / Lacrado')}${cond('Seminovo')}</div>
       ${E.aviso ? `<div class="fia-t ok">${esc(E.aviso)}</div>` : ''}
-      ${cards ? `<div class="fia-ls">${cards}</div>` : '<div class="fia-t fia-vz0">Toque em um produto da busca para adicionar.</div>'}`;
+      ${cards ? `<div class="fia-ls">${cards}</div>` : ''}`;
 }
 
-// ── 2 · Pagamento ────────────────────────────────────────────────
-function dicaNovo(E) {
-    const t = totaisDet(E);
-    if (!t.l.length) return { t: 'Escolha os produtos primeiro, lá em cima.', c: '' };
-    if (dinheiro(E.novo) > 0) return { t: 'Agora toque em como foi pago.', c: 'ok' };
-    return { t: 'Digite quanto o cliente pagou e toque em como foi pago.', c: '' };
-}
+// ── Pagamento ────────────────────────────────────────────────────
 const novoPronto = E => totaisDet(E).l.length > 0 && dinheiro(E.novo) > 0;
 
 function htmlPagamento(E) {
-    const t = totaisDet(E), d = dicaNovo(E), pronto = novoPronto(E);
-    const linhas = E.pag.length ? `<div class="fia-ls">${E.pag.map(l => `<div class="fia-li" data-liq="editar" data-id="${l.id}" role="button" tabindex="0">
-        <div class="fia-lg"><span>${rotForma(l)}</span><small>${esc(subLinha(l))}</small></div>
+    const t = totaisDet(E), pronto = novoPronto(E);
+    const linhas = E.pag.length ? `<div class="fia-ls">${E.pag.map(l => { const sub = subLinha(l); return `<div class="fia-li" data-liq="editar" data-id="${l.id}" role="button" tabindex="0">
+        <div class="fia-lg"><span>${rotForma(l)}</span>${sub ? `<small>${esc(sub)}</small>` : ''}</div>
         <b>${brl(dinheiro(l.valor) || 0)}</b>
-        <button type="button" class="fia-x" data-liq="rem" data-id="${l.id}" aria-label="Remover pagamento"><i class="bi bi-trash"></i></button></div>`).join('')}
-        <div class="fia-kv fia-tt"><span>Total da venda</span><b>${brl(t.soma)}</b></div></div>` : '';
-    const botoes = [['pix', 'Pix / Dinheiro'], ['boleto', 'Boleto'], ['troca', 'Troca'], ['deb', 'Débito'], ['cred', 'Crédito']]
-        .map(b => `<button type="button" class="fia-fb${pronto ? '' : ' off'}" data-liq="forma" data-forma="${b[0]}">${b[1]}</button>`).join('');
-    return `${passo(2, 'Pagamento')}${linhas}
-      <div><div class="fia-lbl">${E.pag.length ? 'Quanto foi neste outro pagamento?' : 'Quanto o cliente pagou?'}</div>
-        <input class="form-control fia-money" inputmode="decimal" placeholder="0,00" autocomplete="off" data-f="novo" value="${esc(E.novo)}" aria-label="Valor deste pagamento">
-        <div class="fia-t${d.c ? ' ' + d.c : ''}" id="fiaPgDica">${esc(d.t)}</div></div>
-      <div class="fia-fbs">${botoes}</div>`;
+        <button type="button" class="fia-x" data-liq="rem" data-id="${l.id}" aria-label="Remover pagamento"><i class="bi bi-trash"></i></button></div>`; }).join('')}</div>` : '';
+    const b = (f, rot, cls) => `<button type="button" class="fia-fb ${cls}${pronto ? '' : ' off'}" data-liq="forma" data-forma="${f}">${rot}</button>`;
+    return `${passo('Pagamento', E.pag.length ? 'Total ' + brl(t.soma) : '')}${linhas}
+      <input class="form-control fia-money" inputmode="decimal" placeholder="${E.pag.length ? 'Quanto foi neste outro pagamento?' : 'Quanto o cliente pagou?'}" autocomplete="off" data-f="novo" value="${esc(E.novo)}" aria-label="Valor deste pagamento">
+      <div class="fia-fbs">${b('pix', 'Pix / Dinheiro', 'c2')}${b('boleto', 'Boleto', 'c2')}${b('troca', 'Troca', 'c2')}${b('deb', 'Débito', 'c3')}${b('cred', 'Crédito', 'c3')}</div>`;
 }
 
-// Digitando o valor deste pagamento: só atualiza dica e botões (o campo não é redesenhado, senão o teclado fecha)
+// Digitando o valor deste pagamento: só liga/desliga os botões (o campo não é redesenhado, senão o teclado fecha)
 function atualizarNovo(E) {
     const h = document.getElementById('ctwLiqPag'); if (!h) return;
-    const d = dicaNovo(E), el = h.querySelector('#fiaPgDica'), ok = novoPronto(E);
-    if (el) { el.textContent = d.t; el.className = 'fia-t' + (d.c ? ' ' + d.c : ''); }
+    const ok = novoPronto(E);
     h.querySelectorAll('.fia-fb').forEach(b => b.classList.toggle('off', !ok));
 }
 
-// ── 3 · Lucro (discreto: uma linha) ──────────────────────────────
+// ── Lucro: um cartão só; o custo de cada produto abre sob demanda ─
 function htmlLucro(E) {
     const t = totaisDet(E);
-    let corpo;
-    if (!t.l.length) corpo = '<div class="fia-t">Escolha os produtos para começar.</div>';
+    let corpo = '', pronto = false;
+    if (!t.l.length) corpo = '<div class="fia-t">Escolha os produtos para ver o lucro.</div>';
     else if (t.faltam.length) corpo = `<div class="fia-t am">Falta escolher no CTW: ${t.faltam.map(i => esc(i.nome)).join(', ')}.</div>`;
     else if (!E.pag.length) corpo = '<div class="fia-t">Lance o primeiro pagamento para ver o lucro.</div>';
     else {
@@ -691,24 +677,19 @@ function htmlLucro(E) {
         if (calc.erros.length) corpo = `<div class="fia-t am">${Array.from(new Set(calc.erros.map(x => x.msg))).map(esc).join('<br>')}</div>`;
         else {
             const r = calc.res, cl = r.lucro > 0 ? 'ok' : r.lucro < 0 ? 'neg' : '';
-            corpo = `<div class="fia-kv"><span>Caiu na conta</span><b>${brl(r.real)}</b></div>
-              <div class="fia-kv"><span>Custo dos produtos</span><b>${brl(r.base)}</b></div>
-              <div class="fia-kv fia-lk"><span>${r.lucro < 0 ? 'Prejuízo' : 'Lucro'}</span><b class="${cl}">${sinal(r.lucro)}</b></div>
-              <div class="fia-t">Muda a cada pagamento que você lança.</div>`;
+            pronto = true;
+            corpo = `<div class="fia-lc"><div><small>${r.lucro < 0 ? 'Prejuízo' : 'Lucro'}</small><b class="${cl}">${sinal(r.lucro)}</b></div>
+              <div class="fia-lr"><span>Caiu na conta <b>${brl(r.real)}</b></span><span>Custo <b>${brl(r.base)}</b></span></div></div>`;
         }
     }
-    let custos = '';
-    if (t.l.length && !t.faltam.length && E.pag.length) {
-        custos = `<div class="fia-pn"><div class="fia-t">Algum produto custava menos no dia da venda? Toque no lápis.</div>
+    const aberto = pronto && E.abre && E.abre.custo;
+    const custos = aberto ? `<div class="fia-cs"><div class="fia-t">Algum produto custava menos no dia da venda? Toque no lápis.</div>
           ${E.itens.map((it, i) => {
             const p = it.prod || {}, mudou = p.hoje != null && p.valor !== p.hoje;
             return `<div class="fia-ci"><span class="fia-cn">${esc(p.nome || it.nome)}</span><span class="fia-cv${mudou ? ' am' : ''}">${brl(p.valor)}${it.qtd > 1 ? ' (cada)' : ''}</span>
               <button type="button" class="fia-x" data-liq="custo" data-i="${i}" aria-label="Corrigir custo"><i class="bi bi-pencil-fill"></i></button></div>`;
-        }).join('')}</div>`;
-    }
-    const usadas = Array.from(new Set(E.pag.map(l => ROT_DOC[tipoForma(l)])));
-    return `${passo(3, 'Lucro')}<div class="fia-pn fia-rs">${corpo}</div>${custos}
-      <div class="fia-t fia-doc">Forma(s) de pagamento no documento: ${usadas.length ? esc(usadas.join(' + ')) : 'marcadas sozinhas conforme você lança o pagamento'}.</div>`;
+        }).join('')}</div>` : '';
+    return `<div class="fia-pn fia-rs">${corpo}${pronto ? `<button type="button" class="fia-lk2" data-liq="custos">${aberto ? 'Fechar custos' : 'Ajustar custo dos produtos'}</button>` : ''}${custos}</div>`;
 }
 
 function aoFormEvento(e) {
@@ -727,8 +708,8 @@ function aoFormEvento(e) {
     if (a === 'add') return adicionarProduto(E, produtoPorId(d.dataset.pid));
     if (a === 'cond') { E.cond = E.cond === d.dataset.c ? '' : d.dataset.c; return renderCartaoForm(); }
     if (a === 'menos' || a === 'mais') { if (item) { item.qtd = Math.max(1, Math.min(99, qtdItem(item) + (a === 'mais' ? 1 : -1))); refrescarForm(); } return; }
-    if (a === 'tirar') { if (item) { ctwLista().splice(ctwLista().indexOf(item), 1); E.abre = {}; refrescarForm(); } return; }
-    if (a === 'imei') { E.abre[k] = !E.abre[k]; return renderCartaoForm(); }
+    if (a === 'tirar') { if (item) { ctwLista().splice(ctwLista().indexOf(item), 1); refrescarForm(); } return; }
+    if (a === 'custos') { E.abre.custo = !E.abre.custo; return renderCartaoForm(); }
     if (a === 'certo') return confirmarProduto(E, k);
     if (a === 'trocar') return item && abrirSheet(E, { tipo: 'produto', i: k, busca: buscaInicial(item.nome) });
     if (a === 'forma') return lancar(E, d.dataset.forma);
