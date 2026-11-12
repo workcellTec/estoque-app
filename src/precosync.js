@@ -485,6 +485,7 @@ function aoDigitar(e) {
     }
     if (e.target.id === 'psBusca' && S) resultadoBusca(e.target.value);
     if (e.target.id === 'psBuscaPdf' && S && S.vinculo) resultadoBuscaPdf(e.target.value);
+    if (e.target.classList && e.target.classList.contains('psDiag') && S) { const box = e.target.closest('details').querySelector('.psDiagRes'); if (box) box.innerHTML = diagAdd(e.target.dataset.conta, e.target.value); }
     if (e.target.id === 'psBuscaAdd' && S) { const box = overlay.querySelector('#psAddRes'); if (box) box.innerHTML = listaAdicionar(e.target.value); }
 }
 function aoMudar(e) {
@@ -635,6 +636,37 @@ function calcTodasEsg() {
     return out;
 }
 
+// Diagnóstico de "Adicionar no WhatsApp": diz, conta por conta, por que um produto entrou ou não na lista
+function motivoAdd(cid, p) {
+    const c = APR.contas[cid], cat = (c.catalogo && c.catalogo.itens) || {}, duvCat = (c.catalogo && c.catalogo.duv) || {}, e = (c.esg || {})[p.id];
+    if (!c.catalogo) return 'a conta não tem catálogo guardado';
+    if (c.catalogo.origem !== 'zip') return 'o catálogo desta conta veio de prints, não de ZIP (só o ZIP mostra o que falta)';
+    if (APR.naoWhats[p.id]) return 'está marcado como “Não vou colocar no WhatsApp”';
+    if (!presencaPdf().has(p.id)) return 'o PDF de hoje não trouxe este produto, ou o nome do PDF não foi ligado a ele';
+    if (duvidaPdf().has(p.id)) return 'o nome dele no PDF ainda está em dúvida (pergunta sem resposta)';
+    if (cat[p.id]) return `já está no catálogo do ZIP como “${cat[p.id].n}”`;
+    if (duvCat[p.id]) return 'parece ser um item do ZIP ainda sem resposta (pergunta pulada ao ler o catálogo): responda ou envie o ZIP de novo';
+    if (e && e.estado === 'adicionar') return 'já está na lista Adicionar';
+    if (e) return `tem o estado “${e.estado}” guardado`;
+    return 'deveria estar na lista Adicionar; se não está, o limite de segurança pode ter bloqueado (muitos de uma vez)';
+}
+
+function resumoAdd(cid) {
+    const c = APR.contas[cid], cat = (c.catalogo && c.catalogo.itens) || {}, duvCat = (c.catalogo && c.catalogo.duv) || {};
+    const pres = presencaPdf(), duv = duvidaPdf();
+    const doPdf = (window.products || []).filter(p => p && pres.has(p.id));
+    const fora = doPdf.filter(p => !cat[p.id] && !APR.naoWhats[p.id] && !duvCat[p.id] && !duv.has(p.id)).length;
+    return `Catálogo ${c.catalogo && c.catalogo.origem === 'zip' ? 'do ZIP' : 'de prints'} com ${Object.keys(cat).length} itens (${idadeTxt(c.catalogo)}) · ${doPdf.length} produtos do PDF no CTW · ${fora} fora do catálogo`;
+}
+
+function diagAdd(cid, termo) {
+    const q = norm(termo).split(' ').filter(Boolean);
+    if (!q.length) return '';
+    const ach = (window.products || []).filter(p => p && q.every(t => norm(p.nome).includes(t))).slice(0, 5);
+    if (!ach.length) return '<div class="ps-sub">Nenhum produto do CTW com esse nome. Se ele é novo no Stock 2.0, primeiro precisa estar no CTW; ele entra em “Adicionar” na próxima conferência do PDF.</div>';
+    return ach.map(p => `<div class="ps-sub"><b>${esc(p.nome)}</b>: ${esc(motivoAdd(cid, p))}</div>`).join('');
+}
+
 function cartaoWhats(esgs, comBotao) {
     const ids = Object.keys(esgs || {});
     if (!ids.length) return '';
@@ -648,6 +680,10 @@ function cartaoWhats(esgs, comBotao) {
         ${eg.reativar ? `<div class="ps-lin"><span>Voltaram ao estoque (reativar)</span><b>${eg.reativar}</b></div>` : ''}
         ${eg.adicionar ? `<div class="ps-lin"><span>Faltam no catálogo (adicionar)</span><b>${eg.adicionar}</b></div>` : ''}
         ${eg.muitosFaltando ? `<div class="ps-aviso">${eg.muitosFaltando} produtos do PDF parecem faltar no catálogo de uma vez. Confira se o ZIP é o certo: não avisei nenhum.</div>` : ''}
+        ${S ? `<details class="ps-det"><summary>Por que um produto não aparece em “Adicionar”?</summary>
+          <div class="ps-sub">${esc(resumoAdd(id))}</div>
+          <div class="ps-busca"><input class="psDiag" data-conta="${esc(id)}" placeholder="Nome do produto" autocomplete="off"></div>
+          <div class="psDiagRes"></div></details>` : ''}
       </div>`;
     }).join('');
 }
