@@ -76,7 +76,7 @@
          para a 1ª pintura, mas funciona igual em qualquer aparelho. -->
     <link href="bootstrap-icons-lite.css?v=1" rel="stylesheet"/>
     <link href="bootstrap-lite.css?v=1" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=128">
+    <link rel="stylesheet" href="style.css?v=129">
 
 
 
@@ -1778,7 +1778,7 @@ window.addEventListener('load', function() {
             repairs:     () => import('./repairs.js?v=5').then(m => { window._repairsModule = m; return m; }),
             reposicao:   () => import('./reposicao.js').then(m => { window._reposicaoModule = m; return m; }),
             creditoscan: () => import('./creditoscan.js').then(m => { window._csReady = true; return m; }),
-            fechamentoia: () => import('./fechamentoia.js?v=14'),
+            fechamentoia: () => import('./fechamentoia.js?v=15'),
             precosync:   () => import('./precosync.js?v=25')   // só ao abrir Mais > WhatsApp e Preços (fora do carregamento em segundo plano)
         };
         const carregados = {};
@@ -3043,8 +3043,12 @@ window.addEventListener('load', function() {
         document.getElementById('ctwBirthdayPicker').style.display = 'none';
     };
 
+    // Quem usa o seletor (Garantia e Garantia detalhada) fica sabendo da mudança pelo evento "input" do campo escondido
+    function _bdAvisar(el) { el.dispatchEvent(new Event('input', { bubbles: true })); }
+
     window._bdLimpar = function() {
         document.getElementById(_bdTarget.inputId).value = '';
+        _bdAvisar(document.getElementById(_bdTarget.inputId));
         document.getElementById(_bdTarget.labelId).textContent = 'Definir data';
         document.getElementById(_bdTarget.btnId).style.borderColor = '';
         window._fecharBirthdayPicker();
@@ -3062,6 +3066,7 @@ window.addEventListener('load', function() {
         } else if (!_bd.tocado) { _bdMostrarErro('Digite a data ou escolha dia, mês e ano.'); return; }
         var iso = _bd.ano + '-' + pad(_bd.mes + 1) + '-' + pad(_bd.dia);
         document.getElementById(_bdTarget.inputId).value = iso;
+        _bdAvisar(document.getElementById(_bdTarget.inputId));
         document.getElementById(_bdTarget.labelId).textContent =
             pad(_bd.dia) + ' de ' + MESES_BD[_bd.mes] + ' de ' + _bd.ano;
         document.getElementById(_bdTarget.btnId).style.borderColor = 'var(--primary-color)';
