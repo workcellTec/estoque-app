@@ -556,6 +556,39 @@ function ctwDesligarListenerHistorico() {
     bookipListener = null;
 }
 
+// Garantia detalhada (dev): a aba "Histórico" dela usa a MESMA lista da Garantia. Filtros, busca e lista (os blocos reais) mudam de lugar enquanto a aba
+// está aberta e voltam ao sair; nada é copiado, então cartões, botões, busca e filtros são exatamente os de lá. host = elemento da aba; null = devolve tudo.
+// Só aqui o cartão mostra o valor líquido; na aba Garantia normal ele não aparece.
+const CTW_HIST_IDS = ['filterBarProfiles', 'bookipSearchContainer', 'historyBookipContent'];
+let _gdHist = null;                                    // { marcas: { id: comentário que guarda o lugar de origem }, nos: { id: elemento } } enquanto montado
+window.ctwGdHistAtivo = () => !!_gdHist;
+window.ctwHistoricoNoGd = function(host) {
+    const no = id => document.getElementById(id);
+    if (!host) {                                       // devolve para a Garantia
+        if (!_gdHist) return;
+        const { marcas, nos } = _gdHist; _gdHist = null;
+        const busca = nos.bookipSearchContainer, lista = nos.historyBookipContent, barra = nos.filterBarProfiles || no('filterBarProfiles');
+        [busca, lista, barra].forEach(el => { const m = el && marcas[el.id]; if (m && m.parentNode) { m.parentNode.insertBefore(el, m); m.remove(); } });
+        if (barra && !marcas.filterBarProfiles && busca && busca.parentNode) busca.parentNode.insertBefore(barra, busca);   // a barra nasceu aqui: fica antes da busca, como sempre
+        Object.values(marcas).forEach(m => m.remove());
+        const emHistorico = !!document.getElementById('bookipModeToggle')?.checked;      // a Garantia estava em Histórico ou em Novo?
+        [busca, lista, barra].forEach(el => el && el.classList.toggle('hidden', !emHistorico));
+        if (emHistorico) loadBookipHistory(); else ctwDesligarListenerHistorico();       // redesenha sem o líquido / para de ouvir o que ninguém vê
+        return;
+    }
+    if (_gdHist) {                                     // a tela da Detalhada foi redesenhada: só muda de lugar
+        if (!_gdHist.nos.filterBarProfiles) _gdHist.nos.filterBarProfiles = no('filterBarProfiles');   // a barra pode ter nascido depois da montagem
+        CTW_HIST_IDS.forEach(id => { const el = _gdHist.nos[id]; if (el) host.appendChild(el); });
+        return;
+    }
+    if (!no('historyBookipContent') || !no('bookipSearchContainer')) return;
+    if (ctwEhOrcamento()) ctwTrocarModoDoc('garantia');                              // a Detalhada é sempre Garantia
+    _gdHist = { marcas: {}, nos: {} };
+    CTW_HIST_IDS.forEach(id => { const el = no(id); if (!el || !el.parentNode) return; const m = document.createComment('gd-' + id); el.parentNode.insertBefore(m, el); _gdHist.marcas[id] = m; _gdHist.nos[id] = el; host.appendChild(el); el.classList.remove('hidden'); });
+    loadBookipHistory();                               // se a barra de filtros ainda não existe, nasce aqui, antes da busca
+    _gdHist.nos.filterBarProfiles = no('filterBarProfiles');
+};
+
 // ============================================================
 // MODO DO DOCUMENTO — a tela "Garantia (Bookip)" também atende o Orçamento.
 // O modo troca: coleção no Firebase, lixeira, rascunho, numeração (ORC-001),
@@ -7900,7 +7933,7 @@ function loadBookipHistory() {
             return;
         }
 
-        const devLiq = !!(window.ctwEhDev && window.ctwEhDev());   // valor líquido (dev): perfis normais não recebem nada disso
+        const devLiq = !!(window.ctwEhDev && window.ctwEhDev() && window.ctwGdHistAtivo && window.ctwGdHistAtivo());   // valor líquido (dev): só dentro da Garantia detalhada
 
         let html = `<div class="accordion w-100 history-accordion" id="bookipAccordion">` +
                 fatia.map(item => {
@@ -8223,6 +8256,7 @@ container.querySelectorAll('.btn-download-seguro').forEach(b => {
 // --- FUNÇÃO AUXILIAR: CARREGAR DADOS NO FORMULÁRIO (CORRIGIDA DE VERDADE) ---
 function carregarDadosParaEdicao(item) {
     if (!item) return;
+    if (window.ctwGdHistAtivo && window.ctwGdHistAtivo() && window.ctwGdEditar && window.ctwGdEditar(item)) return;   // aberta pela Garantia detalhada (devolve false e fecha a tela quando o documento não cabe nela)
 
     // 1. Mata o rascunho antigo
     localStorage.removeItem(ctwDocRascunhoKey());
@@ -8530,7 +8564,7 @@ criadoPor: currentUserProfile || "Desconhecido",
             }
 
             // VALOR LÍQUIDO (dev): a Garantia detalhada grava o líquido junto da garantia. Falha aqui nunca desfaz a garantia.
-            if (!modoOrc && docType !== 'situacao' && !currentEditingBookipId && window.ctwLiqSalvar) {
+            if (!modoOrc && docType !== 'situacao' && (!currentEditingBookipId || (window.ctwGdEmCurso && window.ctwGdEmCurso())) && window.ctwLiqSalvar) {
                 try { await window.ctwLiqSalvar(dados); } catch (e) { console.warn('[líquido] não salvou:', e); }
             }
 
@@ -10985,14 +11019,17 @@ window.ctwPreencherGarantia = function(spec) {
     const posSalvo = !document.getElementById('postSaveOptions')?.classList.contains('hidden');   // acabou de salvar uma: o formulário ainda guarda os dados dela
     if (ctwEhOrcamento()) {
         ctwTrocarModoDoc('garantia');                  // o que estava no orçamento vai para o rascunho dele
-    } else if (!spec.forcar && (currentEditingBookipId !== null || (ctwFormularioBookipTemDados() && !posSalvo))) {
+    } else if (!spec.forcar && !posSalvo && (currentEditingBookipId !== null || ctwFormularioBookipTemDados())) {   // recém-salvo: o formulário só guarda o que já foi gravado
         return { ocupado: true };
     }
     window.isSimpleReceiptMode = false;
     window.resetFormulariosBookip({ manterRascunho: true });
+    if (spec.editarId) currentEditingBookipId = spec.editarId;      // edição de uma garantia já salva: o botão de sempre atualiza o mesmo documento e mantém o número
     const c = spec.cli || {};
     const campo = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
     campo('bookipNome', c.nome); campo('bookipCpf', c.cpf); campo('bookipTelefone', c.tel); campo('bookipEndereco', c.end); campo('bookipEmail', c.email);
+    if (spec.dataVenda) campo('bookipDataManual', spec.dataVenda);
+    if (spec.fotoUrl) window._bookipFotoUrl = spec.fotoUrl;         // a foto que o documento já tem continua (uma nova, em spec.foto, a substitui ao salvar)
     if (c.nasc && /^\d{4}-\d{2}-\d{2}$/.test(c.nasc)) {
         campo('bookipNascimento', c.nasc);
         if (typeof window._bdSetValor === 'function') window._bdSetValor('bookipNascimento', 'bookipNascimentoBtn', 'bookipNascimentoLabel', c.nasc);

@@ -453,7 +453,7 @@ const IC = {
     back: '<path d="M15 6l-6 6 6 6"/>', down: '<path d="M6 9l6 6 6-6"/>', del: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>', plus: '<path d="M12 5v14M5 12h14"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>', ok: '<path d="M5 12l5 5 9-10"/>', chat: '<path d="M4 5h16v11H9l-5 4z"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>', pen: '<path d="M4 20l4-1 11-11-3-3L5 16l-1 4zM14 7l3 3"/>', chev: '<path d="M9 6l6 6-6 6"/>',
-    cam: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>', rec: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>'
+    cam: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>', rec: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'
 };
 const ico = n => `<svg class="gd-i" viewBox="0 0 24 24" aria-hidden="true">${IC[n]}</svg>`;
 
@@ -473,7 +473,7 @@ function interpretar(lido) {
 }
 
 // ── Estado e rascunho ───────────────────────────────────────────
-let G = null, GO = null, _gdT = null;
+let G = null, GO = null, _gdT = null, GN = null, _edTrava = false;   // GN: a garantia nova em andamento, guardada enquanto uma antiga é editada
 const CLI0 = () => ({ nome: '', cpf: '', tel: '', nasc: '', end: '', email: '' });
 const novoG = () => Object.assign(novoEstado('detalhada'), { page: 1, cli: CLI0(), cliOpen: false, cond: 'Novo / Lacrado', dias: 365, busca: '', aviso: '', novo: '', open: 0, sh: null, foto: null, zap: { foto: null, comp: [], texto: '', erro: '', lendo: false }, salvando: false, limpar: false, cliente: '' });
 const DIAS_GAR = [[365, '1 ano (padrão)'], [180, '6 meses'], [120, '4 meses'], [30, '30 dias']];   // as mesmas opções da Garantia; "Outro tempo" aceita qualquer número de dias
@@ -484,7 +484,7 @@ const gdSeg = (a, opts, sel, extra = '', cls = '') => `<div class="gd-seg${cls}"
 const gdVazio = E => !E.itens.length && !E.pag.length && !Object.values(E.cli).some(v => String(v).trim());
 
 function gdGravar() {
-    if (!G) return;
+    if (!G || G.edit) return;                              // editar uma garantia salva não toca no rascunho da nova
     try {
         if (gdVazio(G)) { localStorage.removeItem(GD_LS); return; }
         const s = { v: 1, ts: Date.now(), page: G.page, cli: G.cli, cond: G.cond, dias: G.dias, seq: G.seq, novo: G.novo,
@@ -554,6 +554,7 @@ function gdProblema(page) {
 
 // ── Interface ───────────────────────────────────────────────────
 function gdAbrirOverlay() {
+    if (window.ctwHistoricoNoGd) window.ctwHistoricoNoGd(null);
     if (GO) GO.remove();
     GO = document.createElement('div');
     GO.className = 'gd'; GO.id = 'gdRoot'; GO.setAttribute('data-dev-only', '');
@@ -564,6 +565,7 @@ function gdAbrirOverlay() {
 }
 
 function gdFechar(salvo) {
+    if (window.ctwHistoricoNoGd) window.ctwHistoricoNoGd(null);   // a lista do histórico volta para a Garantia antes desta tela sair
     gdSheetFechar(true);
     gdZapParar(); if (G && G.zap) G.zap.lendo = false;      // fechou a tela: a leitura da IA para de contar
     const sujo = G && G.salvando && !salvo;               // o formulário da Garantia foi preenchido e não chegou a salvar: volta limpo
@@ -574,22 +576,29 @@ function gdFechar(salvo) {
     if (GO) { GO.remove(); GO = null; }
     document.documentElement.classList.remove('ps-aberto');
     if (salvo) G = null;
+    GN = null;                                             // se estava editando, a nova volta do rascunho na próxima abertura
 }
 
 function gdRender(manter) {
     if (!GO || !G) return;
+    const pg = G.page, ed = !!G.edit, hist = window.ctwGdHistAtivo && window.ctwGdHistAtivo();
+    if (hist) window.ctwHistoricoNoGd(pg === 3 ? document.createDocumentFragment() : null);   // a tela vai ser reescrita: a lista real sai antes (e volta, se for a aba Histórico)
     const corpo = GO.querySelector('.gd-bd'), y = corpo ? corpo.scrollTop : 0;
-    const p1 = G.page === 1, prob = gdProblema(G.page);
-    const ft = p1
-        ? `<p class="gd-help">${esc(prob)}</p><button class="gd-go${prob ? ' off' : ''}" type="button" data-gd="next">Continuar para o pagamento</button>`
-        : `<p class="gd-help">${esc(prob)}</p><button class="gd-go${prob ? ' off' : ''}" type="button" data-gd="salvar"${G.salvando ? ' disabled' : ''}>${G.salvando ? 'Salvando…' : 'Salvar garantia'}</button>`;
-    GO.innerHTML = `<div class="gd-hd"><button class="gd-bk" type="button" data-gd="voltar" aria-label="Voltar">${ico('back')}</button><h2>Garantia detalhada</h2>
-        <button class="gd-zapb" type="button" data-gd="zap">${ico('chat')} Colar do Zap</button></div>
-      <div class="gd-steps"><button type="button" class="${p1 ? 'on' : ''}" data-gd="p1">1 · Cliente e produtos</button><button type="button" class="${p1 ? '' : 'on'}" data-gd="p2">2 · Pagamento</button></div>
-      <div class="gd-bd">${p1 ? gdP1() : gdP2()}</div><div class="gd-ft">${ft}</div>`;
+    const prob = pg === 3 ? '' : gdProblema(pg);
+    const ft = pg === 3 ? '' : `<div class="gd-ft"><p class="gd-help">${esc(prob)}</p>` + (pg === 1
+        ? `<button class="gd-go${prob ? ' off' : ''}" type="button" data-gd="next">Continuar para o pagamento</button>`
+        : `<button class="gd-go${prob ? ' off' : ''}" type="button" data-gd="salvar"${G.salvando ? ' disabled' : ''}>${G.salvando ? 'Salvando…' : ed ? 'Salvar alterações' : 'Salvar garantia'}</button>`) + '</div>';
+    const abas = ed
+        ? `<div class="gd-steps two"><button type="button" class="${pg === 1 ? 'on' : ''}" data-gd="p1">1 · Cliente e produtos</button><button type="button" class="${pg === 2 ? 'on' : ''}" data-gd="p2">2 · Pagamento</button></div>`
+        : `<div class="gd-steps"><button type="button" class="${pg === 1 ? 'on' : ''}" data-gd="p1">1 · Produtos</button><button type="button" class="${pg === 2 ? 'on' : ''}" data-gd="p2">2 · Pagamento</button><button type="button" class="${pg === 3 ? 'on' : ''}" data-gd="p3">${ico('clock')} Histórico</button></div>`;
+    GO.innerHTML = `<div class="gd-hd"><button class="gd-bk" type="button" data-gd="voltar" aria-label="Voltar">${ico('back')}</button><h2>${ed ? 'Editando Doc ' + esc(G.edit.doc || '') : 'Garantia detalhada'}</h2>
+        ${pg === 3 ? '' : `<button class="gd-zapb" type="button" data-gd="zap">${ico('chat')} Colar do Zap</button>`}</div>
+      ${abas}
+      <div class="gd-bd">${pg === 1 ? gdP1() : pg === 2 ? gdP2() : '<div id="gdHist" class="gd-hist"></div>'}</div>${ft}`;
     const novo = GO.querySelector('.gd-bd');
     if (manter && novo) novo.scrollTop = y;
-    if (!p1) gdResumo();
+    if (pg === 2) gdResumo();
+    if (pg === 3) window.ctwHistoricoNoGd(GO.querySelector('#gdHist'));
     gdPersistir();
 }
 
@@ -636,14 +645,14 @@ function gdItem(i) {
 
 function gdP1() {
     const n = G.itens.length;
-    return `${G.aviso ? `<div class="gd-ban">${G.aviso}</div>` : ''}${gdCliente()}
+    return `${G.edit ? `<div class="gd-ban"><b>Editando a garantia Doc ${esc(G.edit.doc || '')}.</b> Os dados vieram do que foi salvo. Ao salvar, o documento e o lucro são atualizados.</div>` : ''}${G.aviso ? `<div class="gd-ban">${G.aviso}</div>` : ''}${gdCliente()}
       <div class="gd-sec"><b>Produtos</b><span>${n ? n + (n === 1 ? ' item' : ' itens') : ''}</span></div>
       <div class="gd-sw">${ico('search')}<input id="gdBq" class="gd-in" placeholder="Buscar produto no CTW" autocomplete="off" value="${esc(G.busca)}" aria-label="Buscar produto no CTW"></div>
       <div class="gd-res" id="gdBres">${gdOpcoes(gdBusca(G.busca), 'data-gd="add" data-pid')}</div>
       <div><span class="gd-lab">Produto novo entra no documento como</span>${gdSeg('gcond', CONDS.map(c => [c, c]), G.cond)}</div>
       ${G.itens.map(gdItem).join('')}
       ${n ? '' : '<p class="gd-msg c">Busque e toque no produto para adicionar.</p>'}
-      ${gdVazio(G) ? '' : `<button class="gd-lk gd-zera${G.limpar ? ' perigo' : ''}" type="button" data-gd="zerar">${G.limpar ? 'Toque de novo para apagar tudo' : 'Começar de novo'}</button>`}`;
+      ${gdVazio(G) || G.edit ? '' : `<button class="gd-lk gd-zera${G.limpar ? ' perigo' : ''}" type="button" data-gd="zerar">${G.limpar ? 'Toque de novo para apagar tudo' : 'Começar de novo'}</button>`}`;
 }
 
 // ── Página 2 · pagamento e lucro ────────────────────────────────
@@ -664,7 +673,7 @@ function gdLinhaPag(l) {
 
 function gdP2() {
     const n = G.itens.reduce((s, i) => s + i.qtd, 0);
-    return `${G.aviso ? `<div class="gd-ban">${G.aviso}</div>` : ''}
+    return `${G.edit && G.edit.nota ? `<div class="gd-ban am">${G.edit.nota}</div>` : ''}${G.aviso ? `<div class="gd-ban">${G.aviso}</div>` : ''}
       <div class="gd-row"><div><span class="gd-l">Cliente</span><div class="gd-cn">${esc(G.cli.nome || 'Sem nome (sai como Consumidor)')}</div></div><span class="gd-l">${n} ${n === 1 ? 'produto' : 'produtos'}</span></div>
       <div class="gd-sec"><b>Pagamento</b><span class="gd-tot" id="gdTot"></span></div>
       ${G.pag.map(gdLinhaPag).join('')}
@@ -1005,10 +1014,12 @@ function gdClique(e) {
     if (!G) return;
     const a = b.dataset.gd, id = b.dataset.id, it = id != null ? gdItemPorId(id) : null;
     if (a !== 'zerar' && G.limpar) G.limpar = false;
-    if (a === 'voltar') { if (G.page === 2) { G.page = 1; return gdRender(); } return gdFechar(); }
+    if (a === 'voltar') { gdVoltar(); return; }
     if (a === 'p1') { G.page = 1; return gdRender(); }
+    if (a === 'p3') { gdSheetFechar(true); G.page = 3; G.aviso = ''; return gdRender(); }
     if (a === 'p2' || a === 'next') {
         const prob = gdProblema(1);
+        if (prob && G.page === 3) { G.page = 1; G.aviso = esc(prob); return gdRender(); }   // vindo do Histórico não há rodapé para mostrar o aviso: vai para onde falta
         if (prob) { const h = GO.querySelector('.gd-help'); if (h) { h.classList.remove('flash'); void h.offsetWidth; h.classList.add('flash'); } return; }
         G.page = 2; G.aviso = ''; return gdRender();
     }
@@ -1090,6 +1101,7 @@ function gdSalvar() {
     if (typeof window.ctwPreencherGarantia !== 'function' || !sv) { window.showCustomModal && window.showCustomModal({ message: 'A Garantia ainda está carregando. Tente de novo em instantes.' }); return; }
     if (sv.disabled) return;                               // uma garantia está sendo gravada agora
     const spec = { cli: G.cli, dias: gdDiasOk(G.dias) ? G.dias : 365, items: itensDoDoc(), formas: Array.from(new Set(G.pag.map(l => CHECKS[tipoForma(l)]))), foto: G.foto };
+    if (G.edit) Object.assign(spec, { editarId: G.edit.id, dataVenda: G.edit.dataVenda, fotoUrl: G.edit.fotoUrl });   // atualiza o mesmo documento (mesmo número, mesma data, mesma foto)
     const ir = forcar => {
         if (!G) return;
         const r = window.ctwPreencherGarantia(Object.assign({ forcar: !!forcar || G.salvando }, spec));   // G.salvando: o formulário já é desta tela (tentativa anterior falhou)
@@ -1109,7 +1121,7 @@ function gdPreviaCancelada() {
 
 // Chamado pela Garantia depois que o documento foi salvo: grava o líquido ligado a ele, fecha esta tela e mostra a Garantia salva
 async function aoSalvarGarantia(dados) {
-    if (!G || !G.salvando || !ehDev() || !dados || !dados.id) return;
+    if (!G || !G.salvando || !ehDev() || !dados || !dados.id || (G.edit && G.edit.id !== dados.id)) return;
     const E = G;
     try {
         const r = calcG();
@@ -1118,11 +1130,11 @@ async function aoSalvarGarantia(dados) {
         r.res.soma = somaPagamentos(E); r.res.totalGarantia = r.res.garantia.total;
         r.res.cliente = r.res.cliente || String(dados.nome || '').trim();
         await garantirMapa();
-        await gravarRegistro(r.res, dados.id, Date.parse(dados.criadoEm) || Date.now());
+        await gravarRegistro(r.res, dados.id, (E.edit && E.edit.ts) || Date.parse(dados.criadoEm) || Date.now());
     } catch (e) {
-        if (window.showCustomModal) window.showCustomModal({ message: 'Garantia salva. O valor líquido NÃO foi salvo: ' + ((e && e.message) || 'erro de conexão') + ' Abra o histórico, expanda o card e toque em “Dev · Valor líquido” para completar.' });
+        if (window.showCustomModal) window.showCustomModal({ message: 'Garantia salva. O valor líquido NÃO foi salvo: ' + ((e && e.message) || 'erro de conexão') + ' Abra a Garantia detalhada, aba Histórico, expanda o card e toque em “Dev · Valor líquido” para completar.' });
     } finally {
-        gdLimparRasc();
+        if (!E.edit) gdLimparRasc();                       // editar não gasta o rascunho da garantia nova
         gdFechar(true);
         if (window.ctwAbrirDoc) window.ctwAbrirDoc('garantia');
     }
@@ -1135,8 +1147,92 @@ function gdVoltar() {
     if (G && G.salvando && ((pv && !pv.classList.contains('hidden')) || (sv && sv.disabled))) return true;   // salvando agora: o voltar não pode desmontar a tela por baixo
     if (document.getElementById('gdSheet')) gdSheetFechar();
     else if (G && G.page === 2) { G.page = 1; gdRender(); }
+    else if (G && G.edit) {                                // sair da edição perde o que foi mexido: confirma
+        if (window.showCustomModal) window.showCustomModal({ message: 'Sair da edição? O que você mudou e não salvou será perdido.', confirmText: 'Sair da edição', cancelText: 'Continuar editando', onConfirm: gdSairEdicao, onCancel: () => {} });
+        else gdSairEdicao();
+    }
     else gdFechar();
     return true;
+}
+
+// ── Editar uma garantia salva pela Detalhada ────────────────────
+// A tela abre já preenchida com o que foi salvo. Pagamento e lucro vêm do registro de líquido, se existir; garantia antiga (sem registro, ou de outro perfil)
+// abre com o pagamento vazio para lançar de novo, mostrando o total atual do documento. Salvar atualiza o MESMO documento (número, data e foto ficam) e o líquido.
+const EDIT_COND = /\s-\s(Novo \/ Lacrado|Seminovo)\s*$/;
+function gdItensDaEdicao(E, doc, rec) {
+    const linhas = (doc.items || []).filter(i => i && !i.isSituation), usadas = new Set();
+    const meta = l => { const m = EDIT_COND.exec(String(l.nome || '')); return { cond: m ? m[1] : '', cor: String(l.cor || ''), obs: String(l.obs || '') }; };
+    const novo = o => Object.assign({ id: ++E.seq, q: '', edCusto: false, sug: [] }, o);
+    const qtd = n => Math.max(1, Math.min(99, parseInt(n, 10) || 1));
+    if (rec && Array.isArray(rec.produtos) && rec.produtos.length) {     // o registro sabe o produto do CTW e o custo do dia; o documento, condição/cor/IMEI
+        return rec.produtos.map((p, n) => {
+            let falta = qtd(p.qtd), m = null;
+            linhas.forEach((l, k) => {                                   // uma unidade pode ter sido separada em outra linha do documento: junta até fechar a quantidade
+                if (falta <= 0 || usadas.has(k) || !(p.id && l.ctw && String(l.ctw.id) === String(p.id))) return;
+                usadas.add(k); falta -= qtd(l.qtd); if (!m) m = meta(l);
+            });
+            if (!m && linhas[n] && !usadas.has(n)) { usadas.add(n); m = meta(linhas[n]); }
+            m = m || { cond: '', cor: '', obs: '' };
+            const lido = String(p.lido || p.nome || '');
+            const r = p.id ? { sug: [] } : interpretar(lido);              // produto sem vínculo no registro: a pessoa escolhe de novo
+            return novo({ nome: lido, qtd: qtd(p.qtd), cond: m.cond, cor: m.cor, obs: m.obs, sug: r.sug,
+                prod: p.id ? { nome: p.nome, id: p.id, valor: Number(p.valor) || 0, manual: !!p.manual, duvida: false, lido, hoje: p.hoje != null ? Number(p.hoje) : undefined } : null });
+        });
+    }
+    return linhas.map(l => {
+        const m = meta(l), nome = String(l.nome || '').replace(EDIT_COND, '').trim(), cp = l.ctw && l.ctw.id ? produtoPorId(l.ctw.id) : null;
+        const r = cp ? { prod: paraProd(cp, nome), sug: [] } : interpretar(nome);
+        return novo({ nome, qtd: qtd(l.qtd), cond: m.cond, cor: m.cor, obs: m.obs, prod: r.prod, sug: r.sug });
+    });
+}
+
+const dataLocal = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };   // documento sem data da venda: fica a do dia em que foi criado
+async function gdIniciarEdicao(doc) {
+    if (_edTrava) return;
+    _edTrava = true;
+    try {
+        await garantirMapa(true);
+        if (!GO || !G || G.salvando || G.edit) return;
+        const rec = (MAPA && MAPA.data && MAPA.data[doc.id]) || null, total = totalItens(doc.items), E = novoG();
+        E.cli = Object.assign(CLI0(), { nome: doc.nome && doc.nome !== 'Consumidor' ? doc.nome : '', cpf: doc.cpf || '', tel: doc.tel || '', end: doc.end || '', email: doc.email || '' });
+        const cad = gdCadastro(E.cli); if (cad && cad.dataNascimento) E.cli.nasc = cad.dataNascimento;     // o nascimento não fica no documento: vem do cadastro do cliente
+        E.dias = gdDiasOk(parseInt(doc.diasGarantia, 10)) ? parseInt(doc.diasGarantia, 10) : 365;
+        E.itens = gdItensDaEdicao(E, doc, rec);
+        E.pag = rec && Array.isArray(rec.linhas) ? linhasDeRegistro(E, rec.linhas) : [];
+        E.edit = { id: doc.id, doc: doc.docNumber || '', dataVenda: doc.dataVenda || dataLocal(doc.criadoEm), fotoUrl: doc.fotoUrl || '', ts: (rec && rec.ts) || Date.parse(doc.criadoEm) || 0, nota: '' };
+        const soma = somaPagamentos(E);
+        if (!rec) E.edit.nota = `<b>Garantia feita antes do valor líquido.</b> Lance como foi pago para calcular o lucro. Total atual do documento: <b>${brl(total)}</b>. Ao salvar, o valor de cada produto no documento é refeito a partir do total dos pagamentos.`;
+        else if (Math.abs(soma - total) >= 0.01) E.edit.nota = `<b>Os pagamentos somam ${brl(soma)} e o documento vale ${brl(total)}.</b> Ao salvar, o documento passa a valer o total dos pagamentos.`;
+        gdGravar();                                          // a garantia nova em andamento fica gravada antes de ser guardada
+        gdZapParar(); if (G.zap) G.zap.lendo = false; gdSheetFechar(true);
+        GN = G; G = E;
+        gdRender();
+    } catch (e) {
+        console.warn('[líquido] não abri a edição:', e);
+        if (window.showCustomModal) window.showCustomModal({ message: 'Não consegui abrir a edição: ' + ((e && e.message) || 'erro desconhecido') });
+    } finally { _edTrava = false; }
+}
+
+// true = a edição abre aqui; false = o documento não cabe na Detalhada (recibo, situação, sem valor): fecha esta tela e a edição de sempre segue
+function editarNaDetalhada(doc) {
+    if (!GO || !G || !ehDev() || !doc) return false;
+    if (!ehDocValido(doc) || doc.type === 'recibo') {
+        gdFechar();
+        if (window.ctwAbrirDoc) window.ctwAbrirDoc('garantia');
+        return false;
+    }
+    gdIniciarEdicao(doc);
+    return true;
+}
+
+// Sai da edição sem salvar: volta para a garantia nova que estava em andamento, na aba Histórico
+function gdSairEdicao() {
+    if (!G || !G.edit) return;
+    if (G.salvando && typeof window.resetFormulariosBookip === 'function') window.resetFormulariosBookip({ manterRascunho: true });   // o formulário já foi preenchido por esta edição
+    gdZapParar(); gdSheetFechar(true);
+    G = GN || gdRestaurar() || novoG();
+    GN = null; G.salvando = false; G.page = 3;
+    gdRender();
 }
 
 function abrirGarantiaDet() {
@@ -1600,21 +1696,12 @@ async function decorarHistorico(container, lista) {
             const doc = LISTA_H.find(d => d.id === s.dataset.id); if (!doc) return;
             const a = b.dataset.liq, rec = MAPA && MAPA.data[doc.id];
             if (a === 'toggle') { s.dataset.aberto = s.dataset.aberto === '1' ? '0' : '1'; pintarSlot(s); }
-            else if (a === 'abrir') abrirDaGarantia(doc);
+            else if (a === 'abrir') editarNaDetalhada(doc);
             else if (a === 'copiar' && rec) copiar(resumoTexto(paraResultado(rec))).then(ok => { b.textContent = ok ? 'Copiado ✓' : 'Não consegui copiar'; });
         });
     }
     await garantirMapa();
     pintarHistorico();
-}
-
-async function abrirDaGarantia(doc) {
-    if (!ehDev() || !ehDocValido(doc)) return;
-    if (!getDb()) { if (window.showCustomModal) window.showCustomModal({ message: 'O banco de dados ainda está conectando. Tente de novo em alguns segundos.' }); return; }
-    await garantirMapa(true);
-    F = estadoDeGarantia(doc, MAPA && MAPA.data && MAPA.data[doc.id]);
-    abrirOverlay();
-    telaConferir();
 }
 
 async function removerDaGarantia(id) {
@@ -1732,5 +1819,6 @@ window.ctwLiqSalvar = aoSalvarGarantia;
 window.ctwGdEmCurso = () => !!(G && G.salvando);
 window.ctwGdPreviaCancelada = gdPreviaCancelada;
 window.ctwGdVoltar = gdVoltar;
+window.ctwGdEditar = editarNaDetalhada;
 
-export { abrir, abrirDaGarantia, abrirGarantiaDet, aoSalvarGarantia, decorarHistorico, removerDaGarantia, gdAtivo };
+export { abrir, abrirGarantiaDet, aoSalvarGarantia, decorarHistorico, removerDaGarantia, gdAtivo };

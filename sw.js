@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-316'; // Garantia detalhada: tempo de garantia em folha (com 'Outro tempo'), botões com cara de botão
+const CACHE = 'ctw-317'; // Garantia detalhada: aba Histórico (lista real), editar pela Detalhada, líquido só lá
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
