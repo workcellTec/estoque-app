@@ -562,17 +562,20 @@ function ctwDesligarListenerHistorico() {
 const CTW_HIST_IDS = ['filterBarProfiles', 'bookipSearchContainer', 'historyBookipContent'];
 let _gdHist = null;                                    // { marcas: { id: comentário que guarda o lugar de origem }, nos: { id: elemento } } enquanto montado
 window.ctwGdHistAtivo = () => !!_gdHist;
-window.ctwHistoricoNoGd = function(host) {
+let _gdFiltroEscolhido = null;                       // filtro de perfil que a pessoa deixou na aba Histórico; vale enquanto a Detalhada continua aberta (fim = true: ela fechou)
+window.ctwHistoricoNoGd = function(host, fim) {
     const no = id => document.getElementById(id);
     if (!host) {                                       // devolve para a Garantia
-        if (!_gdHist) return;
-        const { marcas, nos } = _gdHist; _gdHist = null;
+        if (!_gdHist) { if (fim) _gdFiltroEscolhido = null; return; }
+        const { marcas, nos, filtroAntes } = _gdHist; _gdHist = null;
+        _gdFiltroEscolhido = fim ? null : (window.activeProfileFilter || 'todos');
         const busca = nos.bookipSearchContainer, lista = nos.historyBookipContent, barra = nos.filterBarProfiles || no('filterBarProfiles');
         [busca, lista, barra].forEach(el => { const m = el && marcas[el.id]; if (m && m.parentNode) { m.parentNode.insertBefore(el, m); m.remove(); } });
         if (barra && !marcas.filterBarProfiles && busca && busca.parentNode) busca.parentNode.insertBefore(barra, busca);   // a barra nasceu aqui: fica antes da busca, como sempre
         Object.values(marcas).forEach(m => m.remove());
         const emHistorico = !!document.getElementById('bookipModeToggle')?.checked;      // a Garantia estava em Histórico ou em Novo?
         [busca, lista, barra].forEach(el => el && el.classList.toggle('hidden', !emHistorico));
+        ctwPintarFiltroPerfil(filtroAntes);                // o filtro volta a ser o que a Garantia tinha antes (a Detalhada abre em "Meus arquivos")
         if (emHistorico) window.ctwCarregarHistorico?.(); else ctwDesligarListenerHistorico();       // redesenha sem o líquido / para de ouvir o que ninguém vê
         return;
     }
@@ -583,11 +586,18 @@ window.ctwHistoricoNoGd = function(host) {
     }
     if (!no('historyBookipContent') || !no('bookipSearchContainer')) return;
     if (ctwEhOrcamento()) ctwTrocarModoDoc('garantia');                              // a Detalhada é sempre Garantia
-    _gdHist = { marcas: {}, nos: {} };
+    _gdHist = { marcas: {}, nos: {}, filtroAntes: window.activeProfileFilter || 'todos' };
     CTW_HIST_IDS.forEach(id => { const el = no(id); if (!el || !el.parentNode) return; const m = document.createComment('gd-' + id); el.parentNode.insertBefore(m, el); _gdHist.marcas[id] = m; _gdHist.nos[id] = el; host.appendChild(el); el.classList.remove('hidden'); });
+    ctwPintarFiltroPerfil(_gdFiltroEscolhido || currentUserProfile || 'todos');   // abre nos arquivos do perfil (sem perfil escolhido, em Todos); se a pessoa já trocou nesta abertura, mantém
     window.ctwCarregarHistorico?.();                   // se a barra de filtros ainda não existe, nasce aqui, antes da busca
     _gdHist.nos.filterBarProfiles = no('filterBarProfiles');
 };
+// Põe o filtro de perfil da lista do histórico em "Todos" ou nos arquivos de um perfil (valor de window.activeProfileFilter) e repinta os botões da barra.
+function ctwPintarFiltroPerfil(filtro) {
+    window.activeProfileFilter = filtro || 'todos';
+    const [todos, meus] = document.querySelectorAll('#filterBarProfiles .filter-profile-btn'), meusAtivo = window.activeProfileFilter !== 'todos';
+    [[todos, !meusAtivo], [meus, meusAtivo]].forEach(([b, on]) => { if (!b) return; b.classList.toggle('btn-light', on); b.classList.toggle('active', on); b.classList.toggle('fw-bold', on); b.classList.toggle('btn-outline-light', !on); });
+}
 
 // ============================================================
 // MODO DO DOCUMENTO — a tela "Garantia (Bookip)" também atende o Orçamento.

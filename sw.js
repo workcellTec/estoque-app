@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-320'; // corrige o Histórico da Garantia detalhada (a lista não carregava)
+const CACHE = 'ctw-321'; // Histórico da Garantia detalhada: cartão compacto, abre em Meus arquivos e busca de lucro (+50)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

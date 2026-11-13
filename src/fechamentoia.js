@@ -416,7 +416,7 @@ const IC = {
     search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>', ok: '<path d="M5 12l5 5 9-10"/>', chat: '<path d="M4 5h16v11H9l-5 4z"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>', pen: '<path d="M4 20l4-1 11-11-3-3L5 16l-1 4zM14 7l3 3"/>', chev: '<path d="M9 6l6 6-6 6"/>',
     cam: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>', rec: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-    cal: '<path d="M5 5h14v15H5zM5 9h14M9 3v4M15 3v4"/>', img: '<path d="M4 5h16v14H4z"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4 4 3 3-2 4 3"/>'
+    cal: '<path d="M5 5h14v15H5zM5 9h14M9 3v4M15 3v4"/>', trend: '<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>', img: '<path d="M4 5h16v14H4z"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4 4 3 3-2 4 3"/>'
 };
 const ico = n => `<svg class="gd-i" viewBox="0 0 24 24" aria-hidden="true">${IC[n]}</svg>`;
 
@@ -522,20 +522,22 @@ function gdSituacao() {
 
 // ── Interface ───────────────────────────────────────────────────
 function gdAbrirOverlay() {
-    if (window.ctwHistoricoNoGd) window.ctwHistoricoNoGd(null);
+    if (window.ctwHistoricoNoGd) window.ctwHistoricoNoGd(null, true);
     if (GO) GO.remove();
     GO = document.createElement('div');
     GO.className = 'gd'; GO.id = 'gdRoot'; GO.setAttribute('data-dev-only', '');
     GO.addEventListener('click', gdClique);
     GO.addEventListener('input', gdDigita);
     GO.addEventListener('change', gdMuda);
+    GO.addEventListener('click', e => { if (e.target.closest('#filterBarProfiles .filter-profile-btn')) lucCarregar(false); });   // trocou Todos / Meus arquivos: a busca de lucro segue o filtro
     document.body.appendChild(GO);
     document.documentElement.classList.add('ps-aberto');
 }
 
 function gdFechar() {
-    if (window.ctwHistoricoNoGd) window.ctwHistoricoNoGd(null);   // a lista do histórico volta para a Garantia antes desta tela sair
+    if (window.ctwHistoricoNoGd) window.ctwHistoricoNoGd(null, true);   // a lista do histórico volta para a Garantia antes desta tela sair
     gdSheetFechar(true);
+    Object.assign(LUC, { q: '', per: 'mes', aberto: null, dados: null, escopo: '', erro: '', carregando: false }); LUC.seq++;   // a busca começa limpa na próxima abertura
     gdZapParar(); if (G && G.zap) G.zap.lendo = false;      // fechou a tela: a leitura da IA para de contar
     const sujo = G && G.salvando;                          // o formulário da Garantia foi preenchido e não chegou a salvar: volta limpo
     if (G) G.salvando = false;
@@ -559,7 +561,7 @@ function gdRender(manter) {
       ${pg === 3 ? '<div class="gd-bd"><div id="gdHist" class="gd-hist"></div></div>' : `<div class="gd-chips" id="gdChips"></div><div class="gd-bd">${gdForm()}</div><div class="gd-ft" id="gdFt"></div>`}`;
     const novo = GO.querySelector('.gd-bd');
     if (manter && novo) novo.scrollTop = y;
-    if (pg === 3) window.ctwHistoricoNoGd(GO.querySelector('#gdHist'));
+    if (pg === 3) { window.ctwHistoricoNoGd(GO.querySelector('#gdHist')); lucMontar(); }
     else gdAtualizar();
     gdPersistir();
 }
@@ -1010,6 +1012,7 @@ function gdClique(e) {
     if (a !== 'zerar' && G.limpar) G.limpar = false;
     if (a !== 'limcli' && G.limCli) { G.limCli = false; const l = GO.querySelector('[data-gd="limcli"]'); if (l) { l.textContent = 'Limpar campos'; l.classList.remove('perigo'); } }
     if (a === 'voltar') { gdVoltar(); return; }
+    if (a.startsWith('luc-')) return lucClique(a, b);
     if (a === 'p1') { G.page = 1; return gdRender(); }
     if (a === 'p3') { gdSheetFechar(true); G.page = 3; G.aviso = ''; return gdRender(); }
     if (a === 'ir') return gdIr(b.dataset.v);
@@ -1099,6 +1102,7 @@ function mascararDinheiro(el, colado) {
 function gdDigita(e) {
     if (!G) return;
     const t = e.target, ck = t.dataset && t.dataset.ck, f = t.dataset && t.dataset.f;
+    if (t.id === 'gdLucIn') { LUC.q = t.value; LUC.aberto = null; lucPintar(); return; }
     if (t.dataset && t.dataset.money !== undefined) { mascararDinheiro(t, e.inputType === 'insertFromPaste'); return; }
     if (t.dataset && t.dataset.dv !== undefined) { G.dataVenda = t.value; gdAtualizar(); gdPersistir(); return; }
     if (ck) {
@@ -1769,6 +1773,147 @@ async function decorarHistorico(container, lista) {
     }
     await garantirMapa();
     pintarHistorico();
+    lucPintar();                                  // a lista de garantias chegou (ou mudou): a busca de lucro se atualiza
+}
+
+// ── Histórico da Detalhada: busca por lucro ("+50" = vendas que fecharam com pelo menos R$ 50,00 de líquido) ──
+// Usa só o líquido já gravado (settings/fechamentosIA): o app não recalcula nada aqui. Fica de fora o que não tem líquido válido:
+// pagamento incompleto, valor da garantia mudado depois do cálculo, ou garantia da Detalhada sem pagamento informado (contados no aviso).
+const LUC_PER = [['dia', 'Hoje'], ['semana', 'Semana'], ['mes', 'Mês'], ['tudo', 'Tudo']];
+const LUC_RAPIDO = [['+30', '+30'], ['+50', '+50'], ['+100', '+100'], ['+200', '+200'], ['-1', 'Prejuízo']];
+const LUC = { q: '', per: 'mes', aberto: null, dados: null, escopo: '', ts: 0, erro: '', carregando: false, seq: 0 };
+const sanePerfil = n => String(n || '').trim().replace(/[.#$\[\]\/]/g, '_').slice(0, 60);
+
+// "+50", "50", "+1.250,50", "R$ 80" → { n: 50 }; "-20" → { n: -20, perda: true }; vazio → null; ilegível → { erro: true }
+function lucParse(q) {
+    const t = String(q || '').replace(/\s/g, '').replace(/^([+-]?)R\$/i, '$1');
+    if (!t) return null;
+    const m = /^([+-]?)(\d{1,3}(?:\.\d{3})+|\d+)(?:[,.](\d{1,2}))?$/.exec(t);
+    if (!m) return { erro: true };
+    const n = parseFloat(m[2].replace(/\./g, '') + (m[3] ? '.' + m[3] : ''));
+    return m[1] === '-' ? { n: -n, perda: true } : { n };
+}
+const lucBate = (lucro, r) => r.perda ? lucro <= r.n + 0.005 : (r.n === 0 ? lucro > 0.005 : lucro >= r.n - 0.005);
+const lucIni = p => p === 'dia' ? inicioDia(Date.now()).getTime() : desde(p);   // 'tudo' → 0
+function lucDia(doc, rec) {                      // dia da venda: a data digitada na garantia; sem ela, o dia em que foi criada
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(doc.dataVenda || '');
+    return m ? new Date(+m[1], +m[2] - 1, +m[3]).getTime() : inicioDia(doc.criadoEm || (rec && rec.ts) || Date.now()).getTime();
+}
+const lucEscopo = () => { const f = window.activeProfileFilter; return !f || f === 'todos' ? 'todos' : sanePerfil(f); };
+const lucRotEscopo = () => { const f = window.activeProfileFilter; return !f || f === 'todos' ? 'Todos os perfis' : (sanePerfil(f) === chavePerfil() ? 'Meus arquivos' : f); };
+
+// Registros do escopo atual. O do próprio perfil vem do MAPA (sempre atual); os outros são lidos do banco (cache curto).
+async function lucCarregar(forcar) {
+    const esc = lucEscopo(), proprio = esc === chavePerfil(), n = ++LUC.seq;
+    LUC.erro = '';
+    if (!forcar && LUC.escopo === esc && (proprio || (LUC.dados && Date.now() - LUC.ts < 30000))) { LUC.carregando = false; return lucPintar(); }
+    LUC.escopo = esc; LUC.carregando = true; lucPintar();
+    try {
+        if (proprio) { await garantirMapa(forcar); LUC.dados = null; }
+        else {
+            const db = getDb(); if (!db) throw new Error('Sem conexão com o banco.');
+            const v = (await get(ref(db, esc === 'todos' ? BASE : `${BASE}/${esc}`))).val() || {};
+            const L = [];
+            if (esc === 'todos') Object.values(v).forEach(p => Object.entries(p || {}).forEach(([id, rec]) => L.push([id, rec])));
+            else Object.entries(v).forEach(e => L.push(e));
+            if (n !== LUC.seq) return;
+            LUC.dados = L; LUC.ts = Date.now();
+        }
+    } catch (e) { if (n === LUC.seq) { LUC.erro = (e && e.message) || 'erro de conexão'; LUC.dados = null; LUC.escopo = ''; } }
+    if (n === LUC.seq) { LUC.carregando = false; lucPintar(); }
+}
+
+// Junta os registros com as garantias da lista: [{ id, doc, rec, dia, lucro, ok }]. null = a lista de garantias ainda não chegou.
+function lucBase() {
+    if (!LISTA_H.length) return null;
+    const docs = new Map(LISTA_H.map(d => [d.id, d])), por = new Map();
+    const linhas = LUC.escopo === chavePerfil() ? Object.entries((MAPA && MAPA.data) || {}) : (LUC.dados || []);
+    linhas.forEach(([id, rec]) => {
+        const doc = docs.get(id), lucro = rec && Number(rec.lucro);
+        if (!doc || !ehDocValido(doc) || !rec || !Array.isArray(rec.linhas) || rec.lucro === null || rec.lucro === '' || !isFinite(lucro)) return;
+        const ok = !rec.parcial && Math.abs((Number(rec.totalGarantia) || 0) - totalItens(doc.items)) < 0.01;
+        const novo = { id, doc, rec, dia: lucDia(doc, rec), lucro, ok };
+        const ant = por.get(id);
+        if (!ant || (ok && !ant.ok)) por.set(id, novo);      // o mesmo id em dois perfis: vale o que está em dia
+    });
+    const f = window.activeProfileFilter;
+    LISTA_H.forEach(doc => {                                // garantia da Detalhada sem pagamento informado: não tem líquido, só entra no aviso
+        if (por.has(doc.id) || !doc.detalhada || !ehDocValido(doc) || (f && f !== 'todos' && doc.criadoPor !== f)) return;
+        por.set(doc.id, { id: doc.id, doc, rec: null, dia: lucDia(doc, null), lucro: 0, ok: false });
+    });
+    return [...por.values()];
+}
+
+const lucPlural = (n, s, p) => n + ' ' + (n === 1 ? s : p);
+function lucResultado() {
+    const r = lucParse(LUC.q);
+    if (r === null) return { vazio: true };
+    if (r.erro) return { erro: true };
+    if (LUC.erro) return { falha: LUC.erro };
+    const base = lucBase();
+    if (!base || LUC.carregando) return { carregando: true, r };
+    const cont = p => base.filter(x => x.ok && x.dia >= lucIni(p) && lucBate(x.lucro, r)).length;
+    const ini = lucIni(LUC.per), noPer = base.filter(x => x.dia >= ini);
+    const L = noPer.filter(x => x.ok && lucBate(x.lucro, r)).sort((a, b) => b.dia - a.dia || b.lucro - a.lucro);
+    return { r, cont, L, fora: noPer.filter(x => !x.ok).length };
+}
+
+function lucCartao(x) {
+    const d = new Date(x.dia), dt = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
+    const prods = (x.doc.items || []).filter(i => i && !i.isSituation).map(i => i.nome).filter(Boolean).join(' · ');
+    const aberto = LUC.aberto === x.id, f = window.activeProfileFilter;
+    const doc = esc(x.doc.docNumber || x.rec.doc || '');
+    return `<div class="gd-lc${aberto ? ' open' : ''}"><button type="button" class="gd-lct" data-gd="luc-abrir" data-id="${esc(x.id)}" aria-expanded="${aberto}">
+        <span class="gd-lcd">${doc || '—'}</span><span class="gd-lcn"><b>${esc(x.doc.nome || 'Consumidor')}</b><small>${esc(prods || 'Sem produto')}</small></span>
+        <span class="gd-lcr"><b class="${x.lucro < 0 ? 'neg' : ''}">${sinal(x.lucro)}</b><small>${dt}${(!f || f === 'todos') && x.doc.criadoPor ? ' · ' + esc(x.doc.criadoPor) : ''}</small></span></button>
+      ${aberto ? `<div class="gd-lcb">${htmlResumoHist(paraResultado(x.rec))}<div class="gd-acts"><button type="button" data-gd="luc-editar" data-id="${esc(x.id)}">Abrir garantia</button><button type="button" data-gd="luc-copiar" data-id="${esc(x.id)}">Copiar resumo</button></div></div>` : ''}</div>`;
+}
+
+function lucPintar() {
+    const sum = GO && GO.querySelector('#gdLucSum'); if (!sum) return;
+    const per = GO.querySelector('#gdLucPer'), res = GO.querySelector('#gdLucRes'), av = GO.querySelector('#gdLucAv'), hist = GO.querySelector('#gdHist');
+    const R = lucResultado(), q = lucParse(LUC.q);
+    GO.querySelector('#gdLucEsc').textContent = lucRotEscopo();
+    GO.querySelector('#gdLucIn').classList.toggle('bad', !!(q && q.erro));
+    per.innerHTML = R.cont ? LUC_PER.map(p => `<button type="button" data-gd="luc-per" data-v="${p[0]}" class="${LUC.per === p[0] ? 'on' : ''}"><b>${R.cont(p[0])}</b>${p[1]}</button>`).join('') : '';
+    const crit = R.r && (R.r.perda ? `prejuízo de ${brl(-R.r.n)} ou mais` : R.r.n === 0 ? 'lucro' : `lucro de ${brl(R.r.n)} ou mais`);
+    const rot = { dia: 'hoje', semana: 'nesta semana', mes: 'neste mês', tudo: 'em todo o tempo' }[LUC.per];
+    let html = '', aviso = '', lista = '';
+    if (R.erro) html = '<div class="gd-luc-s nada">Não entendi esse valor. Use por exemplo <b>+50</b>, <b>80</b> ou <b>+120,50</b>. Para prejuízo, <b>-20</b>.</div>';
+    else if (R.falha) html = `<div class="gd-luc-s nada">Não consegui ler os registros: ${esc(R.falha)}. <b>Tente de novo</b> em instantes.</div>`;
+    else if (R.carregando) html = '<div class="gd-luc-s nada">Procurando…</div>';
+    else if (R.L) {
+        const L = R.L, tot = r2(L.reduce((s, x) => s + x.lucro, 0)), top = L.slice().sort((a, b) => b.lucro - a.lucro)[0];
+        html = L.length ? `<div class="gd-luc-s"><b>${lucPlural(L.length, 'venda', 'vendas')}</b> com ${crit} ${rot}. ${L.length > 1 ? 'Somam' : 'Soma'} <b>${sinal(tot)}</b>${L.length > 1 && !R.r.perda ? `, a maior foi de <b>${esc(top.doc.nome || 'Consumidor')}</b> (${brl(top.lucro)})` : ''}.</div>`
+            : `<div class="gd-luc-s nada">Nenhuma venda com ${crit} ${rot}. Tente um valor menor ou outro período.</div>`;
+        if (R.fora) aviso = `${lucPlural(R.fora, 'venda sem líquido válido ficou', 'vendas sem líquido válido ficaram')} de fora (pagamento não informado, incompleto ou desatualizado).`;
+        lista = L.map(lucCartao).join('');
+    }
+    sum.innerHTML = html; av.textContent = aviso; res.innerHTML = lista;
+    hist.classList.toggle('gd-busca', !!(q && !q.erro));        // com uma busca ativa, a lista comum sai de cena
+}
+
+function lucMontar() {
+    const hist = GO && GO.querySelector('#gdHist'); if (!hist || hist.querySelector('#gdLucSum')) return;
+    hist.insertAdjacentHTML('afterbegin', `<div class="gd-luc"><h3>${ico('trend')} Buscar lucro <small id="gdLucEsc"></small></h3>
+        <div class="gd-luc-v"><input class="gd-in" id="gdLucIn" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="+50" aria-label="Lucro mínimo da venda" value="${esc(LUC.q)}"><button type="button" data-gd="luc-limpa" aria-label="Limpar busca">${ico('x')}</button></div>
+        <div class="gd-luc-q">${LUC_RAPIDO.map(r => `<button type="button" data-gd="luc-rapido" data-v="${r[0]}">${r[1]}</button>`).join('')}</div>
+        <div class="gd-luc-p" id="gdLucPer"></div><div id="gdLucSum"></div><p class="gd-luc-w" id="gdLucAv"></p></div><div class="gd-luc-r" id="gdLucRes"></div>`);
+    lucPintar(); lucCarregar(false);
+}
+
+function lucClique(a, b) {
+    if (a === 'luc-per') { LUC.per = b.dataset.v; LUC.aberto = null; }
+    else if (a === 'luc-rapido') { LUC.q = b.dataset.v; LUC.aberto = null; GO.querySelector('#gdLucIn').value = LUC.q; }
+    else if (a === 'luc-limpa') { LUC.q = ''; LUC.aberto = null; const i = GO.querySelector('#gdLucIn'); i.value = ''; i.focus(); }
+    else if (a === 'luc-abrir') LUC.aberto = LUC.aberto === b.dataset.id ? null : b.dataset.id;
+    else {
+        const x = (lucBase() || []).find(y => y.id === b.dataset.id); if (!x || !x.rec) return;
+        if (a === 'luc-editar') { editarNaDetalhada(x.doc); return; }
+        if (a === 'luc-copiar') { copiar(resumoTexto(paraResultado(x.rec))).then(ok => { b.textContent = ok ? 'Copiado ✓' : 'Não consegui copiar'; }); return; }
+        return;
+    }
+    lucPintar();
 }
 
 async function removerDaGarantia(id) {
