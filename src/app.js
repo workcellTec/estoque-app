@@ -8360,7 +8360,7 @@ if (btnSave) {
             cpf:         document.getElementById('bookipCpf')?.value  || '',
             tel:         document.getElementById('bookipTelefone')?.value || '',
             items:       bookipCartList,
-            diasGarantia: ctwEhOrcamento() ? 0 : (parseInt(document.getElementById('bookipGarantiaSelect')?.value) || 365),
+            diasGarantia: ctwEhOrcamento() ? 0 : ((document.getElementById('bookipGarantiaSelect')?.value === 'custom' ? parseInt(document.getElementById('bookipGarantiaCustomInput')?.value) : parseInt(document.getElementById('bookipGarantiaSelect')?.value)) || 365),
             dataVenda:   document.getElementById('bookipDataManual')?.value || (ctwEhOrcamento() ? ctwHojeISO() : new Date().toISOString().split('T')[0]),
             criadoEm:    new Date().toISOString(),
             type:        ctwEhOrcamento() ? 'orcamento' : (bookipCartList.some(i => i.isSituation) ? 'situacao' : (window.isSimpleReceiptMode ? 'recibo' : 'garantia')),
@@ -10999,10 +10999,13 @@ window.ctwPreencherGarantia = function(spec) {
     }
     const selGar = document.getElementById('bookipGarantiaSelect');     // o prazo vem da tela; não pode herdar o que ficou no formulário
     if (selGar && spec.dias) {
-        selGar.value = String(spec.dias);
-        if (selGar.value !== String(spec.dias)) selGar.value = '365';
         const manual = document.getElementById('bookipGarantiaCustomInput');
-        if (manual) { manual.value = ''; manual.classList.add('hidden'); }
+        selGar.value = String(spec.dias);
+        if (selGar.value === String(spec.dias)) {                       // uma das opções da lista
+            if (manual) { manual.value = ''; manual.classList.add('hidden'); }
+        } else if (manual) {                                            // prazo digitado: usa o campo "Manual"
+            selGar.value = 'custom'; manual.value = String(spec.dias); manual.classList.remove('hidden');
+        } else selGar.value = '365';
     }
     (spec.items || []).forEach(i => bookipCartList.push(i));
     document.querySelectorAll('.check-pagamento').forEach(cb => { cb.checked = (spec.formas || []).includes(cb.id); });

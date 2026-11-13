@@ -3967,7 +3967,8 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-op { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 52px; width: 100%; padding: 8px 14px; border: 0; border-radius: 14px; background: var(--secondary-color); text-align: left; }
 .gd-op span { min-width: 0; overflow-wrap: anywhere; }
 .gd-op small { color: var(--ui-tx2); font-size: 12.5px; white-space: nowrap; }
-.gd-op.mais { outline: 1.5px solid var(--ui-ac1); }
+.gd-op.mais, .gd-op.sel { outline: 1.5px solid var(--ui-ac1); }
+.gd-op .gd-i { color: var(--ui-ac1); }
 .gd-tag { display: block; font-style: normal; color: var(--ui-ac1); font-size: 11.5px; font-weight: 600; }
 .gd-card { border-radius: 18px; background: var(--card-bg); padding: 14px; display: flex; flex-direction: column; gap: 12px; }
 .gd-ih { display: flex; align-items: center; gap: 10px; }
@@ -3976,7 +3977,8 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-nm { flex: 1; min-width: 0; }
 .gd-nm b { display: block; font-size: 15.5px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
 .gd-nm small { color: var(--ui-tx2); font-size: 12.5px; }
-.gd-ib { flex: none; width: 40px; height: 40px; border: 0; background: transparent; color: var(--ui-tx2); display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+.gd-ib { flex: none; width: 40px; height: 40px; border: 0; background: var(--secondary-color); color: var(--ui-tx2); display: flex; align-items: center; justify-content: center; border-radius: 12px; }
+.gd-card .gd-ib { background: var(--tertiary-color); }
 .gd-need { display: inline-block; padding: 3px 10px; border-radius: 999px; background: var(--ui-warn-bg); color: #E0A030; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 .gd-q { font-size: 16px; font-weight: 600; margin: 0; }
 .gd-was { margin: 0; font-size: 13.5px; color: var(--ui-tx2); }
@@ -3984,8 +3986,14 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-r2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .gd-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .gd-l { font-size: 13.5px; color: var(--ui-tx2); }
-.gd-lk { border: 0; background: transparent; color: var(--ui-ac2); font-size: 13.5px; font-weight: 600; padding: 6px 2px; align-self: flex-start; }
-.gd-zera { align-self: center; color: var(--ui-tx2); }
+.gd-lk { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 16px; border: 1.5px solid var(--ui-edge); border-radius: 12px; background: var(--secondary-color); color: var(--text-color); font-size: 13.5px; font-weight: 600; align-self: flex-start; }
+.gd-card .gd-lk, .gd-lucro .gd-lk { background: var(--tertiary-color); }
+.gd-row .gd-lk { min-height: 36px; padding: 0 12px; font-size: 13px; color: var(--ui-ac2); }
+.gd-lk.full, .gd-zera { align-self: stretch; width: 100%; }
+.gd-zera.perigo { color: #FF8B8F; border-color: #FF8B8F; }
+.gd-lk:active, .gd-sel:active, .gd-back:active { filter: brightness(1.2); }
+.gd-sel { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; height: 50px; padding: 0 14px; border: 0; border-radius: 14px; background: var(--secondary-color); color: var(--text-color); font-size: 15.5px; text-align: left; }
+.gd-sel .gd-i { color: var(--ui-tx2); }
 .gd-stp { display: flex; align-items: center; border-radius: 999px; background: var(--secondary-color); }
 .gd-stp button { width: 38px; height: 36px; border: 0; background: transparent; font-size: 19px; }
 .gd-stp span { min-width: 22px; text-align: center; font-weight: 600; }
@@ -4047,7 +4055,7 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-sh { display: flex; flex-direction: column; gap: 12px; }
 .gd-sub { margin: -6px 0 0; color: var(--ui-tx2); font-size: 13.5px; }
 .gd-sub b { color: var(--text-color); font-weight: 600; }
-.gd-back { align-self: flex-start; border: 0; background: transparent; color: var(--ui-tx2); font-size: 13.5px; padding: 4px 0; }
+.gd-back { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 0 14px 0 8px; border: 0; border-radius: 12px; background: var(--secondary-color); color: var(--text-color); font-size: 13.5px; font-weight: 500; }
 .gd-g4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .gd-g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .gd-chip { min-height: 52px; border: 0; border-radius: 14px; background: var(--secondary-color); font-size: 16px; font-weight: 500; }

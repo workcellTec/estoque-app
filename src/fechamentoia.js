@@ -450,7 +450,7 @@ function taxaDe(maq, band, parc) {
 }
 
 const IC = {
-    back: '<path d="M15 6l-6 6 6 6"/>', del: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>', plus: '<path d="M12 5v14M5 12h14"/>',
+    back: '<path d="M15 6l-6 6 6 6"/>', down: '<path d="M6 9l6 6 6-6"/>', del: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>', plus: '<path d="M12 5v14M5 12h14"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>', ok: '<path d="M5 12l5 5 9-10"/>', chat: '<path d="M4 5h16v11H9l-5 4z"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>', pen: '<path d="M4 20l4-1 11-11-3-3L5 16l-1 4zM14 7l3 3"/>', chev: '<path d="M9 6l6 6-6 6"/>',
     cam: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>', rec: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>'
@@ -476,7 +476,9 @@ function interpretar(lido) {
 let G = null, GO = null, _gdT = null;
 const CLI0 = () => ({ nome: '', cpf: '', tel: '', nasc: '', end: '', email: '' });
 const novoG = () => Object.assign(novoEstado('detalhada'), { page: 1, cli: CLI0(), cliOpen: false, cond: 'Novo / Lacrado', dias: 365, busca: '', aviso: '', novo: '', open: 0, sh: null, foto: null, zap: { foto: null, comp: [], texto: '', erro: '', lendo: false }, salvando: false, limpar: false, cliente: '' });
-const DIAS_GAR = [[365, '1 ano (padrão)'], [180, '6 meses'], [120, '4 meses'], [30, '30 dias']];   // as mesmas opções da Garantia
+const DIAS_GAR = [[365, '1 ano (padrão)'], [180, '6 meses'], [120, '4 meses'], [30, '30 dias']];   // as mesmas opções da Garantia; "Outro tempo" aceita qualquer número de dias
+const gdDiasOk = d => Number.isInteger(d) && d >= 1 && d <= 3650;
+const gdRotDias = d => { const x = DIAS_GAR.find(o => o[0] === d); return x ? x[1] : d + (d === 1 ? ' dia' : ' dias'); };
 // Escolha entre poucas opções: botões do app (o seletor nativo do Android é feio e esconde o resto da tela).
 const gdSeg = (a, opts, sel, extra = '', cls = '') => `<div class="gd-seg${cls}" role="radiogroup">${opts.map(o => `<button type="button" role="radio" aria-checked="${o[0] === sel}" class="${o[0] === sel ? 'on' : ''}" data-gd="${a}" data-v="${esc(String(o[0]))}"${extra}>${esc(o[1])}</button>`).join('')}</div>`;
 const gdVazio = E => !E.itens.length && !E.pag.length && !Object.values(E.cli).some(v => String(v).trim());
@@ -498,7 +500,7 @@ function gdRestaurar() {
     try { s = JSON.parse(localStorage.getItem(GD_LS) || 'null'); } catch (e) { s = null; }
     if (!s || s.v !== 1 || !s.ts || Date.now() - s.ts > GD_IDADE || !Array.isArray(s.itens) || !Array.isArray(s.pag)) return null;
     const E = novoG();
-    E.page = s.page === 2 ? 2 : 1; E.cli = Object.assign(CLI0(), s.cli || {}); E.cond = CONDS.includes(s.cond) ? s.cond : E.cond; E.dias = DIAS_GAR.some(d => d[0] === s.dias) ? s.dias : E.dias; E.novo = String(s.novo || '');
+    E.page = s.page === 2 ? 2 : 1; E.cli = Object.assign(CLI0(), s.cli || {}); E.cond = CONDS.includes(s.cond) ? s.cond : E.cond; E.dias = gdDiasOk(s.dias) ? s.dias : E.dias; E.novo = String(s.novo || '');
     E.itens = s.itens.map(i => ({ id: i.id, nome: i.nome || '', qtd: Math.max(1, parseInt(i.qtd, 10) || 1), cond: CONDS.includes(i.cond) ? i.cond : '', cor: i.cor || '', obs: i.obs || '',
         prod: i.prod && i.prod.id ? i.prod : null, sug: (i.sug || []).map(produtoPorId).filter(Boolean), q: '', edCusto: false }));
     E.pag = s.pag; E.seq = Math.max(Number(s.seq) || 0, ...E.itens.map(i => i.id || 0), ...E.pag.map(l => l.id || 0));
@@ -641,7 +643,7 @@ function gdP1() {
       <div><span class="gd-lab">Produto novo entra no documento como</span>${gdSeg('gcond', CONDS.map(c => [c, c]), G.cond)}</div>
       ${G.itens.map(gdItem).join('')}
       ${n ? '' : '<p class="gd-msg c">Busque e toque no produto para adicionar.</p>'}
-      ${gdVazio(G) ? '' : `<button class="gd-lk gd-zera" type="button" data-gd="zerar">${G.limpar ? 'Toque de novo para apagar tudo' : 'Começar de novo'}</button>`}`;
+      ${gdVazio(G) ? '' : `<button class="gd-lk gd-zera${G.limpar ? ' perigo' : ''}" type="button" data-gd="zerar">${G.limpar ? 'Toque de novo para apagar tudo' : 'Começar de novo'}</button>`}`;
 }
 
 // ── Página 2 · pagamento e lucro ────────────────────────────────
@@ -669,7 +671,7 @@ function gdP2() {
       <div><label class="gd-lab" for="gdNv">${G.pag.length ? 'Mais algum pagamento? Digite o valor' : 'Quanto o cliente pagou?'}</label>
         <div class="gd-er"><input id="gdNv" class="gd-in big" inputmode="decimal" placeholder="R$ 0,00" autocomplete="off" value="${esc(G.novo)}" aria-label="Valor do pagamento"><button class="gd-go inl${dinheiro(G.novo) > 0 ? '' : ' off'}" id="gdAdd" type="button" data-gd="addv">Adicionar</button></div></div>
       <div class="gd-sec"><b>Lucro</b></div><div class="gd-lucro" id="gdLucro"></div>
-      <div><span class="gd-lab">Tempo de garantia</span>${gdSeg('dias', DIAS_GAR, G.dias, '', ' two')}</div>`;
+      <div><span class="gd-lab">Tempo de garantia</span><button class="gd-sel" type="button" data-gd="dias" aria-haspopup="dialog"><span>${esc(gdRotDias(G.dias))}</span>${ico('down')}</button></div>`;
 }
 
 function gdResumo() {
@@ -683,7 +685,7 @@ function gdResumo() {
     const r = c.res, cl = r.lucro < 0 ? 'neg' : 'pos';
     lu.innerHTML = `<div class="gd-big"><small>${r.lucro < 0 ? 'Prejuízo' : 'Lucro'}</small><b class="${cl}">${sinal(r.lucro)}</b></div><hr>
       <div class="gd-ln"><span>Total da venda</span><b>${brl(soma)}</b></div><div class="gd-ln"><span>Caiu na conta</span><b>${brl(r.real)}</b></div><div class="gd-ln"><span>Custo dos produtos</span><b>${brl(r.base)}</b></div>
-      <button class="gd-lk" type="button" data-gd="irprod">Mudar o custo de algum produto</button>`;
+      <button class="gd-lk full" type="button" data-gd="irprod">Mudar o custo de algum produto</button>`;
 }
 
 // ── Gaveta de pagamento: uma pergunta de cada vez ────────────────
@@ -764,6 +766,7 @@ function gdLancar() {
 
 function gdSheetEvento(e) {
     if (e.currentTarget.dataset.k === 'zap') return gdZapEvento(e);
+    if (e.currentTarget.dataset.k === 'dias') return gdDiasEvento(e);
     const h = G && G.sh; if (!h) return;
     if (e.type === 'input') {
         if (e.target.id === 'gdShV') h.valor = dinheiro(e.target.value) || 0;
@@ -837,11 +840,44 @@ function gdZapHtml() {
       <textarea class="gd-ta" id="gdZt" rows="6" placeholder="Ex.: Carlos Henrique, CPF 123..., 2x redmi 13c novo, 3500 no pix + 1000 em 3x no cartão" aria-label="Mensagem do cliente">${esc(z.texto)}</textarea>
       <input type="file" id="gdZf" accept="image/*" hidden><input type="file" id="gdZc" accept="image/*" multiple hidden>
       <div class="gd-zr"><button type="button" class="${z.foto ? 'on' : ''}" data-gd="zf">${ico('cam')} ${ok(z.foto, 'Foto do produto')}</button><button type="button" class="${z.comp.length ? 'on' : ''}" data-gd="zc"${z.comp.length >= 4 ? ' disabled' : ''}>${ico('rec')} ${ok(z.comp.length, z.comp.length ? z.comp.length + (z.comp.length === 1 ? ' comprovante' : ' comprovantes') : 'Comprovantes')}</button></div>
-      <p class="gd-sub" style="margin-top:-4px">A foto do produto vai anexada ao documento. Os comprovantes só a IA lê.${z.foto || z.comp.length ? ' <button type="button" class="gd-lk" data-gd="zlimpa">Remover fotos</button>' : ''}</p>
+      <p class="gd-sub" style="margin-top:-4px">A foto do produto vai anexada ao documento. Os comprovantes só a IA lê.</p>${z.foto || z.comp.length ? '<button type="button" class="gd-lk full" data-gd="zlimpa">Remover fotos</button>' : ''}
       ${z.erro ? `<p class="gd-msg am">${esc(z.erro)}</p>` : ''}
       ${z.lendo
         ? `<div class="gd-load" role="status" aria-live="polite"><span class="gd-spin" aria-hidden="true"></span><div><b>Lendo com a IA…</b><small id="gdZseg">${esc(gdZapTempo(z))}</small></div></div><div class="gd-bar" aria-hidden="true"><i></i></div><button class="gd-lk gd-zera" type="button" data-gd="zcancel">Cancelar</button>`
         : '<button class="gd-go" type="button" data-gd="zrun">Preencher com IA</button>'}`;
+}
+
+// Tempo de garantia: lista que sobe da base; "Outro tempo" deixa digitar os dias.
+function gdDiasAbrir() {
+    const w = gdSheet(''); w.dataset.k = 'dias'; w.dataset.modo = 'lista';
+    gdDiasPintar();
+}
+function gdDiasPintar() {
+    const w = document.getElementById('gdSheet'); if (!w || w.dataset.k !== 'dias') return;
+    const outro = w.dataset.modo === 'outro', fora = !DIAS_GAR.some(o => o[0] === G.dias);
+    w.querySelector('.ui-sheet').innerHTML = `<div class="ui-grab"></div>` + (outro
+        ? `<button class="gd-back" type="button" data-gd="dvolta">${ico('back')} Voltar</button><div class="ui-sheet-title">Outro tempo</div>
+           <div><label class="gd-lab" for="gdDiasN">Quantos dias de garantia?</label><input id="gdDiasN" class="gd-in" inputmode="numeric" maxlength="4" placeholder="Ex.: 45" autocomplete="off" value="${fora ? G.dias : ''}"></div>
+           ${w.dataset.erro ? `<p class="gd-msg am">${esc(w.dataset.erro)}</p>` : ''}<button class="gd-go" type="button" data-gd="dok">Confirmar</button>`
+        : `<div class="ui-sheet-title">Tempo de garantia</div>
+           ${DIAS_GAR.map(o => `<button class="gd-op${o[0] === G.dias ? ' sel' : ''}" type="button" data-gd="dset" data-v="${o[0]}"><span>${esc(o[1])}</span>${o[0] === G.dias ? ico('ok') : ''}</button>`).join('')}
+           <button class="gd-op${fora ? ' sel' : ''}" type="button" data-gd="dout"><span>Outro tempo${fora ? ' · ' + esc(gdRotDias(G.dias)) : ''}</span>${fora ? ico('ok') : ''}</button>`);
+    if (outro) { const n = w.querySelector('#gdDiasN'); if (n) n.focus(); }
+}
+function gdDiasEvento(e) {
+    const w = e.currentTarget;
+    if (e.type !== 'click') return;
+    const b = e.target.closest('[data-gd]'); if (!b) return;
+    const a = b.dataset.gd;
+    if (a === 'shx') return gdSheetFechar();
+    if (a === 'dset') { G.dias = parseInt(b.dataset.v, 10) || 365; gdSheetFechar(); return gdRender(true); }
+    if (a === 'dout') { w.dataset.modo = 'outro'; w.dataset.erro = ''; return gdDiasPintar(); }
+    if (a === 'dvolta') { w.dataset.modo = 'lista'; return gdDiasPintar(); }
+    if (a === 'dok') {
+        const n = w.querySelector('#gdDiasN'), v = parseInt(String(n && n.value).replace(/\D/g, ''), 10);
+        if (!gdDiasOk(v)) { w.dataset.erro = 'Digite um número de dias entre 1 e 3650.'; return gdDiasPintar(); }
+        G.dias = v; gdSheetFechar(); return gdRender(true);
+    }
 }
 
 function gdZapAbrir() {
@@ -978,7 +1014,7 @@ function gdClique(e) {
     }
     if (a === 'cond' && it) { it.cond = b.dataset.v === 'Sem condição' ? '' : b.dataset.v; return gdRender(true); }
     if (a === 'gcond') { if (CONDS.includes(b.dataset.v)) G.cond = b.dataset.v; return gdRender(true); }
-    if (a === 'dias') { G.dias = parseInt(b.dataset.v, 10) || 365; return gdRender(true); }
+    if (a === 'dias') return gdDiasAbrir();
     if (a === 'zap') return gdZapAbrir();
     if (a === 'cli') { G.cliOpen = true; gdRender(true); const n = GO.querySelector('#gdc-nome'); if (n) n.focus(); return; }
     if (a === 'cliok') { gdCompletaCliente(); G.cliOpen = false; return gdRender(true); }
@@ -1053,7 +1089,7 @@ function gdSalvar() {
     const sv = document.getElementById('btnSaveBookip');
     if (typeof window.ctwPreencherGarantia !== 'function' || !sv) { window.showCustomModal && window.showCustomModal({ message: 'A Garantia ainda está carregando. Tente de novo em instantes.' }); return; }
     if (sv.disabled) return;                               // uma garantia está sendo gravada agora
-    const spec = { cli: G.cli, dias: G.dias, items: itensDoDoc(), formas: Array.from(new Set(G.pag.map(l => CHECKS[tipoForma(l)]))), foto: G.foto };
+    const spec = { cli: G.cli, dias: gdDiasOk(G.dias) ? G.dias : 365, items: itensDoDoc(), formas: Array.from(new Set(G.pag.map(l => CHECKS[tipoForma(l)]))), foto: G.foto };
     const ir = forcar => {
         if (!G) return;
         const r = window.ctwPreencherGarantia(Object.assign({ forcar: !!forcar || G.salvando }, spec));   // G.salvando: o formulário já é desta tela (tentativa anterior falhou)
