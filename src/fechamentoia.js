@@ -394,7 +394,7 @@ function linhasDeRegistro(E, linhas) {
 //   • Salvar preenche o formulário da Garantia (mesmo fluxo: prévia, número, cliente, foto, PDF) e o líquido vai junto.
 //   • Rascunho no aparelho (localStorage): fechar o app não perde nada. Liga/desliga em Mais (só dev).
 const GD_LS = 'ctwGdRascunho_v1', GD_SW = 'ctwGdAtivo', GD_IDADE = 48 * 3600 * 1000;
-const CONDS = ['Novo / Lacrado', 'Seminovo', 'Sem condição'];
+const CONDS = ['Novo / Lacrado', 'Seminovo'];   // item sem condição (cond '') só vem de documento antigo
 const CHECKS = { pix: 'pagPix', boleto: 'pagBoleto', troca: 'pagTroca', deb: 'pagDebito', cred: 'pagCredito' };
 const tipoForma = l => (l.k === 'cartao' ? (l.parc === 0 ? 'deb' : 'cred') : l.k === 'troca' ? 'troca' : l.boleto ? 'boleto' : 'pix');
 const rotForma = l => (l.k === 'cartao' ? (l.parc === 0 ? 'Débito' : l.parc == null ? 'Cartão' : 'Crédito ' + l.parc + 'x') : l.k === 'troca' ? 'Troca' : l.boleto ? 'Boleto' : 'Pix / Dinheiro');
@@ -440,7 +440,7 @@ let G = null, GO = null, _gdT = null, GN = null, _edTrava = false;   // GN: a ga
 const CLI0 = () => ({ nome: '', cpf: '', tel: '', nasc: '', end: '', email: '' });
 // page: 1 = Preencher (lista única), 3 = Histórico
 const novoG = () => Object.assign(novoEstado('detalhada'), { page: 1, cli: CLI0(), dias: 365, dataVenda: '', busca: '', aviso: '', open: 0, sh: null, foto: null, zap: { foto: null, comp: [], texto: '', erro: '', lendo: false }, salvando: false, limpar: false, limCli: false, resOpen: false, cliente: '' });
-const DIAS_GAR = [[30, '30 dias'], [120, '4 meses'], [180, '6 meses'], [365, '1 ano']];   // as mesmas opções da Garantia; "Outro tempo" aceita qualquer número de dias
+const DIAS_GAR = [[365, '1 ano'], [180, '6 meses'], [120, '4 meses'], [30, '30 dias']];   // as mesmas opções da Garantia; "Outro tempo" aceita qualquer número de dias
 const gdDiasOk = d => Number.isInteger(d) && d >= 1 && d <= 3650;
 const gdRotDias = d => { const x = DIAS_GAR.find(o => o[0] === d); return x ? x[1] : d + (d === 1 ? ' dia' : ' dias'); };
 // Escolha entre poucas opções: botões do app (o seletor nativo do Android é feio e esconde o resto da tela).
@@ -479,7 +479,7 @@ const calcG = () => { G.cliente = G.cli.nome; return calcular(G); };
 const pendentes = () => G.itens.filter(i => !resolvido(i));
 // A condição escolhida entra no fim do nome; se o nome do CTW já termina com uma condição ("... NOVO"), ela sai para não repetir.
 const nomeDoc = i => {
-    const nome = semEmoji(i.prod.nome).trim(), comCond = i.cond && i.cond !== 'Sem condição';
+    const nome = semEmoji(i.prod.nome).trim(), comCond = !!i.cond;
     return comCond ? nome.replace(/[\s-]*\b(semi ?novo|novo|nova|lacrad[oa]|usad[oa]|vitrine|open ?box)\s*$/i, '').trim() + ' - ' + i.cond : nome;
 };
 
@@ -521,17 +521,6 @@ function gdSituacao() {
 }
 
 // ── Interface ───────────────────────────────────────────────────
-// Teclado aberto: no Android a tela encolhe e o rodapé (Total / Lucro / Salvar) subiria junto, tomando o lugar dos campos.
-// Com o teclado, o rodapé some (a classe gd-kb); fechou o teclado, ele volta embaixo.
-let _gdBase = 0, _gdKbT = null;
-function gdVigiarTeclado() {
-    const h = window.innerHeight; if (h > _gdBase) _gdBase = h;
-    const aberto = _gdBase - h > 150;
-    if (!GO || GO.classList.contains('gd-kb') === aberto) return;
-    GO.classList.toggle('gd-kb', aberto);
-    if (aberto) { clearTimeout(_gdKbT); _gdKbT = setTimeout(() => { const f = document.activeElement; if (f && GO && GO.contains(f) && f.scrollIntoView) f.scrollIntoView({ block: 'center' }); }, 120); }   // o campo que está sendo preenchido continua à vista
-}
-const gdGiroTela = () => setTimeout(() => { _gdBase = window.innerHeight; gdVigiarTeclado(); }, 400);
 function gdAbrirOverlay() {
     if (window.ctwHistoricoNoGd) window.ctwHistoricoNoGd(null, true);
     if (GO) GO.remove();
@@ -543,12 +532,9 @@ function gdAbrirOverlay() {
     GO.addEventListener('click', e => { if (e.target.closest('#filterBarProfiles .filter-profile-btn')) lucCarregar(false); });   // trocou Todos / Meus arquivos: a busca de lucro segue o filtro
     document.body.appendChild(GO);
     document.documentElement.classList.add('ps-aberto');
-    _gdBase = window.innerHeight;
-    window.addEventListener('resize', gdVigiarTeclado); window.addEventListener('orientationchange', gdGiroTela);
 }
 
 function gdFechar() {
-    window.removeEventListener('resize', gdVigiarTeclado); window.removeEventListener('orientationchange', gdGiroTela); clearTimeout(_gdKbT);
     if (window.ctwHistoricoNoGd) window.ctwHistoricoNoGd(null, true);   // a lista do histórico volta para a Garantia antes desta tela sair
     gdSheetFechar(true);
     Object.assign(LUC, { q: '', per: 'mes', aberto: null, dados: null, escopo: '', erro: '', carregando: false }); LUC.seq++;   // a busca começa limpa na próxima abertura
@@ -572,7 +558,7 @@ function gdRender(manter) {
     GO.innerHTML = `<div class="gd-hd"><button class="gd-bk" type="button" data-gd="voltar" aria-label="Voltar">${ico('back')}</button><h2>${ed ? 'Editando Doc ' + esc(G.edit.doc || '') : 'Garantia detalhada'}</h2>
         ${pg === 3 ? '' : `<button class="gd-zapb" type="button" data-gd="zap">${ico('chat')} Colar do Zap</button>`}</div>
       ${abas}
-      ${pg === 3 ? '<div class="gd-bd"><div id="gdHist" class="gd-hist"></div></div>' : `<div class="gd-chips" id="gdChips"></div><div class="gd-bd">${gdForm()}</div><div class="gd-ft" id="gdFt"></div>`}`;
+      ${pg === 3 ? '<div class="gd-bd"><div id="gdHist" class="gd-hist"></div></div>' : `<div class="gd-bd">${gdForm()}<div class="gd-ft" id="gdFt"></div></div>`}`;
     const novo = GO.querySelector('.gd-bd');
     if (manter && novo) novo.scrollTop = y;
     if (pg === 3) { window.ctwHistoricoNoGd(GO.querySelector('#gdHist')); lucMontar(); }
@@ -628,7 +614,7 @@ function gdItem(i) {
         ? `<div class="gd-ed"><input class="gd-in" id="gdcv-${i.id}" data-money inputmode="decimal" placeholder="Custo do dia (R$)" autocomplete="off" value="${esc(fmtIn(p.valor))}" aria-label="Custo do dia"><button type="button" data-gd="custook" data-id="${i.id}">OK</button><button type="button" class="g" data-gd="custox" data-id="${i.id}">Cancelar</button></div>`
         : `<div class="gd-row"><span class="gd-l">${mud ? `Custo do dia <b>${brl(p.valor)}</b> (CTW ${brl(p.hoje)})` : `Custo no CTW <b>${brl(p.valor)}</b>`}</span><button class="gd-lk" type="button" data-gd="custo" data-id="${i.id}">${mud ? 'Mudar de novo' : 'Mudar custo'}</button></div>`;
     return `<div class="gd-card"><div class="gd-ih"><span class="gd-ck">${ico('ok')}</span><div class="gd-nm"><b>${esc(nomeDoc(i))}</b>${veio ? `<small>${veio.slice(3)}</small>` : ''}</div>${rm}</div>
-      ${gdSeg('cond', CONDS.map(c => [c, c]), i.cond || 'Sem condição', ` data-id="${i.id}"`)}
+      ${gdSeg('cond', CONDS.map(c => [c, c]), i.cond, ` data-id="${i.id}"`)}
       ${custo}
       <div class="gd-g3"><div class="gd-fl"><label>Quantidade</label><div class="gd-stp"><button type="button" data-gd="menos" data-id="${i.id}" aria-label="Menos">−</button><span>${i.qtd}</span><button type="button" data-gd="mais" data-id="${i.id}" aria-label="Mais">+</button></div></div>
         <div class="gd-fl"><label for="gdcor-${i.id}">Cor / detalhe</label><input class="gd-in" id="gdcor-${i.id}" data-f="cor" data-id="${i.id}" placeholder="Ex.: Preto" autocomplete="off" value="${esc(i.cor)}"></div></div>
@@ -664,30 +650,24 @@ function gdFoto() {
 }
 
 function gdForm() {
-    const fora = !DIAS_GAR.some(o => o[0] === G.dias);
-    const dias = DIAS_GAR.map(o => `<button type="button" class="${o[0] === G.dias ? 'on' : ''}" data-gd="dd" data-v="${o[0]}">${o[1]}</button>`).join('') +
-        `<button type="button" class="${fora ? 'on' : ''}" data-gd="dias">${fora ? 'Outro: ' + esc(gdRotDias(G.dias)) : 'Outro tempo…'}</button>`;
-    return `${G.edit ? `<div class="gd-ban"><b>Editando a garantia Doc ${esc(G.edit.doc || '')}.</b> Os dados vieram do que foi salvo. Ao salvar, o documento e o lucro são atualizados.</div>` : ''}${G.edit && G.edit.nota ? `<div class="gd-ban am">${G.edit.nota}</div>` : ''}${G.aviso ? `<div class="gd-ban">${G.aviso}</div>` : ''}
+    return `${G.edit ? `<div class="gd-ban am">Editando a garantia Doc ${esc(G.edit.doc || '')}.</div>` : ''}${G.edit && G.edit.nota ? `<div class="gd-ban am">${G.edit.nota}</div>` : ''}${G.aviso ? `<div class="gd-ban">${G.aviso}</div>` : ''}
       ${gdCliente()}
       ${gdSec('gds2', 2, 'Produtos', `<span class="r" id="gdNprod"></span>`, `${G.itens.map(gdItem).join('') || '<p class="gd-msg">Nenhum produto ainda. Busque no CTW abaixo.</p>'}
         <div class="gd-sw">${ico('search')}<input id="gdBq" class="gd-in" placeholder="Buscar produto no CTW ou digitar o nome" autocomplete="off" value="${esc(G.busca)}" aria-label="Buscar produto no CTW"></div>
         <div class="gd-res" id="gdBres">${gdOpcoes(gdBusca(G.busca), 'data-gd="add" data-pid')}</div>
         <button class="gd-add" type="button" data-gd="addtxt">${ico('plus')} Adicionar produto</button>`)}
       ${gdSec('gds3', 3, 'Pagamento', `<span class="r" id="gdNpag"></span>`, `${G.pag.map(gdLinhaPag).join('')}<button class="gd-add" type="button" data-gd="addpag">${ico('plus')} Adicionar pagamento</button><div id="gdTt"></div>`)}
-      ${gdSec('gds4', 4, 'Garantia e documento', '', `<div class="gd-fl"><label>Tempo de garantia</label><div class="gd-s4">${dias}</div></div>
-        <div class="gd-fl"><label for="gdDv">Data da venda <small>— hoje, se não mudar</small></label><input class="gd-in" id="gdDv" type="date" data-dv max="${gdHoje()}" value="${esc(G.dataVenda)}"></div>`)}
+      ${gdSec('gds4', 4, 'Garantia e documento', '', `<div class="gd-g2c"><div class="gd-fl"><label>Tempo de garantia</label><button type="button" class="gd-selb" data-gd="dias" aria-haspopup="dialog"><span>${esc(gdRotDias(G.dias))}</span>${ico('down')}</button></div>
+        <div class="gd-fl"><label for="gdDv">Data da venda</label><input class="gd-in" id="gdDv" type="date" data-dv max="${gdHoje()}" value="${esc(G.dataVenda)}"></div></div>`)}
       ${gdFoto()}
       ${gdVazio(G) || G.edit ? '' : `<button class="gd-lk gd-zera${G.limpar ? ' perigo' : ''}" type="button" data-gd="zerar">${G.limpar ? 'Toque de novo para apagar tudo' : 'Começar de novo'}</button>`}`;
 }
 
-// Tudo o que muda enquanto se digita sem redesenhar a lista (para não perder o foco): chips, contadores, total e rodapé
+// Tudo o que muda enquanto se digita sem redesenhar a lista (para não perder o foco): contadores, total e rodapé
 function gdAtualizar() {
-    const ch = GO && GO.querySelector('#gdChips'), ft = GO && GO.querySelector('#gdFt');
-    if (!G || !ch || !ft) return;
-    const s = gdSituacao(), c = G.cli, pend = pendentes().length, ok = G.pag.length > 0 && G.pag.every(gdLinhaCompleta);
-    const chip = (id, rot, st) => `<button type="button" class="${st}" data-gd="ir" data-v="${id}"><i></i>${rot}</button>`;
-    ch.innerHTML = chip('gds1', 'Cliente', c.nome.trim() || c.cpf.trim() || c.tel.trim() ? 'ok' : '') + chip('gds2', 'Produtos', G.itens.length && !pend ? 'ok' : 'pend') + chip('gds3', 'Pagamento', ok ? 'ok' : 'pend') +
-        chip('gds4', 'Garantia', G.dataVenda && G.dataVenda > gdHoje() ? 'pend' : 'ok') + chip('gds5', 'Foto', G.foto || (G.edit && G.edit.fotoUrl) ? 'ok' : '');
+    const ft = GO && GO.querySelector('#gdFt');
+    if (!G || !ft) return;
+    const s = gdSituacao();
     const soma = somaPagamentos(G), lucro = s.c ? s.c.res.lucro : null, pronto = !s.falta.length && !s.erro;
     ft.innerHTML = (G.resOpen ? '<div class="gd-rp" id="gdLucro"></div>' : '') +
         `<div class="gd-sm"><span>Total <b>${soma > 0 ? brl(soma) : '—'}</b></span><button class="gd-rbt${G.resOpen ? ' on' : ''}" type="button" data-gd="res" aria-expanded="${!!G.resOpen}" aria-label="${G.resOpen ? 'Esconder o resultado' : 'Ver o resultado'}">${ico('rec')}</button><span class="lu${lucro != null && lucro < 0 ? ' neg' : ''}">Lucro ${lucro != null ? sinal(lucro) : '—'}</span></div>
@@ -735,52 +715,63 @@ function gdSheetFechar(sem) {
 }
 
 const FORMAS = [['pix', 'Pix / Dinheiro'], ['boleto', 'Boleto'], ['troca', 'Troca'], ['deb', 'Débito'], ['cred', 'Crédito']];
-const gdChip = (a, v, rot) => `<button class="gd-chip" type="button" data-gd="${a}" data-v="${esc(v)}">${esc(rot)}</button>`;
-const gdSelMaq = h => `<div><span class="gd-lab">Maquininha</span>${gdSeg('shm', maqsAtivas().map(m => [m[0], m[1]]), h.maq, '', ' two')}</div>`;
+const gdChip = (a, v, rot, on) => `<button class="gd-ch${on ? ' on' : ''}" type="button" data-gd="${a}" data-v="${esc(v)}" aria-pressed="${!!on}">${esc(rot)}</button>`;
+// O que ainda falta para lançar ('' = pode lançar)
+function gdShFalta(h) {
+    if (!(h.valor > 0)) return 'valor';
+    if (!h.forma) return 'forma de pagamento';
+    if (h.forma === 'cred' && h.parc == null) return 'parcelas';
+    if ((h.forma === 'cred' || h.forma === 'deb') && h.maq !== 'pagbank' && !h.band) return 'bandeira';
+    return '';
+}
+// Pré-visualização do que cai na conta + botão: é a única parte que muda enquanto se digita o valor
+function gdShFim(h) {
+    const falta = gdShFalta(h), cart = h.forma === 'cred' || h.forma === 'deb';
+    let prev = '';
+    if (!falta && cart) {
+        const t = taxaDe(h.maq, h.maq === 'pagbank' ? '' : h.band, h.forma === 'deb' ? 0 : h.parc);
+        prev = t == null ? '<p class="gd-prev am">Sem taxa cadastrada para essa combinação.</p>' : `<p class="gd-prev">Cai <b>${brl(r2(h.valor * (1 - t / 100)))}</b> na conta (taxa ${taxaTxt(t)})</p>`;
+    }
+    return `${prev}${h.err ? `<p class="gd-msg am">${esc(h.err)}</p>` : ''}<button class="gd-go${falta ? ' off' : ''}" type="button" data-gd="shl">${falta ? 'Falta: ' + falta : 'Lançar ' + brl(h.valor)}</button>`;
+}
+const gdShFimPintar = () => { const e = document.getElementById('gdShFim'); if (e && G && G.sh) e.innerHTML = gdShFim(G.sh); };
 
 function gdSheetPintar() {
     const h = G.sh; if (!h) return;
-    const v = brl(h.valor), ehPag = h.maq === 'pagbank', voltar = h.step !== 'forma' ? '<button class="gd-back" type="button" data-gd="shb">‹ Voltar</button>' : '';
-    let tit, sub, corpo;
-    if (h.step === 'forma') {
-        tit = h.edit ? 'Alterar pagamento' : 'Novo pagamento'; sub = '';
-        corpo = `<div><label class="gd-lab" for="gdShV">Quanto foi? (R$)</label><input id="gdShV" class="gd-in big" data-money inputmode="decimal" placeholder="0,00" autocomplete="off" value="${h.valor > 0 ? esc(fmtIn(h.valor)) : ''}" aria-label="Valor do pagamento"></div><span class="gd-lab">Como foi pago?</span>` +
-            FORMAS.map(f => `<button class="gd-op" type="button" data-gd="shf" data-v="${f[0]}"><span>${f[1]}</span></button>`).join('');
-    } else if (h.step === 'parc') {
-        const max = MAX_PARC[h.maq] || 18; let g = '';
-        for (let n = 1; n <= max; n++) g += gdChip('shp', n, n + 'x');
-        tit = 'Em quantas vezes?'; sub = `<b>${v}</b> · Crédito`;
-        corpo = `${gdSelMaq(h)}<div class="gd-g4">${g}</div>`;
-    } else if (h.step === 'band') {
-        tit = 'Qual a bandeira?'; sub = `<b>${v}</b> · ${h.forma === 'cred' ? 'Crédito ' + h.parc + 'x' : 'Débito'}`;
-        corpo = `${gdSelMaq(h)}${ehPag ? '<p class="gd-msg">O PagBank não pede a bandeira.</p><button class="gd-go" type="button" data-gd="shl">Lançar</button>' : `<div class="gd-g2">${BANDEIRAS.map(b => gdChip('shb2', b[0], b[1])).join('')}</div>`}`;
-    } else {
-        tit = 'Qual aparelho o cliente deu?'; sub = `<b>${v}</b> · Troca`;
-        corpo = `<input class="gd-in" id="gdShA" placeholder="Ex.: iPhone 11 64GB" autocomplete="off" value="${esc(h.apar)}" aria-label="Aparelho recebido"><button class="gd-go" type="button" data-gd="shl">Lançar troca</button>`;
-    }
+    const cart = h.forma === 'cred' || h.forma === 'deb', ehPag = h.maq === 'pagbank', cred = h.forma === 'cred', max = MAX_PARC[h.maq] || 18;
+    let par = ''; if (cred) for (let n = 1; n <= max; n++) par += gdChip('shp', n, n + 'x', h.parc === n);
     const w = document.getElementById('gdSheet') || gdSheet('');
-    w.querySelector('.ui-sheet').innerHTML = `<div class="ui-grab"></div>${voltar}<div class="ui-sheet-title">${tit}</div>${sub ? `<p class="gd-sub">${sub}</p>` : ''}${corpo}${h.err ? `<p class="gd-msg am">${esc(h.err)}</p>` : ''}`;
+    w.querySelector('.ui-sheet').innerHTML = `<div class="ui-grab"></div><div class="ui-sheet-title">${h.edit ? 'Alterar pagamento' : 'Novo pagamento'}</div>
+      <div><label class="gd-lab" for="gdShV">Quanto foi? (R$)</label><input id="gdShV" class="gd-in big" data-money inputmode="decimal" placeholder="0,00" autocomplete="off" value="${h.valor > 0 ? esc(fmtIn(h.valor)) : ''}" aria-label="Valor do pagamento"></div>
+      <div><span class="gd-lab">Como foi pago?</span><div class="gd-chs">${FORMAS.map(f => gdChip('shf', f[0], f[1], h.forma === f[0])).join('')}</div></div>
+      ${cart ? `<div><span class="gd-lab">Maquininha</span><div class="gd-chs">${maqsAtivas().map(m => gdChip('shm', m[0], m[1], h.maq === m[0])).join('')}</div></div>` : ''}
+      ${cred ? `<div><span class="gd-lab">Parcelas</span><div class="gd-pg">${par}</div></div>` : ''}
+      ${cart && !ehPag ? `<div><span class="gd-lab">Bandeira</span><div class="gd-chs">${BANDEIRAS.map(b => gdChip('shb2', b[0], b[1], h.band === b[0])).join('')}</div></div>` : ''}
+      ${cart && ehPag ? '<p class="gd-msg">O PagBank não pede a bandeira.</p>' : ''}
+      ${h.forma === 'troca' ? `<div><label class="gd-lab" for="gdShA">Aparelho que o cliente deu</label><input class="gd-in" id="gdShA" placeholder="Ex.: iPhone 11 64GB" autocomplete="off" value="${esc(h.apar)}"></div>` : ''}
+      <div id="gdShFim" class="gd-sh">${gdShFim(h)}</div>`;
 }
 
 function gdAbrirPag(valor, edit) {   // valor 0 = pagamento novo: o valor é digitado na própria gaveta
     const l = edit ? G.pag.find(x => x.id === edit) : null;
     gdSheet('');
-    G.sh = { step: 'forma', valor, edit: edit || 0, forma: '', parc: null, maq: (l && l.maq) || maqPadrao(), band: (l && l.band) || bandPadrao(), apar: (l && l.aparelho) || '', err: '' };
+    const forma = !l ? '' : l.k === 'cartao' ? (l.parc === 0 ? 'deb' : 'cred') : l.k === 'troca' ? 'troca' : l.boleto ? 'boleto' : 'pix';
+    G.sh = { valor, edit: edit || 0, forma, parc: l && l.k === 'cartao' && l.parc > 0 ? l.parc : null, maq: (l && l.maq) || maqPadrao(), band: (l && l.band) || bandPadrao(), apar: (l && l.aparelho) || '', err: '' };
     gdSheetPintar();
     if (!(valor > 0)) { const v = document.getElementById('gdShV'); if (v) v.focus(); }
 }
 
 function gdLancar() {
     const h = G.sh; if (!h) return;
-    const v = r2(h.valor);
-    if (!(v > 0)) { h.err = 'Informe um valor maior que zero.'; return gdSheetPintar(); }
+    const v = r2(h.valor), falta = gdShFalta(h);
+    if (falta) { h.err = falta === 'valor' ? 'Informe um valor maior que zero.' : 'Falta escolher: ' + falta + '.'; return gdShFimPintar(); }
     let o;
     if (h.forma === 'pix' || h.forma === 'boleto') o = { k: 'pix', valor: fmtIn(v), boleto: h.forma === 'boleto', manual: true };
     else if (h.forma === 'troca') o = { k: 'troca', valor: fmtIn(v), aparelho: h.apar.trim(), manual: true };
     else {
         const deb = h.forma === 'deb', ehPag = h.maq === 'pagbank', parc = deb ? 0 : h.parc;
-        if (!window._areRatesLoaded) { h.err = 'As taxas ainda estão carregando. Tente de novo em instantes.'; return gdSheetPintar(); }
-        if (taxaDe(h.maq, ehPag ? '' : h.band, parc) == null) { h.err = `Não há taxa cadastrada para ${nomeMaq(h.maq)}${ehPag ? '' : ' ' + nomeBand(h.band)} ${rotParc(parc)}. Cadastre em Taxas ou mude a escolha.`; return gdSheetPintar(); }
+        if (!window._areRatesLoaded) { h.err = 'As taxas ainda estão carregando. Tente de novo em instantes.'; return gdShFimPintar(); }
+        if (taxaDe(h.maq, ehPag ? '' : h.band, parc) == null) { h.err = `Não há taxa cadastrada para ${nomeMaq(h.maq)}${ehPag ? '' : ' ' + nomeBand(h.band)} ${rotParc(parc)}. Cadastre em Taxas ou mude a escolha.`; return gdShFimPintar(); }
         o = { k: 'cartao', valor: fmtIn(v), parc, band: ehPag ? '' : h.band, maq: h.maq, bandDuv: false, parcDuv: false, manual: true };
     }
     const alvo = h.edit ? G.pag.find(x => x.id === h.edit) : null;
@@ -795,7 +786,7 @@ function gdSheetEvento(e) {
     if (e.currentTarget.dataset.k === 'dias') return gdDiasEvento(e);
     const h = G && G.sh; if (!h) return;
     if (e.type === 'input') {
-        if (e.target.id === 'gdShV') { mascararDinheiro(e.target, e.inputType === 'insertFromPaste'); h.valor = dinheiro(e.target.value) || 0; }
+        if (e.target.id === 'gdShV') { mascararDinheiro(e.target, e.inputType === 'insertFromPaste'); h.valor = dinheiro(e.target.value) || 0; h.err = ''; gdShFimPintar(); }
         else if (e.target.id === 'gdShA') h.apar = e.target.value;
         return;
     }
@@ -804,16 +795,13 @@ function gdSheetEvento(e) {
     const a = b.dataset.gd, v = b.dataset.v;
     if (a === 'shx') return gdSheetFechar();
     if (a === 'shm') { h.maq = v; if (h.parc > (MAX_PARC[h.maq] || 18)) h.parc = null; h.err = ''; return gdSheetPintar(); }
-    if (a === 'shb') { h.err = ''; h.step = h.step === 'band' && h.forma === 'cred' ? 'parc' : 'forma'; return gdSheetPintar(); }
     if (a === 'shf') {
-        if (!(h.valor > 0)) { h.err = 'Informe um valor maior que zero.'; return gdSheetPintar(); }
         h.forma = v; h.err = '';
-        if (v === 'pix' || v === 'boleto') return gdLancar();
-        h.step = v === 'troca' ? 'apar' : v === 'cred' ? 'parc' : 'band';
+        if ((v === 'pix' || v === 'boleto') && h.valor > 0) return gdLancar();      // à vista: lança na hora, como sempre foi
         return gdSheetPintar();
     }
-    if (a === 'shp') { h.parc = parseInt(v, 10); h.err = ''; if (h.maq === 'pagbank') return gdLancar(); h.step = 'band'; return gdSheetPintar(); }
-    if (a === 'shb2') { h.band = v; return gdLancar(); }
+    if (a === 'shp') { h.parc = parseInt(v, 10); h.err = ''; return gdSheetPintar(); }
+    if (a === 'shb2') { h.band = v; h.err = ''; return gdSheetPintar(); }
     if (a === 'shl') return gdLancar();
 }
 
@@ -873,18 +861,24 @@ function gdZapHtml() {
         : '<button class="gd-go" type="button" data-gd="zrun">Preencher com IA</button>'}`;
 }
 
-// Tempo de garantia: os botões da lista cobrem os prazos comuns; "Outro tempo" sobe esta folha para digitar os dias.
+// Tempo de garantia: o campo abre esta lista; "Outro tempo…" troca a folha pelo campo para digitar os dias.
 function gdDiasAbrir() {
-    const w = gdSheet(''); w.dataset.k = 'dias';
+    const w = gdSheet(''); w.dataset.k = 'dias'; w.dataset.m = 'lista';
     gdDiasPintar();
 }
 function gdDiasPintar() {
     const w = document.getElementById('gdSheet'); if (!w || w.dataset.k !== 'dias') return;
-    const fora = !DIAS_GAR.some(o => o[0] === G.dias);
-    w.querySelector('.ui-sheet').innerHTML = `<div class="ui-grab"></div><div class="ui-sheet-title">Outro tempo</div>
+    const fora = !DIAS_GAR.some(o => o[0] === G.dias), s = w.querySelector('.ui-sheet');
+    if (w.dataset.m === 'lista') {
+        s.innerHTML = `<div class="ui-grab"></div><div class="ui-sheet-title">Tempo de garantia</div>` +
+            DIAS_GAR.map(o => `<button class="gd-op${o[0] === G.dias ? ' sel' : ''}" type="button" data-gd="dd" data-v="${o[0]}"><span>${o[1]}</span>${o[0] === G.dias ? ico('ok') : ''}</button>`).join('') +
+            `<button class="gd-op${fora ? ' sel' : ''}" type="button" data-gd="dout"><span>${fora ? 'Outro: ' + esc(gdRotDias(G.dias)) : 'Outro tempo…'}</span>${fora ? ico('ok') : ''}</button>`;
+        return;
+    }
+    s.innerHTML = `<div class="ui-grab"></div><div class="ui-sheet-title">Outro tempo</div>
            <div><label class="gd-lab" for="gdDiasN">Quantos dias de garantia?</label><input id="gdDiasN" class="gd-in" inputmode="numeric" maxlength="4" placeholder="Ex.: 45" autocomplete="off" value="${fora ? G.dias : ''}"></div>
            ${w.dataset.erro ? `<p class="gd-msg am">${esc(w.dataset.erro)}</p>` : ''}<button class="gd-go" type="button" data-gd="dok">Confirmar</button>`;
-    const n = w.querySelector('#gdDiasN'); if (n) n.focus();
+    const n = s.querySelector('#gdDiasN'); if (n) n.focus();
 }
 function gdDiasEvento(e) {
     const w = e.currentTarget;
@@ -892,6 +886,8 @@ function gdDiasEvento(e) {
     const b = e.target.closest('[data-gd]'); if (!b) return;
     const a = b.dataset.gd;
     if (a === 'shx') return gdSheetFechar();
+    if (a === 'dd') { const d = parseInt(b.dataset.v, 10); if (gdDiasOk(d)) G.dias = d; gdSheetFechar(); return gdRender(true); }
+    if (a === 'dout') { w.dataset.m = 'outro'; return gdDiasPintar(); }
     if (a === 'dok') {
         const n = w.querySelector('#gdDiasN'), v = parseInt(String(n && n.value).replace(/\D/g, ''), 10);
         if (!gdDiasOk(v)) { w.dataset.erro = 'Digite um número de dias entre 1 e 3650.'; return gdDiasPintar(); }
@@ -1029,10 +1025,8 @@ function gdClique(e) {
     if (a.startsWith('luc-')) return lucClique(a, b);
     if (a === 'p1') { G.page = 1; return gdRender(); }
     if (a === 'p3') { gdSheetFechar(true); G.page = 3; G.aviso = ''; return gdRender(); }
-    if (a === 'ir') return gdIr(b.dataset.v);
     if (a === 'res') { G.resOpen = !G.resOpen; return gdAtualizar(); }
-    if (a === 'cond' && it) { it.cond = b.dataset.v === 'Sem condição' ? '' : b.dataset.v; return gdRender(true); }
-    if (a === 'dd') { const d = parseInt(b.dataset.v, 10); if (gdDiasOk(d)) G.dias = d; return gdRender(true); }
+    if (a === 'cond' && it) { it.cond = b.dataset.v; return gdRender(true); }
     if (a === 'dias') return gdDiasAbrir();
     if (a === 'zap') return gdZapAbrir();
     if (a === 'nasc') { if (typeof window._abrirBirthdayPicker === 'function') window._abrirBirthdayPicker('gdNasc', 'gdNascBtn', 'gdNascLabel'); return; }

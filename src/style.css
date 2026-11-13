@@ -3941,8 +3941,7 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-steps button.on { color: var(--text-color); box-shadow: inset 0 -2px 0 var(--ui-ac1); }
 .gd-bd { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
 .gd-bd > * { flex: none; }   /* sem isto os cartões encolhem e o conteúdo some cortado */
-.gd-ft { flex: none; padding: 10px 16px calc(12px + env(safe-area-inset-bottom, 0px)); background: var(--tertiary-color); display: flex; flex-direction: column; gap: 6px; }
-.gd.gd-kb .gd-ft { display: none; }   /* teclado aberto: o rodapé sai da frente dos campos */
+.gd-ft { flex: none; padding: 6px 0 calc(8px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 6px; }   /* faz parte do fim da tela: rola junto, nada fica grudado */
 .gd-help { margin: 0; text-align: center; font-size: 12.5px; color: var(--ui-tx2); min-height: 18px; }
 .gd-help.flash { animation: gdFlash .9s ease-out; }
 @keyframes gdFlash { 0%, 55% { color: #FFC969; transform: scale(1.04); } 100% { color: var(--ui-tx2); transform: none; } }
@@ -3988,7 +3987,8 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-row .gd-lk { flex: none; white-space: nowrap; min-height: 36px; padding: 0 12px; font-size: 13px; color: var(--ui-ac2); }
 .gd-lk.full, .gd-zera { align-self: stretch; width: 100%; }
 .gd-zera.perigo { color: #FF8B8F; border-color: #FF8B8F; }
-.gd-lk:active, .gd-sel:active, .gd-back:active { filter: brightness(1.2); }
+.gd-lk:active, .gd-sel:active { filter: brightness(1.2); }
+.gd-op:active, .gd-ch:active { filter: brightness(1.15); }
 .gd-stp { display: flex; align-items: center; border-radius: 999px; background: var(--secondary-color); }
 .gd-stp button { width: 38px; height: 36px; border: 0; background: transparent; font-size: 19px; }
 .gd-stp span { min-width: 22px; text-align: center; font-weight: 600; }
@@ -3998,7 +3998,6 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-ed button.g { background: var(--secondary-color); color: var(--ui-tx2); }
 /* botões de escolha (no lugar do seletor nativo) */
 .gd-seg { display: grid; grid-template-columns: 1.4fr 1fr 1.2fr; gap: 6px; }
-.gd-seg.two { grid-template-columns: 1fr 1fr; }
 .gd-seg button { min-height: 40px; padding: 4px 4px; white-space: nowrap; border: 1.5px solid transparent; border-radius: 12px; background: var(--secondary-color); color: var(--ui-tx2); font-size: 13px; font-weight: 500; line-height: 1.2; }
 .gd-card .gd-seg button { background: var(--tertiary-color); }
 .gd-seg button.on { border-color: var(--ui-ac1); color: var(--text-color); font-weight: 600; }
@@ -4102,25 +4101,27 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-ln { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; color: var(--ui-tx2); }
 .gd-ln b { color: var(--text-color); font-weight: 500; }
 .gd-sh { display: flex; flex-direction: column; gap: 12px; }
+/* gaveta de pagamento: tudo numa tela (forma, maquininha, parcelas, bandeira) */
+.gd-chs { display: flex; flex-wrap: wrap; gap: 6px; }
+.gd-ch { min-height: 42px; padding: 0 14px; border: 1.5px solid transparent; border-radius: 12px; background: var(--secondary-color); color: var(--ui-tx2); font-size: 14px; }
+.gd-ch.on { border-color: var(--ui-ac1); color: var(--text-color); font-weight: 600; }
+.gd-pg { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.gd-pg .gd-ch { padding: 0; min-height: 40px; font-size: 13.5px; }
+.gd-prev { margin: 0; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--ui-ac1) 14%, transparent); font-size: 13px; }
+.gd-prev b { color: var(--ui-ac1); font-weight: 700; }
+.gd-prev.am { background: var(--ui-warn-bg); color: #E0A030; }
+/* tempo de garantia: um campo que abre a lista, ao lado da data da venda */
+.gd-g2c { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.gd-g2c > * { min-width: 0; }
+.gd-selb { width: 100%; height: 48px; padding: 0 14px; border: 0; border-radius: 14px; background: var(--tertiary-color); display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 15px; text-align: left; }
+.gd-selb .gd-i { color: var(--ui-tx2); }
 .gd-sub { margin: -6px 0 0; color: var(--ui-tx2); font-size: 13.5px; }
 .gd-sub b { color: var(--text-color); font-weight: 600; }
-.gd-back { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 0 14px 0 8px; border: 0; border-radius: 12px; background: var(--secondary-color); color: var(--text-color); font-size: 13.5px; font-weight: 500; }
-.gd-g4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.gd-g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.gd-chip { min-height: 52px; border: 0; border-radius: 14px; background: var(--secondary-color); font-size: 16px; font-weight: 500; }
-.gd-chip:active, .gd-op:active { filter: brightness(1.15); }
 .gd-ta { width: 100%; min-height: 120px; padding: 12px 14px; border: 0; border-radius: 14px; background: var(--secondary-color); color: var(--text-color); font-size: 14.5px; resize: vertical; }
 .gd-zr { display: flex; gap: 8px; }
 .gd-zr button { flex: 1; height: 40px; border: 1px solid var(--ui-edge); border-radius: 999px; background: transparent; font-size: 13.5px; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .gd-zr button.on { border-color: var(--ui-ac1); color: var(--ui-ac2); }
 /* lista única: chips no alto, seções numeradas, rodapé fixo */
-.gd-chips { flex: none; display: flex; gap: 6px; padding: 8px 16px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--ui-edge); }
-.gd-chips::-webkit-scrollbar { display: none; }
-.gd-chips button { flex: none; height: 34px; padding: 0 12px; border: 1.5px solid var(--ui-edge); border-radius: 999px; background: transparent; color: var(--ui-tx2); font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
-.gd-chips button i { width: 8px; height: 8px; border-radius: 50%; background: var(--ui-edge); }
-.gd-chips button.ok { color: var(--text-color); }
-.gd-chips button.ok i { background: var(--ui-ac1); }
-.gd-chips button.pend i { background: #E0A030; }
 .gd-sc { border-radius: 20px; background: var(--card-bg); padding: 16px; display: flex; flex-direction: column; gap: 14px; }
 .gd-sc > h3 { margin: 0; display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 600; }
 .gd-sc > h3 .n { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--tertiary-color); color: var(--ui-ac2); font-size: 13px; display: flex; align-items: center; justify-content: center; }
@@ -4145,9 +4146,6 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-add { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 52px; padding: 0 14px; border: 1.5px dashed var(--ui-ac1); border-radius: 14px; background: transparent; color: var(--ui-ac2); font-weight: 600; font-size: 15px; }
 .gd-tt { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; color: var(--ui-tx2); padding: 0 2px; }
 .gd-tt b { color: var(--text-color); font-weight: 600; }
-.gd-s4 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.gd-s4 button { min-height: 42px; padding: 4px 4px; border: 1.5px solid transparent; border-radius: 12px; background: var(--tertiary-color); color: var(--ui-tx2); font-size: 13.5px; }
-.gd-s4 button.on { border-color: var(--ui-ac1); color: var(--text-color); font-weight: 600; }
 .gd-fp { position: relative; border-radius: 14px; overflow: hidden; background: var(--tertiary-color); }
 .gd-fp img { display: block; width: 100%; max-height: 220px; object-fit: contain; }
 .gd-fp .gd-ib { position: absolute; right: 8px; top: 8px; background: rgba(0, 0, 0, .55); color: #fff; }

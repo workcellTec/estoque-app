@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-323'; // Garantia detalhada: com o teclado aberto o rodapé (Total, Lucro, Salvar) sai da frente dos campos
+const CACHE = 'ctw-324'; // Garantia detalhada: sem chips no topo, condição só Novo/Seminovo, pagamento numa gaveta só, garantia em lista, rodapé rola com a tela
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
