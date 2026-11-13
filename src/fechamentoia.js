@@ -1875,7 +1875,7 @@ function lucPintar() {
     const R = lucResultado(), q = lucParse(LUC.q);
     GO.querySelector('#gdLucEsc').textContent = lucRotEscopo();
     GO.querySelector('#gdLucIn').classList.toggle('bad', !!(q && q.erro));
-    per.innerHTML = R.cont ? LUC_PER.map(p => `<button type="button" data-gd="luc-per" data-v="${p[0]}" class="${LUC.per === p[0] ? 'on' : ''}"><b>${R.cont(p[0])}</b>${p[1]}</button>`).join('') : '';
+    per.innerHTML = R.cont ? LUC_PER.map(p => `<button type="button" data-gd="luc-per" data-v="${p[0]}" class="${LUC.per === p[0] ? 'on' : ''}">${p[1]}<b>${R.cont(p[0])}</b></button>`).join('') : '';
     const crit = R.r && (R.r.perda ? `prejuízo de ${brl(-R.r.n)} ou mais` : R.r.n === 0 ? 'lucro' : `lucro de ${brl(R.r.n)} ou mais`);
     const rot = { dia: 'hoje', semana: 'nesta semana', mes: 'neste mês', tudo: 'em todo o tempo' }[LUC.per];
     let html = '', aviso = '', lista = '';
