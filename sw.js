@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-317'; // Garantia detalhada: aba Histórico (lista real), editar pela Detalhada, líquido só lá
+const CACHE = 'ctw-318'; // limpeza do fechamentoia.js: funções da tela antiga que ninguém mais chama
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

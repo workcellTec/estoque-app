@@ -2,10 +2,10 @@
 // fechamentoia.js — Valor líquido da venda (somente dev)
 // A IA só LÊ (texto e/ou imagens): produto, cliente e a lista de pagamentos.
 // Quem faz a conta é o app, com as taxas cadastradas em Taxas (window._getRate).
-// Três portas de entrada, todas com a mesma conferência e o mesmo cálculo:
+// Duas portas de entrada, com o mesmo cálculo:
 //   • solto     — Taxas > Fechar venda > "Fechar venda IA" (texto/imagens → conferir → resultado)
-//   • garantia  — botão "Valor líquido" no histórico de recibos (parte da garantia já salva)
-//   • detalhada — "Garantia detalhada" (botão + do menu, só dev): tela própria que cria a garantia já com o líquido
+//   • detalhada — "Garantia detalhada" (botão + do menu, só dev): tela própria que cria ou edita a garantia já com o líquido,
+//                 e tem a aba Histórico (o líquido das garantias aparece só ali)
 // Registros: settings/fechamentosIA/{perfil}/{id}. Os da garantia usam o id da própria garantia como chave
 // (recalcular atualiza o mesmo registro, nunca duplica). Nada disso vai no PDF nem aparece para outros perfis.
 // ================================================================
@@ -376,51 +376,13 @@ const totalItens = lista => r2((lista || []).filter(i => i && !i.isSituation).re
 const baseItem = it => (it.prod && it.prod.valor > 0 ? r2(it.prod.valor * it.qtd) : 0);
 const baseTotal = E => r2(E.itens.reduce((s, it) => s + baseItem(it), 0));
 
-// Itens da garantia/lista do formulário → itens do estado. O produto do CTW vem, nesta ordem, de:
-// escolha já feita aqui → registro salvo (traz o custo do dia corrigido) → vínculo gravado no próprio item (ctw) → busca por nome (só no histórico, com "confira")
-function sincItens(E, lista, salvos, semBusca) {
-    const velhos = E.itens || [];
-    E.itens = (lista || []).filter(i => i && !i.isSituation).map(i => {
-        const nome = String(i.nome || '').trim(), qtd = Math.max(1, parseInt(i.qtd, 10) || 1), k = norm(nome);
-        const ex = velhos.find(v => norm(v.nome) === k);
-        const sv = (salvos || []).find(p => norm(p.nome) === k || norm(p.lido) === k);
-        let prod;
-        if (ex && ex.prod && (ex.prod.id || ex.prod.manual)) prod = ex.prod;
-        else if (sv) prod = { nome: sv.nomeCtw || sv.nome, id: sv.id || null, valor: Number(sv.valor) || 0, manual: !!sv.manual, duvida: false, lido: nome, hoje: sv.hoje != null ? Number(sv.hoje) : undefined };
-        else if (i.ctw) prod = { nome: i.ctw.nome || nome, id: i.ctw.id || null, valor: Number(i.ctw.valor) || parseFloat((produtoPorId(i.ctw.id) || {}).valor) || 0, manual: !!i.ctw.manual, duvida: !!i.ctw.duvida, lido: nome };
-        else if (ex && ex.prod) prod = ex.prod;
-        else prod = semBusca ? { nome, id: null, valor: null, manual: false, duvida: false, lido: nome } : acharProduto(nome);
-        return { nome, qtd, valorG: parseFloat(i.valor) || 0, prod };
-    });
-}
-
-// ── Garantia: estado de partida ─────────────────────────────────
+// ── Registro salvo → linhas de pagamento ────────────────────────
 function linhasDeRegistro(E, linhas) {
     return (linhas || []).map(l => {
         if (l.k === 'cartao') return novaLinha(E, 'cartao', { valor: fmtIn(l.valor), parc: l.parcelas, band: l.bandeira || '', maq: l.maq || maqPadrao(), manual: true });
         if (l.k === 'pix') return novaLinha(E, 'pix', { valor: fmtIn(l.valor), boleto: !!l.boleto, manual: true });
         return novaLinha(E, 'troca', { valor: fmtIn(l.valor), aparelho: l.aparelho || '', manual: true });
     });
-}
-
-// Sem registro ainda: as formas de pagamento marcadas na garantia viram linhas para completar
-function semearPagamentos(E, texto, total) {
-    const t = norm(texto), l = [];
-    if (/credit/.test(t)) l.push(novaLinha(E, 'cartao', { manual: true, parcDuv: true, band: bandPadrao(), bandDuv: true }));
-    if (/debit/.test(t)) l.push(novaLinha(E, 'cartao', { manual: true, parc: 0, band: bandPadrao(), bandDuv: true }));
-    if (/dinheiro|pix/.test(t)) l.push(novaLinha(E, 'pix', { manual: true }));
-    if (/troca/.test(t)) l.push(novaLinha(E, 'troca', { manual: true }));
-    if (l.length === 1 && total > 0) l[0].valor = fmtIn(total);
-    return l;
-}
-
-function estadoDeGarantia(doc, rec) {
-    const E = novoEstado('garantia'), total = totalItens(doc.items);
-    E.garantia = { id: doc.id, doc: doc.docNumber || '', total, ts: Date.parse(doc.criadoEm) || 0 };
-    E.cliente = doc.nome && doc.nome !== 'Consumidor' ? doc.nome : '';
-    sincItens(E, doc.items, rec && rec.produtos);
-    E.pag = rec ? linhasDeRegistro(E, rec.linhas) : semearPagamentos(E, doc.pagamento, total);
-    return E;
 }
 
 // ── Garantia detalhada (dev) ────────────────────────────────────
