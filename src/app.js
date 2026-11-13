@@ -573,7 +573,7 @@ window.ctwHistoricoNoGd = function(host) {
         Object.values(marcas).forEach(m => m.remove());
         const emHistorico = !!document.getElementById('bookipModeToggle')?.checked;      // a Garantia estava em Histórico ou em Novo?
         [busca, lista, barra].forEach(el => el && el.classList.toggle('hidden', !emHistorico));
-        if (emHistorico) loadBookipHistory(); else ctwDesligarListenerHistorico();       // redesenha sem o líquido / para de ouvir o que ninguém vê
+        if (emHistorico) window.ctwCarregarHistorico?.(); else ctwDesligarListenerHistorico();       // redesenha sem o líquido / para de ouvir o que ninguém vê
         return;
     }
     if (_gdHist) {                                     // a tela da Detalhada foi redesenhada: só muda de lugar
@@ -585,7 +585,7 @@ window.ctwHistoricoNoGd = function(host) {
     if (ctwEhOrcamento()) ctwTrocarModoDoc('garantia');                              // a Detalhada é sempre Garantia
     _gdHist = { marcas: {}, nos: {} };
     CTW_HIST_IDS.forEach(id => { const el = no(id); if (!el || !el.parentNode) return; const m = document.createComment('gd-' + id); el.parentNode.insertBefore(m, el); _gdHist.marcas[id] = m; _gdHist.nos[id] = el; host.appendChild(el); el.classList.remove('hidden'); });
-    loadBookipHistory();                               // se a barra de filtros ainda não existe, nasce aqui, antes da busca
+    window.ctwCarregarHistorico?.();                   // se a barra de filtros ainda não existe, nasce aqui, antes da busca
     _gdHist.nos.filterBarProfiles = no('filterBarProfiles');
 };
 
@@ -7707,6 +7707,7 @@ if(typeof salvarRascunhoBookip === 'function') window.salvarRascunhoBookip();
 
 // CARREGAR HISTÓRICO (VERSÃO MASTER: TUDO INCLUSO 🏆)
 // ============================================================
+window.ctwCarregarHistorico = () => loadBookipHistory();   // a lista mora dentro do bloco de inicialização: a Garantia detalhada a chama por aqui
 function loadBookipHistory() {
     // Verificações de segurança originais
     if (!db || !isAuthReady) return;
