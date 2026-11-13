@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-322'; // Buscar lucro mais compacto e detalhe do cartão enxuto
+const CACHE = 'ctw-323'; // Garantia detalhada: com o teclado aberto o rodapé (Total, Lucro, Salvar) sai da frente dos campos
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

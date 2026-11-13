@@ -521,6 +521,17 @@ function gdSituacao() {
 }
 
 // ── Interface ───────────────────────────────────────────────────
+// Teclado aberto: no Android a tela encolhe e o rodapé (Total / Lucro / Salvar) subiria junto, tomando o lugar dos campos.
+// Com o teclado, o rodapé some (a classe gd-kb); fechou o teclado, ele volta embaixo.
+let _gdBase = 0, _gdKbT = null;
+function gdVigiarTeclado() {
+    const h = window.innerHeight; if (h > _gdBase) _gdBase = h;
+    const aberto = _gdBase - h > 150;
+    if (!GO || GO.classList.contains('gd-kb') === aberto) return;
+    GO.classList.toggle('gd-kb', aberto);
+    if (aberto) { clearTimeout(_gdKbT); _gdKbT = setTimeout(() => { const f = document.activeElement; if (f && GO && GO.contains(f) && f.scrollIntoView) f.scrollIntoView({ block: 'center' }); }, 120); }   // o campo que está sendo preenchido continua à vista
+}
+const gdGiroTela = () => setTimeout(() => { _gdBase = window.innerHeight; gdVigiarTeclado(); }, 400);
 function gdAbrirOverlay() {
     if (window.ctwHistoricoNoGd) window.ctwHistoricoNoGd(null, true);
     if (GO) GO.remove();
@@ -532,9 +543,12 @@ function gdAbrirOverlay() {
     GO.addEventListener('click', e => { if (e.target.closest('#filterBarProfiles .filter-profile-btn')) lucCarregar(false); });   // trocou Todos / Meus arquivos: a busca de lucro segue o filtro
     document.body.appendChild(GO);
     document.documentElement.classList.add('ps-aberto');
+    _gdBase = window.innerHeight;
+    window.addEventListener('resize', gdVigiarTeclado); window.addEventListener('orientationchange', gdGiroTela);
 }
 
 function gdFechar() {
+    window.removeEventListener('resize', gdVigiarTeclado); window.removeEventListener('orientationchange', gdGiroTela); clearTimeout(_gdKbT);
     if (window.ctwHistoricoNoGd) window.ctwHistoricoNoGd(null, true);   // a lista do histórico volta para a Garantia antes desta tela sair
     gdSheetFechar(true);
     Object.assign(LUC, { q: '', per: 'mes', aberto: null, dados: null, escopo: '', erro: '', carregando: false }); LUC.seq++;   // a busca começa limpa na próxima abertura
