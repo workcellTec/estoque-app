@@ -4031,10 +4031,15 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-hist #filterBarProfiles .btn { flex: none; white-space: nowrap; }
 .gd-hist > .gd-luc, .gd-hist > .gd-luc-r { order: -1; }
 .gd-hist.gd-busca > #bookipSearchContainer, .gd-hist.gd-busca > #historyBookipContent { display: none; }
-.gd-luc { border-radius: 14px; background: var(--card-bg); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
-.gd-luc h3 { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
-.gd-luc h3 .gd-i { width: 16px; height: 16px; color: var(--ui-ac1); }
-.gd-luc h3 small { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 500; color: var(--ui-tx2); }
+.gd-luc { border-radius: 14px; background: var(--card-bg); overflow: hidden; }
+.gd-luc-h { width: 100%; min-height: 46px; padding: 0 14px; border: 0; background: transparent; display: flex; align-items: center; gap: 8px; text-align: left; font-size: 13.5px; }
+.gd-luc-h > .gd-i:first-child { color: var(--ui-ac1); }
+.gd-luc-h b { font-weight: 600; flex: none; }
+.gd-luc-h small { flex: 1; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; font-weight: 500; color: var(--ui-tx2); }
+.gd-luc-h > .gd-i:last-child { color: var(--ui-tx2); transition: transform .18s; }
+.gd-luc-h.open > .gd-i:last-child { transform: rotate(180deg); }
+.gd-luc-b { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.gd-luc-b[hidden] { display: none; }
 .gd-luc-v { display: flex; gap: 6px; }
 .gd-luc-v .gd-in { height: 42px; font-size: 17px; font-weight: 600; flex: 1; min-width: 0; background: var(--tertiary-color); }
 .gd-luc-v .gd-in.bad { outline: 2px solid #FF6B6B; }
@@ -4101,6 +4106,8 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-ln { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; color: var(--ui-tx2); }
 .gd-ln b { color: var(--text-color); font-weight: 500; }
 .gd-sh { display: flex; flex-direction: column; gap: 12px; }
+/* gaveta da Detalhada: rola se for mais alta que a tela e sobe com o teclado (--gd-kb vem do JS) */
+#gdSheet .ui-sheet { bottom: var(--gd-kb, 0px); max-height: calc(100% - var(--gd-kb, 0px) - env(safe-area-inset-top, 0px) - 12px); overflow-y: auto; overscroll-behavior: contain; }
 /* gaveta de pagamento: tudo numa tela (forma, maquininha, parcelas, bandeira) */
 .gd-chs { display: flex; flex-wrap: wrap; gap: 6px; }
 .gd-ch { min-height: 42px; padding: 0 14px; border: 1.5px solid transparent; border-radius: 12px; background: var(--secondary-color); color: var(--ui-tx2); font-size: 14px; }

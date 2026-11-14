@@ -537,7 +537,7 @@ function gdAbrirOverlay() {
 function gdFechar() {
     if (window.ctwHistoricoNoGd) window.ctwHistoricoNoGd(null, true);   // a lista do histórico volta para a Garantia antes desta tela sair
     gdSheetFechar(true);
-    Object.assign(LUC, { q: '', per: 'mes', aberto: null, dados: null, escopo: '', erro: '', carregando: false }); LUC.seq++;   // a busca começa limpa na próxima abertura
+    Object.assign(LUC, { q: '', per: 'mes', exp: false, aberto: null, dados: null, escopo: '', erro: '', carregando: false }); LUC.seq++;   // a busca começa limpa na próxima abertura
     gdZapParar(); if (G && G.zap) G.zap.lendo = false;      // fechou a tela: a leitura da IA para de contar
     const sujo = G && G.salvando;                          // o formulário da Garantia foi preenchido e não chegou a salvar: volta limpo
     if (G) G.salvando = false;
@@ -694,12 +694,30 @@ function gdResumo() {
 }
 
 // ── Gaveta de pagamento: uma pergunta de cada vez ────────────────
+// Teclado aberto: a gaveta sobe junto e rola, para o campo que está sendo preenchido nunca ficar atrás dele.
+// Cobre os três jeitos do Android lidar com o teclado: tela encolhe (nada a fazer), só a visão encolhe (visualViewport) ou o teclado cobre (virtualKeyboard).
+function gdSheetTeclado() {
+    const w = document.getElementById('gdSheet'); if (!w) return;
+    const vv = window.visualViewport, vk = navigator.virtualKeyboard;
+    const k = Math.max(0, vv ? window.innerHeight - vv.height - vv.offsetTop : 0, vk && vk.boundingRect ? vk.boundingRect.height : 0);
+    w.style.setProperty('--gd-kb', Math.round(k) + 'px');
+    const f = document.activeElement;
+    if (k > 0 && f && w.contains(f) && f.scrollIntoView) setTimeout(() => f.scrollIntoView({ block: 'nearest' }), 80);
+}
+const gdSheetKbOuvir = on => {
+    const f = on ? 'addEventListener' : 'removeEventListener';
+    if (window.visualViewport) { window.visualViewport[f]('resize', gdSheetTeclado); window.visualViewport[f]('scroll', gdSheetTeclado); }
+    if (navigator.virtualKeyboard) navigator.virtualKeyboard[f]('geometrychange', gdSheetTeclado);
+    window[f]('resize', gdSheetTeclado);
+};
 function gdSheet(html) {
     gdSheetFechar(true);
     const w = document.createElement('div');
     w.id = 'gdSheet'; w.className = 'ui-sheet-wrap'; w.setAttribute('role', 'dialog'); w.setAttribute('aria-modal', 'true');
     w.innerHTML = `<button type="button" class="ui-dim" data-gd="shx" aria-label="Fechar"></button><div class="ui-sheet gd-sh"><div class="ui-grab"></div>${html}</div>`;
     ['click', 'input', 'change'].forEach(t => w.addEventListener(t, gdSheetEvento));
+    w.addEventListener('focusin', () => setTimeout(gdSheetTeclado, 350));
+    gdSheetKbOuvir(true);
     document.body.appendChild(w);
     void w.offsetHeight;
     w.classList.add('ui-open');
@@ -707,6 +725,7 @@ function gdSheet(html) {
 }
 function gdSheetFechar(sem) {
     const w = document.getElementById('gdSheet'); if (!w) return;
+    gdSheetKbOuvir(false);
     w.id = '';
     if (G) G.sh = null;
     if (sem) { w.remove(); return; }
@@ -1789,7 +1808,7 @@ async function decorarHistorico(container, lista) {
 // pagamento incompleto, valor da garantia mudado depois do cálculo, ou garantia da Detalhada sem pagamento informado (contados no aviso).
 const LUC_PER = [['dia', 'Hoje'], ['semana', 'Semana'], ['mes', 'Mês'], ['tudo', 'Tudo']];
 const LUC_RAPIDO = [['+30', '+30'], ['+50', '+50'], ['+100', '+100'], ['+200', '+200'], ['-1', 'Prejuízo']];
-const LUC = { q: '', per: 'mes', aberto: null, dados: null, escopo: '', ts: 0, erro: '', carregando: false, seq: 0 };
+const LUC = { q: '', per: 'mes', exp: false, aberto: null, dados: null, escopo: '', ts: 0, erro: '', carregando: false, seq: 0 };
 const sanePerfil = n => String(n || '').trim().replace(/[.#$\[\]\/]/g, '_').slice(0, 60);
 
 // "+50", "50", "+1.250,50", "R$ 80" → { n: 50 }; "-20" → { n: -20, perda: true }; vazio → null; ilegível → { erro: true }
@@ -1881,7 +1900,6 @@ function lucPintar() {
     const sum = GO && GO.querySelector('#gdLucSum'); if (!sum) return;
     const per = GO.querySelector('#gdLucPer'), res = GO.querySelector('#gdLucRes'), av = GO.querySelector('#gdLucAv'), hist = GO.querySelector('#gdHist');
     const R = lucResultado(), q = lucParse(LUC.q);
-    GO.querySelector('#gdLucEsc').textContent = lucRotEscopo();
     GO.querySelector('#gdLucIn').classList.toggle('bad', !!(q && q.erro));
     per.innerHTML = R.cont ? LUC_PER.map(p => `<button type="button" data-gd="luc-per" data-v="${p[0]}" class="${LUC.per === p[0] ? 'on' : ''}">${p[1]}<b>${R.cont(p[0])}</b></button>`).join('') : '';
     const crit = R.r && (R.r.perda ? `prejuízo de ${brl(-R.r.n)} ou mais` : R.r.n === 0 ? 'lucro' : `lucro de ${brl(R.r.n)} ou mais`);
@@ -1898,19 +1916,23 @@ function lucPintar() {
         lista = L.map(lucCartao).join('');
     }
     sum.innerHTML = html; av.textContent = aviso; res.innerHTML = lista;
+    GO.querySelector('#gdLucEsc').textContent = R.L && q && !q.erro ? `${LUC.q.trim()} · ${lucPlural(R.L.length, 'venda', 'vendas')}` : lucRotEscopo();   // fechado, o título ainda diz o que está filtrado
+    GO.querySelector('#gdLucBody').hidden = !LUC.exp;
+    const hd = GO.querySelector('#gdLucHd'); hd.setAttribute('aria-expanded', LUC.exp); hd.classList.toggle('open', LUC.exp);
     hist.classList.toggle('gd-busca', !!(q && !q.erro));        // com uma busca ativa, a lista comum sai de cena
 }
 
 function lucMontar() {
     const hist = GO && GO.querySelector('#gdHist'); if (!hist || hist.querySelector('#gdLucSum')) return;
-    hist.insertAdjacentHTML('afterbegin', `<div class="gd-luc"><h3>${ico('trend')} Buscar lucro <small id="gdLucEsc"></small></h3>
-        <div class="gd-luc-v"><input class="gd-in" id="gdLucIn" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="+50" aria-label="Lucro mínimo da venda" value="${esc(LUC.q)}"><button type="button" data-gd="luc-limpa" aria-label="Limpar busca">${ico('x')}</button></div>
+    hist.insertAdjacentHTML('afterbegin', `<div class="gd-luc"><button type="button" class="gd-luc-h" id="gdLucHd" data-gd="luc-mod" aria-controls="gdLucBody">${ico('trend')}<b>Buscar lucro</b><small id="gdLucEsc"></small>${ico('down')}</button>
+        <div class="gd-luc-b" id="gdLucBody" hidden><div class="gd-luc-v"><input class="gd-in" id="gdLucIn" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="+50" aria-label="Lucro mínimo da venda" value="${esc(LUC.q)}"><button type="button" data-gd="luc-limpa" aria-label="Limpar busca">${ico('x')}</button></div>
         <div class="gd-luc-q">${LUC_RAPIDO.map(r => `<button type="button" data-gd="luc-rapido" data-v="${r[0]}">${r[1]}</button>`).join('')}</div>
-        <div class="gd-luc-p" id="gdLucPer"></div><div id="gdLucSum"></div><p class="gd-luc-w" id="gdLucAv"></p></div><div class="gd-luc-r" id="gdLucRes"></div>`);
+        <div class="gd-luc-p" id="gdLucPer"></div><div id="gdLucSum"></div><p class="gd-luc-w" id="gdLucAv"></p></div></div><div class="gd-luc-r" id="gdLucRes"></div>`);
     lucPintar(); lucCarregar(false);
 }
 
 function lucClique(a, b) {
+    if (a === 'luc-mod') { LUC.exp = !LUC.exp; lucPintar(); if (LUC.exp) { const i = GO.querySelector('#gdLucIn'); if (i && !LUC.q) i.focus(); } return; }
     if (a === 'luc-per') { LUC.per = b.dataset.v; LUC.aberto = null; }
     else if (a === 'luc-rapido') { LUC.q = b.dataset.v; LUC.aberto = null; GO.querySelector('#gdLucIn').value = LUC.q; }
     else if (a === 'luc-limpa') { LUC.q = ''; LUC.aberto = null; const i = GO.querySelector('#gdLucIn'); i.value = ''; i.focus(); }

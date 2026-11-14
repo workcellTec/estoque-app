@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-324'; // Garantia detalhada: sem chips no topo, condição só Novo/Seminovo, pagamento numa gaveta só, garantia em lista, rodapé rola com a tela
+const CACHE = 'ctw-325'; // Buscar lucro retraído (expande ao tocar) e gaveta de pagamento acima do teclado
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
