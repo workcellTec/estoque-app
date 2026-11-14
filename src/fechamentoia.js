@@ -345,10 +345,18 @@ function aliasDe(lido) {
     return p ? { nome: p.nome, id: p.id, valor: parseFloat(p.valor) || 0, manual: false, duvida: false, lido, aprendido: true } : null;
 }
 
-// Ensina: só quando o nome lido é de fato diferente do nome do produto (ignora emoji, acento e pontuação)
+// Ensina o vínculo nome lido → produto. Não ensina quando o nome lido já é, letra por letra, o nome de produtos do CTW (ignora emoji, acento e
+// pontuação) e o escolhido não é um deles: o nome exato manda (ex.: item que veio da busca e foi trocado). Se vários produtos do CTW têm esse
+// mesmo nome, a escolha entre eles é guardada (sem isso a pergunta voltava toda vez).
+function ensinavel(lido, prod) {
+    if (!prod || !prod.id || !chaveFb(lido)) return false;
+    const cl = chaveAlias(lido), iguais = (window.products || []).filter(x => chaveAlias(x.nome) === cl);
+    if (!iguais.length) return true;
+    return iguais.length > 1 && iguais.some(x => String(x.id) === String(prod.id));
+}
 async function aprender(lido, prod) {
     const db = getDb(), k = chaveFb(lido);
-    if (!db || !prod || !prod.id || !k || chaveAlias(lido) === chaveAlias(prod.nome)) return false;
+    if (!db || !ensinavel(lido, prod)) return false;
     if (!ALIASES) await carregarAliases();
     if (!ALIASES) ALIASES = {};
     if (ALIASES[k] && String(ALIASES[k].pid) === String(prod.id)) return false;
@@ -1040,7 +1048,14 @@ function gdPutItem(o) {
 
 // ── Eventos ─────────────────────────────────────────────────────
 const gdItemPorId = id => G.itens.find(i => String(i.id) === String(id));
-const gdAprendeu = (it, p) => { aprender(it.nome, { id: p.id, nome: p.nome }); G.aviso = `Guardei: da próxima vez que vier “${esc(it.nome)}”, já sei que é ${esc(semEmoji(p.nome))}.`; };
+// Guarda o vínculo nome lido → produto e já resolve os outros cartões pendentes que vieram com o mesmo nome (ex.: 5 itens "poco x8")
+const gdAprendeu = (it, p) => {
+    if (!ensinavel(it.nome, p)) { G.aviso = ''; return; }
+    aprender(it.nome, { id: p.id, nome: p.nome });
+    const k = chaveFb(it.nome), irmaos = G.itens.filter(x => x !== it && !resolvido(x) && chaveFb(x.nome) === k);
+    irmaos.forEach(x => { x.prod = paraProd(p, x.nome); x.sug = []; x.q = ''; x.trocando = false; x.edCusto = false; });
+    G.aviso = `Guardei: da próxima vez que vier “${esc(it.nome)}”, já sei que é ${esc(semEmoji(p.nome))}.${irmaos.length ? ` Apliquei também em ${irmaos.length} ${irmaos.length === 1 ? 'item' : 'itens'} com o mesmo nome.` : ''}`;
+};
 
 function gdClique(e) {
     const b = e.target.closest('[data-gd]'); if (!b || b.tagName === 'SELECT' || b.disabled) return;

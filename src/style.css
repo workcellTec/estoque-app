@@ -4013,13 +4013,13 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-was b { color: var(--text-color); font-weight: 500; }
 .gd-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .gd-l { font-size: 13.5px; color: var(--text-secondary); }
-.gd-lk { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 16px; border: 1px solid var(--glass-border); border-radius: 999px; background: transparent; color: var(--text-secondary); font-size: .8rem; font-weight: 600; align-self: flex-start; }   /* igual ao .zap-btn-ia: só contorno */
+.gd-lk { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--secondary-color); color: var(--text-color); font-size: .8rem; font-weight: 600; align-self: flex-start; }   /* cor cheia, sem contorno */
 /* o custo é o próprio botão: amarelo, toque e edite */
 .gd-cb { flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border: 1px solid var(--chapa-warn-bd); border-radius: 12px; background: var(--chapa-warn); color: var(--status-warn); font-size: .92rem; font-weight: 700; white-space: nowrap; }
 .gd-cb i { font-size: .8rem; }
 .gd-cb:active { filter: brightness(1.15); }
 .gd-lk.full, .gd-zera { align-self: stretch; width: 100%; }
-.gd-zera.perigo { color: var(--status-bad); border-color: var(--status-bad); }
+.gd-zera.perigo { background: var(--chapa-bad); color: var(--status-bad); }
 .gd-lk:active, .gd-sel:active { filter: brightness(1.2); }
 .gd-op:active, .gd-ch:active { filter: brightness(1.15); }
 .gd-stp { display: flex; align-items: center; border-radius: 999px; background: var(--input-bg); border: 1px solid var(--input-border); }
@@ -4028,7 +4028,7 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-ed { display: flex; gap: 8px; align-items: center; }
 .gd-ed .gd-in { min-height: 44px; padding: 8px 14px; flex: 1; min-width: 0; }
 .gd-ed button { min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--primary-grad); color: var(--on-primary); font-weight: 500; }
-.gd-ed button.g { background: transparent; border: 1px solid var(--glass-border); color: var(--text-secondary); }
+.gd-ed button.g { background: var(--secondary-color); color: var(--text-color); }
 /* botões de escolha (no lugar do seletor nativo) */
 .gd-seg { display: grid; grid-template-columns: 1.4fr 1fr 1.2fr; gap: 6px; }
 .gd-seg button { min-height: 44px; padding: 4px 4px; white-space: nowrap; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 14px; color: var(--text-secondary); font-size: .85rem; font-weight: 500; line-height: 1.2; transition: background var(--transition-duration), color var(--transition-duration); }
@@ -4157,15 +4157,15 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-sub b { color: var(--text-color); font-weight: 600; }
 .gd-ta { width: 100%; min-height: 120px; padding: 14px 16px; font-size: 1rem; resize: vertical; }
 .gd-zr { display: flex; gap: 8px; }
-.gd-zr button { flex: 1; min-height: 40px; border: 1px solid var(--glass-border); border-radius: 999px; background: transparent; color: var(--text-secondary); font-size: .85rem; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.gd-zr button { flex: 1; min-height: 40px; border: 0; border-radius: 999px; background: var(--secondary-color); color: var(--text-color); font-size: .85rem; display: flex; align-items: center; justify-content: center; gap: 6px; }
 /* lista única: chips no alto, seções numeradas, rodapé fixo */
 /* seção = .content-card; título = .form-section-title (verde, ícone, linha embaixo) */
 .gd-sc { border-radius: var(--radius-card); background: var(--card-bg); border: 1px solid var(--ui-cardbd); box-shadow: var(--card-shadow); padding: 20px; display: flex; flex-direction: column; gap: 16px; }
 .gd-sc > h3 { margin: 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 1.25rem; font-weight: 600; color: var(--primary-color); }
 .gd-sc > h3 .t { display: inline-flex; align-items: center; gap: 8px; padding-bottom: 2px; border-bottom: 1px solid var(--glass-border); }
 .gd-sc > h3 .r { font-size: .8rem; font-weight: 500; color: var(--text-secondary); }
-.gd-lk2 { min-height: 32px; padding: 0 12px; border: 1px solid var(--glass-border); border-radius: 999px; background: transparent; color: var(--text-secondary); font-size: .74rem; font-weight: 600; }   /* como o botão IA da Garantia normal */
-.gd-lk2.perigo { color: var(--status-bad); border-color: var(--status-bad); }
+.gd-lk2 { min-height: 32px; padding: 0 12px; border: 0; border-radius: 999px; background: var(--secondary-color); color: var(--text-color); font-size: .74rem; font-weight: 600; }   /* cor cheia, sem contorno */
+.gd-lk2.perigo { background: var(--chapa-bad); color: var(--status-bad); }
 .gd-fl { display: flex; flex-direction: column; min-width: 0; }
 .gd-fl > label { margin: 0 0 8px; font-size: 1rem; font-weight: 400; color: var(--text-secondary); }
 :root:not([data-theme="light"]) .gd-fl > label { color: var(--text-color); }
@@ -4175,7 +4175,8 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-g3 { display: grid; grid-template-columns: 112px 1fr; gap: 10px; }
 .gd-g3 .gd-stp { min-height: 52px; border-radius: 17px; justify-content: space-between; }
 .gd-g3 .gd-stp button { width: 40px; height: 50px; color: var(--primary-color); }
-.gd-add { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 52px; padding: 0 14px; border: 1px dashed var(--primary-color); border-radius: 17px; background: transparent; color: var(--primary-color); font-weight: 600; font-size: .95rem; }
+.gd-add { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 52px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--primary-grad); color: var(--on-primary); font-weight: 600; font-size: .95rem; }
+.gd-add:active { filter: brightness(.92); }
 .gd-tt { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; color: var(--text-secondary); padding: 0 2px; }
 .gd-tt b { color: var(--text-color); font-weight: 600; }
 .gd-fp { position: relative; border-radius: 14px; overflow: hidden; background: var(--input-bg); }
