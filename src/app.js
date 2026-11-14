@@ -4959,7 +4959,6 @@ const ctwSavePreview = (() => {
     let _resolvePromise = null;
     let _animFrame      = null;
     let _creep          = null;   // avanço visual dentro da etapa em curso (Garantia detalhada)
-    let _pularToque     = false;  // "tentar de novo" já foi tocado na seta
     const ROT_CONFIRMAR = '<i class="bi bi-cloud-check-fill"></i> Salvar agora';
     const ROT_CANCELAR  = '<i class="bi bi-x-lg"></i> Cancelar';
 
@@ -4968,17 +4967,18 @@ const ctwSavePreview = (() => {
     // Põe o anel e o % num ponto (0–100) — no salvamento o avanço vem das etapas reais, não de um relógio
     function _anelEm(pct) {
         const arc = _el('ctwSpArc'), pctEl = _el('ctwSpPct');
-        if (_el('ctwSavePreviewOverlay')?.classList.contains('ctw-sp-dlmode')) {
-            const da = _el('ctwSpDlArc'), dp = _el('ctwSpDlPct'), sc = _el('ctwSpScroll'), ln = _el('ctwSpLine'), sk = _el('ctwSpSk');
-            if (da) da.style.strokeDashoffset = (226 * (1 - pct / 100)).toFixed(2);
-            if (dp) dp.textContent = Math.round(pct) + '%';
-            if (sc) sc.style.clipPath = pct >= 100 ? 'none' : `inset(0 0 ${(100 - pct).toFixed(2)}% 0)`;
-            if (sk) sk.style.clipPath = pct >= 100 ? 'inset(100% 0 0 0)' : `inset(${pct.toFixed(2)}% 0 0 0)`;
-            if (ln) { ln.style.top = `calc(${pct.toFixed(2)}% - 3px)`; ln.style.opacity = pct > 0 && pct < 100 ? 1 : 0; }
-            return;
-        }
         if (arc) arc.style.strokeDashoffset = (CIRCUMFERENCE * (1 - pct / 100)).toFixed(2);
         if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+    }
+
+    // Garantia detalhada, 2ª fase: o botão de baixar mostra o avanço e o documento aparece de cima para baixo (0–100)
+    function _revelarEm(pct) {
+        const da = _el('ctwSpDlArc'), dp = _el('ctwSpDlPct'), sc = _el('ctwSpScroll'), ln = _el('ctwSpLine'), sk = _el('ctwSpSk');
+        if (da) da.style.strokeDashoffset = (226 * (1 - pct / 100)).toFixed(2);
+        if (dp) dp.textContent = Math.round(pct) + '%';
+        if (sc) sc.style.clipPath = pct >= 100 ? 'none' : `inset(0 0 ${(100 - pct).toFixed(2)}% 0)`;
+        if (sk) sk.style.clipPath = pct >= 100 ? 'inset(100% 0 0 0)' : `inset(${pct.toFixed(2)}% 0 0 0)`;
+        if (ln) { ln.style.top = `calc(${pct.toFixed(2)}% - 3px)`; ln.style.opacity = pct > 0 && pct < 100 ? 1 : 0; }
     }
 
     // Garantia detalhada: volta tudo ao estado normal da prévia (sem esqueleto, seta nem recorte)
@@ -4987,6 +4987,7 @@ const ctwSavePreview = (() => {
         const sc = _el('ctwSpScroll'); if (sc) sc.style.clipPath = '';
         const sk = _el('ctwSpSk'); if (sk) sk.style.clipPath = '';
         const ln = _el('ctwSpLine'); if (ln) { ln.style.opacity = 0; ln.style.top = ''; }
+        const pc = _el('ctwSpPct'); if (pc) pc.style.visibility = '';
         const dl = _el('ctwSpDl'); if (dl) { dl.className = 'ctw-sp-dl'; dl.onclick = null; dl.firstElementChild.style.display = ''; }
         const da = _el('ctwSpDlArc'); if (da) da.style.strokeDashoffset = 226;
         const dp = _el('ctwSpDlPct'); if (dp) dp.textContent = '0%';
@@ -5052,7 +5053,7 @@ const ctwSavePreview = (() => {
         if (!overlay) return;
 
         if (_animFrame) { cancelAnimationFrame(_animFrame); _animFrame = null; }
-        clearInterval(_creep); _pularToque = false;
+        clearInterval(_creep);
 
         overlay.classList.remove('entering');
         overlay.classList.add('leaving');
@@ -5137,9 +5138,10 @@ const ctwSavePreview = (() => {
             });
         },
 
-        // Garantia detalhada: a tela abre com o esqueleto do documento e uma seta de baixar. Nada é gravado até a pessoa tocar na seta;
-        // aí o salvamento de verdade começa e o documento vai aparecendo de cima para baixo conforme as etapas andam. Só termina (Enviar) quando tudo foi gravado.
-        // Devolve { aguardarToque(), passo(texto), concluir({...}), falhar(mensagem, aoTentar, aoFechar) }
+        // Garantia detalhada, em duas fases:
+        //  1ª) Salvar: já grava na nuvem. O anel contorna o papel (esqueleto) conforme as etapas reais andam; termina quando gravou de verdade.
+        //  2ª) Seta de baixar: gera o PDF. O documento aparece de cima para baixo conforme o PDF fica pronto; aí vem o Enviar (que só envia).
+        // Devolve { passo(texto), concluir({...}), falhar(mensagem, aoTentar, aoFechar) }
         salvando({ previewHtml = '', docInfo = '', etapas = [] }) {
             if (_animFrame) { cancelAnimationFrame(_animFrame); _animFrame = null; }
             _resolvePromise = null;
@@ -5151,83 +5153,88 @@ const ctwSavePreview = (() => {
             const msg = (texto, ruim) => { const m = _el('ctwSpMsg'); m.textContent = texto; m.classList.toggle('bad', !!ruim); m.classList.toggle('hidden', !texto); };
             const dica = t => { hint.textContent = t; hint.classList.toggle('hidden', !t); };
             const titulos = (t, sub) => { _el('ctwSpTitle').textContent = t; _el('ctwSpSubtitle').textContent = sub; };
-            let atual = 0, falhou = false, cur = 0, alvo = 0;
+            let atual = 0, falhou = false;
             const desenhar = () => {
                 lista.innerHTML = etapas.map((t, k) => `<div class="${k < atual ? 'ok' : k === atual ? (falhou ? 'bad' : 'now') : ''}"><span class="d">${k < atual ? '✓' : (falhou && k === atual ? '!' : '')}</span>${t}</div>`).join('');
                 lista.classList.remove('hidden');
             };
-            const faixa = k => [k / etapas.length * 100, (k + 1) / etapas.length * 100];
 
-            // estado "pronta": esqueleto + seta
-            const pronta = () => {
-                clearInterval(_creep); cur = alvo = 0; _anelEm(0);
-                dl.className = 'ctw-sp-dl'; dl.firstElementChild.style.display = ''; dl.setAttribute('aria-label', 'Salvar e gerar o documento');
-                dl.querySelector('.ic').innerHTML = '<path d="M12 4v12M6 11l6 6 6-6M5 20h14"/>';
-                arcRect.classList.remove('done'); arcRect.style.strokeDashoffset = 1280;
-                titulos('Pronta para salvar', 'Toque na seta para salvar a garantia e gerar o documento.');
-                dica('Nada é salvo até você tocar na seta.');
-                _el('ctwSpDocInfo').innerHTML = '';
-                lista.classList.add('hidden'); msg('');
-                _el('ctwSpLoading')?.classList.add('hidden');
-                _botoes(null, '<i class="bi bi-x-lg"></i> Fechar', null, () => _close(false));
-            };
-            pronta();
+            // 1ª fase: salvando na nuvem (o botão de baixar ainda não existe)
+            dl.className = 'ctw-sp-dl'; dl.onclick = null; dl.setAttribute('aria-label', 'Gerar o PDF');
+            dl.querySelector('.ic').innerHTML = '<path d="M12 4v12M6 11l6 6 6-6M5 20h14"/>';
+            _revelarEm(0);
+            arcRect.classList.remove('done');
+            titulos('Salvando na nuvem…', 'Só termina quando gravar de verdade. Não feche.');
+            dica(''); msg('');
+            _el('ctwSpDocInfo').innerHTML = docInfo;
+            _el('ctwSpLoading')?.classList.add('hidden');
+            _el('ctwSpActions')?.classList.add('hidden');
+            _anelEm(0); desenhar();
             if (overlay.classList.contains('hidden') || overlay.classList.contains('leaving')) {
                 overlay.classList.remove('hidden', 'leaving');
                 overlay.classList.add('entering');
             }
-
-            // o avanço visual anda devagar dentro da etapa em curso, mas nunca passa de 90% da faixa dela: o 100% só vem do salvamento de verdade
-            const andar = () => { cur += (alvo - cur) * 0.12; if (alvo - cur < 0.05) cur = alvo; _anelEm(cur); };
-            const iniciar = () => {
-                dl.className = 'ctw-sp-dl run'; arcRect.style.strokeDashoffset = 0; dica('');
-                titulos('Salvando garantia…', 'Pode esperar: o documento aparece conforme é salvo. Não feche.');
-                _el('ctwSpActions')?.classList.add('hidden');
-                falhou = false; atual = 0; desenhar();
-                clearInterval(_creep); cur = alvo = 0; const f = faixa(0); alvo = f[0] + (f[1] - f[0]) * 0.9;
-                _creep = setInterval(andar, 120);
-            };
+            dl.classList.add('esconder');
+            _el('ctwSpPct').style.visibility = '';
 
             return {
-                // true = a pessoa tocou na seta (pode gravar); false = fechou sem salvar
-                aguardarToque() {
-                    return new Promise(resolve => {
-                        const tocar = () => { dl.onclick = null; iniciar(); resolve(true); };
-                        if (_pularToque) { _pularToque = false; return tocar(); }      // "tentar de novo": a seta já foi tocada
-                        dl.onclick = tocar;
-                        _botoes(null, '<i class="bi bi-x-lg"></i> Fechar', null, () => { dl.onclick = null; _close(false); resolve(false); });
-                    });
-                },
                 passo(txt) {
                     const k = etapas.indexOf(txt); if (k < 0) return;
-                    atual = k; falhou = false; desenhar();
-                    const f = faixa(k); cur = Math.max(cur, f[0]); alvo = f[0] + (f[1] - f[0]) * 0.9;
+                    atual = k; falhou = false; desenhar(); _anelEm(k / etapas.length * 100);
                 },
-                concluir({ titulo = 'Salva', docInfo: info = '', html = '', aviso = '', onEnviar = null } = {}) {
-                    clearInterval(_creep);
+                // Gravou na nuvem. gerarPdf(progresso) devolve o PDF pronto; onEnviar(botao, pdfPronto) só envia.
+                concluir({ titulo = 'Salva', docInfo: info = '', html = '', aviso = '', gerarPdf = null, onEnviar = null } = {}) {
                     atual = etapas.length; lista.classList.add('hidden');
-                    _anelEm(100); arcRect.classList.add('done'); dl.classList.add('fim');
-                    titulos('✓ ' + titulo, 'Já está gravada. Toque em Enviar quando quiser mandar ao cliente.');
-                    _el('ctwSpDocInfo').innerHTML = info || docInfo;
-                    if (html && inner) inner.innerHTML = html;       // agora com o número de verdade
-                    msg(aviso, true); dica('');
-                    _botoes('<i class="bi bi-send-fill"></i> Enviar', '<i class="bi bi-x-lg"></i> Fechar',
-                        (botao) => { if (typeof onEnviar === 'function') onEnviar(botao); },
-                        () => _close(false));
+                    _anelEm(100); arcRect.classList.add('done'); _el('ctwSpPct').style.visibility = 'hidden';
+                    if (info) _el('ctwSpDocInfo').innerHTML = info;
+                    if (html && inner) inner.innerHTML = html;       // o documento final, com o número de verdade (aparece quando o PDF ficar pronto)
+                    msg(aviso, true);
+                    let pdf = null;
+                    const fechar = () => _close(false);
+                    const enviar = () => _botoes('<i class="bi bi-send-fill"></i> Enviar', '<i class="bi bi-x-lg"></i> Fechar',
+                        (botao) => { if (typeof onEnviar === 'function') onEnviar(botao, pdf); }, fechar);
+                    const pronta = () => {
+                        clearInterval(_creep);
+                        _revelarEm(100); dl.classList.add('fim'); dica('');
+                        titulos('✓ PDF pronto', 'Toque em Enviar quando quiser mandar ao cliente.');
+                        enviar();
+                    };
+                    const gerar = async () => {
+                        dl.onclick = null; dl.className = 'ctw-sp-dl run'; dica('');
+                        titulos('Gerando o PDF…', 'O documento aparece conforme o PDF fica pronto.');
+                        _el('ctwSpActions')?.classList.add('hidden');
+                        let cur = 0, alvo = 4; _revelarEm(0);
+                        clearInterval(_creep);
+                        _creep = setInterval(() => { cur += (alvo - cur) * 0.12; _revelarEm(cur); }, 120);
+                        try {
+                            const limite = new Promise((_, rej) => setTimeout(() => rej(new Error('demorou demais')), 120000));   // nunca fica preso para sempre
+                            pdf = await Promise.race([gerarPdf(p => { alvo = Math.min(95, Math.max(alvo, p)); }), limite]);
+                            pronta();
+                        } catch (e) {
+                            clearInterval(_creep);
+                            console.error(e);
+                            dl.className = 'ctw-sp-dl err'; dl.firstElementChild.style.display = 'none';
+                            titulos('A garantia está salva, mas o PDF não saiu', '');
+                            msg('Não consegui gerar o PDF: ' + ((e && e.message) || 'erro desconhecido') + '.', true);
+                            dica('Toque na seta para tentar de novo.');
+                            dl.onclick = gerar;
+                            _botoes(null, '<i class="bi bi-x-lg"></i> Fechar', null, fechar);
+                        }
+                    };
+                    // 2ª fase: esqueleto + seta
+                    dl.classList.remove('esconder'); dl.firstElementChild.style.display = '';
+                    titulos('✓ ' + titulo, 'Já está na nuvem. Toque na seta para gerar o PDF.');
+                    dica('Toque na seta para gerar o PDF.');
+                    dl.onclick = gerar;
+                    _botoes(null, '<i class="bi bi-x-lg"></i> Fechar', null, fechar);
                 },
                 falhar(mensagem, aoTentar, aoFechar) {
-                    clearInterval(_creep);
                     falhou = true; desenhar();
-                    arcRect.style.strokeDashoffset = 1280;
-                    dl.className = 'ctw-sp-dl err'; dl.firstElementChild.style.display = 'none';
-                    dl.querySelector('.ic').innerHTML = '<path d="M12 4v12M6 11l6 6 6-6M5 20h14"/>';
-                    dl.setAttribute('aria-label', 'Tentar salvar de novo');
-                    titulos('Não consegui salvar', '');
+                    titulos('Não terminou de salvar', '');
                     msg(String(mensagem).replace(/[.\s]*$/, '.') + ' Ao tentar de novo, nada fica duplicado.', true);
-                    dica('Toque na seta para tentar de novo.');
-                    dl.onclick = () => { dl.onclick = null; _pularToque = true; if (typeof aoTentar === 'function') aoTentar(); };
-                    _botoes(null, '<i class="bi bi-x-lg"></i> Fechar', null,
-                        () => { dl.onclick = null; _close(false); if (typeof aoFechar === 'function') aoFechar(); });
+                    _botoes('<i class="bi bi-arrow-repeat"></i> Tentar de novo', '<i class="bi bi-x-lg"></i> Fechar',
+                        () => { if (typeof aoTentar === 'function') aoTentar(); },
+                        () => { _close(false); if (typeof aoFechar === 'function') aoFechar(); });
                 },
             };
         },
@@ -8587,7 +8594,6 @@ if (btnSave) {
                 docInfo: docInfoHtml,
                 etapas: ['Conferindo a numeração', 'Gravando o documento'].concat(window._bookipFotoBlob ? ['Enviando a foto'] : [], ['Salvando o cliente', 'Registrando o lucro']),
             });
-            if (!(await sp.aguardarToque())) { if (window.ctwGdPreviaCancelada) window.ctwGdPreviaCancelada(); return; }   // fechou sem tocar na seta: nada foi gravado
         } else {
             const confirmed = await ctwSavePreview.show({
                 type: 'bookip',
@@ -8778,7 +8784,12 @@ criadoPor: currentUserProfile || "Desconhecido",
                     docInfo: docInfoHtml,
                     html: htmlFinal,
                     aviso: dados.liqErro ? 'O valor líquido NÃO foi salvo: ' + dados.liqErro + ' Abra a Garantia detalhada, aba Histórico, expanda o card e toque em “Dev · Valor líquido” para completar.' : '',
-                    onEnviar: (botao) => gerarPdfDoHistorico(dados, botao, 'gmail'),
+                    // seta de baixar = gerar o PDF; o Enviar só envia o que já está pronto
+                    gerarPdf: async (progresso) => {
+                        const { worker, nomeFinalArquivo } = await ctwRenderizarPdf(dados, progresso);
+                        return { pdfBlob: await worker.output('blob'), nomeFinalArquivo };
+                    },
+                    onEnviar: (botao, pdfPronto) => gerarPdfDoHistorico(dados, botao, 'gmail', pdfPronto),
                 });
             }
 
@@ -10373,51 +10384,12 @@ Arial, sans-serif; color: #000; background: #fff; padding: 20px 30px; width: 750
 }
 
 
-// ============================================================
-// FUNÇÃO MESTRA: GERAR PDF (UNIFICADA: BAIXAR E ENVIAR)
-// ============================================================
-// modo: 'baixar' (só salva) | 'gmail' | 'compartilhar' | indefinido = envio de sempre (tela pós-salvar)
-async function gerarPdfDoHistorico(dados, botao, modo) {
+// Monta o PDF do documento (captura em alta resolução, paginada em A4) e devolve { worker, nomeFinalArquivo }.
+// aoProgresso(0–100) avisa em que ponto está (a Garantia detalhada usa isso para mostrar o documento aparecendo).
+async function ctwRenderizarPdf(dados, aoProgresso) {
+    const prog = typeof aoProgresso === 'function' ? aoProgresso : () => {};
     await garantirPdfLibs();
-    const apenasBaixar = (modo === true || modo === 'baixar');
-    const nativo = !!(window.ctwNativo && window.ctwNativo.ativo());
-
-    // --- 0. PREPARAÇÃO (Copiar E-mail se existir, apenas se for modo Envio) ---
-    if (!apenasBaixar && modo !== 'compartilhar' && dados.email && dados.email.trim() !== '') {
-        try {
-            if (navigator.clipboard) await navigator.clipboard.writeText(dados.email.trim());
-        } catch (e) {}
-    }
-
-    // --- 1. FEEDBACK VISUAL (LOADING) ---
-    const textoOriginal = botao.innerHTML;
-    // Muda o texto dependendo da ação
-    botao.innerHTML = apenasBaixar 
-        ? '<span class="spinner-border spinner-border-sm"></span> Baixando...' 
-        : '<span class="spinner-border spinner-border-sm"></span> Processando...';
-    
-    botao.disabled = true;
-
-    // Loader Global ou Local
-    if(typeof toggleLoader === 'function') {
-        toggleLoader(true, apenasBaixar ? "Baixando PDF..." : "Gerando PDF...");
-    } else {
-        // Fallback caso não tenha loader global
-        const loadingOverlay = document.createElement('div');
-        loadingOverlay.id = "tempLoadingPdf";
-        loadingOverlay.style.cssText = `position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255, 255, 255, 0.98); z-index: 2147483647; display: flex; flex-direction: column; align-items: center; justify-content: center;`;
-        loadingOverlay.innerHTML = `<div class="spinner-border text-primary" style="width: 3rem; height: 3rem;"></div><div class="mt-3">${apenasBaixar ? "Baixando..." : "Preparando..."}</div>`;
-        document.body.appendChild(loadingOverlay);
-    }
-
-    const removerLoading = () => {
-        if(typeof toggleLoader === 'function') toggleLoader(false);
-        const tmp = document.getElementById("tempLoadingPdf");
-        if(tmp) tmp.remove();
-        const tmpContainer = document.getElementById("pdf-dl-fix-final");
-        if(tmpContainer) tmpContainer.remove();
-    };
-
+    prog(10);
     try {
         // PRE-AQUECE POPPINS (evita letras emboladas com font-display:swap)
         const _fw = document.createElement('div');
@@ -10427,6 +10399,7 @@ async function gerarPdfDoHistorico(dados, botao, modo) {
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
         document.body.removeChild(_fw);
 
+        prog(25);
         // --- A. MONTA O HTML ESCONDIDO ---
         const containerTemp = document.createElement('div');
         // Mantém fixo em 794px (A4) e fora da tela
@@ -10461,6 +10434,7 @@ async function gerarPdfDoHistorico(dados, botao, modo) {
         await new Promise(r => requestAnimationFrame(r)); // Frame extra para reflow
 
         // 🔥 ESCALA 2 + PNG = O equilíbrio perfeito para Android (Nitidez sem travar)
+        prog(35);
         const fullCanvas = await html2canvas(containerTemp, {
             scale: 4, 
             useCORS: true,
@@ -10468,6 +10442,7 @@ async function gerarPdfDoHistorico(dados, botao, modo) {
             backgroundColor: '#ffffff'
         });
 
+        prog(70);
         // --- C. PAGINAÇÃO MANUAL (CORREÇÃO DE CORTE + TARJA BRANCA) ---
         const pdfRatio = 297 / 210; 
         const pageHeightPixels = Math.floor(fullCanvas.width * pdfRatio);
@@ -10549,6 +10524,7 @@ async function gerarPdfDoHistorico(dados, botao, modo) {
             pageCount++;
         }
 
+        prog(85);
         // --- D. GERA O ARQUIVO PDF ---
         const nomeClienteLimpo = (dados.nome || 'Cliente').replace(/[^a-z0-9]/gi, '_');
         const nomeFinalArquivo = dados.type === 'orcamento'
@@ -10566,6 +10542,66 @@ const opt = {
 
 
         const worker = html2pdf().set(opt).from(printContainer);
+        return { worker, nomeFinalArquivo };
+
+    } finally {
+        document.getElementById('pdf-dl-fix-final')?.remove();
+    }
+}
+
+// ============================================================
+// FUNÇÃO MESTRA: GERAR PDF (UNIFICADA: BAIXAR E ENVIAR)
+// ============================================================
+// modo: 'baixar' (só salva) | 'gmail' | 'compartilhar' | indefinido = envio de sempre (tela pós-salvar)
+// preparado: { pdfBlob, nomeFinalArquivo } quando o PDF já foi gerado antes (seta de baixar da Garantia detalhada): só envia, sem gerar de novo.
+async function gerarPdfDoHistorico(dados, botao, modo, preparado) {
+    if (!preparado) await garantirPdfLibs();
+    const apenasBaixar = (modo === true || modo === 'baixar');
+    const nativo = !!(window.ctwNativo && window.ctwNativo.ativo());
+
+    // --- 0. PREPARAÇÃO (Copiar E-mail se existir, apenas se for modo Envio) ---
+    if (!apenasBaixar && modo !== 'compartilhar' && dados.email && dados.email.trim() !== '') {
+        try {
+            if (navigator.clipboard) await navigator.clipboard.writeText(dados.email.trim());
+        } catch (e) {}
+    }
+
+    // --- 1. FEEDBACK VISUAL (LOADING) ---
+    const textoOriginal = botao.innerHTML;
+    // Muda o texto dependendo da ação
+    if (!preparado) botao.innerHTML = apenasBaixar 
+        ? '<span class="spinner-border spinner-border-sm"></span> Baixando...' 
+        : '<span class="spinner-border spinner-border-sm"></span> Processando...';
+    
+    botao.disabled = true;
+
+    // Loader Global ou Local (PDF já pronto: nada a esperar)
+    if (preparado) {
+        // sem loader
+    } else if(typeof toggleLoader === 'function') {
+        toggleLoader(true, apenasBaixar ? "Baixando PDF..." : "Gerando PDF...");
+    } else {
+        // Fallback caso não tenha loader global
+        const loadingOverlay = document.createElement('div');
+        loadingOverlay.id = "tempLoadingPdf";
+        loadingOverlay.style.cssText = `position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255, 255, 255, 0.98); z-index: 2147483647; display: flex; flex-direction: column; align-items: center; justify-content: center;`;
+        loadingOverlay.innerHTML = `<div class="spinner-border text-primary" style="width: 3rem; height: 3rem;"></div><div class="mt-3">${apenasBaixar ? "Baixando..." : "Preparando..."}</div>`;
+        document.body.appendChild(loadingOverlay);
+    }
+
+    const removerLoading = () => {
+        if(typeof toggleLoader === 'function') toggleLoader(false);
+        const tmp = document.getElementById("tempLoadingPdf");
+        if(tmp) tmp.remove();
+        const tmpContainer = document.getElementById("pdf-dl-fix-final");
+        if(tmpContainer) tmpContainer.remove();
+    };
+
+    try {
+        // PDF: o que veio pronto da Garantia detalhada (seta de baixar) ou o que se monta agora
+        let worker = null, nomeFinalArquivo, pdfBlob = null;
+        if (preparado) { pdfBlob = preparado.pdfBlob; nomeFinalArquivo = preparado.nomeFinalArquivo; }
+        else ({ worker, nomeFinalArquivo } = await ctwRenderizarPdf(dados));
 
         // Texto que acompanha o envio (agradecimento configurado em Ajustes + foto, se houver)
         const montarTextoEnvio = () => {
@@ -10609,7 +10645,7 @@ const opt = {
         // ==========================================
         // 🛣️ ROTA 2: COMPARTILHAR / ENVIAR (WHATSAPP)
         // ==========================================
-        const pdfBlob = await worker.output('blob');
+        if (!pdfBlob) pdfBlob = await worker.output('blob');
         const file = new File([pdfBlob], nomeFinalArquivo, { type: 'application/pdf' });
         
         removerLoading();
@@ -10646,18 +10682,21 @@ const opt = {
             return;
         }
 
-        // Configura o botão para estado de "Pronto para Enviar"
-        botao.innerHTML = modo === 'compartilhar' ? '<i class="bi bi-share-fill"></i> Enviar PDF' : modo === 'gmail' ? '<i class="bi bi-envelope-at-fill"></i> Enviar PDF' : '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
-        botao.classList.remove('btn-primary', 'btn-outline-primary', 'btn-secondary', 'btn-dark'); 
-        botao.classList.add('btn-success'); 
-        botao.disabled = false; 
+        // Configura o botão para estado de "Pronto para Enviar" (PDF já pronto: o próprio toque no Enviar já abre o envio)
+        let novoBotao = botao;
+        if (!preparado) {
+            botao.innerHTML = modo === 'compartilhar' ? '<i class="bi bi-share-fill"></i> Enviar PDF' : modo === 'gmail' ? '<i class="bi bi-envelope-at-fill"></i> Enviar PDF' : '<i class="bi bi-whatsapp"></i> Enviar PDF'; 
+            botao.classList.remove('btn-primary', 'btn-outline-primary', 'btn-secondary', 'btn-dark'); 
+            botao.classList.add('btn-success'); 
+            botao.disabled = false; 
 
-        // Clone para limpar listeners antigos
-        const novoBotao = botao.cloneNode(true);
-        botao.parentNode.replaceChild(novoBotao, botao);
+            // Clone para limpar listeners antigos
+            novoBotao = botao.cloneNode(true);
+            botao.parentNode.replaceChild(novoBotao, botao);
+        }
 
-        // Evento de Clique para Compartilhar
-        novoBotao?.addEventListener('click', async () => {
+        // Clique para Compartilhar
+        const aoTocarEnviar = async () => {
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
                 try {
                     await navigator.share({
@@ -10695,7 +10734,9 @@ const opt = {
                 link.download = nomeFinalArquivo;
                 link.click();
             }
-        });
+        };
+        if (preparado) { botao.disabled = false; await aoTocarEnviar(); botao.innerHTML = textoOriginal; }
+        else novoBotao?.addEventListener('click', aoTocarEnviar);
 
     } catch (e) {
         removerLoading();
