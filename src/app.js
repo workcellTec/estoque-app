@@ -8201,6 +8201,8 @@ function loadBookipHistory() {
 
                         <div class="d-flex justify-content-end gap-2 mt-2 flex-wrap">
 
+                            ${(window.ctwEhDev && window.ctwEhDev()) ? `<button class="btn btn-sm btn-secondary btn-atribuir me-auto" data-id="${item.id}" data-dev-only title="Mudar o dono (quem fez) deste documento"><i class="bi bi-person-fill"></i> Atribuir a outro</button>` : ''}
+
                             ${(() => {
                                 const telLimpo = (item.tel || '').replace(/\D/g, '');
                                 if (telLimpo.length >= 8) {
@@ -8257,6 +8259,12 @@ function loadBookipHistory() {
         container.querySelectorAll('.edit-bookip-btn').forEach(b => b?.addEventListener('click', e => carregarDadosParaEdicao(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id))));
         container.querySelectorAll('.email-history-btn').forEach(b => b?.addEventListener('click', e => ctwAbrirPdfDoDocumento(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id), b, 'gmail')));
         container.querySelectorAll('.btn-share-hist').forEach(b => b?.addEventListener('click', e => ctwAbrirPdfDoDocumento(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id), b, 'compartilhar')));
+        container.querySelectorAll('.btn-atribuir').forEach(b => b?.addEventListener('click', async e => {
+            const item = listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id);
+            if (!item) return;
+            try { (await window.ctwCarregarModulo('fechamentoia')).atribuirDono(item, ctwColDoDoc(item)); }
+            catch (err) { console.warn('[atribuir]', err); showCustomModal({ message: 'Não consegui abrir agora. Tente de novo.' }); }
+        }));
         container.querySelectorAll('.btn-ver-foto').forEach(b => b?.addEventListener('click', e => {
             const btn = e.target.closest('button');
             const fotoUrl = btn.dataset.foto;

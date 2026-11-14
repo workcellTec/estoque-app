@@ -76,7 +76,7 @@
          para a 1ª pintura, mas funciona igual em qualquer aparelho. -->
     <link href="bootstrap-icons-lite.css?v=1" rel="stylesheet"/>
     <link href="bootstrap-lite.css?v=1" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=141">
+    <link rel="stylesheet" href="style.css?v=142">
 
 
 
@@ -1735,7 +1735,7 @@
 
 
 <script src="ctw-ui.js?v=4" defer></script>
-<script src="app.js?v=1040" type="module" defer></script>
+<script src="app.js?v=1041" type="module" defer></script>
 <script>
 window.addEventListener('load', function() {
     var s = document.createElement('script');
@@ -1753,7 +1753,7 @@ window.addEventListener('load', function() {
             repairs:     () => import('./repairs.js?v=5').then(m => { window._repairsModule = m; return m; }),
             reposicao:   () => import('./reposicao.js').then(m => { window._reposicaoModule = m; return m; }),
             creditoscan: () => import('./creditoscan.js').then(m => { window._csReady = true; return m; }),
-            fechamentoia: () => import('./fechamentoia.js?v=25'),
+            fechamentoia: () => import('./fechamentoia.js?v=26'),
             precosync:   () => import('./precosync.js?v=25')   // só ao abrir Mais > WhatsApp e Preços (fora do carregamento em segundo plano)
         };
         const carregados = {};

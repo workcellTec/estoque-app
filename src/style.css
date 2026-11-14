@@ -4147,3 +4147,21 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-rp { max-height: 38vh; overflow-y: auto; border-radius: 17px; background: var(--input-bg); border: 1px solid var(--input-border); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
 .gd-rp hr { border: 0; border-top: 1px solid var(--input-border); margin: 2px 0; width: 100%; }
 @media (prefers-reduced-motion: reduce) { .gd-help.flash { animation: none; } .gd-bar i { animation-duration: 3s; } }
+
+/* Atribuir a outro (dev): escolher o novo dono de uma garantia/orçamento */
+.ctw-dono-ov { position: fixed; inset: 0; z-index: 100000; display: flex; align-items: flex-end; justify-content: center; }
+.ctw-dono-bk { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.7); }
+.ctw-dono-sh { position: relative; width: 100%; max-width: 480px; max-height: 85vh; overflow-y: auto; background: var(--card-bg); border-radius: 24px 24px 0 0; padding: 22px 20px calc(24px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 12px; }
+.ctw-dono-sh h3 { margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--text-color); text-align: center; }
+.ctw-dono-sub { margin: 0; text-align: center; font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary); }
+.ctw-dono-sub b { color: var(--text-color); }
+.ctw-dono-erro { margin: 0; text-align: center; font-size: 0.85rem; font-weight: 600; color: #fff; background: #C0392B; border-radius: 12px; padding: 10px 12px; }
+.ctw-dono-ls { display: flex; flex-direction: column; gap: 8px; }
+.ctw-dono-ls button, .ctw-dono-ok, .ctw-dono-x { border: 0; border-radius: 14px; padding: 14px 16px; font-size: 1rem; font-weight: 600; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ctw-dono-ls button { background: var(--secondary-color); color: var(--text-color); }
+.ctw-dono-ls button:disabled { opacity: 0.45; }
+.ctw-dono-ls button small { font-size: 0.72rem; font-weight: 600; opacity: 0.8; }
+.ctw-dono-ok { background: var(--primary-color); color: #fff; justify-content: center; }
+.ctw-dono-ok:disabled { opacity: 0.7; }
+.ctw-dono-x { background: var(--secondary-color); color: var(--text-color); justify-content: center; }
+.ctw-dono-ls button:active, .ctw-dono-ok:active, .ctw-dono-x:active { filter: brightness(1.15); }

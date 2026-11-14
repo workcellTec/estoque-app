@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-332'; // Tela de salvar com animação nova em Garantia, Orçamento, Contrato e Histórico (sem banner antigo)
+const CACHE = 'ctw-333'; // Dev: botão "Atribuir a outro" no histórico (troca o dono da garantia/orçamento, o lucro vai junto)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

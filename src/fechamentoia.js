@@ -10,7 +10,7 @@
 // (recalcular atualiza o mesmo registro, nunca duplica). Nada disso vai no PDF nem aparece para outros perfis.
 // ================================================================
 
-import { ref, get, set, push, remove }
+import { ref, get, set, push, remove, update }
     from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
 
 const BASE = 'settings/fechamentosIA';
@@ -2091,4 +2091,84 @@ window.ctwGdPreviaCancelada = gdPreviaCancelada;
 window.ctwGdVoltar = gdVoltar;
 window.ctwGdEditar = editarNaDetalhada;
 
-export { abrir, abrirGarantiaDet, aoSalvarGarantia, decorarHistorico, removerDaGarantia, gdAtivo };
+// ── Atribuir a outro (dev): troca o dono (criadoPor) de uma garantia ou orçamento do histórico ──
+// O dono é quem aparece na etiqueta do card e no filtro de perfil. O líquido da garantia fica na pasta do perfil que salvou
+// (settings/fechamentosIA/{perfil}/{id}); ao trocar o dono, o registro vai junto: grava no perfil novo ANTES de apagar do antigo,
+// então uma queda no meio nunca perde o lucro (e tentar de novo termina o serviço sem duplicar).
+const nomesDaEquipe = () => [...new Set(Object.values(window.teamProfilesList || {}).map(p => String((p && p.name) || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+async function trocarDono(doc, col, novo) {
+    const db = getDb(); if (!db) throw new Error('Sem conexão com o banco.');
+    const lim = p => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('Sem conexão: não deu para concluir agora. Confira o dono no histórico antes de tentar de novo.')), 20000))]);
+    const alvo = ref(db, `${col}/${doc.id}`);
+    const atual = (await lim(get(alvo))).val();
+    if (!atual) throw new Error('Este documento não existe mais (alguém apagou).');
+    const antigo = String(atual.criadoPor || '');
+    if (antigo === novo) throw new Error('Já está com ' + novo + '.');
+    const nova = sanePerfil(novo);
+    let moveu = false, limpar = [], rec = null;
+    if (col === 'bookips') {                                 // só a garantia tem líquido
+        const chaves = [...new Set([...nomesDaEquipe(), antigo].filter(Boolean).map(sanePerfil))];
+        const achados = (await Promise.all(chaves.map(async k => { const v = (await lim(get(ref(db, `${BASE}/${k}/${doc.id}`)))).val(); return v ? [k, v] : null; }))).filter(Boolean);
+        const noAlvo = achados.find(a => a[0] === nova);
+        limpar = achados.filter(a => a[0] !== nova).map(a => a[0]);
+        if (!noAlvo && limpar.length) {
+            rec = achados.filter(a => a[0] !== nova).sort((a, b) => (Number(b[1].ts) || 0) - (Number(a[1].ts) || 0))[0][1];
+            await lim(set(ref(db, `${BASE}/${nova}/${doc.id}`), rec)); moveu = true;
+        }
+    }
+    await lim(update(alvo, { criadoPor: novo, donoAnterior: antigo, atribuidoPor: lsGet('ctwUserProfile') || '', atribuidoEm: new Date().toISOString() }));
+    let sobrou = false;
+    for (const k of limpar) { try { await lim(remove(ref(db, `${BASE}/${k}/${doc.id}`))); } catch (e) { sobrou = true; console.warn('[atribuir] registro antigo não apagado:', e); } }
+    if (MAPA && MAPA.data) {                                 // o líquido do próprio perfil (sempre em memória) acompanha a troca
+        if (limpar.includes(chavePerfil())) delete MAPA.data[doc.id];
+        if (moveu && nova === chavePerfil()) MAPA.data[doc.id] = rec;
+    }
+    LUC.ts = 0;                                              // a busca de lucro de outros perfis lê de novo
+    pintarHistorico(); lucPintar();
+    return { antigo, moveu, sobrou };
+}
+
+function atribuirDono(doc, col) {
+    if (!ehDev() || !doc || !doc.id) return;
+    document.getElementById('ctwDonoOv')?.remove();
+    const ov = document.createElement('div');
+    ov.id = 'ctwDonoOv'; ov.className = 'ctw-dono-ov';
+    ov.innerHTML = '<div class="ctw-dono-bk"></div><div class="ctw-dono-sh" role="dialog" aria-modal="true"></div>';
+    document.body.appendChild(ov);
+    const sh = ov.querySelector('.ctw-dono-sh'), atual = String(doc.criadoPor || ''), nomes = nomesDaEquipe();
+    const titulo = (doc.type === 'orcamento' ? 'Orçamento' : 'Garantia') + (doc.docNumber ? ' Doc ' + doc.docNumber : '');
+    const resumo = `<p class="ctw-dono-sub"><b>${esc(titulo)}</b> · ${esc(doc.nome || 'Consumidor')}<br>Dono atual: <b>${esc(atual || 'ninguém')}</b></p>`;
+    let ocupado = false, escolhido = '';
+    const fechar = () => ov.remove();
+    const lista = (erro) => {
+        sh.innerHTML = `<h3>Atribuir a outro</h3>${resumo}${erro ? `<p class="ctw-dono-erro">${esc(erro)}</p>` : ''}
+            <div class="ctw-dono-ls">${nomes.length ? nomes.map(n => `<button type="button" data-n="${esc(n)}"${n === atual ? ' disabled' : ''}><span>${esc(n)}</span>${n === atual ? '<small>atual</small>' : ''}</button>`).join('') : '<p class="ctw-dono-sub">Nenhum perfil da equipe encontrado.</p>'}</div>
+            <button type="button" class="ctw-dono-x" data-a="fechar">Fechar</button>`;
+    };
+    const confirma = () => {
+        sh.innerHTML = `<h3>Atribuir a ${esc(escolhido)}?</h3>${resumo}
+            <p class="ctw-dono-sub">Passa de <b>${esc(atual || 'ninguém')}</b> para <b>${esc(escolhido)}</b>${col === 'bookips' ? '. O valor líquido, se tiver, vai junto' : ''}.</p>
+            <button type="button" class="ctw-dono-ok" data-a="ok">Atribuir a ${esc(escolhido)}</button>
+            <button type="button" class="ctw-dono-x" data-a="voltar">Voltar</button>`;
+    };
+    ov.addEventListener('click', async e => {
+        if (ocupado) return;
+        if (e.target.closest('.ctw-dono-bk')) return fechar();
+        const b = e.target.closest('button'); if (!b || !sh.contains(b)) return;
+        if (b.dataset.n) { escolhido = b.dataset.n; return confirma(); }
+        if (b.dataset.a === 'fechar') return fechar();
+        if (b.dataset.a === 'voltar') return lista();
+        if (b.dataset.a === 'ok') {
+            ocupado = true; b.disabled = true; b.textContent = 'Atribuindo…';
+            try {
+                const r = await trocarDono(doc, col, escolhido);
+                fechar();
+                window.showCustomModal && window.showCustomModal({ message: `${titulo} atribuída a ${escolhido} ✅${r.moveu ? ' O lucro foi junto.' : ''}${r.sobrou ? ' Atenção: o registro de lucro antigo não foi apagado.' : ''}` });
+            } catch (err) { ocupado = false; lista((err && err.message) || 'Não consegui atribuir.'); }
+        }
+    });
+    lista();
+}
+
+export { abrir, abrirGarantiaDet, aoSalvarGarantia, decorarHistorico, removerDaGarantia, gdAtivo, atribuirDono };
