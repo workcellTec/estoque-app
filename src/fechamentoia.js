@@ -554,9 +554,9 @@ function gdRender(manter) {
     const pg = G.page, ed = !!G.edit, hist = window.ctwGdHistAtivo && window.ctwGdHistAtivo();
     if (hist) window.ctwHistoricoNoGd(pg === 3 ? document.createDocumentFragment() : null);   // a tela vai ser reescrita: a lista real sai antes (e volta, se for a aba Histórico)
     const corpo = GO.querySelector('.gd-bd'), y = corpo ? corpo.scrollTop : 0;
-    const abas = ed ? '' : `<div class="gd-steps"><button type="button" class="${pg === 1 ? 'on' : ''}" data-gd="p1">${ico('pen')} Preencher</button><button type="button" class="${pg === 3 ? 'on' : ''}" data-gd="p3">${ico('clock')} Histórico</button></div>`;
+    const abas = ed ? '' : `<div class="gd-steps"><button type="button" class="${pg === 1 ? 'on' : ''}" data-gd="p1"><i class="bi bi-plus-lg"></i> Nova Garantia</button><button type="button" class="${pg === 3 ? 'on' : ''}" data-gd="p3"><i class="bi bi-clock-history"></i> Histórico</button></div>`;
     GO.innerHTML = `<div class="gd-hd"><button class="gd-bk" type="button" data-gd="voltar" aria-label="Voltar">${ico('back')}</button><h2>${ed ? 'Editando Doc ' + esc(G.edit.doc || '') : 'Garantia detalhada'}</h2>
-        ${pg === 3 ? '' : `<button class="gd-zapb" type="button" data-gd="zap">${ico('chat')} Colar do Zap</button>`}</div>
+        ${pg === 3 ? '' : `<button class="gd-zapb" type="button" data-gd="zap"><i class="bi bi-whatsapp"></i> Colar do Zap</button>`}</div>
       ${abas}
       ${pg === 3 ? '<div class="gd-bd"><div id="gdHist" class="gd-hist"></div></div>' : `<div class="gd-bd">${gdForm()}<div class="gd-ft" id="gdFt"></div></div>`}`;
     const novo = GO.querySelector('.gd-bd');
@@ -577,17 +577,17 @@ const gdNascRot = iso => {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
     return m ? `${m[3]} de ${['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][+m[2] - 1]} de ${m[1]}` : '';
 };
-const gdSec = (id, n, tit, dir, corpo) => `<section class="gd-sc" id="${id}"><h3><span class="n">${n}</span>${tit}${dir || ''}</h3>${corpo}</section>`;
+const gdSec = (id, ic, tit, dir, corpo) => `<section class="gd-sc" id="${id}"><h3><span class="t"><i class="bi ${ic}"></i> ${tit}</span>${dir || ''}</h3>${corpo}</section>`;
 
 function gdCliente() {
     const c = G.cli, nasc = gdNascRot(c.nasc);
     const f = (k, rot, ph, tp) => `<div class="gd-fl"><label for="gdc-${k}">${rot}</label><input class="gd-in" id="gdc-${k}" data-ck="${k}" ${tp ? `type="${tp}" ` : ''}placeholder="${ph}" autocomplete="off" value="${esc(c[k])}"></div>`;
-    return gdSec('gds1', 1, 'Cliente', `<button class="gd-lk2${G.limCli ? ' perigo' : ''}" type="button" data-gd="limcli">${G.limCli ? 'Toque de novo para limpar' : 'Limpar campos'}</button>`,
-        `${f('nome', 'Nome completo <small>— vazio sai como “Consumidor”</small>', 'Nome do cliente')}<div class="gd-res" id="gdCres"></div>
-      <div class="gd-r2">${f('cpf', 'CPF', '000.000.000-00')}${f('tel', 'Telefone', '(XX) 9XXXX-XXXX', 'tel')}</div>
-      <div class="gd-fl"><label>Data de nascimento</label><input type="hidden" id="gdNasc" data-ck="nasc" value="${esc(c.nasc)}">
-        <button type="button" id="gdNascBtn" class="gd-dt${nasc ? ' on' : ''}" data-gd="nasc">${ico('cal')}<span id="gdNascLabel">${nasc || 'Definir data'}</span></button></div>
-      ${f('end', 'Endereço / CEP', 'Endereço completo')}${f('email', 'E-mail <small>— opcional</small>', 'cliente@email.com', 'email')}`);
+    return gdSec('gds1', 'bi-person-lines-fill', 'Dados do Cliente', `<button class="gd-lk2${G.limCli ? ' perigo' : ''}" type="button" data-gd="limcli">${G.limCli ? 'Toque de novo para limpar' : 'Limpar campos'}</button>`,
+        `${f('nome', 'Nome Completo <small>— vazio = Consumidor</small>', 'Nome do cliente')}<div class="gd-res" id="gdCres"></div>
+      ${f('cpf', 'CPF', '000.000.000-00')}${f('tel', 'Telefone', '(XX) 9XXXX-XXXX', 'tel')}
+      <div class="gd-fl"><label>🎂 Data de Nascimento</label><input type="hidden" id="gdNasc" data-ck="nasc" value="${esc(c.nasc)}">
+        <button type="button" id="gdNascBtn" class="rep-datetime-btn" style="width:100%;font-size:.82rem;padding:10px 12px;" data-gd="nasc"><i class="bi bi-calendar-heart" style="color:var(--primary-color);font-size:.9rem;flex-shrink:0;"></i><span id="gdNascLabel" style="flex:1;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${nasc || 'Definir data'}</span></button></div>
+      ${f('end', 'Endereço / CEP', 'Endereço completo')}${f('email', 'Email (Opcional)', 'cliente@email.com', 'email')}`);
 }
 
 const gdOpcoes = (lista, attr) => lista.map(p => `<button class="gd-op" type="button" ${attr}="${esc(p.id)}"><span>${esc(nomeBusca(p))}</span><small>custo ${brl(parseFloat(p.valor) || 0)}</small></button>`).join('');
@@ -644,7 +644,7 @@ const gdContar = (n, um, varios, nenhum) => (n ? n + ' ' + (n === 1 ? um : vario
 function gdFoto() {
     const url = G.foto ? 'data:image/jpeg;base64,' + G.foto : G.edit && G.edit.fotoUrl;
     const prev = url ? `<div class="gd-fp"><img src="${esc(url)}" alt="Foto do produto">${G.foto ? `<button class="gd-ib" type="button" data-gd="fotox" aria-label="Remover foto">${ico('del')}</button>` : ''}</div>${G.foto ? '' : '<p class="gd-msg">Foto atual do documento. Escolher outra a substitui.</p>'}` : '';
-    return gdSec('gds5', 5, 'Foto do produto', '<span class="r">opcional</span>',
+    return gdSec('gds5', 'bi-camera-fill', 'Foto do produto', '<span class="r">opcional</span>',
         `${prev}${G.foto ? '' : `<div class="gd-ph"><button type="button" data-gd="fotoc">${ico('cam')}Tirar foto</button><button type="button" data-gd="fotog">${ico('img')}Da galeria</button></div>`}
       <input type="file" id="gdFc" accept="image/*" capture="environment" hidden><input type="file" id="gdFg" accept="image/*" hidden>`);
 }
@@ -652,12 +652,12 @@ function gdFoto() {
 function gdForm() {
     return `${G.edit ? `<div class="gd-ban am">Editando a garantia Doc ${esc(G.edit.doc || '')}.</div>` : ''}${G.edit && G.edit.nota ? `<div class="gd-ban am">${G.edit.nota}</div>` : ''}${G.aviso ? `<div class="gd-ban">${G.aviso}</div>` : ''}
       ${gdCliente()}
-      ${gdSec('gds2', 2, 'Produtos', `<span class="r" id="gdNprod"></span>`, `${G.itens.map(gdItem).join('') || '<p class="gd-msg">Nenhum produto ainda. Busque no CTW abaixo.</p>'}
+      ${gdSec('gds2', 'bi-cart-plus-fill', 'Produtos', `<span class="r" id="gdNprod"></span>`, `${G.itens.map(gdItem).join('') || '<p class="gd-msg">Nenhum produto ainda. Busque no CTW abaixo.</p>'}
         <div class="gd-sw">${ico('search')}<input id="gdBq" class="gd-in" placeholder="Buscar produto no CTW ou digitar o nome" autocomplete="off" value="${esc(G.busca)}" aria-label="Buscar produto no CTW"></div>
         <div class="gd-res" id="gdBres">${gdOpcoes(gdBusca(G.busca), 'data-gd="add" data-pid')}</div>
         <button class="gd-add" type="button" data-gd="addtxt">${ico('plus')} Adicionar produto</button>`)}
-      ${gdSec('gds3', 3, 'Pagamento', `<span class="r" id="gdNpag"></span>`, `${G.pag.map(gdLinhaPag).join('')}<button class="gd-add" type="button" data-gd="addpag">${ico('plus')} Adicionar pagamento</button><div id="gdTt"></div>`)}
-      ${gdSec('gds4', 4, 'Garantia e documento', '', `<div class="gd-g2c"><div class="gd-fl"><label>Tempo de garantia</label><button type="button" class="gd-selb" data-gd="dias" aria-haspopup="dialog"><span>${esc(gdRotDias(G.dias))}</span>${ico('down')}</button></div>
+      ${gdSec('gds3', 'bi-credit-card', 'Pagamento', `<span class="r" id="gdNpag"></span>`, `${G.pag.map(gdLinhaPag).join('')}<button class="gd-add" type="button" data-gd="addpag">${ico('plus')} Adicionar pagamento</button><div id="gdTt"></div>`)}
+      ${gdSec('gds4', 'bi-shield-check', 'Garantia e documento', '', `<div class="gd-g2c"><div class="gd-fl"><label>Garantia</label><button type="button" class="gd-selb" data-gd="dias" aria-haspopup="dialog"><span>${esc(gdRotDias(G.dias))}</span>${ico('down')}</button></div>
         <div class="gd-fl"><label for="gdDv">Data da venda</label><input class="gd-in" id="gdDv" type="date" data-dv max="${gdHoje()}" value="${esc(G.dataVenda)}"></div></div>`)}
       ${gdFoto()}
       ${gdVazio(G) || G.edit ? '' : `<button class="gd-lk gd-zera${G.limpar ? ' perigo' : ''}" type="button" data-gd="zerar">${G.limpar ? 'Toque de novo para apagar tudo' : 'Começar de novo'}</button>`}`;
@@ -1134,7 +1134,6 @@ function gdDigita(e) {
     if (t.dataset && t.dataset.dv !== undefined) { G.dataVenda = t.value; gdAtualizar(); gdPersistir(); return; }
     if (ck) {
         G.cli[ck] = t.value; gdPersistir(); gdAtualizar();
-        if (ck === 'nasc') { const nb = GO.querySelector('#gdNascBtn'); if (nb) nb.classList.toggle('on', !!t.value); }   // o seletor da Garantia avisa por aqui quando a data muda ou é limpa
         if (ck === 'nome') {
             const q = norm(t.value).trim(), r = GO.querySelector('#gdCres');
             const ach = q.length >= 2 ? (window.dbClientsCache || []).filter(c => norm(c.nome).includes(q) && norm(c.nome) !== q).slice(0, 4) : [];
