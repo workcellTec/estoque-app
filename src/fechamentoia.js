@@ -555,10 +555,9 @@ function gdRender(manter) {
     if (hist) window.ctwHistoricoNoGd(pg === 3 ? document.createDocumentFragment() : null);   // a tela vai ser reescrita: a lista real sai antes (e volta, se for a aba Histórico)
     const corpo = GO.querySelector('.gd-bd'), y = corpo ? corpo.scrollTop : 0;
     const abas = ed ? '' : `<div class="gd-steps"><button type="button" class="${pg === 1 ? 'on' : ''}" data-gd="p1"><i class="bi bi-plus-lg"></i> Nova Garantia</button><button type="button" class="${pg === 3 ? 'on' : ''}" data-gd="p3"><i class="bi bi-clock-history"></i> Histórico</button></div>`;
-    GO.innerHTML = `<div class="gd-hd"><button class="gd-bk" type="button" data-gd="voltar" aria-label="Voltar">${ico('back')}</button><h2>${ed ? 'Editando Doc ' + esc(G.edit.doc || '') : 'Garantia detalhada'}</h2>
-        ${pg === 3 ? '' : `<button class="gd-zapb" type="button" data-gd="zap"><i class="bi bi-whatsapp"></i> Colar do Zap</button>`}</div>
-      ${abas}
-      ${pg === 3 ? '<div class="gd-bd"><div id="gdHist" class="gd-hist"></div></div>' : `<div class="gd-bd">${gdForm()}<div class="gd-ft" id="gdFt"></div></div>`}`;
+    const topo = `<div class="gd-hd"><button class="gd-bk" type="button" data-gd="voltar" aria-label="Voltar">${ico('back')}</button><h2>${ed ? 'Editando Doc ' + esc(G.edit.doc || '') : 'Garantia detalhada'}</h2>
+        ${pg === 3 ? '' : `<button class="gd-zapb" type="button" data-gd="zap"><i class="bi bi-whatsapp"></i> Colar do Zap</button>`}</div>${abas}`;   // cabeçalho e abas ficam dentro da área que rola: nada fica grudado
+    GO.innerHTML = pg === 3 ? `<div class="gd-bd">${topo}<div id="gdHist" class="gd-hist"></div></div>` : `<div class="gd-bd">${topo}${gdForm()}<div class="gd-ft" id="gdFt"></div></div>`;
     const novo = GO.querySelector('.gd-bd');
     if (manter && novo) novo.scrollTop = y;
     if (pg === 3) { window.ctwHistoricoNoGd(GO.querySelector('#gdHist')); lucMontar(); }
@@ -595,6 +594,13 @@ const gdBusca = txt => (String(txt || '').trim() ? buscarProdutos(txt, 5) : []);
 
 function gdItem(i) {
     const rm = `<button class="gd-ib" type="button" data-gd="del" data-id="${i.id}" aria-label="Remover produto">${ico('del')}</button>`;
+    if (i.trocando && resolvido(i)) {                       // troca de produto: a busca aparece no próprio cartão; cor, quantidade, condição e observação ficam
+        return `<div class="gd-card pr"><div class="gd-ih"><div class="gd-nm"><span class="gd-need">Trocar produto</span><b>${esc(nomeDoc(i))}</b></div></div>
+          <p class="gd-was">Cor, quantidade, condição e observação continuam como estão.</p>
+          <div class="gd-sw">${ico('search')}<input class="gd-in" data-f="pbusca" data-id="${i.id}" placeholder="Buscar o produto certo no CTW" autocomplete="off" value="${esc(i.q || '')}" aria-label="Buscar produto no CTW"></div>
+          <div class="gd-res" id="gdps-${i.id}">${gdOpcoes(gdBusca(i.q), `data-gd="pick" data-id="${i.id}" data-pid`)}</div>
+          <button class="gd-lk full" type="button" data-gd="trocx" data-id="${i.id}">Cancelar</button></div>`;
+    }
     if (!resolvido(i)) {
         if (i.prod && i.prod.id) {                          // ligado ao CTW, mas sem valor lá: o custo precisa ser informado
             return `<div class="gd-card pr"><div class="gd-ih"><div class="gd-nm"><span class="gd-need">Sem valor no CTW</span><b>${esc(semEmoji(i.prod.nome))}</b></div>${rm}</div>
@@ -612,8 +618,8 @@ function gdItem(i) {
     const veio = i.nome && chaveAlias(i.nome) !== chaveAlias(p.nome) ? ` · veio: ${esc(i.nome)}` : '';
     const custo = i.edCusto
         ? `<div class="gd-ed"><input class="gd-in" id="gdcv-${i.id}" data-money inputmode="decimal" placeholder="Custo do dia (R$)" autocomplete="off" value="${esc(fmtIn(p.valor))}" aria-label="Custo do dia"><button type="button" data-gd="custook" data-id="${i.id}">OK</button><button type="button" class="g" data-gd="custox" data-id="${i.id}">Cancelar</button></div>`
-        : `<div class="gd-row"><span class="gd-l">${mud ? `Custo do dia <b>${brl(p.valor)}</b> (CTW ${brl(p.hoje)})` : `Custo no CTW <b>${brl(p.valor)}</b>`}</span><button class="gd-lk" type="button" data-gd="custo" data-id="${i.id}">${mud ? 'Mudar de novo' : 'Mudar custo'}</button></div>`;
-    return `<div class="gd-card"><div class="gd-ih"><span class="gd-ck">${ico('ok')}</span><div class="gd-nm"><b>${esc(nomeDoc(i))}</b>${veio ? `<small>${veio.slice(3)}</small>` : ''}</div>${rm}</div>
+        : `<div class="gd-row"><span class="gd-l">${mud ? `Custo do dia <small>(CTW ${brl(p.hoje)})</small>` : 'Custo no CTW'}</span><button class="gd-cb" type="button" data-gd="custo" data-id="${i.id}" aria-label="Mudar o custo">${brl(p.valor)} <i class="bi bi-pencil-fill"></i></button></div>`;
+    return `<div class="gd-card"><div class="gd-ih"><span class="gd-ck">${ico('ok')}</span><button class="gd-nm gd-nmb" type="button" data-gd="troc" data-id="${i.id}" aria-label="Trocar produto"><b>${esc(nomeDoc(i))}</b>${veio ? `<small>${veio.slice(3)}</small>` : ''}</button><button class="gd-ib" type="button" data-gd="troc" data-id="${i.id}" aria-label="Trocar produto">${ico('pen')}</button>${rm}</div>
       ${gdSeg('cond', CONDS.map(c => [c, c]), i.cond, ` data-id="${i.id}"`)}
       ${custo}
       <div class="gd-g3"><div class="gd-fl"><label>Quantidade</label><div class="gd-stp"><button type="button" data-gd="menos" data-id="${i.id}" aria-label="Menos">−</button><span>${i.qtd}</span><button type="button" data-gd="mais" data-id="${i.id}" aria-label="Mais">+</button></div></div>
@@ -1073,10 +1079,12 @@ function gdClique(e) {
     if (a === 'fotox') { G.foto = null; return gdRender(true); }
     if (a === 'pick' && it) {
         const p = produtoPorId(b.dataset.pid); if (!p) return;
-        it.prod = paraProd(p, it.nome); it.sug = []; it.q = '';
+        it.prod = paraProd(p, it.nome); it.sug = []; it.q = ''; it.trocando = false; it.edCusto = false;
         if (parseFloat(p.valor) > 0) gdAprendeu(it, p); else G.aviso = 'Este produto está sem valor no CTW. Informe o custo no cartão dele.';
         return gdRender(true);
     }
+    if (a === 'troc' && it) { it.trocando = true; it.q = ''; it.edCusto = false; gdRender(true); const q = GO.querySelector('[data-f="pbusca"][data-id="' + it.id + '"]'); if (q) q.focus(); return; }
+    if (a === 'trocx' && it) { it.trocando = false; it.q = ''; return gdRender(true); }
     if (a === 'del' && it) { G.itens = G.itens.filter(x => x !== it); return gdRender(true); }
     if (a === 'menos' && it) { it.qtd = Math.max(1, it.qtd - 1); return gdRender(true); }
     if (a === 'mais' && it) { it.qtd = Math.min(99, it.qtd + 1); return gdRender(true); }
