@@ -629,8 +629,9 @@ function gdItem(i) {
     const custo = i.edCusto
         ? `<div class="gd-ed"><input class="gd-in" id="gdcv-${i.id}" data-money inputmode="decimal" placeholder="Custo do dia (R$)" autocomplete="off" value="${esc(fmtIn(p.valor))}" aria-label="Custo do dia"><button type="button" data-gd="custook" data-id="${i.id}">OK</button><button type="button" class="g" data-gd="custox" data-id="${i.id}">Cancelar</button></div>`
         : `<div class="gd-row"><span class="gd-l">${mud ? `Custo do dia <small>(CTW ${brl(p.hoje)})</small>` : 'Custo no CTW'}</span><button class="gd-cb" type="button" data-gd="custo" data-id="${i.id}" aria-label="Mudar o custo">${brl(p.valor)} <i class="bi bi-pencil-fill"></i></button></div>`;
-    return `<div class="gd-card"><div class="gd-ih"><span class="gd-ck">${ico('ok')}</span><div class="gd-nm"><b>${esc(nomeCartao(i))}</b>${veio ? `<small>${veio.slice(3)}</small>` : ''}</div><div class="gd-ibs"><button class="gd-ib" type="button" data-gd="troc" data-id="${i.id}" aria-label="Trocar produto">${ico('swap')}</button>${rm}</div></div>
-      ${gdSeg('cond', CONDS.map(c => [c, c]), i.cond, ` data-id="${i.id}"`)}
+    return `<div class="gd-card"><div class="gd-ih"><span class="gd-ck">${ico('ok')}</span><span class="gd-tg">Produto do CTW</span><div class="gd-ibs"><button class="gd-ib" type="button" data-gd="troc" data-id="${i.id}" aria-label="Trocar produto">${ico('swap')}</button>${rm}</div></div>
+      <div class="gd-nm gd-nmf"><b>${esc(nomeCartao(i))}</b>${veio ? `<small>${veio.slice(3)}</small>` : ''}</div>
+      ${gdSeg('cond', CONDS.map(c => [c, c]), i.cond, ` data-id="${i.id}"`, ' c2')}
       ${custo}
       <div class="gd-g3"><div class="gd-fl"><label>Quantidade</label><div class="gd-stp"><button type="button" data-gd="menos" data-id="${i.id}" aria-label="Menos">−</button><span>${i.qtd}</span><button type="button" data-gd="mais" data-id="${i.id}" aria-label="Mais">+</button></div></div>
         <div class="gd-fl"><label for="gdcor-${i.id}">Cor / detalhe</label><input class="gd-in" id="gdcor-${i.id}" data-f="cor" data-id="${i.id}" placeholder="Ex.: Preto" autocomplete="off" value="${esc(i.cor)}"></div></div>

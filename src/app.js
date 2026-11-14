@@ -4958,6 +4958,8 @@ const ctwSavePreview = (() => {
 
     let _resolvePromise = null;
     let _animFrame      = null;
+    let _creep          = null;   // avanço visual dentro da etapa em curso (Garantia detalhada)
+    let _pularToque     = false;  // "tentar de novo" já foi tocado na seta
     const ROT_CONFIRMAR = '<i class="bi bi-cloud-check-fill"></i> Salvar agora';
     const ROT_CANCELAR  = '<i class="bi bi-x-lg"></i> Cancelar';
 
@@ -4966,17 +4968,40 @@ const ctwSavePreview = (() => {
     // Põe o anel e o % num ponto (0–100) — no salvamento o avanço vem das etapas reais, não de um relógio
     function _anelEm(pct) {
         const arc = _el('ctwSpArc'), pctEl = _el('ctwSpPct');
+        if (_el('ctwSavePreviewOverlay')?.classList.contains('ctw-sp-dlmode')) {
+            const da = _el('ctwSpDlArc'), dp = _el('ctwSpDlPct'), sc = _el('ctwSpScroll'), ln = _el('ctwSpLine'), sk = _el('ctwSpSk');
+            if (da) da.style.strokeDashoffset = (226 * (1 - pct / 100)).toFixed(2);
+            if (dp) dp.textContent = Math.round(pct) + '%';
+            if (sc) sc.style.clipPath = pct >= 100 ? 'none' : `inset(0 0 ${(100 - pct).toFixed(2)}% 0)`;
+            if (sk) sk.style.clipPath = pct >= 100 ? 'inset(100% 0 0 0)' : `inset(${pct.toFixed(2)}% 0 0 0)`;
+            if (ln) { ln.style.top = `calc(${pct.toFixed(2)}% - 3px)`; ln.style.opacity = pct > 0 && pct < 100 ? 1 : 0; }
+            return;
+        }
         if (arc) arc.style.strokeDashoffset = (CIRCUMFERENCE * (1 - pct / 100)).toFixed(2);
         if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+    }
+
+    // Garantia detalhada: volta tudo ao estado normal da prévia (sem esqueleto, seta nem recorte)
+    function _sairModoSeta() {
+        _el('ctwSavePreviewOverlay')?.classList.remove('ctw-sp-dlmode');
+        const sc = _el('ctwSpScroll'); if (sc) sc.style.clipPath = '';
+        const sk = _el('ctwSpSk'); if (sk) sk.style.clipPath = '';
+        const ln = _el('ctwSpLine'); if (ln) { ln.style.opacity = 0; ln.style.top = ''; }
+        const dl = _el('ctwSpDl'); if (dl) { dl.className = 'ctw-sp-dl'; dl.onclick = null; dl.firstElementChild.style.display = ''; }
+        const da = _el('ctwSpDlArc'); if (da) da.style.strokeDashoffset = 226;
+        const dp = _el('ctwSpDlPct'); if (dp) dp.textContent = '0%';
+        _el('ctwSpHint')?.classList.add('hidden');
+        const c = _el('ctwSpBtnConfirm'); if (c) c.style.display = '';
     }
 
     // Troca os dois botões do rodapé (e os toques deles)
     function _botoes(rotConfirmar, rotCancelar, aoConfirmar, aoCancelar) {
         const c = _el('ctwSpBtnConfirm'), x = _el('ctwSpBtnCancel');
         const nc = c.cloneNode(false), nx = x.cloneNode(false);
-        nc.innerHTML = rotConfirmar; nx.innerHTML = rotCancelar;
+        nc.innerHTML = rotConfirmar || ''; nx.innerHTML = rotCancelar;
+        nc.style.display = rotConfirmar ? '' : 'none';
         c.replaceWith(nc); x.replaceWith(nx);
-        nc.addEventListener('click', () => aoConfirmar(nc));
+        nc.addEventListener('click', () => aoConfirmar && aoConfirmar(nc));
         nx.addEventListener('click', () => aoCancelar());
         _el('ctwSpActions')?.classList.remove('hidden');
     }
@@ -5027,11 +5052,13 @@ const ctwSavePreview = (() => {
         if (!overlay) return;
 
         if (_animFrame) { cancelAnimationFrame(_animFrame); _animFrame = null; }
+        clearInterval(_creep); _pularToque = false;
 
         overlay.classList.remove('entering');
         overlay.classList.add('leaving');
 
         setTimeout(() => {
+            if (!overlay.classList.contains('leaving')) return;      // já abriu de novo nesse meio tempo: não apaga o estado novo
             overlay.classList.remove('leaving');
             overlay.classList.add('hidden');
             // Limpa estado
@@ -5047,6 +5074,7 @@ const ctwSavePreview = (() => {
             _el('ctwSpSteps')?.classList.add('hidden');
             _el('ctwSpMsg')?.classList.add('hidden');
             _el('ctwSpPreviewInner').innerHTML = '';
+            _sairModoSeta();
         }, 300);
 
         if (_resolvePromise) { _resolvePromise(confirmed); _resolvePromise = null; }
@@ -5080,6 +5108,7 @@ const ctwSavePreview = (() => {
                 _el('ctwSpLoading')?.classList.remove('hidden');
                 _el('ctwSpArc')?.classList.remove('done');
                 _el('ctwSpPct')?.classList.remove('done');
+                _sairModoSeta();
 
                 // Mostra overlay
                 const overlay = _el('ctwSavePreviewOverlay');
@@ -5108,62 +5137,97 @@ const ctwSavePreview = (() => {
             });
         },
 
-        // Salvamento que já começou: a prévia é a animação. O anel anda conforme as etapas de verdade e só fecha quando tudo foi gravado.
-        // Devolve { passo(texto), concluir({...}), falhar(mensagem, aoTentar, aoFechar) }
+        // Garantia detalhada: a tela abre com o esqueleto do documento e uma seta de baixar. Nada é gravado até a pessoa tocar na seta;
+        // aí o salvamento de verdade começa e o documento vai aparecendo de cima para baixo conforme as etapas andam. Só termina (Enviar) quando tudo foi gravado.
+        // Devolve { aguardarToque(), passo(texto), concluir({...}), falhar(mensagem, aoTentar, aoFechar) }
         salvando({ previewHtml = '', docInfo = '', etapas = [] }) {
             if (_animFrame) { cancelAnimationFrame(_animFrame); _animFrame = null; }
             _resolvePromise = null;
-            _el('ctwSpTitle').textContent    = 'Salvando…';
-            _el('ctwSpSubtitle').textContent = 'Só termina quando gravar de verdade. Não feche.';
-            _el('ctwSpDocInfo').innerHTML    = docInfo;
+            clearInterval(_creep);
+            const overlay = _el('ctwSavePreviewOverlay');
+            overlay.classList.add('ctw-sp-dlmode');
+            const dl = _el('ctwSpDl'), hint = _el('ctwSpHint'), lista = _el('ctwSpSteps'), arcRect = _el('ctwSpArc');
             const inner = _el('ctwSpPreviewInner'); if (inner) inner.innerHTML = previewHtml;
-            _el('ctwSpLoading')?.classList.add('hidden');
-            _el('ctwSpActions')?.classList.add('hidden');
-            _el('ctwSpMsg')?.classList.add('hidden');
-            _el('ctwSpArc')?.classList.remove('done');
-            _el('ctwSpPct')?.classList.remove('done');
-            _anelEm(0);
-
-            const lista = _el('ctwSpSteps');
-            let atual = 0, falhou = false;
+            const msg = (texto, ruim) => { const m = _el('ctwSpMsg'); m.textContent = texto; m.classList.toggle('bad', !!ruim); m.classList.toggle('hidden', !texto); };
+            const dica = t => { hint.textContent = t; hint.classList.toggle('hidden', !t); };
+            const titulos = (t, sub) => { _el('ctwSpTitle').textContent = t; _el('ctwSpSubtitle').textContent = sub; };
+            let atual = 0, falhou = false, cur = 0, alvo = 0;
             const desenhar = () => {
                 lista.innerHTML = etapas.map((t, k) => `<div class="${k < atual ? 'ok' : k === atual ? (falhou ? 'bad' : 'now') : ''}"><span class="d">${k < atual ? '✓' : (falhou && k === atual ? '!' : '')}</span>${t}</div>`).join('');
                 lista.classList.remove('hidden');
             };
-            desenhar();
+            const faixa = k => [k / etapas.length * 100, (k + 1) / etapas.length * 100];
 
-            const overlay = _el('ctwSavePreviewOverlay');
+            // estado "pronta": esqueleto + seta
+            const pronta = () => {
+                clearInterval(_creep); cur = alvo = 0; _anelEm(0);
+                dl.className = 'ctw-sp-dl'; dl.firstElementChild.style.display = ''; dl.setAttribute('aria-label', 'Salvar e gerar o documento');
+                dl.querySelector('.ic').innerHTML = '<path d="M12 4v12M6 11l6 6 6-6M5 20h14"/>';
+                arcRect.classList.remove('done'); arcRect.style.strokeDashoffset = 1280;
+                titulos('Pronta para salvar', 'Toque na seta para salvar a garantia e gerar o documento.');
+                dica('Nada é salvo até você tocar na seta.');
+                _el('ctwSpDocInfo').innerHTML = '';
+                lista.classList.add('hidden'); msg('');
+                _el('ctwSpLoading')?.classList.add('hidden');
+                _botoes(null, '<i class="bi bi-x-lg"></i> Fechar', null, () => _close(false));
+            };
+            pronta();
             if (overlay.classList.contains('hidden') || overlay.classList.contains('leaving')) {
                 overlay.classList.remove('hidden', 'leaving');
                 overlay.classList.add('entering');
             }
-            const msg = (texto, ruim) => { const m = _el('ctwSpMsg'); m.textContent = texto; m.classList.toggle('bad', !!ruim); m.classList.toggle('hidden', !texto); };
+
+            // o avanço visual anda devagar dentro da etapa em curso, mas nunca passa de 90% da faixa dela: o 100% só vem do salvamento de verdade
+            const andar = () => { cur += (alvo - cur) * 0.12; if (alvo - cur < 0.05) cur = alvo; _anelEm(cur); };
+            const iniciar = () => {
+                dl.className = 'ctw-sp-dl run'; arcRect.style.strokeDashoffset = 0; dica('');
+                titulos('Salvando garantia…', 'Pode esperar: o documento aparece conforme é salvo. Não feche.');
+                _el('ctwSpActions')?.classList.add('hidden');
+                falhou = false; atual = 0; desenhar();
+                clearInterval(_creep); cur = alvo = 0; const f = faixa(0); alvo = f[0] + (f[1] - f[0]) * 0.9;
+                _creep = setInterval(andar, 120);
+            };
 
             return {
+                // true = a pessoa tocou na seta (pode gravar); false = fechou sem salvar
+                aguardarToque() {
+                    return new Promise(resolve => {
+                        const tocar = () => { dl.onclick = null; iniciar(); resolve(true); };
+                        if (_pularToque) { _pularToque = false; return tocar(); }      // "tentar de novo": a seta já foi tocada
+                        dl.onclick = tocar;
+                        _botoes(null, '<i class="bi bi-x-lg"></i> Fechar', null, () => { dl.onclick = null; _close(false); resolve(false); });
+                    });
+                },
                 passo(txt) {
                     const k = etapas.indexOf(txt); if (k < 0) return;
-                    atual = k; falhou = false; desenhar(); _anelEm(k / etapas.length * 100);
+                    atual = k; falhou = false; desenhar();
+                    const f = faixa(k); cur = Math.max(cur, f[0]); alvo = f[0] + (f[1] - f[0]) * 0.9;
                 },
                 concluir({ titulo = 'Salva', docInfo: info = '', html = '', aviso = '', onEnviar = null } = {}) {
+                    clearInterval(_creep);
                     atual = etapas.length; lista.classList.add('hidden');
-                    _anelEm(100); _el('ctwSpArc')?.classList.add('done'); _el('ctwSpPct')?.classList.add('done');
-                    _el('ctwSpTitle').textContent = '✓ ' + titulo;
-                    _el('ctwSpSubtitle').textContent = 'Já está gravada. Toque em Enviar quando quiser mandar ao cliente.';
-                    if (info) _el('ctwSpDocInfo').innerHTML = info;
+                    _anelEm(100); arcRect.classList.add('done'); dl.classList.add('fim');
+                    titulos('✓ ' + titulo, 'Já está gravada. Toque em Enviar quando quiser mandar ao cliente.');
+                    _el('ctwSpDocInfo').innerHTML = info || docInfo;
                     if (html && inner) inner.innerHTML = html;       // agora com o número de verdade
-                    msg(aviso, true);
+                    msg(aviso, true); dica('');
                     _botoes('<i class="bi bi-send-fill"></i> Enviar', '<i class="bi bi-x-lg"></i> Fechar',
                         (botao) => { if (typeof onEnviar === 'function') onEnviar(botao); },
                         () => _close(false));
                 },
                 falhar(mensagem, aoTentar, aoFechar) {
+                    clearInterval(_creep);
                     falhou = true; desenhar();
-                    _el('ctwSpTitle').textContent    = 'Não terminou de salvar';
-                    _el('ctwSpSubtitle').textContent = '';
+                    arcRect.style.strokeDashoffset = 1280;
+                    dl.className = 'ctw-sp-dl err'; dl.firstElementChild.style.display = 'none';
+                    dl.querySelector('.ic').innerHTML = '<path d="M12 4v12M6 11l6 6 6-6M5 20h14"/>';
+                    dl.setAttribute('aria-label', 'Tentar salvar de novo');
+                    titulos('Não consegui salvar', '');
                     msg(String(mensagem).replace(/[.\s]*$/, '.') + ' Ao tentar de novo, nada fica duplicado.', true);
-                    _botoes('<i class="bi bi-arrow-repeat"></i> Tentar de novo', '<i class="bi bi-x-lg"></i> Fechar',
-                        () => { if (typeof aoTentar === 'function') aoTentar(); },
-                        () => { _close(false); if (typeof aoFechar === 'function') aoFechar(); });
+                    dica('Toque na seta para tentar de novo.');
+                    dl.onclick = () => { dl.onclick = null; _pularToque = true; if (typeof aoTentar === 'function') aoTentar(); };
+                    _botoes(null, '<i class="bi bi-x-lg"></i> Fechar', null,
+                        () => { dl.onclick = null; _close(false); if (typeof aoFechar === 'function') aoFechar(); });
                 },
             };
         },
@@ -8523,6 +8587,7 @@ if (btnSave) {
                 docInfo: docInfoHtml,
                 etapas: ['Conferindo a numeração', 'Gravando o documento'].concat(window._bookipFotoBlob ? ['Enviando a foto'] : [], ['Salvando o cliente', 'Registrando o lucro']),
             });
+            if (!(await sp.aguardarToque())) { if (window.ctwGdPreviaCancelada) window.ctwGdPreviaCancelada(); return; }   // fechou sem tocar na seta: nada foi gravado
         } else {
             const confirmed = await ctwSavePreview.show({
                 type: 'bookip',
