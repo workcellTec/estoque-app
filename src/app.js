@@ -8178,7 +8178,7 @@ function loadBookipHistory() {
                             <small class="d-block text-secondary" style="font-size: 0.65rem; opacity: 0.8;">${horaVisual}</small>
 
 
-                            <span class="badge bg-secondary bg-opacity-25 text-light border border-secondary border-opacity-25" style="font-size: 0.65rem; font-weight: normal; letter-spacing: 0.5px;">
+                            <span class="badge bg-secondary bg-opacity-25 text-light border border-secondary border-opacity-25${(window.ctwEhDev && window.ctwEhDev()) ? ' btn-atribuir' : ''}" ${(window.ctwEhDev && window.ctwEhDev()) ? `data-id="${item.id}" data-dev-only` : ''} style="font-size: 0.65rem; font-weight: normal; letter-spacing: 0.5px;">
                                 <i class="bi bi-person me-1"></i>${item.criadoPor || 'Geral'}
                             </span>
                         </div>
@@ -8200,8 +8200,6 @@ function loadBookipHistory() {
                         ${(devLiq && !isOrc && !isSituacao) ? `<div class="ctw-liq-slot mb-2" data-id="${item.id}" data-dev-only></div>` : ''}
 
                         <div class="d-flex justify-content-end gap-2 mt-2 flex-wrap">
-
-                            ${(window.ctwEhDev && window.ctwEhDev()) ? `<button class="btn btn-sm btn-secondary btn-atribuir me-auto" data-id="${item.id}" data-dev-only title="Mudar o dono (quem fez) deste documento"><i class="bi bi-person-fill"></i> Atribuir a outro</button>` : ''}
 
                             ${(() => {
                                 const telLimpo = (item.tel || '').replace(/\D/g, '');
@@ -8259,8 +8257,10 @@ function loadBookipHistory() {
         container.querySelectorAll('.edit-bookip-btn').forEach(b => b?.addEventListener('click', e => carregarDadosParaEdicao(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id))));
         container.querySelectorAll('.email-history-btn').forEach(b => b?.addEventListener('click', e => ctwAbrirPdfDoDocumento(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id), b, 'gmail')));
         container.querySelectorAll('.btn-share-hist').forEach(b => b?.addEventListener('click', e => ctwAbrirPdfDoDocumento(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id), b, 'compartilhar')));
+        // Dev: tocar na etiqueta com o nome do dono abre "Atribuir a outro" (sem abrir/fechar o card)
         container.querySelectorAll('.btn-atribuir').forEach(b => b?.addEventListener('click', async e => {
-            const item = listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id);
+            e.stopPropagation(); e.preventDefault();
+            const item = listaCompletaCache.find(i => i.id === b.dataset.id);
             if (!item) return;
             try { (await window.ctwCarregarModulo('fechamentoia')).atribuirDono(item, ctwColDoDoc(item)); }
             catch (err) { console.warn('[atribuir]', err); showCustomModal({ message: 'Não consegui abrir agora. Tente de novo.' }); }
