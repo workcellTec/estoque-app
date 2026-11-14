@@ -692,8 +692,6 @@ function ctwAplicarModoDoc(modo) {
     const setTxt = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
     setTxt('txtToggleNovo', orc ? '<i class="bi bi-plus-lg"></i> Novo Orçamento' : '<i class="bi bi-plus-lg"></i> Nova Garantia');
     setTxt('txtNovoCiclo', orc ? 'Começar um Novo Orçamento' : 'Começar um Novo Recibo');
-    setTxt('txtResetSuccess', orc ? 'Sair e Começar Novo Orçamento' : 'Sair e Começar Nova Garantia');
-    setTxt('postSaveMsg', orc ? 'Orçamento já salvo na Nuvem.' : 'Garantia já salva na Nuvem.');
     setTxt('bookipDataManualLabel', orc ? 'Data do Orçamento (vazio = hoje)' : 'Data da Venda (Para Garantias anteriores)');
     setTxt('bookipItensLabel', orc ? 'Itens do Orçamento:' : 'Itens no Recibo:');
     setTxt('bookipPagamentoLabel', orc ? 'Formas de Pagamento aceitas (opcional)' : 'Forma(s) de Pagamento');
@@ -3759,6 +3757,29 @@ function ctwConfirmar(message, confirmText, cancelText) {
     }));
 }
 
+// Chave do cadastro de clientes: CPF (só dígitos) ou "nome_telefone" quando não há CPF.
+function ctwClienteId(nome, cpf, tel) {
+    const cpfLimpo = String(cpf || '').replace(/\D/g, '');
+    if (cpfLimpo.length > 5) return cpfLimpo;
+    const nomeLimpo = String(nome || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const telLimpo = String(tel || '').replace(/\D/g, '');
+    return `${nomeLimpo}_${telLimpo}`;
+}
+
+// Contrato salvo com e-mail → guarda o e-mail no cadastro do cliente (só se ele já existir:
+// contrato não cria cliente). Atualiza apenas o campo "email"; nunca bloqueia nem quebra o contrato.
+async function ctwSincronizarEmailCliente(d) {
+    try {
+        const email = String((d && d.compradorEmail) || '').trim().toLowerCase();
+        if (!email || !ctwEmailValido(email)) return;
+        const id = ctwClienteId(d.compradorNome, d.compradorCpf, d.compradorTelefone);
+        if (!id) return;
+        const cliente = (window.dbClientsCache || []).find(c => c.id === id);
+        if (!cliente || String(cliente.email || '').trim().toLowerCase() === email) return;
+        await update(ref(db, 'clientes/' + id), { email });
+    } catch (e) { console.warn('E-mail do cliente não sincronizado:', e); }
+}
+
 // Registro como vai para o Firebase (campos de criação ficam de fora na edição).
 function ctwRegistroParaFirebase(d) {
     return {
@@ -3848,6 +3869,31 @@ function ctwNomeArquivoContrato(nome) {
     return 'Contrato-' + primeiro + '.pdf';
 }
 
+// Rótulos da última etapa da tela de salvar / gerar PDF (usados pelo Histórico de documentos e de contratos)
+const CTW_ACAO_PDF = {
+    gmail:        { rotulo: 'Enviar',       icone: 'bi-send-fill',  sub: 'Toque em Enviar quando quiser mandar ao cliente.' },
+    compartilhar: { rotulo: 'Compartilhar', icone: 'bi-share-fill', sub: 'Toque em Compartilhar para escolher para quem mandar.' },
+    baixar:       { rotulo: 'Baixar',       icone: 'bi-download',   sub: 'Toque em Baixar para guardar o arquivo no celular.' },
+};
+
+// Linhas de resumo na tela de salvar / gerar PDF
+function ctwDocInfoContrato(d) {
+    return '<strong style="color:var(--text-color)">' + escapeHtml(d.compradorNome) + '</strong><br>' +
+        escapeHtml(d.produtoModelo) + (d.valorTotal > 0 ? ' · R$ ' + ctwFmtMoeda(d.valorTotal) : '') +
+        ' · ' + escapeHtml(ctwPrazoContrato(d.tipoParcela, d.numeroParcelas));
+}
+// Gera o PDF do contrato já pronto para enviar: { pdfBlob, nomeFinalArquivo }
+async function ctwPdfBlobDoContrato(dados, progresso) {
+    if (typeof progresso === 'function') progresso(30);
+    return { pdfBlob: await ctwGerarPdfContratoPaginado(dados), nomeFinalArquivo: ctwNomeArquivoContrato(dados.compradorNome) };
+}
+// Envia (ou baixa, se o celular não compartilha) o PDF que já está pronto
+async function ctwEnviarPdfContrato(pdfPronto, nome, telefone) {
+    const resultado = await ctwEntregarPdf(pdfPronto.pdfBlob, pdfPronto.nomeFinalArquivo, nome, telefone);
+    if (resultado === 'baixado') showCustomModal({ message: 'PDF baixado! 📂' });
+    return resultado;
+}
+
 async function ctwFinalizarContrato() {
     if (_contratoEmAndamento) return;
     const form = document.getElementById('contractForm');
@@ -3908,12 +3954,7 @@ async function ctwFinalizarContrato() {
             _ultimoContratoSalvo = null;
         }
 
-        const docInfo = '<strong style="color:#000">' + escapeHtml(dados.compradorNome) + '</strong><br>' +
-            escapeHtml(dados.produtoModelo) + (dados.valorTotal > 0 ? ' · R$ ' + ctwFmtMoeda(dados.valorTotal) : '') +
-            ' · ' + escapeHtml(ctwPrazoContrato(dados.tipoParcela, dados.numeroParcelas));
-        const confirmado = await ctwSavePreview.show({ type: 'boleto', previewHtml: montarContratoHtml(dados), docInfo });
-        if (!confirmado) return;
-
+        const docInfo = ctwDocInfoContrato(dados);
         // Rascunho no celular ANTES de falar com a nuvem; reaproveita a chave se for o mesmo contrato.
         let r = ctwLerPendente();
         if (!r || r.sig !== sig) {
@@ -3921,20 +3962,26 @@ async function ctwFinalizarContrato() {
         }
         ctwGravarPendente(r);
 
-        ctwProgresso('Salvando contrato no histórico...');
+        // Já grava: a prévia vira a animação do salvamento (só termina quando gravou de verdade). Depois, a seta gera o PDF e o Enviar só envia.
+        const sp = ctwSavePreview.salvando({
+            previewHtml: montarContratoHtml(dados),
+            docInfo,
+            etapas: ['Gravando o contrato'].concat(editId ? [] : ['Conferindo a data do contrato']),
+        });
+        sp.passo('Gravando o contrato');
         try {
             await ctwSalvarContratoComSeguranca(r);
         } catch (err) {
             console.error('Erro ao salvar contrato na nuvem:', err);
-            ctwProgresso();
             if (err.definitivo) {
                 // Contrato original não existe mais: sai do modo edição e mantém os dados para salvar como NOVO.
                 ctwLimparPendente();
+                sp.fechar();
                 if (typeof window.cancelarEdicaoBoleto === 'function') window.cancelarEdicaoBoleto();
                 await ctwAviso('⚠️ Não foi salvo: ' + err.message + '. O formulário foi mantido e saiu do modo edição — toque em "Finalizar" para salvar como um contrato NOVO.');
                 return;
             }
-            await ctwAviso('⚠️ O contrato NÃO foi salvo no histórico: ' + (err.message || err) + '. Nenhum PDF foi gerado. Seus dados continuam na tela e ficaram guardados no celular — confira a internet e toque em "Finalizar" de novo (não duplica).');
+            sp.falhar('O contrato NÃO foi salvo no histórico: ' + (err.message || err) + '. Nenhum PDF foi gerado. Seus dados continuam na tela e ficaram guardados no celular', () => ctwFinalizarContrato());
             return;
         }
         ctwLimparPendente();
@@ -3943,6 +3990,7 @@ async function ctwFinalizarContrato() {
         if (!editId) {
             _ultimoContratoSalvo = { sig, codigo: r.codigoInterno || '' };
             // O PDF sai com a MESMA data que o histórico mostra (hora do servidor, não a do celular).
+            sp.passo('Conferindo a data do contrato');
             try {
                 const salvo = (await ctwComTimeout(get(ref(db, 'boletos/' + r.key)), 8000, 'sem resposta')).val();
                 const quando = new Date(Number(salvo && salvo.criadoEmTs));
@@ -3951,21 +3999,16 @@ async function ctwFinalizarContrato() {
         }
         if (editId && typeof window.cancelarEdicaoBoleto === 'function') window.cancelarEdicaoBoleto();
 
-        ctwProgresso('Contrato salvo ✅ Gerando o PDF...');
-        let blob;
-        try {
-            blob = await ctwGerarPdfContratoPaginado(dados);
-        } catch (err) {
-            console.error('Erro ao gerar PDF do contrato:', err);
-            ctwProgresso();
-            await ctwAviso('✅ O contrato JÁ ESTÁ SALVO no histórico, mas o PDF não saiu: ' + (err.message || err) + '. Abra Histórico → Reenviar para gerar o PDF de novo.');
-            return;
-        }
-        ctwProgresso();
-        const resultado = await ctwEntregarPdf(blob, ctwNomeArquivoContrato(dados.compradorNome), dados.compradorNome, dados.compradorTelefone);
-        showCustomModal({ message: resultado === 'cancelado' ? 'Contrato salvo! O PDF não foi enviado — use Histórico → Reenviar quando quiser. ✅' : 'Contrato salvo! ✅' });
+        const codigo = r.codigoInterno || ((_boletosHistoryCache.find(b => b.id === editId) || {}).codigoInterno) || '';
+        sp.concluir({
+            titulo: 'Contrato' + (codigo ? ' #' + codigo : '') + ' salvo',
+            docInfo,
+            html: montarContratoHtml(dados),
+            // seta de baixar = gerar o PDF; o Enviar só envia o que já está pronto
+            gerarPdf: (progresso) => ctwPdfBlobDoContrato(dados, progresso),
+            onEnviar: (botao, pdfPronto) => ctwEnviarPdfContrato(pdfPronto, dados.compradorNome, dados.compradorTelefone),
+        });
     } finally {
-        ctwProgresso();
         _contratoEmAndamento = false;
         if (btn) btn.disabled = false;
     }
@@ -4444,27 +4487,22 @@ function acaoDuplicarBoleto(boletoId, boletosArray) {
     document.getElementById('produtoModelo')?.focus();
 }
 
-// Ação de Reenviar: refaz o PDF a partir do registro salvo, com a data ORIGINAL do contrato.
-// Não mexe no formulário (antes sobrescrevia o que estava digitado).
-async function acaoReenviarBoleto(boletoId, boletosArray, soBaixar = false) {
+// Ação de Reenviar / Baixar: abre a tela de salvar só com a 2ª fase (o contrato já está na nuvem). A seta refaz o PDF
+// a partir do registro salvo, com a data ORIGINAL do contrato. Não mexe no formulário (antes sobrescrevia o que estava digitado).
+function acaoReenviarBoleto(boletoId, boletosArray, soBaixar = false) {
     const boleto = boletosArray.find(b => b.id === boletoId);
     if (!boleto) return;
     if (_contratoEmAndamento) { showCustomModal({ message: 'Aguarde: outro contrato ainda está sendo processado.' }); return; }
-    _contratoEmAndamento = true;
-    try {
-        ctwProgresso('Gerando o PDF, aguarde...');
-        const blob = await ctwGerarPdfContratoPaginado(ctwDadosContratoDoRegistro(boleto));
-        ctwProgresso();
-        if (soBaixar) ctwBaixarPdf(blob, ctwNomeArquivoContrato(boleto.compradorNome));
-        else await ctwEntregarPdf(blob, ctwNomeArquivoContrato(boleto.compradorNome), boleto.compradorNome, boleto.compradorTelefone);
-    } catch (err) {
-        console.error('Erro ao reenviar contrato:', err);
-        ctwProgresso();
-        await ctwAviso('Não foi possível gerar o PDF: ' + (err.message || err));
-    } finally {
-        ctwProgresso();
-        _contratoEmAndamento = false;
-    }
+    const dados = ctwDadosContratoDoRegistro(boleto);
+    const acao = CTW_ACAO_PDF[soBaixar ? 'baixar' : 'gmail'];
+    ctwSavePreview.salvando({ previewHtml: montarContratoHtml(dados), docInfo: ctwDocInfoContrato(dados), etapas: [] }).concluir({
+        titulo: 'Contrato' + (boleto.codigoInterno ? ' #' + boleto.codigoInterno : ''),
+        subPronto: acao.sub, rotuloEnvio: acao.rotulo, iconeEnvio: acao.icone,
+        gerarPdf: (progresso) => ctwPdfBlobDoContrato(dados, progresso),
+        onEnviar: soBaixar
+            ? async (botao, pdfPronto) => { ctwBaixarPdf(pdfPronto.pdfBlob, pdfPronto.nomeFinalArquivo); showCustomModal({ message: 'PDF baixado! 📂' }); }
+            : (botao, pdfPronto) => ctwEnviarPdfContrato(pdfPronto, boleto.compradorNome, boleto.compradorTelefone),
+    });
 }
 
 // Ação de Excluir um contrato existente, com dupla confirmação.
@@ -4945,33 +4983,33 @@ function loadTagTexts() {
 
 
 
-// ═══════════════════════════════════════════════════════════════
-// CAPCUT SAVE PREVIEW ENGINE — Central Workcell
+// ════════════════════════════════════════════════════
+// TELA DE SALVAR / GERAR PDF — Central Workcell
+// Serve a garantia, o orçamento, o contrato e o histórico. Duas fases na mesma tela:
+//  1ª) Salvar: o anel contorna o papel conforme o documento é gravado na nuvem (só termina quando gravou de verdade).
+//  2ª) Seta de baixar: gera o PDF — o documento aparece de cima para baixo — e só então vem o Enviar (que só envia).
 // Uso:
-//   const confirmed = await ctwSavePreview.show({ type, previewHtml, docInfo });
-//   if (confirmed) { /* executa salvamento real */ }
-// ═══════════════════════════════════════════════════════════════
+//   const sp = ctwSavePreview.salvando({ previewHtml, docInfo, etapas });
+//   sp.passo('etapa'); sp.concluir({ titulo, gerarPdf, onEnviar, ... }); sp.falhar(msg, aoTentar, aoFechar); sp.fechar();
+// Documento que já está salvo (histórico): salvando({ etapas: [] }) e concluir() em seguida — só a 2ª fase.
+// ════════════════════════════════════════════════════
 const ctwSavePreview = (() => {
     // Perímetro do retângulo SVG (266+374)×2 = 1280
     // O rect no SVG: x=3,y=3,w=266,h=374 → perímetro = (266+374)*2 = 1280
     const CIRCUMFERENCE = 1280;
 
-    let _resolvePromise = null;
-    let _animFrame      = null;
-    let _creep          = null;   // avanço visual dentro da etapa em curso (Garantia detalhada)
-    const ROT_CONFIRMAR = '<i class="bi bi-cloud-check-fill"></i> Salvar agora';
-    const ROT_CANCELAR  = '<i class="bi bi-x-lg"></i> Cancelar';
+    let _creep = null;   // avanço visual dentro da etapa em curso (a barra nunca fica parada)
 
     function _el(id) { return document.getElementById(id); }
 
-    // Põe o anel e o % num ponto (0–100) — no salvamento o avanço vem das etapas reais, não de um relógio
+    // Põe o anel e o % num ponto (0–100) — o avanço vem das etapas reais, não de um relógio
     function _anelEm(pct) {
         const arc = _el('ctwSpArc'), pctEl = _el('ctwSpPct');
         if (arc) arc.style.strokeDashoffset = (CIRCUMFERENCE * (1 - pct / 100)).toFixed(2);
         if (pctEl) pctEl.textContent = Math.round(pct) + '%';
     }
 
-    // Garantia detalhada, 2ª fase: o botão de baixar mostra o avanço e o documento aparece de cima para baixo (0–100)
+    // 2ª fase: o botão de baixar mostra o avanço e o documento aparece de cima para baixo (0–100)
     function _revelarEm(pct) {
         const da = _el('ctwSpDlArc'), dp = _el('ctwSpDlPct'), sc = _el('ctwSpScroll'), ln = _el('ctwSpLine'), sk = _el('ctwSpSk');
         if (da) da.style.strokeDashoffset = (226 * (1 - pct / 100)).toFixed(2);
@@ -4981,7 +5019,7 @@ const ctwSavePreview = (() => {
         if (ln) { ln.style.top = `calc(${pct.toFixed(2)}% - 3px)`; ln.style.opacity = pct > 0 && pct < 100 ? 1 : 0; }
     }
 
-    // Garantia detalhada: volta tudo ao estado normal da prévia (sem esqueleto, seta nem recorte)
+    // Volta tudo ao estado inicial (sem esqueleto, seta nem recorte)
     function _sairModoSeta() {
         _el('ctwSavePreviewOverlay')?.classList.remove('ctw-sp-dlmode');
         const sc = _el('ctwSpScroll'); if (sc) sc.style.clipPath = '';
@@ -5007,52 +5045,10 @@ const ctwSavePreview = (() => {
         _el('ctwSpActions')?.classList.remove('hidden');
     }
 
-    // Anima o arco de 0→100% em ~1.8s, depois revela os botões
-    function _runRing() {
-        const arc    = _el('ctwSpArc');
-        const pctEl  = _el('ctwSpPct');
-        if (!arc || !pctEl) return;
-
-        const DURATION = 1800; // ms
-        const start    = performance.now();
-
-        function step(now) {
-            const elapsed  = now - start;
-            const progress = Math.min(elapsed / DURATION, 1);
-
-            // Easing: ease-in-out
-            const eased = progress < 0.5
-                ? 2 * progress * progress
-                : -1 + (4 - 2 * progress) * progress;
-
-            const offset = CIRCUMFERENCE * (1 - eased);
-            arc.style.strokeDashoffset = offset.toFixed(2);
-
-            const pct = Math.round(eased * 100);
-            pctEl.textContent = pct + '%';
-
-            if (progress < 1) {
-                _animFrame = requestAnimationFrame(step);
-            } else {
-                // Chegou a 100%
-                arc.classList.add('done');
-                pctEl.classList.add('done');
-                pctEl.textContent = '100%';
-                // Revela botões de ação
-                _el('ctwSpLoading')?.classList.add('hidden');
-                _el('ctwSpActions')?.classList.remove('hidden');
-            }
-        }
-
-        _animFrame = requestAnimationFrame(step);
-    }
-
-    // Fecha o overlay com animação de saída
-    function _close(confirmed) {
+    // Fecha a tela com animação de saída
+    function _close() {
         const overlay = _el('ctwSavePreviewOverlay');
         if (!overlay) return;
-
-        if (_animFrame) { cancelAnimationFrame(_animFrame); _animFrame = null; }
         clearInterval(_creep);
 
         overlay.classList.remove('entering');
@@ -5071,80 +5067,18 @@ const ctwSavePreview = (() => {
             const pctEl = _el('ctwSpPct');
             if (pctEl) { pctEl.textContent = '0%'; pctEl.classList.remove('done'); }
             _el('ctwSpActions')?.classList.add('hidden');
-            _el('ctwSpLoading')?.classList.remove('hidden');
             _el('ctwSpSteps')?.classList.add('hidden');
             _el('ctwSpMsg')?.classList.add('hidden');
             _el('ctwSpPreviewInner').innerHTML = '';
             _sairModoSeta();
         }, 300);
-
-        if (_resolvePromise) { _resolvePromise(confirmed); _resolvePromise = null; }
     }
 
     // API pública
     return {
-        // Retorna uma Promise<boolean>
-        // true = usuário confirmou → executar salvamento
-        // false = cancelou
-        show({ type = 'bookip', previewHtml = '', docInfo = '', title = '', subtitle = '' }) {
-            return new Promise(resolve => {
-                _resolvePromise = resolve;
-
-                // Textos dinâmicos
-                const titles = {
-                    bookip:  { t: 'Pré-visualização', s: 'Confira o documento antes de salvar' },
-                    boleto:  { t: 'Pré-visualização do Contrato', s: 'Revise os dados antes de salvar' },
-                };
-                const cfg = titles[type] || titles.bookip;
-                _el('ctwSpTitle').textContent    = title    || cfg.t;
-                _el('ctwSpSubtitle').textContent = subtitle || cfg.s;
-                _el('ctwSpDocInfo').innerHTML    = docInfo;
-
-                // Injeta preview
-                const inner = _el('ctwSpPreviewInner');
-                if (inner) inner.innerHTML = previewHtml;
-
-                _el('ctwSpSteps')?.classList.add('hidden');
-                _el('ctwSpMsg')?.classList.add('hidden');
-                _el('ctwSpLoading')?.classList.remove('hidden');
-                _el('ctwSpArc')?.classList.remove('done');
-                _el('ctwSpPct')?.classList.remove('done');
-                _sairModoSeta();
-
-                // Mostra overlay
-                const overlay = _el('ctwSavePreviewOverlay');
-                overlay.classList.remove('hidden', 'leaving');
-                overlay.classList.add('entering');
-
-                // Dispara anel após um frame (garante que o CSS aplique)
-                requestAnimationFrame(() => {
-                    requestAnimationFrame(() => {
-                        _runRing();
-                    });
-                });
-
-                // Botão confirmar
-                const btnConfirm = _el('ctwSpBtnConfirm');
-                const btnCancel  = _el('ctwSpBtnCancel');
-                // Remove listeners antigos (clone replace trick)
-                const newConfirm = btnConfirm.cloneNode(true);
-                const newCancel  = btnCancel.cloneNode(true);
-                newConfirm.innerHTML = ROT_CONFIRMAR; newCancel.innerHTML = ROT_CANCELAR;   // pode ter vindo do fim de um salvamento (Enviar / Fechar)
-                btnConfirm.replaceWith(newConfirm);
-                btnCancel.replaceWith(newCancel);
-
-                _el('ctwSpBtnConfirm')?.addEventListener('click', () => _close(true),  { once: true });
-                _el('ctwSpBtnCancel')?.addEventListener('click',  () => _close(false), { once: true });
-            });
-        },
-
-        // Garantia detalhada, em duas fases:
-        //  1ª) Salvar: já grava na nuvem. O anel contorna o papel (esqueleto) conforme as etapas reais andam; termina quando gravou de verdade.
-        //  2ª) Seta de baixar: gera o PDF. O documento aparece de cima para baixo conforme o PDF fica pronto; aí vem o Enviar (que só envia).
-        // Devolve { passo(texto), concluir({...}), falhar(mensagem, aoTentar, aoFechar) }
-        salvando({ previewHtml = '', docInfo = '', etapas = [] }) {
-            if (_animFrame) { cancelAnimationFrame(_animFrame); _animFrame = null; }
-            _resolvePromise = null;
+        // Abre a tela e começa a fase de salvar.
+        // Devolve { passo(texto), concluir({...}), falhar(mensagem, aoTentar, aoFechar), fechar() }
+        salvando({ previewHtml = '', docInfo = '', etapas = [], titulo = 'Salvando na nuvem…', subtitulo = 'Só termina quando gravar de verdade. Não feche.' }) {
             clearInterval(_creep);
             const overlay = _el('ctwSavePreviewOverlay');
             overlay.classList.add('ctw-sp-dlmode');
@@ -5164,10 +5098,9 @@ const ctwSavePreview = (() => {
             dl.querySelector('.ic').innerHTML = '<path d="M12 4v12M6 11l6 6 6-6M5 20h14"/>';
             _revelarEm(0);
             arcRect.classList.remove('done');
-            titulos('Salvando na nuvem…', 'Só termina quando gravar de verdade. Não feche.');
+            titulos(titulo, subtitulo);
             dica(''); msg('');
             _el('ctwSpDocInfo').innerHTML = docInfo;
-            _el('ctwSpLoading')?.classList.add('hidden');
             _el('ctwSpActions')?.classList.add('hidden');
             _anelEm(0); desenhar();
             if (overlay.classList.contains('hidden') || overlay.classList.contains('leaving')) {
@@ -5182,21 +5115,28 @@ const ctwSavePreview = (() => {
                     const k = etapas.indexOf(txt); if (k < 0) return;
                     atual = k; falhou = false; desenhar(); _anelEm(k / etapas.length * 100);
                 },
-                // Gravou na nuvem. gerarPdf(progresso) devolve o PDF pronto; onEnviar(botao, pdfPronto) só envia.
-                concluir({ titulo = 'Salva', docInfo: info = '', html = '', aviso = '', gerarPdf = null, onEnviar = null } = {}) {
+                // Gravou na nuvem. gerarPdf(progresso) devolve o PDF pronto ({ pdfBlob, nomeFinalArquivo }); onEnviar(botao, pdfPronto) só envia.
+                concluir({ titulo: tit = 'Salvo', subtitulo: sub = 'Já está na nuvem. Toque na seta para gerar o PDF.', subPronto = 'Toque em Enviar quando quiser mandar ao cliente.',
+                           docInfo: info = '', html = '', aviso = '', gerarPdf = null, onEnviar = null,
+                           rotuloEnvio = 'Enviar', iconeEnvio = 'bi-send-fill', aoFechar = null } = {}) {
                     atual = etapas.length; lista.classList.add('hidden');
                     _anelEm(100); arcRect.classList.add('done'); _el('ctwSpPct').style.visibility = 'hidden';
                     if (info) _el('ctwSpDocInfo').innerHTML = info;
                     if (html && inner) inner.innerHTML = html;       // o documento final, com o número de verdade (aparece quando o PDF ficar pronto)
                     msg(aviso, true);
-                    let pdf = null;
-                    const fechar = () => _close(false);
-                    const enviar = () => _botoes('<i class="bi bi-send-fill"></i> Enviar', '<i class="bi bi-x-lg"></i> Fechar',
-                        (botao) => { if (typeof onEnviar === 'function') onEnviar(botao, pdf); }, fechar);
+                    let pdf = null, enviando = false;
+                    const fechar = () => { _close(); if (typeof aoFechar === 'function') aoFechar(); };
+                    const enviar = () => _botoes(`<i class="bi ${iconeEnvio}"></i> ${rotuloEnvio}`, '<i class="bi bi-x-lg"></i> Fechar',
+                        (botao) => {
+                            if (enviando || typeof onEnviar !== 'function') return;     // um toque de cada vez (a folha de compartilhar não abre duas vezes)
+                            enviando = true;
+                            let r; try { r = onEnviar(botao, pdf); } catch (e) { console.error(e); }
+                            Promise.resolve(r).catch(e => console.error(e)).finally(() => { enviando = false; });
+                        }, fechar);
                     const pronta = () => {
                         clearInterval(_creep);
                         _revelarEm(100); dl.classList.add('fim'); dica('');
-                        titulos('✓ PDF pronto', 'Toque em Enviar quando quiser mandar ao cliente.');
+                        titulos('✓ PDF pronto', subPronto);
                         enviar();
                     };
                     const gerar = async () => {
@@ -5214,7 +5154,7 @@ const ctwSavePreview = (() => {
                             clearInterval(_creep);
                             console.error(e);
                             dl.className = 'ctw-sp-dl err'; dl.firstElementChild.style.display = 'none';
-                            titulos('A garantia está salva, mas o PDF não saiu', '');
+                            titulos(tit + ': o PDF não saiu', '');
                             msg('Não consegui gerar o PDF: ' + ((e && e.message) || 'erro desconhecido') + '.', true);
                             dica('Toque na seta para tentar de novo.');
                             dl.onclick = gerar;
@@ -5223,7 +5163,7 @@ const ctwSavePreview = (() => {
                     };
                     // 2ª fase: esqueleto + seta
                     dl.classList.remove('esconder'); dl.firstElementChild.style.display = '';
-                    titulos('✓ ' + titulo, 'Já está na nuvem. Toque na seta para gerar o PDF.');
+                    titulos('✓ ' + tit, sub);
                     dica('Toque na seta para gerar o PDF.');
                     dl.onclick = gerar;
                     _botoes(null, '<i class="bi bi-x-lg"></i> Fechar', null, fechar);
@@ -5234,8 +5174,10 @@ const ctwSavePreview = (() => {
                     msg(String(mensagem).replace(/[.\s]*$/, '.') + ' Ao tentar de novo, nada fica duplicado.', true);
                     _botoes('<i class="bi bi-arrow-repeat"></i> Tentar de novo', '<i class="bi bi-x-lg"></i> Fechar',
                         () => { if (typeof aoTentar === 'function') aoTentar(); },
-                        () => { _close(false); if (typeof aoFechar === 'function') aoFechar(); });
+                        () => { _close(); if (typeof aoFechar === 'function') aoFechar(); });
                 },
+                // Fecha a tela sem mais nada (quando o aviso que vem depois precisa aparecer por cima do que está por baixo)
+                fechar() { _close(); },
             };
         },
     };
@@ -7488,11 +7430,9 @@ if (bookipToggle) {
                 console.log("🔒 Modo Edição: Mantendo dados.");
                 window.isSystemSwitching = false; // Destrava para o futuro
             } else {
-                // Foi o dedo do usuário. Só começa um formulário limpo se saiu de uma edição ou acabou de salvar
-                // um documento; se estava digitando um novo, o que já foi digitado (e o rascunho) continua aí.
-                const _ps = document.getElementById('postSaveOptions');
-                const _acabouDeSalvar = !!(_ps && !_ps.classList.contains('hidden'));
-                if (currentEditingBookipId !== null || _acabouDeSalvar) {
+                // Foi o dedo do usuário. Só começa um formulário limpo se saiu de uma edição;
+                // se estava digitando um novo, o que já foi digitado (e o rascunho) continua aí.
+                if (currentEditingBookipId !== null) {
                     if (typeof window.resetFormulariosBookip === 'function') window.resetFormulariosBookip();
                 }
             }
@@ -8315,8 +8255,8 @@ function loadBookipHistory() {
     // --- REATIVAR BOTÕES INTERNOS ---
     function reativarListeners() {
         container.querySelectorAll('.edit-bookip-btn').forEach(b => b?.addEventListener('click', e => carregarDadosParaEdicao(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id))));
-        container.querySelectorAll('.email-history-btn').forEach(b => b?.addEventListener('click', e => gerarPdfDoHistorico(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id), b, 'gmail')));
-        container.querySelectorAll('.btn-share-hist').forEach(b => b?.addEventListener('click', e => gerarPdfDoHistorico(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id), b, 'compartilhar')));
+        container.querySelectorAll('.email-history-btn').forEach(b => b?.addEventListener('click', e => ctwAbrirPdfDoDocumento(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id), b, 'gmail')));
+        container.querySelectorAll('.btn-share-hist').forEach(b => b?.addEventListener('click', e => ctwAbrirPdfDoDocumento(listaCompletaCache.find(i => i.id === e.target.closest('button').dataset.id), b, 'compartilhar')));
         container.querySelectorAll('.btn-ver-foto').forEach(b => b?.addEventListener('click', e => {
             const btn = e.target.closest('button');
             const fotoUrl = btn.dataset.foto;
@@ -8415,8 +8355,7 @@ container.querySelectorAll('.btn-download-seguro').forEach(b => {
         const item = listaCompletaCache.find(i => i.id === id);
         
         if(item) {
-            // Chama a função mestre no modo "Apenas Baixar"
-            gerarPdfDoHistorico(item, btn, 'baixar');
+            ctwAbrirPdfDoDocumento(item, btn, 'baixar');
 }
     });
 });
@@ -8545,7 +8484,42 @@ function carregarDadosParaEdicao(item) {
 // FLUXO DE GARANTIA LAPIDADO (SALVAR -> DEPOIS OPÇÕES)
 // ============================================================
 
-let lastSavedBookipData = null; // Guarda os dados na memória após salvar
+// Documento já gravado na nuvem por uma tentativa de salvar que não terminou (sem internet, foto...): { id, col, doc }.
+// A nova tentativa atualiza ESTE documento, com o mesmo número, em vez de criar outro.
+let _bookipParcial = null;
+
+// Textos da tela de salvar / gerar PDF (garantia, orçamento, situação e recibo)
+const CTW_NOME_TIPO_DOC = { garantia: 'Garantia', orcamento: 'Orçamento', situacao: 'Situação', recibo: 'Recibo' };
+function ctwTituloDoc(d) {
+    return (CTW_NOME_TIPO_DOC[d.type] || 'Garantia') + (d.docNumber ? ' Doc ' + d.docNumber : '');
+}
+function ctwDocInfoHtml(d) {
+    const n = Array.isArray(d.items) ? d.items.length : Object.keys(d.items || {}).length;   // do Firebase, a lista pode chegar como objeto
+    const prazo = d.type === 'orcamento' ? 'Validade: ' + (d.validadeDias || 0) : 'Garantia: ' + (d.diasGarantia || 0);
+    return `<strong style="color:var(--text-color)">${escapeHtml(d.nome || 'Consumidor')}</strong><br>${n} ${n === 1 ? 'item' : 'itens'} · ${prazo} dias`;
+}
+function ctwHtmlDocPreview(d) {
+    return typeof getReciboHTML === 'function'
+        ? `<div style="width:750px;overflow:hidden;background:#fff;color:#000;">${getReciboHTML(d)}</div>`
+        : '<p style="color:#000;padding:20px">Prévia indisponível</p>';
+}
+// Gera o PDF do documento já pronto para enviar: { pdfBlob, nomeFinalArquivo }
+async function ctwPdfBlobDoDocumento(dados, progresso) {
+    const { worker, nomeFinalArquivo } = await ctwRenderizarPdf(dados, progresso);
+    return { pdfBlob: await worker.output('blob'), nomeFinalArquivo };
+}
+// Histórico: a mesma tela de salvar, só com a 2ª fase (o documento já está na nuvem): seta de baixar → PDF pronto → Enviar / Compartilhar / Baixar.
+// modo: 'gmail' | 'compartilhar' | 'baixar'; origem: o botão do Histórico que foi tocado
+function ctwAbrirPdfDoDocumento(dados, origem, modo) {
+    if (!dados) { showCustomModal({ message: 'Não encontrei este documento. Atualize o histórico e tente de novo.' }); return; }
+    const acao = CTW_ACAO_PDF[modo] || CTW_ACAO_PDF.gmail;
+    ctwSavePreview.salvando({ previewHtml: ctwHtmlDocPreview(dados), docInfo: ctwDocInfoHtml(dados), etapas: [] }).concluir({
+        titulo: ctwTituloDoc(dados),
+        subPronto: acao.sub, rotuloEnvio: acao.rotulo, iconeEnvio: acao.icone,
+        gerarPdf: (progresso) => ctwPdfBlobDoDocumento(dados, progresso),
+        onEnviar: (botao, pdfPronto) => gerarPdfDoHistorico(dados, botao, modo, pdfPronto, origem),
+    });
+}
 
 // 1. AÇÃO: CLICAR EM "FINALIZAR E SALVAR"
 const btnSave = document.getElementById('btnSaveBookip');
@@ -8576,33 +8550,16 @@ if (btnSave) {
             previewDadosTemp.validadeDias = ctwLerValidadeOrcamentoDoForm();
             previewDadosTemp.docNumber = '';   // o número só é definido ao salvar
         }
-        const _rawHtml = (typeof getReciboHTML === 'function') ? getReciboHTML(previewDadosTemp) : '<p style="color:#000;padding:20px">Prévia indisponível</p>';
-        const previewHtmlTemp = `<div style="width:750px;overflow:hidden;background:#fff;color:#000;">${_rawHtml}</div>`;
+        const docInfoHtml = ctwDocInfoHtml(previewDadosTemp);
 
-        const docInfoHtml = `
-            <strong style="color:var(--text-color)">${previewDadosTemp.nome}</strong><br>
-            ${previewDadosTemp.items.length} ${previewDadosTemp.items.length === 1 ? 'item' : 'itens'} · ${ctwEhOrcamento() ? 'Validade: ' + previewDadosTemp.validadeDias : 'Garantia: ' + previewDadosTemp.diasGarantia} dias
-        `;
-
-        // Garantia detalhada: não pede confirmação antes. Já grava, e a prévia vira a animação do salvamento (só termina quando gravou de verdade).
-        // Garantia normal: continua como sempre (prévia → "Salvar agora").
+        // Não pede confirmação antes: já grava, e a prévia vira a animação do salvamento (só termina quando gravou de verdade).
+        // Depois, a seta de baixar gera o PDF e o Enviar só envia.
         const gdFluxo = !!(window.ctwGdEmCurso && window.ctwGdEmCurso() && !ctwEhOrcamento());
-        let sp = null;
-        if (gdFluxo) {
-            sp = ctwSavePreview.salvando({
-                previewHtml: previewHtmlTemp,
-                docInfo: docInfoHtml,
-                etapas: ['Conferindo a numeração', 'Gravando o documento'].concat(window._bookipFotoBlob ? ['Enviando a foto'] : [], ['Salvando o cliente', 'Registrando o lucro']),
-            });
-        } else {
-            const confirmed = await ctwSavePreview.show({
-                type: 'bookip',
-                previewHtml: previewHtmlTemp,
-                docInfo: docInfoHtml,
-            });
-
-            if (!confirmed) { if (window.ctwGdPreviaCancelada) window.ctwGdPreviaCancelada(); return; } // usuário cancelou
-        }
+        const sp = ctwSavePreview.salvando({
+            previewHtml: ctwHtmlDocPreview(previewDadosTemp),
+            docInfo: docInfoHtml,
+            etapas: ['Conferindo a numeração', 'Gravando o documento'].concat(window._bookipFotoBlob ? ['Enviando a foto'] : [], ctwEhOrcamento() ? [] : ['Salvando o cliente'], gdFluxo ? ['Registrando o lucro'] : []),
+        });
         // ────────────────────────────────────────────────────
 
         // Feedback visual
@@ -8653,22 +8610,22 @@ if (btnSave) {
             // ---------------------------------------------------------
             // CORREÇÃO: GERAÇÃO DO NÚMERO DOC (EVITA DUPLICIDADE)
             // ---------------------------------------------------------
-            // Garantia detalhada: sem internet o Firebase espera sem responder. Um limite evita a animação ficar presa para sempre.
-            const limite = (promessa) => (!gdFluxo ? promessa : Promise.race([promessa, new Promise((_, rej) => setTimeout(() => rej(new Error('Sem conexão: não deu para gravar agora.')), 25000))]));
-            // Tentativa anterior que gravou o documento mas não terminou (foto, por exemplo): a nova tentativa atualiza o MESMO documento, nunca cria outro.
-            const idExistente = currentEditingBookipId || (gdFluxo && window.ctwGdParcial ? window.ctwGdParcial() : '') || '';
-            if (sp) sp.passo('Conferindo a numeração');
+            // Sem internet o Firebase espera sem responder. Um limite evita a animação ficar presa para sempre.
+            const limite = (promessa) => Promise.race([promessa, new Promise((_, rej) => setTimeout(() => rej(new Error('Sem conexão: não deu para gravar agora.')), 25000))]);
+            // Tentativa anterior que gravou o documento mas não terminou (sem internet, foto...): a nova tentativa atualiza o MESMO documento e mantém o número, nunca cria outro.
+            const idParcial = (gdFluxo && window.ctwGdParcial ? window.ctwGdParcial() : (_bookipParcial && _bookipParcial.col === colSalvar && _bookipParcial.id)) || '';
+            const idExistente = currentEditingBookipId || idParcial || '';
+            sp.passo('Conferindo a numeração');
             const snapshot = await limite(get(ref(db, colSalvar)));
             let docNumberFormatted = '001';
 
             if (idExistente) {
-                // MODO EDIÇÃO: Tenta manter o número original
-                if (snapshot.exists()) {
-                    const todos = snapshot.val();
-                    const itemAtual = todos[idExistente];
-                    if (itemAtual && itemAtual.docNumber) {
-                        docNumberFormatted = itemAtual.docNumber;
-                    }
+                // MODO EDIÇÃO (ou nova tentativa): Tenta manter o número original
+                const itemAtual = snapshot.exists() ? snapshot.val()[idExistente] : null;
+                if (itemAtual && itemAtual.docNumber) {
+                    docNumberFormatted = itemAtual.docNumber;
+                } else if (!currentEditingBookipId && _bookipParcial && _bookipParcial.col === colSalvar && _bookipParcial.id === idExistente && _bookipParcial.doc) {
+                    docNumberFormatted = _bookipParcial.doc;      // a gravação da tentativa anterior ainda não chegou ao servidor: o número dela continua o mesmo
                 }
             } else {
                 // MODO NOVO: Procura o MAIOR número existente e soma +1
@@ -8722,7 +8679,7 @@ criadoPor: currentUserProfile || "Desconhecido",
             if (!modoOrc && window.ctwGdEmCurso && window.ctwGdEmCurso()) dados.detalhada = true;   // feita na Garantia detalhada (dev): só estas mostram o líquido no histórico
 
             // SALVA NO FIREBASE
-            if (sp) sp.passo('Gravando o documento');
+            sp.passo('Gravando o documento');
             if (idExistente) {
                 // Atualiza existente
                 await limite(update(ref(db, `${colSalvar}/${idExistente}`), dados));
@@ -8730,211 +8687,90 @@ criadoPor: currentUserProfile || "Desconhecido",
             } else {
                 // Cria novo
                 const newRef = push(ref(db, colSalvar), dados);   // a chave já existe aqui, antes da resposta do servidor
-                if (gdFluxo && window.ctwGdParcialSet) window.ctwGdParcialSet(newRef.key);   // se a conexão cair, "Tentar de novo" atualiza este mesmo documento
+                // se a conexão cair, "Tentar de novo" atualiza este mesmo documento (a Garantia detalhada guarda a chave por conta própria)
+                if (gdFluxo) { if (window.ctwGdParcialSet) window.ctwGdParcialSet(newRef.key); }
+                else _bookipParcial = { id: newRef.key, col: colSalvar, doc: docNumberFormatted };
                 await limite(newRef);
                 dados.id = newRef.key;
             }
 
             // UPLOAD FOTO via Imgur (se houver blob pendente)
             if (window._bookipFotoBlob) {
-                if (sp) sp.passo('Enviando a foto');
+                sp.passo('Enviando a foto');
                 const fotoUrl = await limite(window.uploadFotoCloudinary(window._bookipFotoBlob));
                 if (fotoUrl) {
                     dados.fotoUrl = fotoUrl;
                     window._bookipFotoUrl = fotoUrl;
-                    await update(ref(db, colSalvar + '/' + dados.id), { fotoUrl });
+                    await limite(update(ref(db, colSalvar + '/' + dados.id), { fotoUrl }));
                 }
                 window._bookipFotoBlob = null;
             }
 
             // SALVA CLIENTE (ROBÔ) — orçamento é só uma proposta: não cria cliente no cadastro
-            if (sp) sp.passo('Salvando o cliente');
             if (!modoOrc) {
-                await salvarClienteAutomatico({
+                sp.passo('Salvando o cliente');
+                await limite(salvarClienteAutomatico({
                     nome: dados.nome, cpf: dados.cpf, tel: dados.tel, end: dados.end, email: dados.email,
                     nasc: document.getElementById('bookipNascimento')?.value || ''
-                });
+                }));
             }
 
             // VALOR LÍQUIDO (dev): a Garantia detalhada grava o líquido junto da garantia. Falha aqui nunca desfaz a garantia.
-            if (sp) sp.passo('Registrando o lucro');
+            if (gdFluxo) sp.passo('Registrando o lucro');
             if (!modoOrc && docType !== 'situacao' && (!currentEditingBookipId || (window.ctwGdEmCurso && window.ctwGdEmCurso())) && window.ctwLiqSalvar) {
                 try { await window.ctwLiqSalvar(dados); } catch (e) { console.warn('[líquido] não salvou:', e); }
             }
 
             // SUCESSO!
-            lastSavedBookipData = dados; // Guarda na memória
+            _bookipParcial = null;
+            const htmlFinal = ctwHtmlDocPreview(dados);   // o documento final, com o número de verdade
+            const tipoTitulo = ctwTituloDoc(dados) + (dados.type === 'orcamento' || dados.type === 'recibo' ? ' salvo' : ' salva');
 
             // Toca vibração se tiver no celular
             if (navigator.vibrate) navigator.vibrate(50);
 
-            // ALTERA A TELA (Esconde Salvar -> Mostra Opções)
-            document.getElementById('saveActionContainer').classList.add('hidden');
-            document.getElementById('postSaveOptions').classList.remove('hidden');
-            
-            // Restaura botão salvar
-            btnSave.innerHTML = originalText;
+            // O formulário volta limpo (e o rascunho some): o documento já está na nuvem. A tela de salvar cobre tudo até o Fechar.
             btnSave.disabled = false;
+            window.resetFormulariosBookip(gdFluxo ? { manterRascunho: true } : undefined);
+            window.scrollTo({ top: 0 });
 
-            // Garantia detalhada: a animação termina aqui, já com o documento final (número de verdade) e o botão Enviar
-            if (sp) {
-                const htmlFinal = (typeof getReciboHTML === 'function') ? `<div style="width:750px;overflow:hidden;background:#fff;color:#000;">${getReciboHTML(dados)}</div>` : '';
-                sp.concluir({
-                    titulo: 'Garantia' + (dados.docNumber ? ' Doc ' + dados.docNumber : '') + ' salva',
-                    docInfo: docInfoHtml,
-                    html: htmlFinal,
-                    aviso: dados.liqErro ? 'O valor líquido NÃO foi salvo: ' + dados.liqErro + ' Abra a Garantia detalhada, aba Histórico, expanda o card e toque em “Dev · Valor líquido” para completar.' : '',
-                    // seta de baixar = gerar o PDF; o Enviar só envia o que já está pronto
-                    gerarPdf: async (progresso) => {
-                        const { worker, nomeFinalArquivo } = await ctwRenderizarPdf(dados, progresso);
-                        return { pdfBlob: await worker.output('blob'), nomeFinalArquivo };
-                    },
-                    onEnviar: (botao, pdfPronto) => gerarPdfDoHistorico(dados, botao, 'gmail', pdfPronto),
-                });
-            }
+            // A animação termina aqui, já com o documento final e a seta de baixar
+            sp.concluir({
+                titulo: tipoTitulo,
+                docInfo: ctwDocInfoHtml(dados),
+                html: htmlFinal,
+                aviso: dados.liqErro ? 'O valor líquido NÃO foi salvo: ' + dados.liqErro + ' Abra a Garantia detalhada, aba Histórico, expanda o card e toque em “Dev · Valor líquido” para completar.' : '',
+                // seta de baixar = gerar o PDF; o Enviar só envia o que já está pronto
+                gerarPdf: (progresso) => ctwPdfBlobDoDocumento(dados, progresso),
+                onEnviar: (botao, pdfPronto) => gerarPdfDoHistorico(dados, botao, 'gmail', pdfPronto),
+            });
 
         } catch (error) {
             console.error(error);
             btnSave.innerHTML = originalText;
             btnSave.disabled = false;
-            if (sp) sp.falhar((error && error.message) || 'erro desconhecido', () => btnSave.click(), () => { if (window.ctwGdPreviaCancelada) window.ctwGdPreviaCancelada(); });
-            else showCustomModal({ message: "Erro ao salvar: " + error.message });
+            sp.falhar((error && error.message) || 'erro desconhecido', () => btnSave.click(), () => { if (window.ctwGdPreviaCancelada) window.ctwGdPreviaCancelada(); });
         }
     });
 }
 
 
+// "Começar um novo recibo/orçamento": limpa o formulário e o rascunho
+const btnNovoCiclo = document.getElementById('btnNewBookipCycle');
+if (btnNovoCiclo) {
+    btnNovoCiclo.onclick = function(e) {
+        if (e) e.preventDefault();
+        window.resetFormulariosBookip();
 
-// 2. AÇÃO: CLICAR EM "IMPRIMIR" (PÓS-SALVO)
-const btnPostPrint = document.getElementById('btnPostPrint');
-if (btnPostPrint) {
-    btnPostPrint?.addEventListener('click', () => {
-        if (lastSavedBookipData) {
-            printBookip(lastSavedBookipData);
-        } else {
-            showCustomModal({ message: "Erro: Nenhum dado salvo encontrado." });
+        // Volta para a aba "Novo"
+        const toggle = document.getElementById('bookipModeToggle');
+        if (toggle && toggle.checked) {
+            toggle.checked = false;
+            toggle.dispatchEvent(new Event('change'));
         }
-    });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
 }
-
-// 3. AÇÃO: CLICAR EM "COMPARTILHAR / PDF" (PÓS-SALVO)
-const btnPostShare = document.getElementById('btnPostShare');
-if (btnPostShare) {
-    btnPostShare?.addEventListener('click', () => {
-        if (lastSavedBookipData) {
-            // No Chrome o e-mail vai para a área de transferência (não dá para anexar); no APK o Gmail abre com tudo pronto
-            if (lastSavedBookipData.email && !(window.ctwNativo && window.ctwNativo.ativo())) {
-                showCustomModal({ message: "E-mail copiado! Gerando PDF..." });
-            }
-            
-            // Mesma função do botão Gmail do histórico
-            gerarPdfDoHistorico(lastSavedBookipData, btnPostShare, 'gmail');
-        }
-    });
-}
-
-// ============================================================
-// ============================================================
-// 4. AÇÃO: BOTÕES DE "NOVA GARANTIA" (CORREÇÃO FINAL: VARIÁVEL DE DADOS)
-// ============================================================
-
-const botoesReset = ['btnNewBookipCycle', 'btnResetSuccess'];
-
-botoesReset.forEach(idBotao => {
-    const btn = document.getElementById(idBotao);
-    
-    if (btn) {
-        btn.onclick = function(e) {
-            if(e) e.preventDefault();
-            console.log("🔄 Reiniciando ciclo e RESETANDO botões de ação...");
-
-            // 1. Faxina de Dados (Chama a função e limpa a variável local também)
-            if(typeof window.resetFormulariosBookip === 'function') {
-                window.resetFormulariosBookip();
-            }
-            // FORÇA LIMPEZA DA VARIÁVEL LOCAL (Importante!)
-            if(typeof lastSavedBookipData !== 'undefined') {
-                lastSavedBookipData = null;
-            }
-
-            // 2. Esconde o Banner de Sucesso
-            const popup = document.getElementById('postSaveOptions');
-            if(popup) popup.classList.add('hidden');
-
-            // 3. Mostra o botão de Salvar novamente
-            const saveContainer = document.getElementById('saveActionContainer');
-            if(saveContainer) saveContainer.classList.remove('hidden');
-
-            // 4. Reset de Abas (Volta para "Novo")
-            const toggle = document.getElementById('bookipModeToggle');
-            if(toggle && toggle.checked) {
-                toggle.checked = false; 
-                toggle.dispatchEvent(new Event('change'));
-            }
-
-            // ============================================================
-            // O PULO DO GATO: RESETAR O BOTÃO "SALVAR ONLINE"
-            // (Agora lendo a variável correta: lastSavedBookipData)
-            // ============================================================
-            const btnShareAntigo = document.getElementById('btnPostShare');
-            if(btnShareAntigo) {
-                // Clona para matar eventos velhos
-                const btnShareNovo = btnShareAntigo.cloneNode(true);
-                
-                // Restaura o visual original
-                btnShareNovo.innerHTML = '<i class="bi bi-envelope-at-fill fs-2 d-block mb-2 text-success"></i> <span class="small text-light">Gerar documento & enviar por e-mail</span>';
-                btnShareNovo.className = 'btn btn-dark w-100 p-3 border-secondary';
-                btnShareNovo.disabled = false;
-                
-                // Adiciona a lógica de GERAR com a variável correta
-                btnShareNovo.onclick = function() {
-                    // CORREÇÃO AQUI: Removemos o "window." para ler a variável do módulo
-                    if (typeof lastSavedBookipData !== 'undefined' && lastSavedBookipData) {
-                        
-                        // No Chrome o e-mail vai para a área de transferência (a função copia); no APK o Gmail abre pronto
-                        if (lastSavedBookipData.email && !(window.ctwNativo && window.ctwNativo.ativo()) && typeof showCustomModal === 'function') {
-                            showCustomModal({ message: "E-mail copiado! Gerando PDF..." });
-                        }
-                        
-                        // GERA O PDF NOVO
-                        if(typeof gerarPdfDoHistorico === 'function') {
-                            gerarPdfDoHistorico(lastSavedBookipData, btnShareNovo, 'gmail');
-                        }
-                    } else {
-                        // Se cair aqui, tenta recuperar do window por segurança
-                        if(window.lastSavedBookipData) {
-                             gerarPdfDoHistorico(window.lastSavedBookipData, btnShareNovo, 'gmail');
-                        } else {
-                             alert("Erro: Nenhum dado salvo encontrado. Salve novamente.");
-                        }
-                    }
-                };
-
-                // Substitui o botão velho pelo novo
-                btnShareAntigo.parentNode.replaceChild(btnShareNovo, btnShareAntigo);
-            }
-
-            // (Opcional) Reseta o visual do card pai se ficou verde
-            const cardShare = document.getElementById('btnPostShare')?.closest('.col-6');
-            if(cardShare) { // Tenta pegar o novo ou o velho
-                const cardReal = document.getElementById('btnPostShare').closest('.col-6') || cardShare;
-                if (cardReal) {
-                    cardReal.style.border = ''; 
-                    cardReal.style.backgroundColor = '';
-                }
-            }
-            // Remove borda verde do card pai do botão (caso exista classe específica)
-            const parentCard = document.getElementById('btnPostShare')?.parentElement; 
-            if(parentCard) {
-                 parentCard.style.borderLeft = ""; 
-                 parentCard.style.backgroundColor = "";
-            }
-
-            // 5. Rola para o topo
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        };
-    }
-});
 
 
 // ============================================================
@@ -9008,29 +8844,6 @@ async function salvarClienteAutomatico(dados) {
     } catch (e) {
         alert("ROBÔ FALHOU AO GRAVAR NO BANCO: " + e.message);
     }
-}
-
-// Chave do cadastro de clientes: CPF (só dígitos) ou "nome_telefone" quando não há CPF.
-function ctwClienteId(nome, cpf, tel) {
-    const cpfLimpo = String(cpf || '').replace(/\D/g, '');
-    if (cpfLimpo.length > 5) return cpfLimpo;
-    const nomeLimpo = String(nome || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const telLimpo = String(tel || '').replace(/\D/g, '');
-    return `${nomeLimpo}_${telLimpo}`;
-}
-
-// Contrato salvo com e-mail → guarda o e-mail no cadastro do cliente (só se ele já existir:
-// contrato não cria cliente). Atualiza apenas o campo "email"; nunca bloqueia nem quebra o contrato.
-async function ctwSincronizarEmailCliente(d) {
-    try {
-        const email = String((d && d.compradorEmail) || '').trim().toLowerCase();
-        if (!email || !ctwEmailValido(email)) return;
-        const id = ctwClienteId(d.compradorNome, d.compradorCpf, d.compradorTelefone);
-        if (!id) return;
-        const cliente = (window.dbClientsCache || []).find(c => c.id === id);
-        if (!cliente || String(cliente.email || '').trim().toLowerCase() === email) return;
-        await update(ref(db, 'clientes/' + id), { email });
-    } catch (e) { console.warn('E-mail do cliente não sincronizado:', e); }
 }
 
 //=======================================
@@ -10553,8 +10366,9 @@ const opt = {
 // FUNÇÃO MESTRA: GERAR PDF (UNIFICADA: BAIXAR E ENVIAR)
 // ============================================================
 // modo: 'baixar' (só salva) | 'gmail' | 'compartilhar' | indefinido = envio de sempre (tela pós-salvar)
-// preparado: { pdfBlob, nomeFinalArquivo } quando o PDF já foi gerado antes (seta de baixar da Garantia detalhada): só envia, sem gerar de novo.
-async function gerarPdfDoHistorico(dados, botao, modo, preparado) {
+// preparado: { pdfBlob, nomeFinalArquivo } quando o PDF já foi gerado antes (seta de baixar da tela de salvar): só envia/baixa, sem gerar de novo.
+// origem: o botão do Histórico que abriu a tela (o visual de "já enviado" vai nele, não no botão da tela de salvar).
+async function gerarPdfDoHistorico(dados, botao, modo, preparado, origem) {
     if (!preparado) await garantirPdfLibs();
     const apenasBaixar = (modo === true || modo === 'baixar');
     const nativo = !!(window.ctwNativo && window.ctwNativo.ativo());
@@ -10618,18 +10432,19 @@ async function gerarPdfDoHistorico(dados, botao, modo, preparado) {
         // ==========================================
         if (apenasBaixar) {
             let mensagem = "Download concluído! Verifique seus arquivos. 📂";
+            const salvarArquivo = async () => { if (worker) await worker.save(); else ctwBaixarPdf(pdfBlob, nomeFinalArquivo); };   // PDF já pronto: baixa o arquivo que já existe
             if (nativo) {
                 // APK: grava em Downloads sem abrir nada; se o Android/APK não puder, cai no "salvar ou enviar"
-                const blobDl = await worker.output('blob');
+                const blobDl = pdfBlob || await worker.output('blob');
                 try {
                     await window.ctwNativo.salvarEmDownloads(blobDl, nomeFinalArquivo);
                     mensagem = "PDF salvo em Downloads! 📂";
                 } catch (errDl) {
-                    await worker.save();
+                    await salvarArquivo();
                     mensagem = "PDF pronto! Escolha onde salvar ou enviar. 📂";
                 }
             } else {
-                await worker.save(); // Baixa direto
+                await salvarArquivo(); // Baixa direto
             }
 
             removerLoading();
@@ -10668,7 +10483,7 @@ async function gerarPdfDoHistorico(dados, botao, modo, preparado) {
                 if ((dados.id || dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') {
                     marcarComoEnviadoNoBanco(dados.id || dados.docId, ctwColDoDoc(dados));
                 }
-                const btnMail = botao.closest('.accordion-body')?.querySelector('.email-history-btn');
+                const btnMail = (origem || botao).closest('.accordion-body')?.querySelector('.email-history-btn');
                 if (btnMail) {
                     btnMail.classList.remove('btn-warning'); btnMail.classList.add('btn-dark');
                     btnMail.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
@@ -10710,7 +10525,8 @@ async function gerarPdfDoHistorico(dados, botao, modo, preparado) {
                     novoBotao.innerHTML = '<i class="bi bi-check-circle-fill"></i> Enviado!';
                     novoBotao.classList.replace('btn-success', 'btn-dark');
                     
-                    const card = novoBotao.closest('.list-group-item') || novoBotao.closest('.card');
+                    const alvoVisual = origem || novoBotao;
+                    const card = alvoVisual.closest('.list-group-item') || alvoVisual.closest('.card');
                     if(card) { card.style.borderLeft = "6px solid #28a745"; card.style.backgroundColor = "rgba(var(--primary-color-rgb), 0.08)"; }
                     
                     if((dados.id || dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') {
@@ -11258,10 +11074,9 @@ function _preencherFormularioComDadosIA(d) {
 // Garantia detalhada (dev): preenche o formulário da Garantia (que continua oculto) com dados prontos; quem salva é o botão de sempre.
 // Devolve { ocupado: true } se há uma garantia normal em andamento (a menos que spec.forcar).
 window.ctwPreencherGarantia = function(spec) {
-    const posSalvo = !document.getElementById('postSaveOptions')?.classList.contains('hidden');   // acabou de salvar uma: o formulário ainda guarda os dados dela
     if (ctwEhOrcamento()) {
         ctwTrocarModoDoc('garantia');                  // o que estava no orçamento vai para o rascunho dele
-    } else if (!spec.forcar && !posSalvo && (currentEditingBookipId !== null || ctwFormularioBookipTemDados())) {   // recém-salvo: o formulário só guarda o que já foi gravado
+    } else if (!spec.forcar && (currentEditingBookipId !== null || ctwFormularioBookipTemDados())) {
         return { ocupado: true };
     }
     window.isSimpleReceiptMode = false;
@@ -11309,6 +11124,7 @@ window.resetFormulariosBookip = function(opcoes) {
     // Removi o 'window.' para ele limpar a variável REAL do módulo app.js
     currentEditingBookipId = null; 
     // 👆 AGORA ELE LIMPA DE VERDADE 👆
+    _bookipParcial = null;      // formulário novo: uma tentativa antiga que ficou pela metade não vale mais
 
     // Garante que o rascunho velho morra quando você pede um novo.
     if (!(opcoes && opcoes.manterRascunho) && typeof limparRascunhoBookipDefinitivo === 'function') {
@@ -11382,13 +11198,6 @@ window.resetFormulariosBookip = function(opcoes) {
     } else if (typeof atualizarListaVisualBookip === 'function') {
         atualizarListaVisualBookip();
     }
-
-    // 8. Esconde opções de pós-salvamento e mostra o form
-    const postSave = document.getElementById('postSaveOptions');
-    if(postSave) postSave.classList.add('hidden');
-    
-    const saveContainer = document.getElementById('saveActionContainer');
-    if(saveContainer) saveContainer.classList.remove('hidden');
 
     console.log("✅ Sistema limpo e pronto para novo cadastro (ID: null).");
 };

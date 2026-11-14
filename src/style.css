@@ -297,7 +297,7 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
 
 .hidden { display: none !important; }
 
-.custom-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 1056; opacity: 0; visibility: hidden; transition: opacity var(--transition-duration) ease, visibility var(--transition-duration) ease; }
+.custom-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 100001; opacity: 0; visibility: hidden; transition: opacity var(--transition-duration) ease, visibility var(--transition-duration) ease; }
 .custom-modal-overlay.active { opacity: 1; visibility: visible; }
 .custom-modal-content { background-color: var(--secondary-color); color: var(--text-color); padding: 30px; border-radius: var(--border-radius); text-align: center; max-width: 400px; width: 90%;transform: scale(0.9); transition: transform var(--transition-duration) ease; border: 1px solid var(--glass-border); }
 .custom-modal-overlay.active .custom-modal-content { transform: scale(1); }
@@ -311,7 +311,7 @@ h2, h3, h4, h5 { font-weight: 600; text-align: center; color: var(--text-color);
     color: var(--text-color);
     padding: 12px 20px;
     border-radius: var(--border-radius);
-    z-index: 10001;
+    z-index: 100002;
     border: 1px solid var(--glass-border);
     transition: top 0.4s ease-in-out, opacity 0.4s ease-in-out;
     opacity: 0;
@@ -1038,62 +1038,6 @@ input[type="color"]::-moz-color-swatch { border-radius: 50%; border: 1px solid v
 /* =========================================
    CORREÇÃO DO PDF (COLE NO FINAL DO ARQUIVO)
    ========================================= */
-/* ============================================================
-   ESTILO DO POP-UP DE SUCESSO (COLE NO FINAL DO ARQUIVO)
-   ============================================================ */
-
-/* Quando o #postSaveOptions NÃO estiver escondido, ele vira um container de tela cheia */
-#postSaveOptions:not(.hidden) {
-    position: fixed !important;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 12000 !important; /* Bem alto para ficar na frente de tudo */
-    display: flex !important;
-    align-items: center;
-    justify-content: center;
-    margin: 0 !important;
-    padding: 20px;
-    background: transparent; /* O fundo escuro é feito pelo backdrop abaixo */
-}
-
-/* O Fundo Escuro (Dimmer) */
-#postSaveOptions .popup-backdrop {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.85); /* Bem escuro para focar */ /* Desfoque no fundo */
-    z-index: 1;
-    animation: fadeIn 0.3s ease;
-}
-
-/* O Cartão Central (Pop-up) */
-#postSaveOptions .popup-card {
-    position: relative;
-    z-index: 2;
-    background: var(--card-bg);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 24px;
-    padding: 30px;
-    width: 100%;
-    max-width: 350px;
-    text-align: center;
-    animation: popInElastic 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-/* Animação de entrada elástica (Pulo) */
-@keyframes popInElastic {
-    0% { opacity: 0; transform: scale(0.8); }
-    100% { opacity: 1; transform: scale(1); }
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
 /* =========================================
    ESTILO DOS BOTÕES NOVO / SEMINOVO
    ========================================= */
@@ -2834,31 +2778,6 @@ html.ctw-leve .ui-dim, html.ctw-leve .ui-sheet { transition: none; }
     transition: background 0.2s;
 }
 .ctw-sp-btn-cancel:active { filter: brightness(1.15); }
-
-/* ── LOADER ─────────────────────────────────────── */
-.ctw-sp-loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    color: var(--text-secondary, #64748b);
-    font-size: 0.82rem;
-}
-.ctw-sp-loading.hidden { display: none; }
-.ctw-sp-dot-loader { display: flex; gap: 6px; }
-.ctw-sp-dot-loader span {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: var(--primary-color, #e53e3e);
-    animation: ctwSpDotBounce 1.2s ease-in-out infinite;
-}
-.ctw-sp-dot-loader span:nth-child(2) { animation-delay: 0.2s; }
-.ctw-sp-dot-loader span:nth-child(3) { animation-delay: 0.4s; }
-
-
-@keyframes ctwSpDotBounce {
-    0%, 80%, 100% { transform: scale(0.7); opacity: 0.4; }
-    40%            { transform: scale(1);   opacity: 1; }
-}
 
 /* =========================================
    SCAN IA — OVERLAY DE LOTE

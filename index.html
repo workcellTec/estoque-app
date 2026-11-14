@@ -76,7 +76,7 @@
          para a 1ª pintura, mas funciona igual em qualquer aparelho. -->
     <link href="bootstrap-icons-lite.css?v=1" rel="stylesheet"/>
     <link href="bootstrap-lite.css?v=1" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=140">
+    <link rel="stylesheet" href="style.css?v=141">
 
 
 
@@ -1686,31 +1686,6 @@
         </div>
     </div>
     
-    <div id="postSaveOptions" class="hidden">
-        <div class="popup-backdrop"></div> <div class="popup-card">           <div class="mb-4">
-                <i class="bi bi-check-circle-fill text-success" style="font-size: 3.5rem;"></i>
-                <h4 class="mt-2 fw-bold text-light">Sucesso!</h4>
-                <p class="text-secondary small" id="postSaveMsg">Garantia já salva na Nuvem.</p>
-            </div>
-
-            <div class="row g-2 mb-3">
-    <div class="col-12">
-        <button id="btnPostShare" class="btn btn-dark w-100 p-3 border-secondary">
-            <i class="bi bi-envelope-at-fill fs-2 d-block mb-2 text-success"></i> 
-            <span class="small text-light">Gerar documento & enviar por e-mail </span>
-        </button>
-    </div>
-</div>
-
-
-        <button id="btnResetSuccess" class="btn btn-outline-light w-100 py-2 rounded-pill mt-2">
-    <i class="bi bi-plus-lg"></i> <span id="txtResetSuccess">Sair e Começar Nova Garantia</span>
-</button>
-
-        </div>
-    </div>
-
-
 <div class="custom-modal-overlay" id="profileSelectorModal" style="z-index: 20000; background: rgba(0,0,0,0.9);">
     <div class="custom-modal-content" class="max-width-400">
         <div class="d-flex justify-content-between align-items-center mb-2">
@@ -1760,7 +1735,7 @@
 
 
 <script src="ctw-ui.js?v=4" defer></script>
-<script src="app.js?v=1039" type="module" defer></script>
+<script src="app.js?v=1040" type="module" defer></script>
 <script>
 window.addEventListener('load', function() {
     var s = document.createElement('script');
@@ -3100,15 +3075,15 @@ window.addEventListener('load', function() {
 
 
 <!-- ═══════════════════════════════════════════════
-     CAPCUT SAVE PREVIEW — Bookip & Boleto
+     TELA DE SALVAR / GERAR PDF — Garantia, Orçamento, Contrato e Histórico
      ═══════════════════════════════════════════════ -->
 <div id="ctwSavePreviewOverlay" class="ctw-sp-overlay hidden" aria-modal="true" role="dialog">
     <div class="ctw-sp-backdrop"></div>
     <div class="ctw-sp-panel">
 
         <!-- Título dinâmico -->
-        <div class="ctw-sp-title" id="ctwSpTitle">Confirmar e Salvar</div>
-        <div class="ctw-sp-subtitle" id="ctwSpSubtitle">Revise antes de salvar na nuvem</div>
+        <div class="ctw-sp-title" id="ctwSpTitle">Salvando na nuvem…</div>
+        <div class="ctw-sp-subtitle" id="ctwSpSubtitle"></div>
 
         <!-- Pré-visualização A4 com borda animada estilo CapCut -->
         <div class="ctw-sp-ring-wrap">
@@ -3135,7 +3110,7 @@ window.addEventListener('load', function() {
                     </div>
                 </div>
                 <div class="ctw-sp-line" id="ctwSpLine"></div>
-                <button type="button" class="ctw-sp-dl" id="ctwSpDl" aria-label="Salvar e gerar o documento">
+                <button type="button" class="ctw-sp-dl" id="ctwSpDl" aria-label="Gerar o PDF">
                     <svg class="ring" viewBox="0 0 80 80" aria-hidden="true"><circle cx="40" cy="40" r="36" class="t"/><circle id="ctwSpDlArc" cx="40" cy="40" r="36" class="a"/></svg>
                     <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg>
                     <span class="pct" id="ctwSpDlPct">0%</span>
@@ -3154,23 +3129,16 @@ window.addEventListener('load', function() {
         <div class="ctw-sp-steps hidden" id="ctwSpSteps"></div>
         <p class="ctw-sp-msg hidden" id="ctwSpMsg"></p>
 
-        <!-- Botões de ação — só aparecem após 100% -->
+        <!-- Botões de ação (Enviar / Fechar / Tentar de novo) -->
         <div class="ctw-sp-actions hidden" id="ctwSpActions">
             <button class="ctw-sp-btn-confirm" id="ctwSpBtnConfirm">
-                <i class="bi bi-cloud-check-fill"></i> Salvar agora
+                <i class="bi bi-send-fill"></i> Enviar
             </button>
             <button class="ctw-sp-btn-cancel" id="ctwSpBtnCancel">
-                <i class="bi bi-x-lg"></i> Cancelar
+                <i class="bi bi-x-lg"></i> Fechar
             </button>
         </div>
 
-        <!-- Loader inicial (enquanto o preview renderiza) -->
-        <div class="ctw-sp-loading" id="ctwSpLoading">
-            <div class="ctw-sp-dot-loader">
-                <span></span><span></span><span></span>
-            </div>
-            <p>Gerando pré-visualização...</p>
-        </div>
     </div>
 </div>
 
