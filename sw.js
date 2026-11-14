@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-327'; // Buscar lucro retraído (expande ao tocar) e gaveta de pagamento acima do teclado
+const CACHE = 'ctw-328'; // Buscar lucro retraído (expande ao tocar) e gaveta de pagamento acima do teclado
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

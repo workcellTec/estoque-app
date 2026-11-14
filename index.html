@@ -76,7 +76,7 @@
          para a 1ª pintura, mas funciona igual em qualquer aparelho. -->
     <link href="bootstrap-icons-lite.css?v=1" rel="stylesheet"/>
     <link href="bootstrap-lite.css?v=1" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=136">
+    <link rel="stylesheet" href="style.css?v=137">
 
 
 
@@ -1760,7 +1760,7 @@
 
 
 <script src="ctw-ui.js?v=4" defer></script>
-<script src="app.js?v=1036" type="module" defer></script>
+<script src="app.js?v=1037" type="module" defer></script>
 <script>
 window.addEventListener('load', function() {
     var s = document.createElement('script');
@@ -1778,7 +1778,7 @@ window.addEventListener('load', function() {
             repairs:     () => import('./repairs.js?v=5').then(m => { window._repairsModule = m; return m; }),
             reposicao:   () => import('./reposicao.js').then(m => { window._reposicaoModule = m; return m; }),
             creditoscan: () => import('./creditoscan.js').then(m => { window._csReady = true; return m; }),
-            fechamentoia: () => import('./fechamentoia.js?v=22'),
+            fechamentoia: () => import('./fechamentoia.js?v=23'),
             precosync:   () => import('./precosync.js?v=25')   // só ao abrir Mais > WhatsApp e Preços (fora do carregamento em segundo plano)
         };
         const carregados = {};
@@ -3135,6 +3135,10 @@ window.addEventListener('load', function() {
 
         <!-- Info do documento -->
         <div class="ctw-sp-doc-info" id="ctwSpDocInfo"></div>
+
+        <!-- Etapas do salvamento (Garantia detalhada) e aviso/erro -->
+        <div class="ctw-sp-steps hidden" id="ctwSpSteps"></div>
+        <p class="ctw-sp-msg hidden" id="ctwSpMsg"></p>
 
         <!-- Botões de ação — só aparecem após 100% -->
         <div class="ctw-sp-actions hidden" id="ctwSpActions">

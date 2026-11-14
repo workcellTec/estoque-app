@@ -4958,8 +4958,28 @@ const ctwSavePreview = (() => {
 
     let _resolvePromise = null;
     let _animFrame      = null;
+    const ROT_CONFIRMAR = '<i class="bi bi-cloud-check-fill"></i> Salvar agora';
+    const ROT_CANCELAR  = '<i class="bi bi-x-lg"></i> Cancelar';
 
     function _el(id) { return document.getElementById(id); }
+
+    // Põe o anel e o % num ponto (0–100) — no salvamento o avanço vem das etapas reais, não de um relógio
+    function _anelEm(pct) {
+        const arc = _el('ctwSpArc'), pctEl = _el('ctwSpPct');
+        if (arc) arc.style.strokeDashoffset = (CIRCUMFERENCE * (1 - pct / 100)).toFixed(2);
+        if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+    }
+
+    // Troca os dois botões do rodapé (e os toques deles)
+    function _botoes(rotConfirmar, rotCancelar, aoConfirmar, aoCancelar) {
+        const c = _el('ctwSpBtnConfirm'), x = _el('ctwSpBtnCancel');
+        const nc = c.cloneNode(false), nx = x.cloneNode(false);
+        nc.innerHTML = rotConfirmar; nx.innerHTML = rotCancelar;
+        c.replaceWith(nc); x.replaceWith(nx);
+        nc.addEventListener('click', () => aoConfirmar(nc));
+        nx.addEventListener('click', () => aoCancelar());
+        _el('ctwSpActions')?.classList.remove('hidden');
+    }
 
     // Anima o arco de 0→100% em ~1.8s, depois revela os botões
     function _runRing() {
@@ -5024,6 +5044,8 @@ const ctwSavePreview = (() => {
             if (pctEl) { pctEl.textContent = '0%'; pctEl.classList.remove('done'); }
             _el('ctwSpActions')?.classList.add('hidden');
             _el('ctwSpLoading')?.classList.remove('hidden');
+            _el('ctwSpSteps')?.classList.add('hidden');
+            _el('ctwSpMsg')?.classList.add('hidden');
             _el('ctwSpPreviewInner').innerHTML = '';
         }, 300);
 
@@ -5053,6 +5075,12 @@ const ctwSavePreview = (() => {
                 const inner = _el('ctwSpPreviewInner');
                 if (inner) inner.innerHTML = previewHtml;
 
+                _el('ctwSpSteps')?.classList.add('hidden');
+                _el('ctwSpMsg')?.classList.add('hidden');
+                _el('ctwSpLoading')?.classList.remove('hidden');
+                _el('ctwSpArc')?.classList.remove('done');
+                _el('ctwSpPct')?.classList.remove('done');
+
                 // Mostra overlay
                 const overlay = _el('ctwSavePreviewOverlay');
                 overlay.classList.remove('hidden', 'leaving');
@@ -5071,12 +5099,73 @@ const ctwSavePreview = (() => {
                 // Remove listeners antigos (clone replace trick)
                 const newConfirm = btnConfirm.cloneNode(true);
                 const newCancel  = btnCancel.cloneNode(true);
+                newConfirm.innerHTML = ROT_CONFIRMAR; newCancel.innerHTML = ROT_CANCELAR;   // pode ter vindo do fim de um salvamento (Enviar / Fechar)
                 btnConfirm.replaceWith(newConfirm);
                 btnCancel.replaceWith(newCancel);
 
                 _el('ctwSpBtnConfirm')?.addEventListener('click', () => _close(true),  { once: true });
                 _el('ctwSpBtnCancel')?.addEventListener('click',  () => _close(false), { once: true });
             });
+        },
+
+        // Salvamento que já começou: a prévia é a animação. O anel anda conforme as etapas de verdade e só fecha quando tudo foi gravado.
+        // Devolve { passo(texto), concluir({...}), falhar(mensagem, aoTentar, aoFechar) }
+        salvando({ previewHtml = '', docInfo = '', etapas = [] }) {
+            if (_animFrame) { cancelAnimationFrame(_animFrame); _animFrame = null; }
+            _resolvePromise = null;
+            _el('ctwSpTitle').textContent    = 'Salvando…';
+            _el('ctwSpSubtitle').textContent = 'Só termina quando gravar de verdade. Não feche.';
+            _el('ctwSpDocInfo').innerHTML    = docInfo;
+            const inner = _el('ctwSpPreviewInner'); if (inner) inner.innerHTML = previewHtml;
+            _el('ctwSpLoading')?.classList.add('hidden');
+            _el('ctwSpActions')?.classList.add('hidden');
+            _el('ctwSpMsg')?.classList.add('hidden');
+            _el('ctwSpArc')?.classList.remove('done');
+            _el('ctwSpPct')?.classList.remove('done');
+            _anelEm(0);
+
+            const lista = _el('ctwSpSteps');
+            let atual = 0, falhou = false;
+            const desenhar = () => {
+                lista.innerHTML = etapas.map((t, k) => `<div class="${k < atual ? 'ok' : k === atual ? (falhou ? 'bad' : 'now') : ''}"><span class="d">${k < atual ? '✓' : (falhou && k === atual ? '!' : '')}</span>${t}</div>`).join('');
+                lista.classList.remove('hidden');
+            };
+            desenhar();
+
+            const overlay = _el('ctwSavePreviewOverlay');
+            if (overlay.classList.contains('hidden') || overlay.classList.contains('leaving')) {
+                overlay.classList.remove('hidden', 'leaving');
+                overlay.classList.add('entering');
+            }
+            const msg = (texto, ruim) => { const m = _el('ctwSpMsg'); m.textContent = texto; m.classList.toggle('bad', !!ruim); m.classList.toggle('hidden', !texto); };
+
+            return {
+                passo(txt) {
+                    const k = etapas.indexOf(txt); if (k < 0) return;
+                    atual = k; falhou = false; desenhar(); _anelEm(k / etapas.length * 100);
+                },
+                concluir({ titulo = 'Salva', docInfo: info = '', html = '', aviso = '', onEnviar = null } = {}) {
+                    atual = etapas.length; lista.classList.add('hidden');
+                    _anelEm(100); _el('ctwSpArc')?.classList.add('done'); _el('ctwSpPct')?.classList.add('done');
+                    _el('ctwSpTitle').textContent = '✓ ' + titulo;
+                    _el('ctwSpSubtitle').textContent = 'Já está gravada. Toque em Enviar quando quiser mandar ao cliente.';
+                    if (info) _el('ctwSpDocInfo').innerHTML = info;
+                    if (html && inner) inner.innerHTML = html;       // agora com o número de verdade
+                    msg(aviso, true);
+                    _botoes('<i class="bi bi-send-fill"></i> Enviar', '<i class="bi bi-x-lg"></i> Fechar',
+                        (botao) => { if (typeof onEnviar === 'function') onEnviar(botao); },
+                        () => _close(false));
+                },
+                falhar(mensagem, aoTentar, aoFechar) {
+                    falhou = true; desenhar();
+                    _el('ctwSpTitle').textContent    = 'Não terminou de salvar';
+                    _el('ctwSpSubtitle').textContent = '';
+                    msg(String(mensagem).replace(/[.\s]*$/, '.') + ' Ao tentar de novo, nada fica duplicado.', true);
+                    _botoes('<i class="bi bi-arrow-repeat"></i> Tentar de novo', '<i class="bi bi-x-lg"></i> Fechar',
+                        () => { if (typeof aoTentar === 'function') aoTentar(); },
+                        () => { _close(false); if (typeof aoFechar === 'function') aoFechar(); });
+                },
+            };
         },
     };
 })();
@@ -8424,13 +8513,25 @@ if (btnSave) {
             ${previewDadosTemp.items.length} ${previewDadosTemp.items.length === 1 ? 'item' : 'itens'} · ${ctwEhOrcamento() ? 'Validade: ' + previewDadosTemp.validadeDias : 'Garantia: ' + previewDadosTemp.diasGarantia} dias
         `;
 
-        const confirmed = await ctwSavePreview.show({
-            type: 'bookip',
-            previewHtml: previewHtmlTemp,
-            docInfo: docInfoHtml,
-        });
+        // Garantia detalhada: não pede confirmação antes. Já grava, e a prévia vira a animação do salvamento (só termina quando gravou de verdade).
+        // Garantia normal: continua como sempre (prévia → "Salvar agora").
+        const gdFluxo = !!(window.ctwGdEmCurso && window.ctwGdEmCurso() && !ctwEhOrcamento());
+        let sp = null;
+        if (gdFluxo) {
+            sp = ctwSavePreview.salvando({
+                previewHtml: previewHtmlTemp,
+                docInfo: docInfoHtml,
+                etapas: ['Conferindo a numeração', 'Gravando o documento'].concat(window._bookipFotoBlob ? ['Enviando a foto'] : [], ['Salvando o cliente', 'Registrando o lucro']),
+            });
+        } else {
+            const confirmed = await ctwSavePreview.show({
+                type: 'bookip',
+                previewHtml: previewHtmlTemp,
+                docInfo: docInfoHtml,
+            });
 
-        if (!confirmed) { if (window.ctwGdPreviaCancelada) window.ctwGdPreviaCancelada(); return; } // usuário cancelou
+            if (!confirmed) { if (window.ctwGdPreviaCancelada) window.ctwGdPreviaCancelada(); return; } // usuário cancelou
+        }
         // ────────────────────────────────────────────────────
 
         // Feedback visual
@@ -8481,14 +8582,19 @@ if (btnSave) {
             // ---------------------------------------------------------
             // CORREÇÃO: GERAÇÃO DO NÚMERO DOC (EVITA DUPLICIDADE)
             // ---------------------------------------------------------
-            const snapshot = await get(ref(db, colSalvar));
+            // Garantia detalhada: sem internet o Firebase espera sem responder. Um limite evita a animação ficar presa para sempre.
+            const limite = (promessa) => (!gdFluxo ? promessa : Promise.race([promessa, new Promise((_, rej) => setTimeout(() => rej(new Error('Sem conexão: não deu para gravar agora.')), 25000))]));
+            // Tentativa anterior que gravou o documento mas não terminou (foto, por exemplo): a nova tentativa atualiza o MESMO documento, nunca cria outro.
+            const idExistente = currentEditingBookipId || (gdFluxo && window.ctwGdParcial ? window.ctwGdParcial() : '') || '';
+            if (sp) sp.passo('Conferindo a numeração');
+            const snapshot = await limite(get(ref(db, colSalvar)));
             let docNumberFormatted = '001';
 
-            if (currentEditingBookipId) {
+            if (idExistente) {
                 // MODO EDIÇÃO: Tenta manter o número original
                 if (snapshot.exists()) {
                     const todos = snapshot.val();
-                    const itemAtual = todos[currentEditingBookipId];
+                    const itemAtual = todos[idExistente];
                     if (itemAtual && itemAtual.docNumber) {
                         docNumberFormatted = itemAtual.docNumber;
                     }
@@ -8545,19 +8651,23 @@ criadoPor: currentUserProfile || "Desconhecido",
             if (!modoOrc && window.ctwGdEmCurso && window.ctwGdEmCurso()) dados.detalhada = true;   // feita na Garantia detalhada (dev): só estas mostram o líquido no histórico
 
             // SALVA NO FIREBASE
-            if (currentEditingBookipId) {
+            if (sp) sp.passo('Gravando o documento');
+            if (idExistente) {
                 // Atualiza existente
-                await update(ref(db, `${colSalvar}/${currentEditingBookipId}`), dados);
-                dados.id = currentEditingBookipId;
+                await limite(update(ref(db, `${colSalvar}/${idExistente}`), dados));
+                dados.id = idExistente;
             } else {
                 // Cria novo
-                const newRef = await push(ref(db, colSalvar), dados);
+                const newRef = push(ref(db, colSalvar), dados);   // a chave já existe aqui, antes da resposta do servidor
+                if (gdFluxo && window.ctwGdParcialSet) window.ctwGdParcialSet(newRef.key);   // se a conexão cair, "Tentar de novo" atualiza este mesmo documento
+                await limite(newRef);
                 dados.id = newRef.key;
             }
 
             // UPLOAD FOTO via Imgur (se houver blob pendente)
             if (window._bookipFotoBlob) {
-                const fotoUrl = await window.uploadFotoCloudinary(window._bookipFotoBlob);
+                if (sp) sp.passo('Enviando a foto');
+                const fotoUrl = await limite(window.uploadFotoCloudinary(window._bookipFotoBlob));
                 if (fotoUrl) {
                     dados.fotoUrl = fotoUrl;
                     window._bookipFotoUrl = fotoUrl;
@@ -8567,6 +8677,7 @@ criadoPor: currentUserProfile || "Desconhecido",
             }
 
             // SALVA CLIENTE (ROBÔ) — orçamento é só uma proposta: não cria cliente no cadastro
+            if (sp) sp.passo('Salvando o cliente');
             if (!modoOrc) {
                 await salvarClienteAutomatico({
                     nome: dados.nome, cpf: dados.cpf, tel: dados.tel, end: dados.end, email: dados.email,
@@ -8575,6 +8686,7 @@ criadoPor: currentUserProfile || "Desconhecido",
             }
 
             // VALOR LÍQUIDO (dev): a Garantia detalhada grava o líquido junto da garantia. Falha aqui nunca desfaz a garantia.
+            if (sp) sp.passo('Registrando o lucro');
             if (!modoOrc && docType !== 'situacao' && (!currentEditingBookipId || (window.ctwGdEmCurso && window.ctwGdEmCurso())) && window.ctwLiqSalvar) {
                 try { await window.ctwLiqSalvar(dados); } catch (e) { console.warn('[líquido] não salvou:', e); }
             }
@@ -8593,11 +8705,24 @@ criadoPor: currentUserProfile || "Desconhecido",
             btnSave.innerHTML = originalText;
             btnSave.disabled = false;
 
+            // Garantia detalhada: a animação termina aqui, já com o documento final (número de verdade) e o botão Enviar
+            if (sp) {
+                const htmlFinal = (typeof getReciboHTML === 'function') ? `<div style="width:750px;overflow:hidden;background:#fff;color:#000;">${getReciboHTML(dados)}</div>` : '';
+                sp.concluir({
+                    titulo: 'Garantia' + (dados.docNumber ? ' Doc ' + dados.docNumber : '') + ' salva',
+                    docInfo: docInfoHtml,
+                    html: htmlFinal,
+                    aviso: dados.liqErro ? 'O valor líquido NÃO foi salvo: ' + dados.liqErro + ' Abra a Garantia detalhada, aba Histórico, expanda o card e toque em “Dev · Valor líquido” para completar.' : '',
+                    onEnviar: (botao) => gerarPdfDoHistorico(dados, botao, 'gmail'),
+                });
+            }
+
         } catch (error) {
             console.error(error);
-            showCustomModal({ message: "Erro ao salvar: " + error.message });
             btnSave.innerHTML = originalText;
             btnSave.disabled = false;
+            if (sp) sp.falhar((error && error.message) || 'erro desconhecido', () => btnSave.click(), () => { if (window.ctwGdPreviaCancelada) window.ctwGdPreviaCancelada(); });
+            else showCustomModal({ message: "Erro ao salvar: " + error.message });
         }
     });
 }

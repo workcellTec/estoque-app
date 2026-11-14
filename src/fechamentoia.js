@@ -403,7 +403,8 @@ const condDe = nome => (/semi ?novo/i.test(nome) ? 'Seminovo' : /novo|lacrad/i.t
 const produtoPorId = id => (window.products || []).find(x => String(x.id) === String(id));
 const gdAtivo = () => ehDev() && lsGet(GD_SW) !== '0';
 const resolvido = i => !!(i.prod && i.prod.id && i.prod.valor > 0);
-const nomeBusca = p => String(p.nome || '');   // na busca o emoji do CTW fica (ajuda a achar); no cartão e no documento ele sai
+const nomeBusca = p => String(p.nome || '');
+const nomeCartao = i => semEmoji(i.prod.nome).trim().replace(/[\s-]*\b(semi ?novo|novo|nova|lacrad[oa]|usad[oa]|vitrine|open ?box)\s*$/i, '').trim();   // no cartão a condição já aparece nos botões: o nome fica curto   // na busca o emoji do CTW fica (ajuda a achar); no cartão e no documento ele sai
 
 function taxaDe(maq, band, parc) {
     if (!window._areRatesLoaded || typeof window._getRate !== 'function') return null;
@@ -413,6 +414,7 @@ function taxaDe(maq, band, parc) {
 
 const IC = {
     back: '<path d="M15 6l-6 6 6 6"/>', down: '<path d="M6 9l6 6 6-6"/>', del: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>', plus: '<path d="M12 5v14M5 12h14"/>',
+    swap: '<path d="M7 7h13M16 3l4 4-4 4M17 17H4M8 13l-4 4 4 4"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>', ok: '<path d="M5 12l5 5 9-10"/>', chat: '<path d="M4 5h16v11H9l-5 4z"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>', pen: '<path d="M4 20l4-1 11-11-3-3L5 16l-1 4zM14 7l3 3"/>', chev: '<path d="M9 6l6 6-6 6"/>',
     cam: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>', rec: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
@@ -593,9 +595,9 @@ const gdOpcoes = (lista, attr) => lista.map(p => `<button class="gd-op" type="bu
 const gdBusca = txt => (String(txt || '').trim() ? buscarProdutos(txt, 5) : []);
 
 function gdItem(i) {
-    const rm = `<button class="gd-ib" type="button" data-gd="del" data-id="${i.id}" aria-label="Remover produto">${ico('del')}</button>`;
+    const rm = `<button class="gd-ib rm" type="button" data-gd="del" data-id="${i.id}" aria-label="Remover produto">${ico('del')}</button>`;
     if (i.trocando && resolvido(i)) {                       // troca de produto: a busca aparece no próprio cartão; cor, quantidade, condição e observação ficam
-        return `<div class="gd-card pr"><div class="gd-ih"><div class="gd-nm"><span class="gd-need">Trocar produto</span><b>${esc(nomeDoc(i))}</b></div></div>
+        return `<div class="gd-card pr"><div class="gd-ih"><div class="gd-nm"><span class="gd-need">Trocar produto</span><b>${esc(nomeCartao(i))}</b></div></div>
           <p class="gd-was">Cor, quantidade, condição e observação continuam como estão.</p>
           <div class="gd-sw">${ico('search')}<input class="gd-in" data-f="pbusca" data-id="${i.id}" placeholder="Buscar o produto certo no CTW" autocomplete="off" value="${esc(i.q || '')}" aria-label="Buscar produto no CTW"></div>
           <div class="gd-res" id="gdps-${i.id}">${gdOpcoes(gdBusca(i.q), `data-gd="pick" data-id="${i.id}" data-pid`)}</div>
@@ -619,7 +621,7 @@ function gdItem(i) {
     const custo = i.edCusto
         ? `<div class="gd-ed"><input class="gd-in" id="gdcv-${i.id}" data-money inputmode="decimal" placeholder="Custo do dia (R$)" autocomplete="off" value="${esc(fmtIn(p.valor))}" aria-label="Custo do dia"><button type="button" data-gd="custook" data-id="${i.id}">OK</button><button type="button" class="g" data-gd="custox" data-id="${i.id}">Cancelar</button></div>`
         : `<div class="gd-row"><span class="gd-l">${mud ? `Custo do dia <small>(CTW ${brl(p.hoje)})</small>` : 'Custo no CTW'}</span><button class="gd-cb" type="button" data-gd="custo" data-id="${i.id}" aria-label="Mudar o custo">${brl(p.valor)} <i class="bi bi-pencil-fill"></i></button></div>`;
-    return `<div class="gd-card"><div class="gd-ih"><span class="gd-ck">${ico('ok')}</span><button class="gd-nm gd-nmb" type="button" data-gd="troc" data-id="${i.id}" aria-label="Trocar produto"><b>${esc(nomeDoc(i))}</b>${veio ? `<small>${veio.slice(3)}</small>` : ''}</button><button class="gd-ib" type="button" data-gd="troc" data-id="${i.id}" aria-label="Trocar produto">${ico('pen')}</button>${rm}</div>
+    return `<div class="gd-card"><div class="gd-ih"><span class="gd-ck">${ico('ok')}</span><div class="gd-nm"><b>${esc(nomeCartao(i))}</b>${veio ? `<small>${veio.slice(3)}</small>` : ''}</div><div class="gd-ibs"><button class="gd-ib" type="button" data-gd="troc" data-id="${i.id}" aria-label="Trocar produto">${ico('swap')}</button>${rm}</div></div>
       ${gdSeg('cond', CONDS.map(c => [c, c]), i.cond, ` data-id="${i.id}"`)}
       ${custo}
       <div class="gd-g3"><div class="gd-fl"><label>Quantidade</label><div class="gd-stp"><button type="button" data-gd="menos" data-id="${i.id}" aria-label="Menos">−</button><span>${i.qtd}</span><button type="button" data-gd="mais" data-id="${i.id}" aria-label="Mais">+</button></div></div>
@@ -1223,7 +1225,7 @@ async function aoSalvarGarantia(dados) {
         await garantirMapa();
         await gravarRegistro(r.res, dados.id, (E.edit && E.edit.ts) || Date.parse(dados.criadoEm) || Date.now());
     } catch (e) {
-        if (window.showCustomModal) window.showCustomModal({ message: 'Garantia salva. O valor líquido NÃO foi salvo: ' + ((e && e.message) || 'erro de conexão') + ' Abra a Garantia detalhada, aba Histórico, expanda o card e toque em “Dev · Valor líquido” para completar.' });
+        dados.liqErro = ((e && e.message) || 'erro de conexão') + '.';   // quem salvou mostra o aviso na tela de salvamento (a mensagem comum ficaria atrás dela)
     } finally {
         E.salvando = false;                                // o documento já foi gravado: o formulário da Garantia deixa de ser desta tela
         if (G === E && GO) {
@@ -2066,6 +2068,9 @@ function abrir() {
 carregarAliases();                                 // nomes ensinados prontos antes da leitura da IA
 window.ctwLiqSalvar = aoSalvarGarantia;
 window.ctwGdEmCurso = () => !!(G && G.salvando);
+// Documento já gravado por uma tentativa que não terminou: a nova tentativa atualiza o mesmo, nunca cria outro
+window.ctwGdParcial = () => (G && G.parcial) || '';
+window.ctwGdParcialSet = id => { if (G) G.parcial = id; };
 window.ctwGdPreviaCancelada = gdPreviaCancelada;
 window.ctwGdVoltar = gdVoltar;
 window.ctwGdEditar = editarNaDetalhada;
