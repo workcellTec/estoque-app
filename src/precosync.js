@@ -1905,11 +1905,15 @@ async function zapAlinhar(pares, extra) {
 }
 
 // ── Entrada ─────────────────────────────────────────────────────
-function abrir() {
+async function abrir(opcoes) {
     if (!(window.ctwEhDev && window.ctwEhDev())) return;
     if (!getDb()) { if (window.showCustomModal) window.showCustomModal({ message: 'O banco de dados ainda está conectando. Tente de novo em alguns segundos.' }); return; }
     abrirOverlay();
-    telaInicio();
+    const inicio = telaInicio();
+    if (opcoes && opcoes.enviar) {                      // vindo do Estoque: já na tela de enviar o PDF (depois do início carregar, senão ele sobrescreve)
+        await inicio;
+        if (overlay && !overlay.querySelector('.ps-erro')) telaEnviar();
+    }
 }
 
 export { abrir };

@@ -5696,6 +5696,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!window.ctwEhDev()) return;
         window.ctwCarregarModulo('precosync').then(m => m.abrir()).catch(() => showCustomModal({ message: "Erro ao abrir o módulo. Verifique a internet e tente de novo." }));
     });
+    // Estoque → botão do PDF (só dev): abre direto a tela de enviar o PDF para conferir as quantidades
+    document.getElementById('stockPdfBtn')?.addEventListener('click', () => {
+        if (!window.ctwEhDev()) return;
+        window.ctwCarregarModulo('precosync').then(m => m.abrir({ enviar: true })).catch(() => showCustomModal({ message: "Erro ao abrir o módulo. Verifique a internet e tente de novo." }));
+    });
     // Mais → "Dev" (só aparece com o Módulo dev ligado): abre o painel
     document.getElementById('ctwSheetDev')?.addEventListener('click', () => {
         if (!window.ctwEhDev()) return;
