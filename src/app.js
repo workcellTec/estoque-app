@@ -5688,6 +5688,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
     document.getElementById('goToAdmin')?.addEventListener('click', () => showMainSection('administracao'));
+    // Atalhos do Módulo dev (só aparecem com o módulo ligado): WhatsApp e Preços no Mais
+    document.getElementById('ctwSheetPrecos')?.addEventListener('click', () => {
+        if (!window.ctwEhDev()) return;
+        window.ctwCarregarModulo('precosync').then(m => m.abrir()).catch(() => showCustomModal({ message: "Erro ao abrir o módulo. Verifique a internet e tente de novo." }));
+    });
     // Mais → "Dev" (só aparece com o Módulo dev ligado): abre o painel
     document.getElementById('ctwSheetDev')?.addEventListener('click', () => {
         if (!window.ctwEhDev()) return;
@@ -5801,6 +5806,12 @@ document.addEventListener('DOMContentLoaded', () => {
             currentlySelectedProductForCalc = null;
         }
         displayDynamicSearchResults(searchTerm, 'aparelhoResultsContainer', handleProductSelectionForAparelho);
+    });
+    // Busca por IA (atalho do Módulo dev) no Por aparelho
+    document.getElementById('aparelhoIaBtn')?.addEventListener('click', async () => {
+        if (!window.ctwEhDev()) return;
+        try { (await window.ctwCarregarModulo('buscaia')).abrir(); }
+        catch (err) { console.warn('[busca ia]', err); showCustomModal({ message: 'Não consegui abrir a busca por IA agora. Tente de novo.' }); }
     });
     document.getElementById('entradaAparelho')?.addEventListener('input', calculateAparelho);
     document.getElementById('valorExtraAparelho')?.addEventListener('input', calculateAparelho);
@@ -13475,6 +13486,19 @@ window.updateNotificationUI  = updateNotificationUI;
         var linha = document.querySelector('[data-criar="garantiadet"]');
         if (linha) linha.hidden = !gdLigado();
     }
+    // Atalhos soltos nas telas (Busca por IA no Por aparelho, WhatsApp e Preços no Mais): cada um liga/desliga no painel do Módulo dev,
+    // por aparelho (localStorage 'ctwDevAt_<k>': '0' = desligado). Só aparecem se o módulo estiver ligado.
+    function atalhoDevLigado(k) { try { return localStorage.getItem('ctwDevAt_' + k) !== '0'; } catch (e) { return true; } }
+    function syncAtalhosDev() { ['ia', 'precos'].forEach(function(k) { document.documentElement.classList.toggle('ctw-at-' + k + '-off', !atalhoDevLigado(k)); }); }
+    window.ctwDevAtalho = {
+        ligado: atalhoDevLigado,
+        alternar: function(k) {
+            try { localStorage.setItem('ctwDevAt_' + k, atalhoDevLigado(k) ? '0' : '1'); } catch (e) {}
+            syncAtalhosDev();
+            return atalhoDevLigado(k);
+        }
+    };
+    syncAtalhosDev();
     // O botão de ligar/desligar o atalho fica no painel do Módulo dev
     window.ctwGdAtalho = {
         ligado: gdLigado,

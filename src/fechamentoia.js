@@ -85,6 +85,7 @@ function abrirOverlay() {
     overlay.addEventListener('click', aoClicar);
     overlay.addEventListener('input', aoDigitar);
     overlay.addEventListener('change', aoMudar);
+    overlay.addEventListener('focusout', e => completarCentavos(e.target));
     document.body.appendChild(overlay);
     document.documentElement.classList.add('ps-aberto');
 }
@@ -539,10 +540,14 @@ function gdAbrirOverlay() {
     GO.addEventListener('click', gdClique);
     GO.addEventListener('input', gdDigita);
     GO.addEventListener('change', gdMuda);
+    GO.addEventListener('focusout', e => completarCentavos(e.target));
     GO.addEventListener('click', e => { if (e.target.closest('#filterBarProfiles .filter-profile-btn')) lucCarregar(false); });   // trocou Todos / Meus arquivos: a busca de lucro segue o filtro
     document.body.appendChild(GO);
-    document.documentElement.classList.add('ps-aberto');
+    const nav = document.getElementById('ctwBottomNav');                          // a barra de baixo continua visível; tocar nela fecha a tela (o rascunho é guardado)
+    if (nav) { gdNavSoltar(); nav.addEventListener('click', gdNavFecha, true); }
 }
+function gdNavFecha() { if (GO) gdFechar(); }
+function gdNavSoltar() { const nav = document.getElementById('ctwBottomNav'); if (nav) nav.removeEventListener('click', gdNavFecha, true); }
 
 function gdFechar() {
     if (window.ctwHistoricoNoGd) window.ctwHistoricoNoGd(null, true);   // a lista do histórico volta para a Garantia antes desta tela sair
@@ -555,7 +560,7 @@ function gdFechar() {
     clearTimeout(_gdT);
     gdGravar();
     if (GO) { GO.remove(); GO = null; }
-    document.documentElement.classList.remove('ps-aberto');
+    gdNavSoltar();
     GN = null;                                             // se estava editando, a nova volta do rascunho na próxima abertura
 }
 
@@ -734,6 +739,7 @@ function gdSheet(html) {
     w.innerHTML = `<button type="button" class="ui-dim" data-gd="shx" aria-label="Fechar"></button><div class="ui-sheet gd-sh"><div class="ui-grab"></div>${html}</div>`;
     ['click', 'input', 'change'].forEach(t => w.addEventListener(t, gdSheetEvento));
     w.addEventListener('focusin', () => setTimeout(gdSheetTeclado, 350));
+    w.addEventListener('focusout', e => completarCentavos(e.target));
     gdSheetKbOuvir(true);
     document.body.appendChild(w);
     void w.offsetHeight;
@@ -1152,6 +1158,14 @@ function mascararDinheiro(el, colado) {
     try { el.setSelectionRange(p, p); } catch (e) { /* tipo de campo sem seleção */ }
 }
 
+// Ao sair do campo o valor ganha os centavos: 80000 → 80.000,00 · 12,5 → 12,50
+function completarCentavos(el) {
+    if (!el || el.dataset.money === undefined) return;
+    const v = dinheiroMascarado(el.value); if (!v) { el.value = ''; return; }
+    const i = v.indexOf(',');
+    el.value = i < 0 ? v + ',00' : v + '0'.repeat(Math.max(0, 2 - (v.length - i - 1)));
+}
+
 function gdDigita(e) {
     if (!G) return;
     const t = e.target, ck = t.dataset && t.dataset.ck, f = t.dataset && t.dataset.f;
@@ -1387,7 +1401,7 @@ function htmlLinha(l) {
     if (l.k === 'pix') {
         return `<div class="ps-card fia-lin" data-lid="${l.id}">
           <div class="fia-lh"><span class="fia-tag">${l.boleto ? 'BOLETO' : 'PIX / DINHEIRO'}</span><span class="ps-sub fia-g">sem taxa</span>${rem}</div>
-          ${campo('Valor (R$)', `<input class="fia-in" data-f="valor" data-id="${l.id}" inputmode="decimal" placeholder="0,00" value="${esc(l.valor)}">`, 'fia-w150')}
+          ${campo('Valor (R$)', `<input class="fia-in" data-f="valor" data-id="${l.id}" data-money inputmode="decimal" placeholder="0,00" value="${esc(l.valor)}">`, 'fia-w150')}
           ${linhaErro(l.id)}</div>`;
     }
     if (l.k === 'troca') {
@@ -1395,7 +1409,7 @@ function htmlLinha(l) {
           <div class="fia-lh"><span class="fia-tag">TROCA</span><span class="ps-sub fia-g">conta como dinheiro, pelo valor combinado</span>${rem}</div>
           <div class="fia-row">
             ${campo('Aparelho', `<input class="fia-in" data-f="aparelho" data-id="${l.id}" placeholder="Modelo" value="${esc(l.aparelho)}">`)}
-            ${campo('Valor (R$)', `<input class="fia-in" data-f="valor" data-id="${l.id}" inputmode="decimal" placeholder="0,00" value="${esc(l.valor)}">`)}
+            ${campo('Valor (R$)', `<input class="fia-in" data-f="valor" data-id="${l.id}" data-money inputmode="decimal" placeholder="0,00" value="${esc(l.valor)}">`)}
           </div>
           ${linhaErro(l.id)}</div>`;
     }
@@ -1408,7 +1422,7 @@ function htmlLinha(l) {
     return `<div class="ps-card fia-lin" data-lid="${l.id}">
       <div class="fia-lh"><span class="fia-tag fia-tag-c">CARTÃO</span><span class="ps-sub fia-g">${l.manual ? 'complete aqui' : 'lido pela IA'}</span>${rem}</div>
       <div class="fia-row">
-        ${campo('Total passado (R$)', `<input class="fia-in" data-f="valor" data-id="${l.id}" inputmode="decimal" placeholder="0,00" value="${esc(l.valor)}">`, 'fia-w13')}
+        ${campo('Total passado (R$)', `<input class="fia-in" data-f="valor" data-id="${l.id}" data-money inputmode="decimal" placeholder="0,00" value="${esc(l.valor)}">`, 'fia-w13')}
         ${campo(l.parcDuv ? 'Parcelas · confira' : 'Parcelas', `<select class="fia-in" data-f="parc" data-id="${l.id}">${optsP}</select>`, l.parcDuv ? 'fia-duv' : '')}
       </div>
       <div class="fia-row">
@@ -1492,7 +1506,7 @@ function telaProduto() {
       <div class="ps-card">
         <div class="fia-cap">NÃO ACHOU? DIGITE O VALOR</div>
         <input class="fia-in" data-f="mnome" placeholder="Nome do produto" value="">
-        <input class="fia-in" data-f="mvalor" inputmode="decimal" placeholder="Valor unitário no CTW (R$)" value="">
+        <input class="fia-in" data-f="mvalor" data-money inputmode="decimal" placeholder="Valor unitário no CTW (R$)" value="">
         <button type="button" class="ps-btn" data-act="usarmanual">Usar este valor</button>
       </div>`);
     buscar(ini);
@@ -2057,6 +2071,7 @@ function aoDigitar(e) {
     if (f === 'texto') { F.texto = t.value; return botaoLer(); }
     if (f === 'cliente') { F.cliente = t.value; return; }
     if (f === 'busca') return buscar(t.value);
+    if (t.dataset.money !== undefined) mascararDinheiro(t, e.inputType === 'insertFromPaste');
     const l = achar(t.dataset.id); if (!l) return;
     if (f === 'valor') { l.valor = t.value; atualizarNota(l); atualizarSoma(); }
     else if (f === 'aparelho') l.aparelho = t.value;

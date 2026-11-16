@@ -22,12 +22,17 @@ function ha(ms) {
 }
 const dataHora = ms => { const d = new Date(ms); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
 
+// Atalhos que podem ficar soltos nas telas: [chave, nome, onde aparece]
+const SW = [['ia', 'Busca por IA', 'no Por aparelho'], ['precos', 'WhatsApp e Preços', 'no Mais'], ['gd', 'Garantia detalhada', 'no botão +']];
+const ligado = k => k === 'gd' ? !!(window.ctwGdAtalho && window.ctwGdAtalho.ligado()) : !!(window.ctwDevAtalho && window.ctwDevAtalho.ligado(k));
+const alternar = k => k === 'gd' ? window.ctwGdAtalho.alternar() : window.ctwDevAtalho.alternar(k);
+const sub = (a, on) => on ? 'Aparece ' + a[2] : 'Desligado: só pelo painel';
+
 function abrir() {
     if (!ehDev()) return;
     document.getElementById('ctwDevOv')?.remove();
     const ov = document.createElement('div');
     ov.id = 'ctwDevOv'; ov.className = 'ctw-dv-ov';
-    const gdOn = !!(window.ctwGdAtalho && window.ctwGdAtalho.ligado());
     const zap = window.ctwZapNumero || 0;
     ov.innerHTML = `<div class="ctw-dv-bk"></div><div class="ctw-dv-sh" role="dialog" aria-modal="true" aria-label="Módulo dev">
         <h3>Módulo dev</h3>
@@ -35,8 +40,9 @@ function abrir() {
           <button type="button" class="ctw-dv-it" data-a="ia"><span><b>Busca por IA</b><small>Pedido da cliente vira lista com parcelas</small></span></button>
           <button type="button" class="ctw-dv-it" data-a="gd"><span><b>Garantia detalhada</b><small>Com produtos do CTW e lucro</small></span></button>
           <button type="button" class="ctw-dv-it" data-a="precos"><span><b>WhatsApp e Preços</b><small>Atualizar preços e o que fazer no WhatsApp</small></span>${zap ? `<em class="ctw-dv-n">${zap}</em>` : ''}</button>
-          <div class="ctw-dv-it ctw-dv-sw"><span><b>Atalho da Garantia detalhada no +</b><small id="ctwDvGdSub">${gdOn ? 'Aparece no botão +' : 'Desligado'}</small></span>
-            <button type="button" class="ui-sw${gdOn ? ' on' : ''}" id="ctwDvGdSw" role="switch" aria-checked="${gdOn}" aria-label="Atalho da Garantia detalhada no botão +" data-a="gdsw"></button></div>
+        </div>
+        <h4>Atalhos soltos nas telas</h4>
+        <div class="ctw-dv-ls">${SW.map(a => `<div class="ctw-dv-it ctw-dv-sw"><span><b>${a[1]}</b><small id="ctwDvSub-${a[0]}">${sub(a, ligado(a[0]))}</small></span><button type="button" class="ui-sw${ligado(a[0]) ? ' on' : ''}" role="switch" aria-checked="${ligado(a[0])}" aria-label="${a[1]}" data-a="sw" data-k="${a[0]}"></button></div>`).join('')}
         </div>
         <h4>Aparelhos com o módulo ligado</h4>
         <div id="ctwDvAp" class="ctw-dv-ap"><p class="ctw-dv-m">Carregando…</p></div>
@@ -88,10 +94,10 @@ function abrir() {
         }
         if (a === 'gd') { fechar(); return abrirModulo('fechamentoia', m => m.abrirGarantiaDet()); }
         if (a === 'precos') { fechar(); return abrirModulo('precosync', m => m.abrir()); }
-        if (a === 'gdsw') {
-            const on = window.ctwGdAtalho.alternar();
+        if (a === 'sw') {
+            const k = b.dataset.k, on = alternar(k), def = SW.find(x => x[0] === k);
             b.classList.toggle('on', on); b.setAttribute('aria-checked', on);
-            sh.querySelector('#ctwDvGdSub').textContent = on ? 'Aparece no botão +' : 'Desligado';
+            sh.querySelector('#ctwDvSub-' + k).textContent = sub(def, on);
             return;
         }
         if (a === 'aqui') { window.ctwDevDesligarAqui(); return; }
