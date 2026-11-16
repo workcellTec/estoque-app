@@ -378,7 +378,7 @@ function telaEnviar() {
       <div class="ps-card">
         <div class="ps-passo"><span class="ps-n on">1</span><b>PDF do Stock 2.0</b></div>
         <div class="ps-arq"><span class="ps-tipo ps-pdf">PDF</span><div class="ps-grow">${ESC_.pdf ? arq(ESC_.pdf, 'pronto para analisar') : '<div class="ps-sub">Escolha o “Catálogo de produtos” gerado no Stock 2.0.</div>'}</div>
-          <label class="ps-link"><input type="file" id="psArquivo" accept="application/pdf,.pdf" hidden>${ESC_.pdf ? 'Trocar' : 'Escolher'}</label></div>
+          <button type="button" class="ps-link" data-act="escolherarq" data-alvo="#psArquivo">${ESC_.pdf ? 'Trocar' : 'Escolher'}</button><input type="file" id="psArquivo" class="ps-fileoff" accept="application/pdf,.pdf" tabindex="-1" aria-hidden="true"></div>
         <div class="ps-sub">Vale para todas as contas de WhatsApp.</div>
       </div>
       <div class="ps-card">
@@ -388,7 +388,7 @@ function telaEnviar() {
             <div class="ps-nome">${esc(c.nome)}</div>
             <div class="ps-sub${!z && catAntigo(c.catalogo) ? ' ps-c-amar' : ''}">${z ? `${esc(z.nome)} · pronto para analisar${z.pasta ? '' : ''}` : c.catalogo ? `ZIP ${idadeTxt(c.catalogo)} · ${Object.keys(c.catalogo.itens || {}).length} produtos${catAntigo(c.catalogo) ? ' · antigo' : ''}` : 'Ainda sem ZIP'}</div>
             ${z && z.nota ? `<div class="ps-sub ps-c-amar">${esc(z.nota)}</div>` : ''}</div>
-            <label class="ps-link"><input type="file" class="psZipIn" data-conta="${esc(id)}" accept=".zip,.csv,application/zip,text/csv" hidden>${z ? 'Trocar' : c.catalogo ? 'Atualizar' : 'Escolher'}</label></div>`; }).join('')}
+            <button type="button" class="ps-link" data-act="escolherarq" data-alvo=".psZipIn[data-conta='${esc(id)}']">${z ? 'Trocar' : c.catalogo ? 'Atualizar' : 'Escolher'}</button><input type="file" class="psZipIn ps-fileoff" data-conta="${esc(id)}" accept=".zip,.csv,application/zip,text/csv" tabindex="-1" aria-hidden="true"></div>`; }).join('')}
         <div class="ps-sub">Ao escolher um ZIP o app lê o nome da loja dentro do arquivo e já sabe de qual conta ele é.</div>
       </div>
       <button type="button" class="ps-btn ps-prim ps-grande" data-act="analisar"${ESC_.pdf || nZip ? '' : ' disabled'}>${ESC_.pdf ? 'Analisar' : nZip ? 'Guardar catálogo' : 'Escolha o PDF para analisar'}</button>`);
@@ -1390,6 +1390,7 @@ async function aoClicar(e) {
         if (act === 'voltar') return voltar();
         if (act === 'inicio') return telaInicio();
         if (act === 'avancado') return telaAvancado();
+        if (act === 'escolherarq') { const inp = overlay.querySelector(b.dataset.alvo); if (inp) inp.click(); return; }   // abre o seletor de arquivos direto do toque
         if (act === 'enviar') return telaEnviar();
         if (act === 'vinculos') return telaVinculos();
         if (act === 'avcontas') return telaAvContas();

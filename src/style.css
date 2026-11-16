@@ -3781,7 +3781,8 @@ html:not(.ctw-dev) [data-dev-only] { display: none !important; }
 .ps-aviso-card { background: rgba(251,191,36,.10); border: 1px solid rgba(251,191,36,.40); border-radius: 16px; padding: 12px 16px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 .ps-aviso-card span { color: var(--ui-tx2); line-height: 1.4; }
 .ps-arq-aviso { border-color: rgba(251,191,36,.45); }
-.ps-arq .ps-link input { display: none; }
+.ps-fileoff { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }   /* o input fica no DOM (não display:none) e é aberto pelo botão */
+.ps-arq button.ps-link { min-height: 44px; padding: 8px 10px; }
 .ps-resumo { display: flex; align-items: center; gap: 14px; width: 100%; box-sizing: border-box; text-align: left; background: var(--card-bg); border: 1px solid var(--ui-cardbd); border-radius: 16px; padding: 14px 16px; color: var(--text-color); font: inherit; }
 button.ps-resumo { cursor: pointer; }
 .ps-resumo .ps-grow { display: flex; flex-direction: column; gap: 2px; }
