@@ -1677,6 +1677,31 @@ window.removerDoCarrinho = removerDoCarrinho;
 
 
 
+// Extra embutido no parcelado quando o primeiro aparelho entra no cálculo
+const CTW_EXTRA_PARCELADO = 40;
+// Máximo de parcelas no crédito de cada maquininha
+function ctwMaxParcelas(machine) {
+    return rates[machine] ? ({ pagbank: 18, infinity: 12, valorante: 21, nubank: 12 })[machine] || 0 : 0;
+}
+// Parcela e total no crédito (taxa da maquininha + "arredondar .90"): é a mesma conta da tabela do Por aparelho e da busca por IA
+function ctwParcelaCredito(base, n, machine, brand) {
+    const taxa = getRate(machine, brand, n);
+    if (taxa === undefined) return null;
+    const bruto = base / (1 - taxa / 100);
+    let parcela = bruto / n, total = bruto;
+    if (safeStorage.getItem('ctwArredondarEnabled') === 'true') { parcela = Math.floor(parcela) + 0.90; total = parcela * n; }
+    return { parcela, total };
+}
+// Ponte para a busca por IA (módulo carregado só para dev)
+window.ctwBuscaIaApp = {
+    maxParcelas: ctwMaxParcelas,
+    parcela: ctwParcelaCredito,
+    extraAvista: () => ctwAvistaCfg().extra,
+    extraParcelado: () => CTW_EXTRA_PARCELADO,
+    maquina: () => ({ machine: document.getElementById('machine3')?.value || '', brand: document.getElementById('brand3')?.value || '' }),
+    selecionar: p => handleProductSelectionForAparelho(p)
+};
+
 function calculateAparelho() {
     if (!areRatesLoaded) return;
     const resultDiv = document.getElementById('resultCalcularPorAparelho');
@@ -1718,15 +1743,7 @@ function calculateAparelho() {
 
     const machine = document.getElementById("machine3").value;
     const brand = document.getElementById("brand3").value;
-    let maxInstallments = 0;
-        if (rates[machine]) { 
-        switch(machine) { 
-            case "pagbank": maxInstallments = 18; break; 
-            case "infinity": maxInstallments = 12; break; 
-            case "valorante": maxInstallments = 21; break; 
-            case "nubank": maxInstallments = 12; break; // Adicionado Nubank
-        } 
-    }
+    const maxInstallments = ctwMaxParcelas(machine);
 
     let tableRows = "";
     // À vista (Pix/dinheiro): não é "copyable-row" de propósito, pois fica fora da seleção múltipla
@@ -1738,19 +1755,10 @@ function calculateAparelho() {
         tableRows += `<tr class="debit-row copyable-row" data-installments="Débito" data-parcela="${valorBrutoDebito.toFixed(2)}" data-total="${valorBrutoDebito.toFixed(2)}"><td>Débito</td><td>-</td><td>${valorBrutoDebito.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td></tr>`;
     }
 
-    const arredondarAtivo = safeStorage.getItem('ctwArredondarEnabled') === 'true';
     for (let i = 1; i <= maxInstallments; i++) {
-        const creditTax = getRate(machine, brand, i);
-        if (creditTax !== undefined) {
-            const valorBrutoBase = valorBaseParaCalculo / (1 - creditTax / 100);
-            let valorParcela = valorBrutoBase / i;
-            let valorTotalFinal = valorBrutoBase;
-
-            if (arredondarAtivo) {
-                valorParcela = Math.floor(valorParcela) + 0.90;
-                valorTotalFinal = valorParcela * i;
-            }
-            
+        const credito = ctwParcelaCredito(valorBaseParaCalculo, i, machine, brand);
+        if (credito) {
+            const valorParcela = credito.parcela, valorTotalFinal = credito.total;
             tableRows += `<tr class="copyable-row" data-installments="${i}" data-parcela="${valorParcela.toFixed(2)}" data-total="${valorTotalFinal.toFixed(2)}"><td>${i}x</td><td>${valorParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td>${valorTotalFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td></tr>`;
         }
     }
@@ -1797,7 +1805,7 @@ function handleProductSelectionForAparelho(product) {
     
     // Configurações iniciais
     if (carrinhoDeAparelhos.length === 1) {
-        document.getElementById('valorExtraAparelho').value = '40';
+        document.getElementById('valorExtraAparelho').value = String(CTW_EXTRA_PARCELADO);
     }
     if (carrinhoDeAparelhos.length === 2) {
         showCustomModal({ message: "Múltiplos produtos: Textos de etiqueta desativados." });
@@ -5669,6 +5677,10 @@ document.addEventListener('DOMContentLoaded', () => {
             currentlySelectedProductForCalc = null;
         }
         displayDynamicSearchResults(searchTerm, 'aparelhoResultsContainer', handleProductSelectionForAparelho);
+    });
+    document.getElementById('aparelhoIaBtn')?.addEventListener('click', async () => {
+        try { (await window.ctwCarregarModulo('buscaia')).abrir(); }
+        catch (err) { console.warn('[busca ia]', err); showCustomModal({ message: 'Não consegui abrir a busca por IA agora. Tente de novo.' }); }
     });
     document.getElementById('entradaAparelho')?.addEventListener('input', calculateAparelho);
     document.getElementById('valorExtraAparelho')?.addEventListener('input', calculateAparelho);
