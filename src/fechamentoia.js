@@ -946,6 +946,7 @@ function gdZapEvento(e) {
     const z = G && G.zap; if (!z) return;
     if (e.type === 'input') { if (e.target.id === 'gdZt') z.texto = e.target.value; return; }
     if (e.type === 'change') {
+        if (e.target.type !== 'file') return;       // o "change" do textarea também chega aqui ao perder o foco: não pode limpar o texto
         const f = Array.from(e.target.files || []); e.target.value = '';
         if (e.target.id === 'gdZf' && f[0]) gdZapImg(f[0], 'foto');
         else if (e.target.id === 'gdZc') f.slice(0, 4 - z.comp.length).reduce((p, x) => p.then(() => gdZapImg(x, 'comp')), Promise.resolve());

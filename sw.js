@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-344'; // telas claras: lista individual de ignorados, histórico detalhado, faixa Contando/Ignorados e botão Fixo
+const CACHE = 'ctw-345'; // Colar do Zap (IA): abrir o seletor de foto não apaga mais o texto digitado
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
