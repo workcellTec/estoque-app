@@ -325,7 +325,7 @@ function abrirOverlay(titulo) {
 function fechar() {
     if (overlay) { overlay.remove(); overlay = null; }
     document.documentElement.classList.remove('ps-aberto');
-    S = null; CAT = null; ESC_.pdf = null; ESC_.zips = {}; clearTimeout(_toastT); _toastFn = null;
+    IGN_ABERTO = {}; S = null; CAT = null; ESC_.pdf = null; ESC_.zips = {}; clearTimeout(_toastT); _toastFn = null;
 }
 
 function tela(html) {
@@ -698,7 +698,10 @@ async function aplicarQuantidades() {
           ${voltaram ? `<div class="ps-lin"><span>Voltaram a contar</span><b>${voltaram}</b></div>` : ''}
           ${zer ? `<div class="ps-lin"><span>Zerados (fora do PDF)</span><b>${zer}</b></div>` : ''}
           ${mexidos.length ? `<div class="ps-lin"><span>Mudaram durante a conferência (não mexi)</span><b>${mexidos.length}</b></div>` : ''}</div>
-          ${logId ? `<button type="button" class="ps-btn" data-act="desfazer" data-id="${esc(logId)}">Desfazer</button>` : ''}
+          <div class="ps-cap">O que mudou</div>
+          ${seguros.slice(0, 40).map(x => `<div class="ps-lh"><div class="ps-grow"><div class="ps-nome">${esc(x.c.nome)}</div>${x.volta ? '<div class="ps-sub"><span class="ps-chip ps-ve">voltou a contar</span></div>' : ''}</div><b>${x.de} → ${x.para}</b></div>`).join('')}
+          ${seguros.length > 40 ? `<div class="ps-sub">E mais ${seguros.length - 40}. A lista completa fica em Avançado → Histórico.</div>` : ''}
+          ${logId ? `<button type="button" class="ps-ob ps-ob-am" data-act="desfazer" data-id="${esc(logId)}">Desfazer esta conferência</button>` : ''}
           <button type="button" class="ps-btn ps-prim" data-act="qvoltar">Continuar</button>
           <button type="button" class="ps-btn ps-suave" data-act="fechar">Fechar</button>`);
     } catch (e) {
@@ -1184,7 +1187,7 @@ async function telaAvancado() {
       <div class="ps-resumo"><span class="ps-grow"><b>Extra à vista</b><span class="ps-sub">Preço do catálogo = valor do CTW + extra</span></span>
         <input type="text" id="psCatExtra" class="ps-inp ps-extra" inputmode="decimal" value="${esc(String(catExtra()).replace('.', ','))}" aria-label="Extra à vista em reais"></div>
       ${lin('vinculos', 'Nomes ligados', `${nLig} · buscar, desligar o que ficou errado`)}
-      ${lin('avignorados', 'Sem estoque e ignorados', nIg ? `${nIg} · voltar a perguntar em massa` : 'Nada marcado')}
+      ${lin('avignorados', 'Sem estoque e ignorados', nIg ? `${nIg} · ver a lista e voltar a perguntar` : 'Nada marcado')}
       ${lin('avfixos', 'Preços mantidos de propósito', nFix ? `${nFix} produto(s) · voltar a avisar` : 'Nenhum')}
       ${lin('avprints', 'Catálogo por prints', 'Só se você não tiver o ZIP')}
       ${lin('avhist', 'Histórico', 'Importações de preço e o que foi feito no WhatsApp')}`);
@@ -1215,15 +1218,47 @@ function telaAvExcluirConta(id) {
       <button type="button" class="ps-btn ps-suave" data-act="avcontas">Cancelar</button>`);
 }
 
+// Blocos da tela "Sem estoque e ignorados": [chave em APR, título, explicação, ação em massa]
+const IGN_BLOCOS = [
+    ['ignoradosCtw', 'Produtos do CTW “sem estoque agora”', 'Voltam sozinhos depois de ' + DIAS_EM_FALTA + ' dias.', 'esquecerctw'],
+    ['ignoradosPdf', 'Itens do Stock 2.0 “não existe no CTW”', 'O app não pergunta mais sobre eles.', 'esquecerpdf'],
+    ['naoWhats', 'Produtos “não vou colocar no WhatsApp”', 'O app não cobra adicionar nenhuma conta.', 'esquecernw'],
+    ['catIgnorados', 'Itens do catálogo “não é do CTW”', 'O app não pergunta mais sobre eles.', 'esquecercat']
+];
+const IGN_PAGINA = 8;
+let IGN_ABERTO = {};                // quantos itens de cada bloco estão visíveis
+
+const diaMes = t => { const d = new Date(t); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0'); };
+const nomeProd = id => { const p = produtoVivo(id); return p ? p.nome : '(produto removido do CTW)'; };
+
+// { chave, nome, sub } de cada item de um bloco, do mais recente ao mais antigo
+function itensIgnorados(col) {
+    const m = APR[col] || {};
+    return Object.keys(m).map(k => {
+        const v = m[k] && typeof m[k] === 'object' ? m[k] : {};
+        if (col === 'ignoradosCtw') {
+            const dias = v.ate ? Math.max(1, Math.ceil((v.ate - Date.now()) / 86400000)) : 0;
+            return { k, q: v.quando || 0, nome: v.nome || nomeProd(k), sub: `sem estoque${v.quando ? ' desde ' + diaMes(v.quando) : ''} · ${v.ate && v.ate > Date.now() ? `volta sozinho em ${dias} dia${dias > 1 ? 's' : ''}` : 'já volta a ser perguntado'}` };
+        }
+        if (col === 'ignoradosPdf') return { k, q: v.quando || 0, nome: v.nome || k, sub: `ignorado${v.quando ? ' em ' + diaMes(v.quando) : ''}` };
+        if (col === 'naoWhats') return { k, q: v.quando || 0, nome: v.nome || nomeProd(k), sub: `não vai no WhatsApp${v.quando ? ' · desde ' + diaMes(v.quando) : ''}${v.usuario ? ' · ' + v.usuario : ''}` };
+        return { k, q: 0, nome: k, sub: 'ignorado no catálogo' };
+    }).sort((x, y) => y.q - x.q || x.nome.localeCompare(y.nome));
+}
+
 async function telaAvIgnorados() {
     TELA = 'av-ign'; titulo('Sem estoque e ignorados');
     try { await carregarAprendizado(); } catch (e) { return tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div>`); }
-    const bloco = (n, tit, sub, act) => `<div class="ps-card"><div class="ps-lin"><span>${tit}</span><b>${n}</b></div><div class="ps-sub">${sub}</div>${n ? `<button type="button" class="ps-btn" data-act="${act}">Voltar a perguntar (${n})</button>` : ''}</div>`;
-    tela(`
-      ${bloco(Object.keys(APR.ignoradosCtw).length, 'Produtos do CTW “sem estoque agora”', 'Voltam sozinhos depois de ' + DIAS_EM_FALTA + ' dias.', 'esquecerctw')}
-      ${bloco(Object.keys(APR.ignoradosPdf).length, 'Itens do Stock 2.0 “não existe no CTW”', 'O app não pergunta mais sobre eles.', 'esquecerpdf')}
-      ${bloco(Object.keys(APR.naoWhats).length, 'Produtos “não vou colocar no WhatsApp”', 'O app não cobra adicionar nenhuma conta.', 'esquecernw')}
-      ${bloco(Object.keys(APR.catIgnorados).length, 'Itens do catálogo “não é do CTW”', 'O app não pergunta mais sobre eles.', 'esquecercat')}`);
+    const bloco = ([col, tit, sub, act]) => {
+        const l = itensIgnorados(col), n = l.length, vis = Math.min(n, IGN_ABERTO[col] || IGN_PAGINA);
+        return `<div class="ps-card"><div class="ps-lin"><span>${tit}</span><b>${n}</b></div><div class="ps-sub">${sub}</div>
+          ${n > 1 ? `<button type="button" class="ps-ob" data-act="${act}">Voltar a perguntar todos (${n})</button>` : ''}</div>
+          ${l.slice(0, vis).map(x => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(x.nome)}</div><div class="ps-sub">${esc(x.sub)}</div></div>
+            <button type="button" class="ps-ob ps-ob-sm" data-act="esquecer1" data-col="${col}" data-k="${esc(x.k)}">Voltar a perguntar</button></div>`).join('')}
+          ${n > vis ? `<button type="button" class="ps-ob ps-ob-ng" data-act="ignmais" data-col="${col}">Ver mais ${n - vis} ›</button>` : ''}`;
+    };
+    const total = IGN_BLOCOS.reduce((t, b) => t + Object.keys(APR[b[0]] || {}).length, 0);
+    tela(total ? IGN_BLOCOS.filter(b => Object.keys(APR[b[0]] || {}).length).map(bloco).join('') : '<div class="ps-msg">Nada ignorado no momento. Tudo é perguntado normalmente.</div>');
 }
 
 async function telaAvFixos() {
@@ -1259,9 +1294,17 @@ async function telaAvHist() {
     const h = Object.values(zl).sort((a, b) => (b.quando || 0) - (a.quando || 0));
     tela(`
       <div class="ps-cap">Importações de preço e quantidade no CTW</div>
-      ${imp.map(([id, v]) => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(v.arquivo || (v.tipo === 'vinculo' ? 'Vínculo manual' : v.tipo === 'quantidade' ? 'Conferência de quantidades' : 'Importação'))}</div>
-        <div class="ps-sub">${Object.keys(v.itens || {}).length} ${v.tipo === 'quantidade' ? 'quantidade(s)' : 'preço(s)'} · ${quando(v.quando)}${v.usuario ? ' · ' + esc(v.usuario) : ''}${v.desfeito ? ' · desfeita' : ''}</div></div>
-        ${v.desfeito ? '' : `<button type="button" class="ps-mini" data-act="desfazer" data-id="${esc(id)}">Desfazer</button>`}</div>`).join('') || '<div class="ps-msg">Nenhuma importação ainda.</div>'}
+      ${imp.map(([id, v]) => {
+        const itens = Object.entries(v.itens || {}), qtd = v.tipo === 'quantidade';
+        const nomeI = (pid, it) => esc(it.nome || nomeProd(pid));
+        const lin = ([pid, it]) => qtd
+            ? `<div class="ps-lh"><div class="ps-grow"><div class="ps-nome">${nomeI(pid, it)}</div>${it.ignDe && !it.ignPara ? '<div class="ps-sub"><span class="ps-chip ps-ve">voltou a contar</span></div>' : ''}</div><b>${it.de} → ${it.para}</b></div>`
+            : `<div class="ps-lh"><div class="ps-grow"><div class="ps-nome">${nomeI(pid, it)}</div></div><b>${brl(it.de)} → ${brl(it.para)}</b></div>`;
+        return `<details class="ps-logd"><summary><div class="ps-grow"><div class="ps-nome">${esc(v.arquivo || (v.tipo === 'vinculo' ? 'Vínculo manual' : qtd ? 'Conferência de quantidades' : 'Importação'))}</div>
+          <div class="ps-sub">${itens.length} ${qtd ? 'produto(s)' : 'preço(s)'} · ${quando(v.quando)}${v.usuario ? ' · ' + esc(v.usuario) : ''}${v.desfeito ? ' · desfeita' : ''}</div></div></summary>
+          <div class="ps-lhs">${itens.length ? itens.map(lin).join('') : '<div class="ps-sub">Só vínculo de nome, sem alteração de valores.</div>'}</div>
+          ${v.desfeito ? '' : `<button type="button" class="ps-ob ps-ob-am" data-act="desfazer" data-id="${esc(id)}">Desfazer ${qtd ? 'esta conferência' : 'esta importação'}</button>`}</details>`;
+      }).join('') || '<div class="ps-msg">Nenhuma importação ainda.</div>'}
       <div class="ps-cap ps-esp">Feito no WhatsApp</div>
       ${Object.keys(APR.contas).length > 1 ? chipsContas(false) : ''}
       ${h.map(x => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(x.nome || '')}</div>
@@ -1408,10 +1451,17 @@ async function aoClicar(e) {
         if (act === 'mais') { const m = b.closest('.ps-lc'), menu = m && m.querySelector('.ps-menu'); if (menu) menu.hidden = !menu.hidden; return; }
         if (act === 'rmvinculo') { await removerVinculo(b.dataset.pid, b.dataset.nome); return telaVinculos(); }
         if (act === 'rmcatvin') { const k = b.dataset.k; await update(ref(getDb()), { [`${BASE}/catAliases/${k}`]: null }); delete APR.catAliases[k]; return telaVinculos(); }
-        if (act === 'esquecercat') { await update(ref(getDb()), { [`${BASE}/catIgnorados`]: null }); APR.catIgnorados = {}; return telaAvIgnorados(); }
-        if (act === 'esquecernw') { await update(ref(getDb()), { [`${BASE}/naoWhats`]: null }); APR.naoWhats = {}; return telaAvIgnorados(); }
-        if (act === 'esquecerctw') { await update(ref(getDb()), { [`${BASE}/ignoradosCtw`]: null }); APR.ignoradosCtw = {}; return telaAvIgnorados(); }
-        if (act === 'esquecerpdf') { await update(ref(getDb()), { [`${BASE}/ignoradosPdf`]: null }); APR.ignoradosPdf = {}; return telaAvIgnorados(); }
+        if (act === 'esquecer1') {                         // um item só: volta a ser perguntado
+            const col = b.dataset.col, k = b.dataset.k;
+            if (!IGN_BLOCOS.some(x => x[0] === col)) return;
+            await update(ref(getDb()), { [`${BASE}/${col}/${k}`]: null }); delete APR[col][k];
+            return telaAvIgnorados();
+        }
+        if (act === 'ignmais') { IGN_ABERTO[b.dataset.col] = (IGN_ABERTO[b.dataset.col] || IGN_PAGINA) + 20; return telaAvIgnorados(); }
+        {   // "Voltar a perguntar todos" de um bloco
+            const bl = IGN_BLOCOS.find(x => x[3] === act);
+            if (bl) { await update(ref(getDb()), { [`${BASE}/${bl[0]}`]: null }); APR[bl[0]] = {}; return telaAvIgnorados(); }
+        }
         if (act === 'analisar') {
             if (!ESC_.pdf && !Object.keys(ESC_.zips).length) return;
             extraDoCampo();

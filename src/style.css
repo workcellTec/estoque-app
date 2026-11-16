@@ -3755,6 +3755,39 @@ html:not(.ctw-dev) [data-dev-only] { display: none !important; }
 .ps-zip { color: #FBBF24; background: rgba(251,191,36,.14); }
 .ps-link { color: #34D399; font-weight: 600; font-size: 13px; cursor: pointer; }
 .ps-btn[disabled] { opacity: .45; }
+/* ── Botões com cara de botão (contorno + cor sólida) e cores de estado: verde = ok/contando, âmbar = atenção/ignorado ── */
+:root { --ob-vbg: #12332A; --ob-v: #34D399; --ob-abg: #3A2F12; --ob-a: #FBBF24; --ob-ng: #4B4F58; }
+[data-theme="light"] { --ob-vbg: #DDF5EB; --ob-v: #0B8A5F; --ob-abg: #FFF1CC; --ob-a: #8A5F00; --ob-ng: #B8C4BF; }
+.ps-ob { display: block; width: 100%; box-sizing: border-box; border-radius: 14px; padding: 12px; font-size: 15px; font-weight: 600; text-align: center; cursor: pointer; border: 1.5px solid var(--ob-v); color: var(--ob-v); background: var(--ob-vbg); }
+.ps-ob-sm { width: auto; flex: none; padding: 9px 12px; font-size: 13px; border-radius: 12px; }
+.ps-ob-ng { border-color: var(--ob-ng); color: var(--ui-tx2); background: transparent; }
+.ps-ob-am { border-color: var(--ob-a); color: var(--ob-a); background: var(--ob-abg); }
+.ps-ob:active { opacity: .75; }
+.ps-chip.ps-ve { background: var(--ob-vbg); color: var(--ob-v); font-weight: 600; }
+.ps-logd { background: var(--card-bg); border: 1px solid var(--ui-cardbd); border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.ps-logd > summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+.ps-logd > summary::-webkit-details-marker { display: none; }
+.ps-logd > summary::after { content: "⌄"; color: var(--ui-tx2); font-size: 18px; }
+.ps-logd[open] > summary::after { content: "⌃"; }
+.ps-logd[open] { gap: 10px; }
+.ps-lhs { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.ps-lh { display: flex; align-items: center; gap: 10px; background: var(--secondary-color); border-radius: 12px; padding: 9px 12px; }
+.ps-lh b { font-size: 15px; white-space: nowrap; }
+.ps-logd .ps-ob { margin-top: 10px; }
+/* ── Estoque: faixa que mostra em qual lista você está + estado do olho e do "Fixo" ── */
+.stock-modo { display: flex; align-items: center; gap: 12px; border-radius: 16px; padding: 12px 14px; margin: 10px 0 0; border: 1.5px solid; }
+.stock-modo i { font-size: 22px; flex: none; }
+.stock-modo b { display: block; font-size: 15px; }
+.stock-modo span { display: block; font-size: 12.5px; line-height: 1.35; }
+.stock-modo-v { background: var(--ob-vbg); border-color: var(--ob-v); color: var(--ob-v); }
+.stock-modo-a { background: var(--ob-abg); border-color: var(--ob-a); color: var(--ob-a); }
+#toggleIgnoredBtn.active { background: var(--ob-abg); border-color: var(--ob-a); color: var(--ob-a); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.stock-item-card.is-ignored { box-shadow: inset 0 0 0 1.5px var(--ob-a); }
+.stock-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+.stock-chip { font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--ob-abg); color: var(--ob-a); }
+.stock-item-controls .ignore-toggle-btn.on { background: var(--ob-abg); color: var(--ob-a); }
+.ignore-always-btn { white-space: nowrap; flex: none; height: 38px; padding: 0 13px; border-radius: 12px; font-size: 13px; font-weight: 600; background: transparent; border: 1.5px solid var(--ob-ng); color: var(--ui-tx2); }
+.ignore-always-btn.on { background: var(--ob-abg); border-color: var(--ob-a); color: var(--ob-a); }
 #psBuscaVinc { position: sticky; top: 0; z-index: 2; width: 100%; box-sizing: border-box; margin: 0 0 8px; background: var(--card-color, #17191E); }
 .ps-contas { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 .ps-contas button { border: 1px solid var(--border-color, #262930); background: transparent; color: var(--text-color); border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 500; }

@@ -76,7 +76,7 @@
          para a 1ª pintura, mas funciona igual em qualquer aparelho. -->
     <link href="bootstrap-icons-lite.css?v=1" rel="stylesheet"/>
     <link href="bootstrap-lite.css?v=1" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=149">
+    <link rel="stylesheet" href="style.css?v=150">
 
 
 
@@ -1420,6 +1420,7 @@
             <button class="ui-rb" id="toggleIgnoredBtn" title="Mostrar produtos ignorados" aria-label="Mostrar produtos ignorados"><i class="bi bi-eye-slash-fill"></i></button>
             <button class="ui-rb" id="generateReportBtn" title="Relatório" aria-label="Relatório"><i class="bi bi-printer"></i></button>
         </div>
+        <div id="stockModoFaixa" class="stock-modo stock-modo-v" role="status"><i class="bi bi-eye-fill"></i><div><b id="stockModoTit">CONTANDO</b><span id="stockModoSub"></span></div></div>
         <div class="w-100">
             <div id="stockProgressContainer" class="ui-card stock-progress">
                 <div class="stock-progress-row">
@@ -1736,7 +1737,7 @@
 
 
 <script src="ctw-ui.js?v=4" defer></script>
-<script src="app.js?v=1048" type="module" defer></script>
+<script src="app.js?v=1049" type="module" defer></script>
 <script>
 window.addEventListener('load', function() {
     var s = document.createElement('script');
@@ -1757,7 +1758,7 @@ window.addEventListener('load', function() {
             fechamentoia: () => import('./fechamentoia.js?v=29'),
             buscaia:     () => import('./buscaia.js?v=1'),   // só pelo painel do Módulo dev
             modulodev:   () => import('./modulodev.js?v=2'),  // painel do Módulo dev (porta secreta na Administração)
-            precosync:   () => import('./precosync.js?v=30')   // só ao abrir Mais > WhatsApp e Preços (fora do carregamento em segundo plano)
+            precosync:   () => import('./precosync.js?v=31')   // só ao abrir Mais > WhatsApp e Preços (fora do carregamento em segundo plano)
         };
         const carregados = {};
         window.ctwCarregarModulo = (nome) => carregados[nome] || (carregados[nome] = pesados[nome]());

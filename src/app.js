@@ -2639,6 +2639,16 @@ function renderStockList(list) {
     const text = document.getElementById('stockProgressText');
     const count = document.getElementById('stockProgressCount');
     
+    // faixa que diz em qual lista você está (contando x ignorados), com cor própria
+    const faixa = document.getElementById('stockModoFaixa');
+    if (faixa) {
+        const nIgn = products.length - totalCount;
+        faixa.className = 'stock-modo ' + (onlyShowIgnored ? 'stock-modo-a' : 'stock-modo-v');
+        faixa.querySelector('i').className = 'bi ' + (onlyShowIgnored ? 'bi-eye-slash-fill' : 'bi-eye-fill');
+        document.getElementById('stockModoTit').textContent = onlyShowIgnored ? `IGNORADOS · ${nIgn} produto${nIgn === 1 ? '' : 's'}` : `CONTANDO · ${totalCount} produto${totalCount === 1 ? '' : 's'}`;
+        document.getElementById('stockModoSub').textContent = onlyShowIgnored ? 'Não entram na contagem. Toque no olho do topo para voltar.' : 'O olho riscado lá em cima mostra os ignorados.';
+    }
+
     if (bar) bar.style.width = `${percent}%`;
     if (count) count.textContent = checkedCount;
     if (text) text.textContent = `de ${totalCount} conferidos (${Math.round(percent)}%)`;
@@ -2660,10 +2670,11 @@ function renderStockList(list) {
             const isChecked = checkedItems[product.id]?.checked || false;
             const cardClass = isChecked ? 'is-checked' : 'not-checked';
             return `
-            <div class="stock-item-card ${cardClass}" data-id="${product.id}">
+            <div class="stock-item-card ${cardClass}${product.ignorarContagem ? ' is-ignored' : ''}" data-id="${product.id}">
                 <div class="stock-item-main">
                     <div class="product-info">
                         <div class="product-name">${escapeHtml(product.nome)}</div>
+                        ${product.ignorarContagem ? `<div class="stock-chips"><span class="stock-chip">Ignorado</span>${product.ignorarSempre ? '<span class="stock-chip" data-dev-only>Fixo · PDF não mexe</span>' : ''}</div>` : ''}
                         <div class="product-colors-display">${(product.cores || []).map(cor => `<div class="color-swatch-sm" style="background-color:${cor.hex};" title="${cor.nome}"></div>`).join('')}</div>
                     </div>
                     <div class="form-check form-switch d-flex align-items-center">
@@ -2678,12 +2689,10 @@ function renderStockList(list) {
                     </div>
                     <div class="d-flex align-items-center gap-2">
                         <button class="btn btn-sm btn-secondary open-color-picker-btn" data-id="${product.id}" title="Editar Cores"><i class="bi bi-palette-fill"></i></button>
-                        <button class="btn btn-sm btn-secondary ignore-toggle-btn" data-id="${product.id}" title="${product.ignorarContagem ? 'Mostrar na contagem' : 'Ignorar na contagem'}">
+                        <button class="btn btn-sm btn-secondary ignore-toggle-btn${product.ignorarContagem ? ' on' : ''}" data-id="${product.id}" title="${product.ignorarContagem ? 'Mostrar na contagem' : 'Ignorar na contagem'}">
                             <i class="bi ${product.ignorarContagem ? 'bi-eye-slash-fill' : 'bi-eye-fill'}"></i>
                         </button>
-                        <button class="btn btn-sm ${product.ignorarSempre ? 'btn-warning' : 'btn-secondary'} ignore-always-btn" data-dev-only data-id="${product.id}" title="${product.ignorarSempre ? 'Ignorado mesmo com quantidade no PDF (tocar para desligar)' : 'Ignorar mesmo com quantidade no PDF'}" aria-pressed="${product.ignorarSempre ? 'true' : 'false'}">
-                            <i class="bi bi-lock-fill"></i>
-                        </button>
+                        <button class="btn btn-sm ignore-always-btn${product.ignorarSempre ? ' on' : ''}" data-dev-only data-id="${product.id}" aria-pressed="${!!product.ignorarSempre}">Fixo${product.ignorarSempre ? ' ✓' : ''}</button>
                     </div>
                 </div>
             </div>`;
@@ -7335,10 +7344,25 @@ Se não houver smartphones: []`;
                 }
             }
             if (alwaysBtn && window.ctwEhDev()) {
-                // "Ignorar mesmo com quantidade": o PDF não mexe nesse produto. Ligar já liga o "ignorar contagem"; desligar só tira a trava nova
+                // "Fixo" (ignorarSempre): o PDF não mexe nesse produto. Ligar já liga o "ignorar contagem"; desligar só tira a trava nova.
+                // Abre a explicação antes de mudar, para ficar claro o que o botão faz.
                 const id = alwaysBtn.dataset.id;
                 const product = products.find(p => p.id === id);
-                if (product) updateProductInDB(id, product.ignorarSempre ? { ignorarSempre: false } : { ignorarSempre: true, ignorarContagem: true });
+                if (product) {
+                    const ligado = !!product.ignorarSempre;
+                    showCustomModal({
+                        message: ligado
+                            ? 'Fixo está ligado: a conferência por PDF não mexe na quantidade deste produto. Desligar deixa o PDF voltar a mudar a quantidade. O produto continua fora da contagem até você tocar no olho.'
+                            : 'Fixo: o PDF não mexe. Com o Fixo ligado, a conferência por PDF não muda a quantidade deste produto e ele fica fora da contagem, mesmo que o PDF traga uma quantidade.',
+                        confirmText: ligado ? 'Desligar Fixo' : 'Ligar Fixo',
+                        cancelText: 'Cancelar',
+                        onConfirm: () => {
+                            const vivo = products.find(p => p.id === id);
+                            if (vivo) updateProductInDB(id, vivo.ignorarSempre ? { ignorarSempre: false } : { ignorarSempre: true, ignorarContagem: true });
+                        },
+                        onCancel: () => {}
+                    });
+                }
             }
         });
     }
