@@ -76,7 +76,7 @@
          para a 1ª pintura, mas funciona igual em qualquer aparelho. -->
     <link href="bootstrap-icons-lite.css?v=1" rel="stylesheet"/>
     <link href="bootstrap-lite.css?v=1" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=144">
+    <link rel="stylesheet" href="style.css?v=145">
 
 
 
@@ -690,7 +690,7 @@
                     <div class="favoritos" id="aparelhoFavoritosContainer"></div>
                     <div id="searchChipsContainer" class="chip-scroll-container mx-auto max-width-400 hidden"></div>
 
-                    <div class="mb-3 search-wrapper mx-auto"><div class="ctw-bia-cab"><label class="form-label" for="aparelhoSearch"><i class="bi bi-search"></i> Pesquisar Aparelho</label><button type="button" class="ctw-bia-btn" id="aparelhoIaBtn" data-dev-only aria-label="Buscar com IA">IA</button></div><input autocomplete="off" class="form-control" id="aparelhoSearch" placeholder="Carregando..." type="text"/><div class="search-results-container list-group" id="aparelhoResultsContainer"></div></div>
+                    <div class="mb-3 search-wrapper mx-auto"><label class="form-label" for="aparelhoSearch"><i class="bi bi-search"></i> Pesquisar Aparelho</label><input autocomplete="off" class="form-control" id="aparelhoSearch" placeholder="Carregando..." type="text"/><div class="search-results-container list-group" id="aparelhoResultsContainer"></div></div>
                    <div id="aparelhoInfoNote" class="text-center text-secondary small my-2 hidden aparelho-info-note"></div>
                     
                     <div id="carrinhoAparelhosContainer" class="mb-3" class="max-width-400-margin-auto"></div>
@@ -1735,7 +1735,7 @@
 
 
 <script src="ctw-ui.js?v=4" defer></script>
-<script src="app.js?v=1044" type="module" defer></script>
+<script src="app.js?v=1045" type="module" defer></script>
 <script>
 window.addEventListener('load', function() {
     var s = document.createElement('script');
@@ -1754,8 +1754,9 @@ window.addEventListener('load', function() {
             reposicao:   () => import('./reposicao.js').then(m => { window._reposicaoModule = m; return m; }),
             creditoscan: () => import('./creditoscan.js').then(m => { window._csReady = true; return m; }),
             fechamentoia: () => import('./fechamentoia.js?v=27'),
-            buscaia:     () => import('./buscaia.js?v=1'),   // só ao tocar em IA no Por aparelho (dev)
-            precosync:   () => import('./precosync.js?v=26')   // só ao abrir Mais > WhatsApp e Preços (fora do carregamento em segundo plano)
+            buscaia:     () => import('./buscaia.js?v=1'),   // só pelo painel do Módulo dev
+            modulodev:   () => import('./modulodev.js?v=1'),  // painel do Módulo dev (porta secreta na Administração)
+            precosync:   () => import('./precosync.js?v=27')   // só ao abrir Mais > WhatsApp e Preços (fora do carregamento em segundo plano)
         };
         const carregados = {};
         window.ctwCarregarModulo = (nome) => carregados[nome] || (carregados[nome] = pesados[nome]());
@@ -1827,7 +1828,7 @@ window.addEventListener('load', function() {
                 import('./Bookip.js'),
                 import('./fecharVenda.js'),
             ]);
-            const emSegundoPlano = () => Promise.all(Object.keys(pesados).filter(n => n !== 'precosync' && n !== 'fechamentoia' && n !== 'buscaia').map(window.ctwCarregarModulo));
+            const emSegundoPlano = () => Promise.all(Object.keys(pesados).filter(n => n !== 'precosync' && n !== 'fechamentoia' && n !== 'buscaia' && n !== 'modulodev').map(window.ctwCarregarModulo));
             if ('requestIdleCallback' in window) requestIdleCallback(emSegundoPlano, { timeout: 4000 });
             else setTimeout(emSegundoPlano, 2000);
         }
@@ -2012,11 +2013,6 @@ window.addEventListener('load', function() {
             <div class="ui-grow">Modo leve<div class="ui-cap" id="ctwLeveSub">Desligado</div></div>
             <button type="button" class="ui-sw" id="ctwLeveSwitch" role="switch" aria-checked="false" aria-label="Modo leve"></button>
         </div>
-        <div class="ui-mrow" id="ctwSheetGd" data-dev-only>
-            <span class="ui-bub ui-bub-sm"><svg class="ui-ic ui-ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4"/></svg></span>
-            <div class="ui-grow">Garantia detalhada<div class="ui-cap" id="ctwGdSub">Aparece no botão +</div></div>
-            <button type="button" class="ui-sw" id="ctwGdSwitch" role="switch" aria-checked="true" aria-label="Garantia detalhada"></button>
-        </div>
         <button type="button" class="ui-mrow" id="ctwSheetNotif">
             <span class="ui-bub ui-bub-sm"><svg class="ui-ic ui-ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg></span>
             <div class="ui-grow">Notificações<div class="ui-cap" id="notifPrefLabelSheet">Carregando...</div></div>
@@ -2035,9 +2031,9 @@ window.addEventListener('load', function() {
             <span class="ui-grow">Administração</span>
             <svg class="ui-ic ui-ic-s ui-mute" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
         </button>
-        <button type="button" class="ui-mrow" id="ctwSheetPrecos" data-dev-only>
-            <span class="ui-bub ui-bub-sm"><svg class="ui-ic ui-ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg></span>
-            <div class="ui-grow">WhatsApp e Preços<div class="ui-cap">Atualizar preços e o que fazer no WhatsApp</div></div>
+        <button type="button" class="ui-mrow" id="ctwSheetDev" data-dev-only>
+            <span class="ui-bub ui-bub-sm"><svg class="ui-ic ui-ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg></span>
+            <span class="ui-grow">Dev</span>
             <span class="ui-zapn" data-zap-n hidden></span>
             <svg class="ui-ic ui-ic-s ui-mute" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
         </button>

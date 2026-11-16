@@ -300,6 +300,7 @@ function abrirOverlay(titulo) {
     if (overlay) overlay.remove();
     overlay = document.createElement('div');
     overlay.className = 'ps-overlay';
+    overlay.setAttribute('data-dev-only', '');       // some junto se o Módulo dev for desligado (inclusive de longe)
     overlay.innerHTML = `<div class="ps-topo"><button type="button" class="ps-x" data-act="voltar" aria-label="Voltar">‹</button><b>${esc(titulo || 'WhatsApp e Preços')}</b></div><div class="ps-corpo" id="psCorpo"></div>`;
     overlay.addEventListener('click', aoClicar);
     overlay.addEventListener('input', aoDigitar);

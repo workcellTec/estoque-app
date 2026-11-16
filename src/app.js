@@ -69,17 +69,130 @@ let currentUserProfile = localStorage.getItem('ctwUserProfile') || '';
 let teamProfilesList = {}; 
 window.teamProfilesList = teamProfilesList; // expõe desde o início
 
-// ── Perfil "Dev": sem a senha 220390 e com telas extras (marcado em Perfis e Usuários) ──
-window.ctwEhDev = function() {
-    const nome = (localStorage.getItem('ctwUserProfile') || '').trim().toLowerCase();
+// ── Perfil "Dev" + Módulo dev (trava por aparelho) ──
+// "Perfil dev" é a marca em Perfis e Usuários. Só isso NÃO basta: o aparelho também precisa estar com o Módulo dev ligado
+// (porta secreta na Administração, com senha). ctwEhDev() é a checagem única que o app inteiro usa: com o módulo desligado,
+// o perfil dev se comporta como um perfil comum. O módulo vale por 24h e se renova a cada conferência online;
+// cada aparelho ligado fica registrado em settings/devAparelhos/{id} e pode ser desligado de outro celular.
+const DEV_LS = 'ctwDevModulo';                    // { id, perfil, em, ate }
+const DEV_VALIDADE_MS = 24 * 3600 * 1000;
+const DEV_CONFERE_MS = 30 * 60 * 1000;
+const DEV_SENHA = '220390';
+const devNomePerfil = () => (localStorage.getItem('ctwUserProfile') || '').trim().toLowerCase();
+window.ctwPerfilDev = function() {
+    const nome = devNomePerfil();
     if (!nome) return false;
     return Object.values(window.teamProfilesList || {}).some(p => p && p.dev === true && String(p.name || '').trim().toLowerCase() === nome);
 };
+function devLerLS() { try { return JSON.parse(localStorage.getItem(DEV_LS) || 'null'); } catch (e) { return null; } }
+function devEstado() {                             // módulo ligado e válido NESTE aparelho para o perfil atual
+    const e = devLerLS();
+    return e && e.id && e.ate > Date.now() && e.perfil === devNomePerfil() ? e : null;
+}
+window.ctwEhDev = function() { return window.ctwPerfilDev() && !!devEstado(); };
+window.ctwDevId = () => { const e = devEstado(); return e ? e.id : ''; };
+
+let _devCancel = [], _devTimer = null, _devExp = null;
+function devParar() {
+    _devCancel.forEach(f => { try { f(); } catch (e) { /* já parado */ } });
+    _devCancel = []; clearInterval(_devTimer); clearTimeout(_devExp); _devTimer = _devExp = null;
+}
+// Apaga a marca local e o registro deste aparelho (o registro some se houver conexão)
+function devLimparLocal() {
+    const e = devLerLS();
+    try { localStorage.removeItem(DEV_LS); } catch (x) { /* sem storage */ }
+    devParar();
+    if (e && e.id && db && isAuthReady) remove(ref(db, `settings/devAparelhos/${e.id}`)).catch(() => {});
+}
+function devDesligarLocal() {
+    devLimparLocal();
+    ['ctwDevOv', 'ctwBiaOv', 'ctwDonoOv'].forEach(id => document.getElementById(id)?.remove());
+    window.ctwAplicarDev();
+}
+window.ctwDevDesligarAqui = devDesligarLocal;
+
+// Confere com o banco se este aparelho continua autorizado e renova a validade; sem conexão, vale até o fim do prazo
+async function devConferir() {
+    const e = devEstado();
+    if (!e || !isAuthReady || !db) return;
+    try {
+        const [no, todos] = await Promise.all([get(ref(db, `settings/devAparelhos/${e.id}`)), get(ref(db, 'settings/devDesligarTodosEm'))]);
+        const v = no.val();
+        if (!v || v.desligar || (Number(todos.val()) || 0) > (e.em || 0)) return devDesligarLocal();
+        const agora = Date.now();
+        await update(ref(db, `settings/devAparelhos/${e.id}`), { vistoEm: agora });
+        localStorage.setItem(DEV_LS, JSON.stringify({ ...e, ate: agora + DEV_VALIDADE_MS }));
+        devAgendarFim();
+    } catch (err) { /* sem conexão: segue até vencer */ }
+}
+function devAgendarFim() {
+    clearTimeout(_devExp);
+    const e = devEstado();
+    if (e) _devExp = setTimeout(() => window.ctwAplicarDev(), Math.min(2147483000, Math.max(1000, e.ate - Date.now() + 500)));
+}
+function devVigiar() {
+    if (!devEstado()) return;
+    devAgendarFim();
+    if (_devCancel.length || !isAuthReady || !db) return;
+    const e = devEstado();
+    _devCancel.push(onValue(ref(db, `settings/devAparelhos/${e.id}`), snap => { const v = snap.val(); if (!v || v.desligar) devDesligarLocal(); }, () => {}));
+    _devCancel.push(onValue(ref(db, 'settings/devDesligarTodosEm'), snap => { if ((Number(snap.val()) || 0) > (e.em || 0)) devDesligarLocal(); }, () => {}));
+    devConferir();
+    _devTimer = setInterval(devConferir, DEV_CONFERE_MS);
+}
+window.ctwDevVigiar = devVigiar;
+
+async function devModeloAparelho() {
+    let modelo = '';
+    try {
+        const alta = await Promise.race([navigator.userAgentData.getHighEntropyValues(['model']), new Promise(r => setTimeout(r, 1000))]);
+        modelo = (alta && alta.model) || '';
+    } catch (e) { /* navegador sem essa informação */ }
+    return (modelo ? modelo + ' · ' : '') + 'tela ' + screen.width + '×' + screen.height;
+}
+// Liga o módulo neste aparelho. Só liga se o registro no banco for gravado: todo aparelho ligado pode ser desligado de longe.
+window.ctwDevLigar = async function() {
+    if (!window.ctwPerfilDev()) throw new Error('Este perfil não é dev.');
+    if (devEstado()) return;
+    if (!isAuthReady || !db) throw new Error('Sem conexão com o banco. Tente de novo.');
+    const id = Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, '0')).join('');
+    const agora = Date.now(), no = ref(db, `settings/devAparelhos/${id}`);
+    try {
+        await Promise.race([
+            update(no, { perfil: localStorage.getItem('ctwUserProfile') || '', modelo: await devModeloAparelho(), ativadoEm: agora, vistoEm: agora }),
+            new Promise((_, no2) => setTimeout(() => no2(new Error('Sem conexão com o banco. Tente de novo.')), 15000))
+        ]);
+    } catch (e) { remove(no).catch(() => {}); throw e; }     // se a gravação ainda chegar depois, o remove que vem na fila apaga
+    localStorage.setItem(DEV_LS, JSON.stringify({ id, perfil: devNomePerfil(), em: agora, ate: agora + DEV_VALIDADE_MS }));
+    window.ctwAplicarDev();
+};
+// Porta secreta (Administração → 7 toques no título das etiquetas). Para quem não é dev: silêncio total.
+window.ctwDevPorta = function() {
+    if (!window.ctwPerfilDev()) return;
+    const painel = () => window.ctwCarregarModulo('modulodev').then(m => m.abrir()).catch(() => showCustomModal({ message: 'Não consegui abrir agora. Tente de novo.' }));
+    if (window.ctwEhDev()) { painel(); return; }
+    showCustomModal({
+        message: 'Senha:', showPassword: true, confirmText: 'Entrar',
+        onConfirm: async (senha) => {
+            if (senha !== DEV_SENHA) { showCustomModal({ message: 'Senha incorreta.' }); return; }
+            try { await window.ctwDevLigar(); painel(); }
+            catch (e) { showCustomModal({ message: (e && e.message) || 'Não consegui agora. Tente de novo.' }); }
+        },
+        onCancel: () => {}
+    });
+};
+// Perfil renomeado pelo próprio dev: o módulo acompanha o novo nome
+window.ctwDevRenomear = function() { const e = devLerLS(); if (e) { e.perfil = devNomePerfil(); try { localStorage.setItem(DEV_LS, JSON.stringify(e)); } catch (x) { /* sem storage */ } } };
+
 window.ctwAplicarDev = function() {
+    if (devLerLS() && !devEstado()) devLimparLocal();          // vencido ou de outro perfil
     const dev = window.ctwEhDev();
     document.documentElement.classList.toggle('ctw-dev', dev);
-    if (dev && typeof window.ctwZapOuvir === 'function') window.ctwZapOuvir();
-    if (dev && typeof window.ctwSemEstoqueOuvir === 'function') window.ctwSemEstoqueOuvir();
+    if (dev) {
+        devVigiar();
+        if (typeof window.ctwZapOuvir === 'function') window.ctwZapOuvir();
+        if (typeof window.ctwSemEstoqueOuvir === 'function') window.ctwSemEstoqueOuvir();
+    } else devParar();
 };
 // Pede a senha de administrador; o perfil Dev entra direto (a função recebe a senha certa)
 window.ctwComSenha = function(cfg) {
@@ -135,6 +248,7 @@ window.ctwZapOuvir = function() {
         const v = snap.val() || {};
         window.ctwZapDados = v.zap || {};
         const n = conta(v) + Object.values(v.contas || {}).reduce((t, c) => t + conta(c), 0);
+        window.ctwZapNumero = n;
         document.querySelectorAll('[data-zap-n]').forEach(el => { el.textContent = n ? String(n) : ''; el.hidden = !n; });
     }, () => { _zapOuvindo = false; });
 };
@@ -2140,7 +2254,7 @@ function loadProductsFromDB() {
         const data = snapshot.val(); 
         products = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
         window.products = products;
-        if (window.ctwEhDev && window.ctwEhDev()) window.ctwSemEstoqueOuvir();
+        if (window.ctwEhDev && window.ctwEhDev()) { window.ctwSemEstoqueOuvir(); window.ctwDevVigiar(); }
         window.checkedItems = checkedItems;
         setupFuse();
         window._fuse = fuse; // expõe para fecharVenda.js
@@ -4786,7 +4900,7 @@ function renderTagManagementUI() {
     ${optionsHtml}
     ${avistaHtml}
     <div class="admin-section w-100">
-        <h4 class="text-start"><i class="bi bi-tags-fill"></i> Gerenciar Etiquetas e Textos</h4>
+        <h4 class="text-start" id="adminTagsTitulo" style="user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent"><i class="bi bi-tags-fill"></i> Gerenciar Etiquetas e Textos</h4>
         <p class="text-start text-secondary">Adicione, edite ou remova etiquetas e seus textos personalizados.</p>
         <div class="p-3 mb-4 rounded" style="background-color: rgba(0,0,0,0.2);">
             <form id="addTagForm">
@@ -4802,6 +4916,14 @@ function renderTagManagementUI() {
         </div>
     </div>
     `;
+
+    // Porta do Módulo dev: 7 toques seguidos (até 2s entre eles) no título. Quem não é dev não vê efeito nenhum.
+    let toquesPorta = 0, ultimoToque = 0;
+    document.getElementById('adminTagsTitulo')?.addEventListener('click', () => {
+        const agora = Date.now();
+        toquesPorta = agora - ultimoToque > 2000 ? 1 : toquesPorta + 1; ultimoToque = agora;
+        if (toquesPorta >= 7) { toquesPorta = 0; window.ctwDevPorta(); }
+    });
 
     const avistaAntesEl = document.getElementById('avistaAntesInput'), avistaDepoisEl = document.getElementById('avistaDepoisInput');
     if (avistaAntesEl) avistaAntesEl.value = avistaCfg.antes;
@@ -5566,8 +5688,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
     document.getElementById('goToAdmin')?.addEventListener('click', () => showMainSection('administracao'));
-    document.getElementById('ctwSheetPrecos')?.addEventListener('click', () => {
-        window.ctwCarregarModulo('precosync').then(m => m.abrir()).catch(() => showCustomModal({ message: "Erro ao abrir o módulo. Verifique a internet e tente de novo." }));
+    // Mais → "Dev" (só aparece com o Módulo dev ligado): abre o painel
+    document.getElementById('ctwSheetDev')?.addEventListener('click', () => {
+        if (!window.ctwEhDev()) return;
+        window.ctwCarregarModulo('modulodev').then(m => m.abrir()).catch(() => showCustomModal({ message: "Não consegui abrir agora. Tente de novo." }));
     });
 
     document.getElementById('backFromStock')?.addEventListener('click', () => showMainSection('main'));
@@ -5677,10 +5801,6 @@ document.addEventListener('DOMContentLoaded', () => {
             currentlySelectedProductForCalc = null;
         }
         displayDynamicSearchResults(searchTerm, 'aparelhoResultsContainer', handleProductSelectionForAparelho);
-    });
-    document.getElementById('aparelhoIaBtn')?.addEventListener('click', async () => {
-        try { (await window.ctwCarregarModulo('buscaia')).abrir(); }
-        catch (err) { console.warn('[busca ia]', err); showCustomModal({ message: 'Não consegui abrir a busca por IA agora. Tente de novo.' }); }
     });
     document.getElementById('entradaAparelho')?.addEventListener('input', calculateAparelho);
     document.getElementById('valorExtraAparelho')?.addEventListener('input', calculateAparelho);
@@ -12847,6 +12967,7 @@ window.updateNotificationUI  = updateNotificationUI;
                 if(nome === currentUserProfile && novoNome !== nome) {
                     currentUserProfile = novoNome;
                     localStorage.setItem('ctwUserProfile', novoNome);
+                    window.ctwDevRenomear();
                     if (window.ctwCSWidget) window.ctwCSWidget.publicar();   // widget do CreditoScan acompanha o perfil
                 }
                 ov.remove();
@@ -13351,11 +13472,18 @@ window.updateNotificationUI  = updateNotificationUI;
     // Garantia detalhada (dev): liga/desliga a linha escondida no "+" (localStorage 'ctwGdAtivo': '0' = desligada)
     function gdLigado() { try { return localStorage.getItem('ctwGdAtivo') !== '0'; } catch (e) { return true; } }
     function syncGd() {
-        var on = gdLigado(), sw = $('ctwGdSwitch'), sub = $('ctwGdSub'), linha = document.querySelector('[data-criar="garantiadet"]');
-        if (sw) { sw.setAttribute('aria-checked', on ? 'true' : 'false'); sw.classList.toggle('on', on); }
-        if (sub) sub.textContent = on ? 'Aparece no botão +' : 'Desligada';
-        if (linha) linha.hidden = !on;
+        var linha = document.querySelector('[data-criar="garantiadet"]');
+        if (linha) linha.hidden = !gdLigado();
     }
+    // O botão de ligar/desligar o atalho fica no painel do Módulo dev
+    window.ctwGdAtalho = {
+        ligado: gdLigado,
+        alternar: function() {
+            try { localStorage.setItem('ctwGdAtivo', gdLigado() ? '0' : '1'); } catch (e) {}
+            syncGd();
+            return gdLigado();
+        }
+    };
 
     // Escolha manual: vale sempre, até ser trocada de novo
     window.ctwDefinirModoLeve = function(on) {
@@ -13542,11 +13670,6 @@ window.updateNotificationUI  = updateNotificationUI;
         });
         var linhaLeve = $('ctwSheetLeve');
         if (linhaLeve) linhaLeve.addEventListener('click', function() { window.ctwDefinirModoLeve(!leveAtivo()); });
-        var linhaGd = $('ctwSheetGd');
-        if (linhaGd) linhaGd.addEventListener('click', function() {
-            try { localStorage.setItem('ctwGdAtivo', gdLigado() ? '0' : '1'); } catch (e) {}
-            syncGd();
-        });
         var linhaNotif = $('ctwSheetNotif');
         if (linhaNotif) linhaNotif.addEventListener('click', function() { if (window.toggleNotifPref) window.toggleNotifPref(); });
         var linhaTrocar = $('ctwSheetTrocar');
