@@ -4197,6 +4197,9 @@ button.ctw-dv-it:active { filter: brightness(1.15); }
 /* Dev: produto que não veio no último PDF do estoque */
 html.ctw-dev .ctw-sem-estoque { color: var(--status-bad) !important; }
 
+/* Etiqueta "Modo Dev" no topo do Início, só com o módulo ligado */
+.ctw-tag-dev { display: inline-block; margin-left: 4px; padding: 1px 9px; border-radius: 999px; background: var(--primary-color); color: #fff; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; vertical-align: 1px; }
+
 /* Atalhos do Módulo dev soltos nas telas: cada um pode ser desligado no painel */
 html.ctw-at-ia-off [data-dev-atalho="ia"], html.ctw-at-precos-off [data-dev-atalho="precos"] { display: none !important; }
 .ctw-bia-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
