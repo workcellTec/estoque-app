@@ -4040,6 +4040,11 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-luc-p button.on b { color: var(--on-primary); }
 .gd-luc-s { padding: 8px 10px; border-radius: 10px; background: var(--chapa-ok); font-size: 12.5px; line-height: 1.4; }
 .gd-luc-s b { color: var(--primary-color); font-weight: 700; }
+.gd-luc-l { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.gd-luc-i { flex: none; width: 28px; height: 28px; margin: -4px -6px -4px 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: transparent; color: var(--text-secondary); }
+.gd-luc-i .gd-i { width: 16px; height: 16px; }
+.gd-luc-i.on { background: var(--input-bg); color: var(--primary-color); }
+.gd-luc-m { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--input-border); }
 .gd-luc-s.nada { background: var(--input-bg); color: var(--text-secondary); }
 .gd-luc-s.nada b { color: var(--text-color); }
 .gd-luc-s:empty { display: none; }
@@ -4165,3 +4170,6 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .ctw-dono-ok:disabled { opacity: 0.7; }
 .ctw-dono-x { background: var(--secondary-color); color: var(--text-color); justify-content: center; }
 .ctw-dono-ls button:active, .ctw-dono-ok:active, .ctw-dono-x:active { filter: brightness(1.15); }
+
+/* Dev: produto que não veio no último PDF do estoque */
+html.ctw-dev .ctw-sem-estoque { color: var(--status-bad) !important; }

@@ -76,7 +76,7 @@
          para a 1ª pintura, mas funciona igual em qualquer aparelho. -->
     <link href="bootstrap-icons-lite.css?v=1" rel="stylesheet"/>
     <link href="bootstrap-lite.css?v=1" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=142">
+    <link rel="stylesheet" href="style.css?v=143">
 
 
 
@@ -1735,7 +1735,7 @@
 
 
 <script src="ctw-ui.js?v=4" defer></script>
-<script src="app.js?v=1042" type="module" defer></script>
+<script src="app.js?v=1043" type="module" defer></script>
 <script>
 window.addEventListener('load', function() {
     var s = document.createElement('script');
@@ -1753,8 +1753,8 @@ window.addEventListener('load', function() {
             repairs:     () => import('./repairs.js?v=5').then(m => { window._repairsModule = m; return m; }),
             reposicao:   () => import('./reposicao.js').then(m => { window._reposicaoModule = m; return m; }),
             creditoscan: () => import('./creditoscan.js').then(m => { window._csReady = true; return m; }),
-            fechamentoia: () => import('./fechamentoia.js?v=26'),
-            precosync:   () => import('./precosync.js?v=25')   // só ao abrir Mais > WhatsApp e Preços (fora do carregamento em segundo plano)
+            fechamentoia: () => import('./fechamentoia.js?v=27'),
+            precosync:   () => import('./precosync.js?v=26')   // só ao abrir Mais > WhatsApp e Preços (fora do carregamento em segundo plano)
         };
         const carregados = {};
         window.ctwCarregarModulo = (nome) => carregados[nome] || (carregados[nome] = pesados[nome]());

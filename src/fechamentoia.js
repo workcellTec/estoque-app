@@ -426,7 +426,7 @@ const IC = {
     search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>', ok: '<path d="M5 12l5 5 9-10"/>', chat: '<path d="M4 5h16v11H9l-5 4z"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>', pen: '<path d="M4 20l4-1 11-11-3-3L5 16l-1 4zM14 7l3 3"/>', chev: '<path d="M9 6l6 6-6 6"/>',
     cam: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>', rec: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-    cal: '<path d="M5 5h14v15H5zM5 9h14M9 3v4M15 3v4"/>', trend: '<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>', img: '<path d="M4 5h16v14H4z"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4 4 3 3-2 4 3"/>'
+    cal: '<path d="M5 5h14v15H5zM5 9h14M9 3v4M15 3v4"/>', trend: '<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>', info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>', img: '<path d="M4 5h16v14H4z"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4 4 3 3-2 4 3"/>'
 };
 const ico = n => `<svg class="gd-i" viewBox="0 0 24 24" aria-hidden="true">${IC[n]}</svg>`;
 
@@ -1833,7 +1833,7 @@ async function decorarHistorico(container, lista) {
 // pagamento incompleto, valor da garantia mudado depois do cálculo, ou garantia da Detalhada sem pagamento informado (contados no aviso).
 const LUC_PER = [['dia', 'Hoje'], ['semana', 'Semana'], ['mes', 'Mês'], ['tudo', 'Tudo']];
 const LUC_RAPIDO = [['+30', '+30'], ['+50', '+50'], ['+100', '+100'], ['+200', '+200'], ['-1', 'Prejuízo']];
-const LUC = { q: '', per: 'mes', exp: false, aberto: null, dados: null, escopo: '', ts: 0, erro: '', carregando: false, seq: 0 };
+const LUC = { q: '', per: 'mes', exp: false, info: false, aberto: null, dados: null, escopo: '', ts: 0, erro: '', carregando: false, seq: 0 };
 const sanePerfil = n => String(n || '').trim().replace(/[.#$\[\]\/]/g, '_').slice(0, 60);
 
 // "+50", "50", "+1.250,50", "R$ 80" → { n: 50 }; "-20" → { n: -20, perda: true }; vazio → null; ilegível → { erro: true }
@@ -1935,7 +1935,8 @@ function lucPintar() {
     else if (R.carregando) html = '<div class="gd-luc-s nada">Procurando…</div>';
     else if (R.L) {
         const L = R.L, tot = r2(L.reduce((s, x) => s + x.lucro, 0)), top = L.slice().sort((a, b) => b.lucro - a.lucro)[0];
-        html = L.length ? `<div class="gd-luc-s"><b>${lucPlural(L.length, 'venda', 'vendas')}</b> com ${crit} ${rot}. ${L.length > 1 ? 'Somam' : 'Soma'} <b>${sinal(tot)}</b>${L.length > 1 && !R.r.perda ? `, a maior foi de <b>${esc(top.doc.nome || 'Consumidor')}</b> (${brl(top.lucro)})` : ''}.</div>`
+        const mais = `${L.length > 1 ? 'Somam' : 'Soma'} <b>${sinal(tot)}</b>${L.length > 1 && !R.r.perda ? `, a maior foi de <b>${esc(top.doc.nome || 'Consumidor')}</b> (${brl(top.lucro)})` : ''}.`;
+        html = L.length ? `<div class="gd-luc-s"><div class="gd-luc-l"><span><b>${lucPlural(L.length, 'venda', 'vendas')}</b> com ${crit} ${rot}.</span><button type="button" class="gd-luc-i${LUC.info ? ' on' : ''}" data-gd="luc-info" aria-expanded="${LUC.info}" aria-label="Mais detalhes">${ico('info')}</button></div>${LUC.info ? `<div class="gd-luc-m">${mais}</div>` : ''}</div>`
             : `<div class="gd-luc-s nada">Nenhuma venda com ${crit} ${rot}. Tente um valor menor ou outro período.</div>`;
         if (R.fora) aviso = `${lucPlural(R.fora, 'venda sem líquido válido ficou', 'vendas sem líquido válido ficaram')} de fora (pagamento não informado, incompleto ou desatualizado).`;
         lista = L.map(lucCartao).join('');
@@ -1961,6 +1962,7 @@ function lucClique(a, b) {
     if (a === 'luc-per') { LUC.per = b.dataset.v; LUC.aberto = null; }
     else if (a === 'luc-rapido') { LUC.q = b.dataset.v; LUC.aberto = null; GO.querySelector('#gdLucIn').value = LUC.q; }
     else if (a === 'luc-limpa') { LUC.q = ''; LUC.aberto = null; const i = GO.querySelector('#gdLucIn'); i.value = ''; i.focus(); }
+    else if (a === 'luc-info') LUC.info = !LUC.info;
     else if (a === 'luc-abrir') LUC.aberto = LUC.aberto === b.dataset.id ? null : b.dataset.id;
     else {
         const x = (lucBase() || []).find(y => y.id === b.dataset.id); if (!x || !x.rec) return;

@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-334'; // Atribuir a outro: a etiqueta do dono vira o botão (discreto)
+const CACHE = 'ctw-335'; // Buscar lucro com ℹ️; dev: produtos fora do último PDF em vermelho
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

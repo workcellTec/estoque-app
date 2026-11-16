@@ -2,7 +2,7 @@
 // precosync.js — Sincronizar preços: catálogo do Stock 2.0 (PDF) → CTW
 // Atualiza SOMENTE o campo "valor" de products/{id}. Nada mais é tocado.
 // Casamento: nome idêntico (normalizado) → vínculo já aprendido → pergunta ao admin.
-// Firebase: settings/precosync/{aliases, ignoradosPdf, ignoradosCtw, log}
+// Firebase: settings/precosync/{aliases, ignoradosPdf, ignoradosCtw, log} e settings/semEstoque (produtos fora do último PDF)
 // ================================================================
 
 import { ref, get, update, push, query, orderByKey, limitToLast }
@@ -611,6 +611,41 @@ function calcEsgotados(presenca, duvida, catalogo, esgAtual, faltando) {
     };
 }
 
+// ── Sem estoque: quem não veio no PDF fica registrado e o nome aparece em vermelho no Por aparelho (só dev) ──
+// Cada PDF troca a lista inteira (quem voltou ao PDF volta ao normal). PDF com bem menos produtos que o anterior
+// = provável PDF incompleto: a lista antiga fica e espera a confirmação.
+const SEM_ESTOQUE = 'settings/semEstoque';
+const LIMITE_QUEDA_PDF = 0.7;
+
+function calcSemEstoque() {
+    const pres = presencaPdf(), duv = duvidaPdf(), ids = {};
+    let emEstoque = 0;
+    S.cl.ctw.forEach(c => {
+        const r = S.cl.reivindicado.get(c.id);
+        if (r && r.excluido) return;                       // apagado do CTW agora há pouco
+        if (pres.has(c.id)) emEstoque++;
+        else if (!duv.has(c.id)) ids[c.id] = true;         // nome ainda em dúvida: não marca
+    });
+    return { ids, emEstoque };
+}
+
+async function gravarSemEstoque(forcar) {
+    if (!S || !S.cl) return;
+    const db = getDb(), calc = calcSemEstoque();
+    const ant = (await get(ref(db, SEM_ESTOQUE))).val();
+    if (!forcar && ant && ant.emEstoque > 10 && calc.emEstoque < ant.emEstoque * LIMITE_QUEDA_PDF) {
+        S.semEstoqueDuvida = { novo: calc.emEstoque, antes: ant.emEstoque };
+        return;
+    }
+    S.semEstoqueDuvida = null;
+    const assin = calc.emEstoque + '|' + Object.keys(calc.ids).sort().join(',');
+    if (S.semEstoqueAssin === assin) return;               // nada mudou desde a última gravação
+    const val = { quando: Date.now(), arquivo: S.arquivo || '', usuario: usuario(), emEstoque: calc.emEstoque };
+    if (Object.keys(calc.ids).length) val.ids = calc.ids;
+    await update(ref(db), { [SEM_ESTOQUE]: val });
+    S.semEstoqueAssin = assin;
+}
+
 function contagemEsg(esg) {
     const v = Object.values(esg || {});
     return { desativar: v.filter(e => e.estado === 'desativar').length, reativar: v.filter(e => e.estado === 'reativar').length, adicionar: v.filter(e => e.estado === 'adicionar').length };
@@ -774,6 +809,7 @@ function ctwSemPdf() {
 async function telaRelatorio() {
     TELA = 'resultado'; titulo('Pronto');
     try { await carregarAprendizado(); } catch (e) { /* segue com o que já está na memória */ }
+    try { await gravarSemEstoque(); S.semEstoqueErro = ''; } catch (e) { S.semEstoqueErro = (e && e.message) || 'erro'; console.warn('[sem estoque] não gravou:', S.semEstoqueErro); }
     const aplic = S.aplicados.filter(x => x.origem !== 'vinculo' || x.para !== x.de);
     const sobem = aplic.filter(x => x.para > x.de).length, descem = aplic.filter(x => x.para < x.de).length;
     const ids = Object.keys(APR.contas);
@@ -793,6 +829,10 @@ async function telaRelatorio() {
       <div class="ps-resumo ps-feito"><span class="ps-num ps-c-verde">${aplic.length}</span><span class="ps-grow"><b>${aplic.length ? 'Preços atualizados no CTW' : 'Nenhum preço mudou no CTW'}</b>
         <span class="ps-sub">${aplic.length ? `${sobem} subiram · ${descem} desceram` : 'Tudo já estava igual ao Stock 2.0'}</span></span>
         ${aplic.length && S.logId ? `<button type="button" class="ps-link" data-act="desfazer" data-id="${esc(S.logId)}">Desfazer</button>` : ''}</div>
+      ${S.semEstoqueErro ? `<div class="ps-card ps-alerta"><div class="ps-cap">Nomes em vermelho (sem estoque)</div><div class="ps-aviso">Não consegui salvar a lista (${esc(S.semEstoqueErro)}). Os nomes não mudam de cor.${/permission/i.test(S.semEstoqueErro) ? ' O Firebase precisa liberar escrita no caminho “settings/semEstoque” nas regras do banco.' : ''}</div></div>` : ''}
+      ${S.semEstoqueDuvida ? `<div class="ps-card ps-alerta"><div class="ps-cap">Nomes em vermelho (sem estoque)</div>
+        <div class="ps-aviso">Este PDF trouxe ${S.semEstoqueDuvida.novo} produtos em estoque e o anterior tinha ${S.semEstoqueDuvida.antes}. Pode estar incompleto. A lista de vermelhos não foi trocada.</div>
+        <button type="button" class="ps-btn ps-perigo" data-act="semestoque">Trocar a lista mesmo assim</button></div>` : ''}
       ${cartao('ps-c-verm', soma('preco'), 'Corrigir preço no WhatsApp', urgentes ? `${urgentes} estão mais baratos que deveriam` : 'Nenhum mais barato que deveria', 'zap', 'preco', chipsP('preco'))}
       ${cartao('ps-c-amar', soma('desativar'), 'Sem estoque: desativar', 'Estão no catálogo e não vieram no PDF de hoje', 'zap', 'desativar', chipsP('desativar') + (exemplos.length ? `<span class="ps-sub">${exemplos.map(x => `${esc(x.nome)}: ativo em ${x.contas.map(esc).join(' e ')}`).join('<br>')}</span>` : ''))}
       ${cartao('ps-c-azul', soma('reativar'), 'Voltaram: reativar', 'Estavam desativados e voltaram no PDF', 'zap', 'reativar', chipsP('reativar'))}
@@ -1218,6 +1258,12 @@ async function aoClicar(e) {
             const upd = {}; Object.entries(e.upd).forEach(([pid, v]) => { upd[`${raiz(cid)}/esg/${pid}`] = v; });
             await update(ref(getDb()), upd); aplicarEsgLocal(APR.contas[cid].esg, e.upd);
             S.esg[cid] = { ...e, ...contagemEsg(APR.contas[cid].esg), suspeito: false };
+            return telaRelatorio();
+        }
+        if (act === 'semestoque') {
+            if (!S) return;
+            b.disabled = true;
+            await gravarSemEstoque(true);
             return telaRelatorio();
         }
         if (act === 'fixodesfazer') {

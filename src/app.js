@@ -79,6 +79,7 @@ window.ctwAplicarDev = function() {
     const dev = window.ctwEhDev();
     document.documentElement.classList.toggle('ctw-dev', dev);
     if (dev && typeof window.ctwZapOuvir === 'function') window.ctwZapOuvir();
+    if (dev && typeof window.ctwSemEstoqueOuvir === 'function') window.ctwSemEstoqueOuvir();
 };
 // Pede a senha de administrador; o perfil Dev entra direto (a função recebe a senha certa)
 window.ctwComSenha = function(cfg) {
@@ -136,6 +137,25 @@ window.ctwZapOuvir = function() {
         const n = conta(v) + Object.values(v.contas || {}).reduce((t, c) => t + conta(c), 0);
         document.querySelectorAll('[data-zap-n]').forEach(el => { el.textContent = n ? String(n) : ''; el.hidden = !n; });
     }, () => { _zapOuvindo = false; });
+};
+
+// ── Dev: produto que não veio no último PDF do estoque (settings/semEstoque) fica com o nome em vermelho ──
+// Só o perfil dev escuta a lista; para os outros o conjunto fica vazio e nada muda. A lista é trocada inteira a cada PDF.
+window.ctwSemEstoque = new Set();
+const ctwSemPid = id => `data-sem-pid="${escapeHtml(String(id))}"`;
+const ctwSemCls = id => window.ctwSemEstoque.has(id) ? ' ctw-sem-estoque' : '';
+let _semEstOuvindo = false;
+window.ctwSemEstoqueOuvir = function() {
+    if (_semEstOuvindo || !isAuthReady || !window.ctwEhDev()) return;
+    _semEstOuvindo = true;
+    onValue(ref(db, 'settings/semEstoque/ids'), snap => {
+        window.ctwSemEstoque = new Set(Object.keys(snap.val() || {}));
+        document.querySelectorAll('[data-sem-pid]').forEach(el => {     // buscas e carrinho já na tela acompanham a lista nova
+            const sem = window.ctwSemEstoque.has(el.dataset.semPid);
+            el.classList.toggle('ctw-sem-estoque', sem);
+            if (sem) el.title = 'Sem estoque no último PDF'; else el.removeAttribute('title');
+        });
+    }, () => { _semEstOuvindo = false; });
 };
 
 // Adicione junto com suas variáveis globais
@@ -1599,7 +1619,7 @@ function renderCarrinho() {
             
             <div class="product-action-header">
                 <div class="product-action-info" style="flex: 1;">
-                    <h5 class="mb-1 text-start">${escapeHtml(product.nome)}</h5>
+                    <h5 ${ctwSemPid(product.id)} class="mb-1 text-start${ctwSemCls(product.id)}"${ctwSemCls(product.id) ? ' title="Sem estoque no último PDF"' : ''}>${escapeHtml(product.nome)}</h5>
                     <div class="product-action-date text-start"><i class="bi bi-clock-history"></i> ${dateInfo}</div>
                 </div>
                 
@@ -2112,6 +2132,7 @@ function loadProductsFromDB() {
         const data = snapshot.val(); 
         products = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
         window.products = products;
+        if (window.ctwEhDev && window.ctwEhDev()) window.ctwSemEstoqueOuvir();
         window.checkedItems = checkedItems;
         setupFuse();
         window._fuse = fuse; // expõe para fecharVenda.js
@@ -2420,7 +2441,7 @@ function displayDynamicSearchResults(searchTerm, resultsContainerId, onItemClick
         a.className = 'list-group-item list-group-item-action border-bottom border-secondary border-opacity-10'; 
         a.style.backgroundColor = 'var(--glass-bg)';
         a.style.color = 'var(--text-color)';
-        a.innerHTML = `<div class="d-flex justify-content-between"><span>${escapeHtml(product.nome)}</span> <span class="fw-bold text-success">${(product.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>`; 
+        a.innerHTML = `<div class="d-flex justify-content-between"><span ${ctwSemPid(product.id)} class="${ctwSemCls(product.id).trim()}"${ctwSemCls(product.id) ? ' title="Sem estoque no último PDF"' : ''}>${escapeHtml(product.nome)}</span> <span class="fw-bold text-success">${(product.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>`; 
         a.onclick = (e) => { e.preventDefault(); onItemClick(product); }; 
         resultsContainer.appendChild(a); 
     }); 
