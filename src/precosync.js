@@ -1,6 +1,7 @@
 // ================================================================
 // precosync.js — Sincronizar preços: catálogo do Stock 2.0 (PDF) → CTW
-// Atualiza SOMENTE o campo "valor" de products/{id}. Nada mais é tocado.
+// Preços: atualiza SOMENTE o campo "valor" de products/{id}.
+// Quantidades (coluna EST. ATUAL, tela "Conferir quantidades"): atualiza "quantidade" e, se o produto volta a contar, "ignorarContagem".
 // Casamento: nome idêntico (normalizado) → vínculo já aprendido → pergunta ao admin.
 // Firebase: settings/precosync/{aliases, ignoradosPdf, ignoradosCtw, log} e settings/semEstoque (produtos fora do último PDF)
 // ================================================================
@@ -124,6 +125,7 @@ async function lerPdf(arquivo) {
     const pdf = await window.pdfjsLib.getDocument({ data: await arquivo.arrayBuffer() }).promise;
     const linhas = [], avisos = [];
     let xCod = null;                       // o cabeçalho só aparece na 1ª página: as outras herdam a posição das colunas
+    let temQtd = false;                    // o PDF novo do Stock 2.0 tem a coluna "EST. ATUAL" (herdada pelas outras páginas, como xCod)
     for (let p = 1; p <= pdf.numPages; p++) {
         const page = await pdf.getPage(p);
         // o PDF costuma quebrar letras acentuadas em pedaços ("REL" + "Ó" + "GIO"): une os que se encostam
@@ -148,7 +150,7 @@ async function lerPdf(arquivo) {
         }
         rows.forEach(r => r.itens.sort((a, b) => a.x - b.x));
         const cab = rows.find(r => r.itens.some(i => semAcento(i.t).toUpperCase() === 'CODIGO') && r.itens.some(i => /^PRODUTO$/i.test(i.t)));
-        if (cab) xCod = cab.itens.find(i => semAcento(i.t).toUpperCase() === 'CODIGO').x;
+        if (cab) { xCod = cab.itens.find(i => semAcento(i.t).toUpperCase() === 'CODIGO').x; temQtd = cab.itens.some(i => /ATUAL/i.test(semAcento(i.t))); }
         if (xCod === null) { if (rows.some(r => RE_PRECO.test(r.itens.map(i => i.t).join(' ')))) avisos.push(`Página ${p}: cabeçalho da tabela não reconhecido.`); continue; }
         for (const r of rows) {
             if (cab && r.y >= cab.y - 1) continue;                // acima/na linha do cabeçalho
@@ -159,10 +161,21 @@ async function lerPdf(arquivo) {
             const cod = r.itens.find(i => i.x >= xCod - 5 && /^\d{1,9}$/.test(i.t));
             const valor = parseFloat(pm[1].replace(/\./g, '').replace(',', '.'));
             if (!nome) { avisos.push('Linha com valor mas sem nome ignorada: ' + pm[0]); continue; }
-            linhas.push({ nome, codigo: cod ? cod.t : '', valor });
+            // quantidade = o número com casa decimal ("3.0") colado ao valor; sem ela, ou quebrada ("2.5"), a linha segue só para o preço
+            let qtd = null;
+            if (temQtd) {
+                const mq = texto.match(/(\d+[.,]\d+)\s*R\$/);
+                const n = mq ? parseFloat(mq[1].replace(',', '.')) : NaN;
+                if (Number.isInteger(n) && n >= 0) qtd = n;
+                else avisos.push(`Sem quantidade válida (não conferida): “${nome}”${mq ? ' (' + mq[1] + ')' : ''}`);
+            }
+            linhas.push({ nome, codigo: cod ? cod.t : '', valor, qtd });
         }
     }
-    return { linhas, avisos };
+    const vistos = new Map();
+    linhas.forEach(l => { if (l.codigo) vistos.set(l.codigo, (vistos.get(l.codigo) || 0) + 1); });
+    vistos.forEach((n, cod) => { if (n > 1) avisos.push(`O código ${cod} aparece ${n} vezes no PDF.`); });
+    return { linhas, avisos, temQtd };
 }
 
 // ── Estado e acesso ao banco ────────────────────────────────────
@@ -424,13 +437,13 @@ async function aoEscolherPdf(arq) {
     if (!arq) return;
     tela('<div class="ps-msg">Lendo o PDF…</div>');
     try {
-        const { linhas, avisos } = await lerPdf(arq);
+        const { linhas, avisos, temQtd } = await lerPdf(arq);
         if (!linhas.length) throw new Error('Não encontrei nenhum produto com valor nesse PDF. É o “Catálogo de produtos” do Stock 2.0?');
         const produtos = (window.products || []).filter(p => p && p.id);
         if (!produtos.length) throw new Error('O CTW ainda não carregou os produtos. Aguarde alguns segundos e tente de novo.');
         await carregarAprendizado();
         const cl = classificar(linhas, produtos);
-        S = { arquivo: arq.name, avisos, cl, linhas, decisoes: [], novosAliases: [], novosIgnoradosPdf: [], pularResto: false, fila: cl.perguntas.slice(), total: cl.perguntas.length, aceitar: {} };
+        S = { arquivo: arq.name, pdfData: arq.lastModified || 0, temQtd: !!temQtd, avisos, cl, linhas, decisoes: [], novosAliases: [], novosIgnoradosPdf: [], pularResto: false, fila: cl.perguntas.slice(), total: cl.perguntas.length, aceitar: {} };
         proximaPergunta();
     } catch (e) {
         tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div><button type="button" class="ps-btn" data-act="inicio">Voltar</button>`);
@@ -494,6 +507,13 @@ function aoMudar(e) {
     if (e.target.classList && e.target.classList.contains('psZipIn')) aoEscolherZip(e.target.files && e.target.files[0], e.target.dataset.conta);
     if (e.target.id === 'psCatExtra') { const n = numero(e.target.value); try { localStorage.setItem('ctwCatExtra', String(n)); } catch (x) {} }
     if (e.target.id === 'psPrints') aoEscolherPrints(e.target.files);
+    if (S && S.q && e.target.dataset && (e.target.dataset.qsel !== undefined || e.target.dataset.qzero !== undefined)) {
+        if (e.target.dataset.qsel !== undefined) S.qSel[e.target.dataset.qsel] = e.target.checked; else S.qZero[e.target.dataset.qzero] = e.target.checked;
+        const bt = overlay.querySelector('[data-act="qaplicar"]');
+        const n = S.q.linhas.filter(x => x.mudou && qMarcada(x)).length + S.q.ausentes.filter(qZera).length;
+        if (bt) { bt.textContent = n ? `Atualizar ${n} quantidade(s)` : 'Nada marcado'; bt.disabled = !n || (S.q.abaixo && !S.q70); }
+        return;
+    }
     if (S && e.target.dataset && e.target.dataset.sus !== undefined) {
         S.aceitar[e.target.dataset.sus] = e.target.checked;
         const bt = overlay.querySelector('[data-act="aplicar"]');
@@ -545,9 +565,153 @@ function telaPrevia() {
         ${S.avisos.length ? `<details class="ps-det"><summary>${S.avisos.length} aviso(s) na leitura do PDF</summary>${S.avisos.map(a => `<div class="ps-sub">${esc(a)}</div>`).join('')}</details>` : ''}
       </div>
       ${cartaoWhats(calcTodasEsg())}
+      ${cartaoQuantidades()}
       ${muda.length ? muda.map(linha).join('') : '<div class="ps-msg">Nenhum preço precisa mudar.</div>'}
       <button type="button" class="ps-btn ps-prim" data-act="aplicar">${muda.length ? `Atualizar ${nAplicar} preço(s) no CTW` : 'Concluir'}</button>
       <button type="button" class="ps-btn ps-suave" data-act="inicio">Cancelar (nada é alterado)</button>`);
+}
+
+// ── Quantidades: coluna "EST. ATUAL" do PDF → products/{id}/quantidade ─────────────────────
+// Só o TOTAL do produto muda (as cores ficam). Produto que vem no PDF com quantidade volta a contar (tira o "ignorar contagem");
+// "ignorar mesmo com quantidade" (ignorarSempre) e itens "NÃO VENDER"/"TIRAR PEÇAS"/"B.O DE PLACA" não são mexidos.
+// Quem o CTW tem e o PDF não trouxe só zera se você marcar. Tudo gravado de uma vez, com registro para desfazer.
+const LIMIAR_CASADOS_QTD = 0.7;     // menos que isso do PDF casado com o CTW: provável PDF errado/incompleto
+const SALTO_QTD = 10;               // diferença grande (e ≥ 3x ou ≤ 1/3): não vem marcada
+
+const qtdCtw = p => Math.max(0, parseInt(p && p.quantidade, 10) || 0);
+const produtoVivo = id => (window.products || []).find(p => p && p.id === id);
+
+function montarQuantidades() {
+    const linhas = [], sempre = [], semQtd = [];
+    for (const { r, c } of S.cl.casados) {
+        if (r.qtd == null) { semQtd.push(r); continue; }
+        const p = produtoVivo(c.id) || c.p;
+        if (p.ignorarSempre) { sempre.push({ r, c }); continue; }
+        const de = qtdCtw(p), para = r.qtd, volta = !!p.ignorarContagem;
+        const salto = Math.abs(para - de) >= SALTO_QTD && (de === 0 ? para >= SALTO_QTD * 2 : (para >= de * 3 || para <= de / 3));
+        linhas.push({ id: c.id, c, r, de, para, volta, mudou: de !== para || volta, salto });
+    }
+    const pres = presencaPdf(), duv = duvidaPdf();
+    const naoVenderKeys = new Set(S.cl.naoVender.map(r => r.an.key));
+    const ausentes = S.cl.ctw.filter(c => {
+        const p = produtoVivo(c.id) || c.p;
+        return !pres.has(c.id) && !duv.has(c.id) && qtdCtw(p) > 0 && !p.ignorarContagem && !p.ignorarSempre
+            && !NAO_SINCRONIZAR.test(c.nome) && !naoVenderKeys.has(c.an.key) && !(S.ctwDescartados && S.ctwDescartados.has(c.id));
+    }).map(c => ({ id: c.id, c, de: qtdCtw(produtoVivo(c.id) || c.p) }));
+    const base = S.cl.pdf.filter(r => !r.ignorar).length;
+    const frac = base ? S.cl.casados.length / base : 1;
+    return { linhas, sempre, semQtd, ausentes, naoVender: S.cl.naoVender, frac, abaixo: frac < LIMIAR_CASADOS_QTD };
+}
+
+const qMarcada = x => (x.id in S.qSel ? S.qSel[x.id] : (x.mudou && !x.salto));
+const qZera = x => !!S.qZero[x.id];
+
+function qResumo() {
+    const q = montarQuantidades();
+    return { q, muda: q.linhas.filter(x => x.mudou), iguais: q.linhas.filter(x => !x.mudou) };
+}
+
+async function telaQuantidades() {
+    TELA = 'quantidades'; titulo('Conferir quantidades');
+    S.qSel = S.qSel || {}; S.qZero = S.qZero || {};
+    let ult = null;
+    try { ult = (await get(ref(getDb(), `${BASE}/qtdUltima`))).val(); } catch (e) { /* aviso de data é só informativo */ }
+    const { q, muda, iguais } = qResumo();
+    S.q = q;
+    const quando = t => new Date(t).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+    const velho = ult && ult.pdfData && S.pdfData && S.pdfData < ult.pdfData;
+    const nMarc = muda.filter(qMarcada).length + q.ausentes.filter(qZera).length;
+    const bloqueado = q.abaixo && !S.q70;
+    const volta = muda.filter(x => x.volta).length;
+    const linha = x => `
+      <div class="ps-it${x.salto ? ' ps-sus' : ''}">
+        <label class="ps-ck"><input type="checkbox" data-qsel="${esc(x.id)}" ${qMarcada(x) ? 'checked' : ''}></label>
+        <div class="ps-grow"><div class="ps-nome">${esc(x.c.nome)}</div>
+          <div class="ps-sub">No app <b>${x.de}</b> → PDF <b>${x.para}</b>${x.para !== x.de ? ` (${x.para > x.de ? '+' : ''}${x.para - x.de})` : ''}</div>
+          <div class="ps-chips">${x.volta ? chip('volta a contar', true) : ''}${x.salto ? chip('diferença grande', true) : ''}</div></div>
+      </div>`;
+    tela(`
+      <div class="ps-sub">${esc(S.arquivo || '')}</div>
+      <div class="ps-card">
+        <div class="ps-lin"><span>Quantidades que diferem</span><b>${muda.length}</b></div>
+        ${volta ? `<div class="ps-lin"><span>Voltam a contar (estavam em “ignorar”)</span><b>${volta}</b></div>` : ''}
+        <div class="ps-lin"><span>Já iguais ao PDF</span><b>${iguais.length}</b></div>
+        ${q.sempre.length ? `<div class="ps-lin"><span>Ignorados sempre (não mexo)</span><b>${q.sempre.length}</b></div>` : ''}
+        ${q.naoVender.length ? `<div class="ps-lin"><span>“Não vender” no PDF (não mexo)</span><b>${q.naoVender.length}</b></div>` : ''}
+        ${q.semQtd.length ? `<div class="ps-lin"><span>Sem quantidade válida no PDF (não mexo)</span><b>${q.semQtd.length}</b></div>` : ''}
+        <div class="ps-lin"><span>Sem correspondência no CTW (não mexo)</span><b>${S.cl.semCtw.length + S.fila.length}</b></div>
+      </div>
+      ${q.abaixo ? `<div class="ps-card ps-alerta"><div class="ps-aviso">Só ${Math.round(q.frac * 100)}% das linhas do PDF casaram com produtos do CTW. O PDF pode ser outro ou estar incompleto.</div>
+        ${S.q70 ? '<div class="ps-sub">Você confirmou que está certo.</div>' : '<button type="button" class="ps-btn ps-perigo" data-act="q70">Sim, o PDF está certo: liberar</button>'}</div>` : ''}
+      ${velho ? `<div class="ps-card ps-alerta"><div class="ps-aviso">Este arquivo é de ${quando(S.pdfData)}, mais antigo que o PDF da última conferência (${quando(ult.pdfData)}). Confira se é o certo.</div></div>` : ''}
+      ${!S.temQtd ? '<div class="ps-card ps-alerta"><div class="ps-aviso">Este PDF não tem a coluna “EST. ATUAL”. Gere o catálogo do Stock 2.0 com a quantidade.</div></div>' : ''}
+      ${muda.length ? `<div class="ps-lin"><button type="button" class="ps-link" data-act="qmarcar" data-v="1">Marcar todas</button><button type="button" class="ps-link" data-act="qmarcar" data-v="0">Desmarcar todas</button></div>` : '<div class="ps-msg">Nenhuma quantidade precisa mudar.</div>'}
+      ${muda.map(linha).join('')}
+      ${q.ausentes.length ? `<details class="ps-det"><summary>${q.ausentes.length} no app e fora do PDF (zerar?)</summary>
+        <div class="ps-sub">O PDF não trouxe estes produtos. Nada é zerado sem você marcar.</div>
+        <div class="ps-lin"><button type="button" class="ps-link" data-act="qzerar" data-v="1">Marcar todos para zerar</button><button type="button" class="ps-link" data-act="qzerar" data-v="0">Desmarcar</button></div>
+        ${q.ausentes.map(x => `<div class="ps-it"><label class="ps-ck"><input type="checkbox" data-qzero="${esc(x.id)}" ${qZera(x) ? 'checked' : ''}></label>
+          <div class="ps-grow"><div class="ps-nome">${esc(x.c.nome)}</div><div class="ps-sub">No app <b>${x.de}</b> → <b>0</b></div></div></div>`).join('')}</details>` : ''}
+      ${q.sempre.length ? `<details class="ps-det"><summary>${q.sempre.length} ignorados sempre (não mexo)</summary>${q.sempre.map(x => `<div class="ps-sub">${esc(x.c.nome)} · PDF ${x.r.qtd}</div>`).join('')}</details>` : ''}
+      ${q.naoVender.length ? `<details class="ps-det"><summary>${q.naoVender.length} “não vender” no PDF (não mexo)</summary>${q.naoVender.map(r => `<div class="ps-sub">${esc(r.nome)}${r.qtd != null ? ' · ' + r.qtd : ''}</div>`).join('')}</details>` : ''}
+      <button type="button" class="ps-btn ps-prim ps-grande" data-act="qaplicar" ${nMarc && !bloqueado ? '' : 'disabled'}>${nMarc ? `Atualizar ${nMarc} quantidade(s)` : 'Nada marcado'}</button>
+      <button type="button" class="ps-btn ps-suave" data-act="qvoltar">Voltar</button>`);
+}
+
+async function aplicarQuantidades() {
+    const q = S.q; if (!q) return;
+    const marcadas = q.linhas.filter(x => x.mudou && qMarcada(x)).map(x => ({ ...x, zerar: false }));
+    const zeradas = q.ausentes.filter(qZera).map(x => ({ id: x.id, c: x.c, de: x.de, para: 0, volta: false, zerar: true }));
+    const alvo = marcadas.concat(zeradas);
+    if (!alvo.length) return;
+    tela('<div class="ps-msg">Aplicando…</div>');
+    try {
+        // outra pessoa pode ter vendido/ajustado durante a conferência: quem mudou desde a tela não é sobrescrito
+        const seguros = [], mexidos = [];
+        for (const x of alvo) {
+            const v = produtoVivo(x.id), ign = v ? !!v.ignorarContagem : false;
+            const igualAoVisto = v && qtdCtw(v) === x.de && !v.ignorarSempre && (x.zerar ? true : ign === x.volta);
+            (igualAoVisto ? seguros : mexidos).push(x);
+        }
+        const db = getDb(), upd = updAprendizado(S.novosAliases, S.novosIgnoradosPdf), logItens = {};
+        for (const x of seguros) {
+            const v = produtoVivo(x.id), ignDe = !!v.ignorarContagem;
+            upd[`products/${x.id}/quantidade`] = x.para;
+            if (x.volta) upd[`products/${x.id}/ignorarContagem`] = false;
+            logItens[x.id] = { nome: x.c.nome, de: x.de, para: x.para, ignDe, ignPara: x.volta ? false : ignDe };
+        }
+        let logId = null;
+        if (seguros.length) {
+            logId = push(ref(db, BASE + '/log')).key;
+            upd[`${BASE}/log/${logId}`] = { quando: Date.now(), arquivo: S.arquivo || '', usuario: usuario(), tipo: 'quantidade', itens: logItens };
+            upd[`${BASE}/qtdUltima`] = { quando: Date.now(), arquivo: S.arquivo || '', usuario: usuario(), pdfData: S.pdfData || 0 };
+            const antigos = Object.keys((await get(ref(db, BASE + '/log'))).val() || {}).sort().slice(0, -(MAX_LOGS - 1));
+            antigos.forEach(k => { upd[`${BASE}/log/${k}`] = null; });
+        }
+        if (!Object.keys(upd).length) return telaQuantidades();
+        await update(ref(db), upd);                       // tudo ou nada: quantidades + registro + vínculos juntos
+        S.novosAliases = []; S.novosIgnoradosPdf = [];    // já foram gravados
+        S.qLogId = logId; S.qSel = {}; S.qZero = {};
+        const voltaram = seguros.filter(x => x.volta).length, zer = seguros.filter(x => x.zerar).length;
+        tela(`<div class="ps-card ps-ok"><b>Quantidades atualizadas</b>
+          <div class="ps-lin"><span>Produtos atualizados</span><b>${seguros.length}</b></div>
+          ${voltaram ? `<div class="ps-lin"><span>Voltaram a contar</span><b>${voltaram}</b></div>` : ''}
+          ${zer ? `<div class="ps-lin"><span>Zerados (fora do PDF)</span><b>${zer}</b></div>` : ''}
+          ${mexidos.length ? `<div class="ps-lin"><span>Mudaram durante a conferência (não mexi)</span><b>${mexidos.length}</b></div>` : ''}</div>
+          ${logId ? `<button type="button" class="ps-btn" data-act="desfazer" data-id="${esc(logId)}">Desfazer</button>` : ''}
+          <button type="button" class="ps-btn ps-prim" data-act="qvoltar">Continuar</button>
+          <button type="button" class="ps-btn ps-suave" data-act="fechar">Fechar</button>`);
+    } catch (e) {
+        const regra = /permission/i.test(e.message || '') ? ' O Firebase precisa liberar escrita em “products” e em “settings/precosync”.' : '';
+        tela(`<div class="ps-msg ps-erro">Não consegui gravar (${esc(e.message)}). Nada foi alterado.${regra}</div><button type="button" class="ps-btn" data-act="quantidades">Voltar às quantidades</button>`);
+    }
+}
+
+// cartão que leva à conferência (prévia e relatório): só quando o PDF trouxe a coluna de quantidade
+function cartaoQuantidades() {
+    if (!S || !S.temQtd) return '';
+    const { muda } = qResumo();
+    return `<button type="button" class="ps-resumo" data-act="quantidades"><span class="ps-num ${muda.length ? 'ps-c-amar' : 'ps-c-verde'}">${muda.length}</span><span class="ps-grow"><b>Conferir quantidades</b><span class="ps-sub">${muda.length ? 'Estoque do app diferente do PDF' : 'Estoque do app igual ao PDF'}</span></span></button>`;
 }
 
 // ── Esgotados: o que está no catálogo e não veio no PDF → desativar no WhatsApp ──
@@ -734,6 +898,21 @@ async function logZap(entrada, upd, cid = CONTA) {
 }
 
 // ── Aplicar ─────────────────────────────────────────────────────
+// Vínculos novos ("é este produto") e "não existe no CTW" respondidos na conferência: vão junto com o que for gravado (preços ou quantidades)
+function updAprendizado(aliases, ignoradosPdf) {
+    const upd = {};
+    for (const { r, c } of aliases) {
+        const val = { pid: c.id, nomeEstoque: r.nome, nomeCtw: c.nome, codigo: r.codigo || '', spec: assinatura(r.an), quando: Date.now() };
+        upd[`${BASE}/aliases/${chaveNome(r.an)}`] = val;
+        if (r.codigo) upd[`${BASE}/aliases/${chaveCodigo(r.codigo)}`] = val;
+        upd[`${BASE}/ignoradosPdf/${chaveNome(r.an)}`] = null;
+        if (r.codigo) upd[`${BASE}/ignoradosPdf/${chaveCodigo(r.codigo)}`] = null;
+        upd[`${BASE}/ignoradosCtw/${c.id}`] = null;
+    }
+    for (const r of ignoradosPdf) upd[`${BASE}/ignoradosPdf/${r.codigo ? chaveCodigo(r.codigo) : chaveNome(r.an)}`] = { nome: r.nome, quando: Date.now() };
+    return upd;
+}
+
 async function gravar(itens, aliases, ignoradosPdf, arquivo, tipo, extra) {
     const db = getDb();
     const logId = push(ref(db, BASE + '/log')).key;
@@ -746,15 +925,7 @@ async function gravar(itens, aliases, ignoradosPdf, arquivo, tipo, extra) {
     if (itens.length) {
         upd[`${BASE}/log/${logId}`] = { quando: Date.now(), arquivo: arquivo || '', usuario: usuario(), tipo: tipo || 'importacao', itens: logItens };
     }
-    for (const { r, c } of aliases) {
-        const val = { pid: c.id, nomeEstoque: r.nome, nomeCtw: c.nome, codigo: r.codigo || '', spec: assinatura(r.an), quando: Date.now() };
-        upd[`${BASE}/aliases/${chaveNome(r.an)}`] = val;
-        if (r.codigo) upd[`${BASE}/aliases/${chaveCodigo(r.codigo)}`] = val;
-        upd[`${BASE}/ignoradosPdf/${chaveNome(r.an)}`] = null;
-        if (r.codigo) upd[`${BASE}/ignoradosPdf/${chaveCodigo(r.codigo)}`] = null;
-        upd[`${BASE}/ignoradosCtw/${c.id}`] = null;
-    }
-    for (const r of ignoradosPdf) upd[`${BASE}/ignoradosPdf/${r.codigo ? chaveCodigo(r.codigo) : chaveNome(r.an)}`] = { nome: r.nome, quando: Date.now() };
+    Object.assign(upd, updAprendizado(aliases, ignoradosPdf));
     if (itens.length) {   // cada preço alterado vira pendência na lista "Alterar no WhatsApp"
         const lista = itens.map(x => ({ id: x.id, nome: x.c.nome, de: x.de, para: Math.round(x.para * 100) / 100 }));
         for (const id of Object.keys(APR.contas)) {      // todas as contas de WhatsApp recebem a pendência
@@ -834,6 +1005,7 @@ async function telaRelatorio() {
       ${S.semEstoqueDuvida ? `<div class="ps-card ps-alerta"><div class="ps-cap">Nomes em vermelho (sem estoque)</div>
         <div class="ps-aviso">Este PDF trouxe ${S.semEstoqueDuvida.novo} produtos em estoque e o anterior tinha ${S.semEstoqueDuvida.antes}. Pode estar incompleto. A lista de vermelhos não foi trocada.</div>
         <button type="button" class="ps-btn ps-perigo" data-act="semestoque">Trocar a lista mesmo assim</button></div>` : ''}
+      ${cartaoQuantidades()}
       ${cartao('ps-c-verm', soma('preco'), 'Corrigir preço no WhatsApp', urgentes ? `${urgentes} estão mais baratos que deveriam` : 'Nenhum mais barato que deveria', 'zap', 'preco', chipsP('preco'))}
       ${cartao('ps-c-amar', soma('desativar'), 'Sem estoque: desativar', 'Estão no catálogo e não vieram no PDF de hoje', 'zap', 'desativar', chipsP('desativar') + (exemplos.length ? `<span class="ps-sub">${exemplos.map(x => `${esc(x.nome)}: ativo em ${x.contas.map(esc).join(' e ')}`).join('<br>')}</span>` : ''))}
       ${cartao('ps-c-azul', soma('reativar'), 'Voltaram: reativar', 'Estavam desativados e voltaram no PDF', 'zap', 'reativar', chipsP('reativar'))}
@@ -1086,9 +1258,9 @@ async function telaAvHist() {
     const rot = { preco: 'Preço corrigido', desativar: 'Desativado', reativar: 'Reativado', adicionar: 'Adicionado ao catálogo', naovou: 'Não vou colocar no WhatsApp', fixo: 'Mantido de propósito' };
     const h = Object.values(zl).sort((a, b) => (b.quando || 0) - (a.quando || 0));
     tela(`
-      <div class="ps-cap">Importações de preço no CTW</div>
-      ${imp.map(([id, v]) => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(v.arquivo || (v.tipo === 'vinculo' ? 'Vínculo manual' : 'Importação'))}</div>
-        <div class="ps-sub">${Object.keys(v.itens || {}).length} preço(s) · ${quando(v.quando)}${v.usuario ? ' · ' + esc(v.usuario) : ''}${v.desfeito ? ' · desfeita' : ''}</div></div>
+      <div class="ps-cap">Importações de preço e quantidade no CTW</div>
+      ${imp.map(([id, v]) => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(v.arquivo || (v.tipo === 'vinculo' ? 'Vínculo manual' : v.tipo === 'quantidade' ? 'Conferência de quantidades' : 'Importação'))}</div>
+        <div class="ps-sub">${Object.keys(v.itens || {}).length} ${v.tipo === 'quantidade' ? 'quantidade(s)' : 'preço(s)'} · ${quando(v.quando)}${v.usuario ? ' · ' + esc(v.usuario) : ''}${v.desfeito ? ' · desfeita' : ''}</div></div>
         ${v.desfeito ? '' : `<button type="button" class="ps-mini" data-act="desfazer" data-id="${esc(id)}">Desfazer</button>`}</div>`).join('') || '<div class="ps-msg">Nenhuma importação ainda.</div>'}
       <div class="ps-cap ps-esp">Feito no WhatsApp</div>
       ${Object.keys(APR.contas).length > 1 ? chipsContas(false) : ''}
@@ -1122,12 +1294,29 @@ async function removerVinculo(pid, nomeEstoque) {
     if (Object.keys(upd).length) await update(ref(getDb()), upd);
 }
 
+// Desfazer uma conferência de quantidades: devolve quantidade e "ignorar contagem". Quem foi mexido depois fica como está.
+async function desfazerQuantidades(id, log) {
+    const upd = {}; let ok = 0, mexidos = 0;
+    for (const [pid, it] of Object.entries(log.itens || {})) {
+        const v = produtoVivo(pid);
+        if (!v) continue;
+        if (qtdCtw(v) !== it.para || !!v.ignorarContagem !== !!it.ignPara) { mexidos++; continue; }
+        upd[`products/${pid}/quantidade`] = it.de;
+        if (!!it.ignDe !== !!it.ignPara) upd[`products/${pid}/ignorarContagem`] = !!it.ignDe;
+        ok++;
+    }
+    upd[`${BASE}/log/${id}/desfeito`] = Date.now();
+    await update(ref(getDb()), upd);
+    tela(`<div class="ps-card ps-ok"><b>Conferência desfeita</b><div class="ps-lin"><span>Quantidades restauradas</span><b>${ok}</b></div>${mexidos ? `<div class="ps-lin"><span>Mantidos (já tinham sido alterados depois)</span><b>${mexidos}</b></div>` : ''}</div><button type="button" class="ps-btn ps-prim" data-act="fechar">Fechar</button>`);
+}
+
 async function desfazer(id) {
     tela('<div class="ps-msg">Desfazendo…</div>');
     try {
         const snap = await get(ref(getDb(), `${BASE}/log/${id}`));
         const log = snap.val();
         if (!log || log.desfeito) throw new Error('Essa importação já foi desfeita.');
+        if (log.tipo === 'quantidade') return desfazerQuantidades(id, log);
         const atuais = new Map((window.products || []).map(p => [p.id, valorCtw(p)]));
         const upd = {}; let ok = 0, mexidos = 0;
         for (const [pid, it] of Object.entries(log.itens || {})) {
@@ -1154,6 +1343,7 @@ async function desfazer(id) {
 function voltar() {
     if (TELA === 'hub') return fechar();
     if (TELA.startsWith('av-')) return telaAvancado();
+    if (TELA === 'quantidades') return S && S.aplicados ? telaRelatorio() : telaPrevia();
     if ((TELA === 'revisar' || TELA === 'adicionar') && S && S.aplicados) return telaRelatorio();
     return telaInicio();
 }
@@ -1297,6 +1487,12 @@ async function aoClicar(e) {
         if (act === 'pularresto') { S.pularResto = true; return telaPrevia(); }
         if (act === 'previa') return telaPrevia();
         if (act === 'aplicar') return aplicar();
+        if (act === 'quantidades') return telaQuantidades();
+        if (act === 'qvoltar') return S && S.aplicados ? telaRelatorio() : telaPrevia();
+        if (act === 'q70') { S.q70 = true; return telaQuantidades(); }
+        if (act === 'qaplicar') return aplicarQuantidades();
+        if (act === 'qmarcar') { (S.q ? S.q.linhas : []).filter(x => x.mudou).forEach(x => { S.qSel[x.id] = b.dataset.v === '1'; }); return telaQuantidades(); }
+        if (act === 'qzerar') { (S.q ? S.q.ausentes : []).forEach(x => { S.qZero[x.id] = b.dataset.v === '1'; }); return telaQuantidades(); }
         if (act === 'relatorio') return telaRelatorio();
         if (act === 'revisar') return proximoCtw();
         if (act === 'adicionar') return telaAdicionar();

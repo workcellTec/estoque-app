@@ -2681,6 +2681,9 @@ function renderStockList(list) {
                         <button class="btn btn-sm btn-secondary ignore-toggle-btn" data-id="${product.id}" title="${product.ignorarContagem ? 'Mostrar na contagem' : 'Ignorar na contagem'}">
                             <i class="bi ${product.ignorarContagem ? 'bi-eye-slash-fill' : 'bi-eye-fill'}"></i>
                         </button>
+                        <button class="btn btn-sm ${product.ignorarSempre ? 'btn-warning' : 'btn-secondary'} ignore-always-btn" data-dev-only data-id="${product.id}" title="${product.ignorarSempre ? 'Ignorado mesmo com quantidade no PDF (tocar para desligar)' : 'Ignorar mesmo com quantidade no PDF'}" aria-pressed="${product.ignorarSempre ? 'true' : 'false'}">
+                            <i class="bi bi-lock-fill"></i>
+                        </button>
                     </div>
                 </div>
             </div>`;
@@ -6436,7 +6439,8 @@ let updates = { header, terms, emailMessage, shareMessage: emailMessage };
         if (e.target.matches('.ignore-toggle-switch-admin')) {
             const id = e.target.dataset.id;
             const isChecked = e.target.checked;
-            updateProductInDB(id, { ignorarContagem: isChecked });
+            const pAdm = products.find(p => p.id === id);
+            updateProductInDB(id, (!isChecked && pAdm && pAdm.ignorarSempre) ? { ignorarContagem: false, ignorarSempre: false } : { ignorarContagem: isChecked });
         }
     });
 
@@ -7301,6 +7305,7 @@ Se não houver smartphones: []`;
             const qtyButton = e.target.closest('.stock-qty-btn');
             const colorButton = e.target.closest('.open-color-picker-btn');
             const ignoreBtn = e.target.closest('.ignore-toggle-btn');
+            const alwaysBtn = e.target.closest('.ignore-always-btn');
             if (qtyButton) {
                 const change = parseInt(qtyButton.dataset.change, 10);
                 const input = qtyButton.parentElement.querySelector('.stock-qty-input');
@@ -7320,8 +7325,15 @@ Se não houver smartphones: []`;
                 const product = products.find(p => p.id === id);
                 if (product) {
                     const newIgnoredState = !product.ignorarContagem;
-                    updateProductInDB(id, { ignorarContagem: newIgnoredState });
+                    // voltar a contar à mão também desliga o "ignorar mesmo com quantidade" (as duas travas não se contradizem)
+                    updateProductInDB(id, (!newIgnoredState && product.ignorarSempre) ? { ignorarContagem: false, ignorarSempre: false } : { ignorarContagem: newIgnoredState });
                 }
+            }
+            if (alwaysBtn && window.ctwEhDev()) {
+                // "Ignorar mesmo com quantidade": o PDF não mexe nesse produto. Ligar já liga o "ignorar contagem"; desligar só tira a trava nova
+                const id = alwaysBtn.dataset.id;
+                const product = products.find(p => p.id === id);
+                if (product) updateProductInDB(id, product.ignorarSempre ? { ignorarSempre: false } : { ignorarSempre: true, ignorarContagem: true });
             }
         });
     }

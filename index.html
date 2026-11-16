@@ -76,7 +76,7 @@
          para a 1ª pintura, mas funciona igual em qualquer aparelho. -->
     <link href="bootstrap-icons-lite.css?v=1" rel="stylesheet"/>
     <link href="bootstrap-lite.css?v=1" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=147">
+    <link rel="stylesheet" href="style.css?v=148">
 
 
 
@@ -1735,7 +1735,7 @@
 
 
 <script src="ctw-ui.js?v=4" defer></script>
-<script src="app.js?v=1046" type="module" defer></script>
+<script src="app.js?v=1047" type="module" defer></script>
 <script>
 window.addEventListener('load', function() {
     var s = document.createElement('script');
@@ -1756,7 +1756,7 @@ window.addEventListener('load', function() {
             fechamentoia: () => import('./fechamentoia.js?v=29'),
             buscaia:     () => import('./buscaia.js?v=1'),   // só pelo painel do Módulo dev
             modulodev:   () => import('./modulodev.js?v=2'),  // painel do Módulo dev (porta secreta na Administração)
-            precosync:   () => import('./precosync.js?v=27')   // só ao abrir Mais > WhatsApp e Preços (fora do carregamento em segundo plano)
+            precosync:   () => import('./precosync.js?v=28')   // só ao abrir Mais > WhatsApp e Preços (fora do carregamento em segundo plano)
         };
         const carregados = {};
         window.ctwCarregarModulo = (nome) => carregados[nome] || (carregados[nome] = pesados[nome]());
