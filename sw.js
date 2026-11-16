@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-339'; // etiqueta Modo Dev no topo do Início
+const CACHE = 'ctw-340'; // máscara de valor da Garantia detalhada igual à da garantia normal (centavos pela direita)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

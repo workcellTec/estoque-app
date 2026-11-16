@@ -1753,7 +1753,7 @@ window.addEventListener('load', function() {
             repairs:     () => import('./repairs.js?v=5').then(m => { window._repairsModule = m; return m; }),
             reposicao:   () => import('./reposicao.js').then(m => { window._reposicaoModule = m; return m; }),
             creditoscan: () => import('./creditoscan.js').then(m => { window._csReady = true; return m; }),
-            fechamentoia: () => import('./fechamentoia.js?v=28'),
+            fechamentoia: () => import('./fechamentoia.js?v=29'),
             buscaia:     () => import('./buscaia.js?v=1'),   // só pelo painel do Módulo dev
             modulodev:   () => import('./modulodev.js?v=2'),  // painel do Módulo dev (porta secreta na Administração)
             precosync:   () => import('./precosync.js?v=27')   // só ao abrir Mais > WhatsApp e Preços (fora do carregamento em segundo plano)

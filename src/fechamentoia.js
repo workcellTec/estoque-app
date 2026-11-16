@@ -85,7 +85,6 @@ function abrirOverlay() {
     overlay.addEventListener('click', aoClicar);
     overlay.addEventListener('input', aoDigitar);
     overlay.addEventListener('change', aoMudar);
-    overlay.addEventListener('focusout', e => completarCentavos(e.target));
     document.body.appendChild(overlay);
     document.documentElement.classList.add('ps-aberto');
 }
@@ -540,7 +539,6 @@ function gdAbrirOverlay() {
     GO.addEventListener('click', gdClique);
     GO.addEventListener('input', gdDigita);
     GO.addEventListener('change', gdMuda);
-    GO.addEventListener('focusout', e => completarCentavos(e.target));
     GO.addEventListener('click', e => { if (e.target.closest('#filterBarProfiles .filter-profile-btn')) lucCarregar(false); });   // trocou Todos / Meus arquivos: a busca de lucro segue o filtro
     document.body.appendChild(GO);
     const nav = document.getElementById('ctwBottomNav');                          // a barra de baixo continua visível; tocar nela fecha a tela (o rascunho é guardado)
@@ -739,7 +737,6 @@ function gdSheet(html) {
     w.innerHTML = `<button type="button" class="ui-dim" data-gd="shx" aria-label="Fechar"></button><div class="ui-sheet gd-sh"><div class="ui-grab"></div>${html}</div>`;
     ['click', 'input', 'change'].forEach(t => w.addEventListener(t, gdSheetEvento));
     w.addEventListener('focusin', () => setTimeout(gdSheetTeclado, 350));
-    w.addEventListener('focusout', e => completarCentavos(e.target));
     gdSheetKbOuvir(true);
     document.body.appendChild(w);
     void w.offsetHeight;
@@ -1140,31 +1137,23 @@ function gdClique(e) {
 
 // Valores em dinheiro ganham pontos e vírgula enquanto se digita: 3000 vira 3.000 e 3.000,50 vale três mil e cinquenta centavos.
 // O ponto é sempre separador de milhar (como no Brasil); a vírgula separa os centavos (no máximo 2).
-const dinheiroMascarado = txt => {
-    const s = String(txt || ''), i = s.indexOf(',');
-    const inteiro = (i < 0 ? s : s.slice(0, i)).replace(/\D/g, '').replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    return i < 0 ? inteiro : (inteiro || '0') + ',' + s.slice(i + 1).replace(/\D/g, '').slice(0, 2);
-};
+// Máscara de valor igual à da Garantia normal: os dígitos entram pela direita e viram centavos (169438 → 1.694,38).
+// Vírgula e ponto digitados são ignorados; valor colado de fora ("2150.5", "R$ 1.529,50") é lido como número antes.
+// Tudo em texto, sem ponto flutuante; zerou = campo vazio (dá para apagar tudo); no máximo 12 dígitos.
 function mascararDinheiro(el, colado) {
-    if (colado && /^\s*(R\$)?\s*\d+\.\d{1,2}\s*$/.test(el.value)) el.value = el.value.replace('.', ',');   // valor colado de fora com ponto decimal (2150.5): digitado o ponto é sempre milhar, colado com 1 ou 2 casas é centavo
-    const antes = el.value, pos = el.selectionStart == null ? antes.length : el.selectionStart;
-    const novo = dinheiroMascarado(antes);
-    if (novo === antes) return;
-    const adireita = antes.slice(pos).replace(/[^\d,]/g, '').length;   // dígitos (e vírgula) à direita do cursor: o cursor continua com a mesma quantidade deles à direita
-    el.value = novo;
-    let n = 0, p = novo.length;
-    while (p > 0 && n < adireita) { p--; if (/[\d,]/.test(novo[p])) n++; }
-    while (p > 0 && novo[p - 1] === '.') p--;                          // fica antes do ponto, não depois
-    try { el.setSelectionRange(p, p); } catch (e) { /* tipo de campo sem seleção */ }
+    let dig;
+    if (colado) {
+        const t = String(el.value || '').replace(/R\$|\s/g, '');
+        const n = /^\d+\.\d{1,2}$/.test(t) ? parseFloat(t) : dinheiro(t);
+        dig = n == null || !(n >= 0) ? '' : String(Math.round(n * 100));
+    } else dig = String(el.value || '').replace(/\D/g, '');
+    dig = dig.replace(/^0+/, '').slice(0, 12);
+    let novo = '';
+    if (dig) { dig = dig.padStart(3, '0'); novo = dig.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + dig.slice(-2); }
+    if (novo !== el.value) el.value = novo;
+    try { el.setSelectionRange(novo.length, novo.length); } catch (e) { /* tipo de campo sem seleção */ }
 }
-
-// Ao sair do campo o valor ganha os centavos: 80000 → 80.000,00 · 12,5 → 12,50
-function completarCentavos(el) {
-    if (!el || el.dataset.money === undefined) return;
-    const v = dinheiroMascarado(el.value); if (!v) { el.value = ''; return; }
-    const i = v.indexOf(',');
-    el.value = i < 0 ? v + ',00' : v + '0'.repeat(Math.max(0, 2 - (v.length - i - 1)));
-}
+const valorEmTela = v => { const n = dinheiro(v); return n == null ? '' : fmtIn(n); };    // valor já preenchido entra no formato da máscara (sempre com 2 casas)
 
 function gdDigita(e) {
     if (!G) return;
@@ -1401,7 +1390,7 @@ function htmlLinha(l) {
     if (l.k === 'pix') {
         return `<div class="ps-card fia-lin" data-lid="${l.id}">
           <div class="fia-lh"><span class="fia-tag">${l.boleto ? 'BOLETO' : 'PIX / DINHEIRO'}</span><span class="ps-sub fia-g">sem taxa</span>${rem}</div>
-          ${campo('Valor (R$)', `<input class="fia-in" data-f="valor" data-id="${l.id}" data-money inputmode="decimal" placeholder="0,00" value="${esc(l.valor)}">`, 'fia-w150')}
+          ${campo('Valor (R$)', `<input class="fia-in" data-f="valor" data-id="${l.id}" data-money inputmode="decimal" placeholder="0,00" value="${esc(valorEmTela(l.valor))}">`, 'fia-w150')}
           ${linhaErro(l.id)}</div>`;
     }
     if (l.k === 'troca') {
@@ -1409,7 +1398,7 @@ function htmlLinha(l) {
           <div class="fia-lh"><span class="fia-tag">TROCA</span><span class="ps-sub fia-g">conta como dinheiro, pelo valor combinado</span>${rem}</div>
           <div class="fia-row">
             ${campo('Aparelho', `<input class="fia-in" data-f="aparelho" data-id="${l.id}" placeholder="Modelo" value="${esc(l.aparelho)}">`)}
-            ${campo('Valor (R$)', `<input class="fia-in" data-f="valor" data-id="${l.id}" data-money inputmode="decimal" placeholder="0,00" value="${esc(l.valor)}">`)}
+            ${campo('Valor (R$)', `<input class="fia-in" data-f="valor" data-id="${l.id}" data-money inputmode="decimal" placeholder="0,00" value="${esc(valorEmTela(l.valor))}">`)}
           </div>
           ${linhaErro(l.id)}</div>`;
     }
@@ -1422,7 +1411,7 @@ function htmlLinha(l) {
     return `<div class="ps-card fia-lin" data-lid="${l.id}">
       <div class="fia-lh"><span class="fia-tag fia-tag-c">CARTÃO</span><span class="ps-sub fia-g">${l.manual ? 'complete aqui' : 'lido pela IA'}</span>${rem}</div>
       <div class="fia-row">
-        ${campo('Total passado (R$)', `<input class="fia-in" data-f="valor" data-id="${l.id}" data-money inputmode="decimal" placeholder="0,00" value="${esc(l.valor)}">`, 'fia-w13')}
+        ${campo('Total passado (R$)', `<input class="fia-in" data-f="valor" data-id="${l.id}" data-money inputmode="decimal" placeholder="0,00" value="${esc(valorEmTela(l.valor))}">`, 'fia-w13')}
         ${campo(l.parcDuv ? 'Parcelas · confira' : 'Parcelas', `<select class="fia-in" data-f="parc" data-id="${l.id}">${optsP}</select>`, l.parcDuv ? 'fia-duv' : '')}
       </div>
       <div class="fia-row">
