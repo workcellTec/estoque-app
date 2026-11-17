@@ -15,6 +15,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(CtwBarsPlugin.class);
         registerPlugin(CtwWidgetPlugin.class);
         super.onCreate(savedInstanceState);
+        // Seletor de arquivos que pergunta o app (Arquivos, Pasta Segura...) como no Chrome; precisa ser criado ainda no onCreate
+        if (bridge != null && bridge.getWebView() != null) bridge.getWebView().setWebChromeClient(new SeletorArquivos(bridge));
         tratarToqueDoWidget(getIntent());
 
         // Se o app caiu na vez anterior, mostra o motivo (com botão Copiar) antes de seguir; a consulta de atualização vem depois.
