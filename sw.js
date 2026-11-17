@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-352'; // CreditoScan: aviso de titularidade (extrato em nome de empresa/nome diferente do documento)
+const CACHE = 'ctw-353'; // Adicionar no WhatsApp: "Já adicionei" passa a valer até o próximo ZIP
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

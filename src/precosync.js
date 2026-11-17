@@ -217,8 +217,8 @@ async function carregarAprendizado() {
     const snap = await get(ref(getDb(), BASE));
     const v = snap.val() || {};
     APR = { aliases: v.aliases || {}, ignoradosPdf: v.ignoradosPdf || {}, ignoradosCtw: v.ignoradosCtw || {}, catAliases: v.catAliases || {}, catIgnorados: v.catIgnorados || {}, catalogo: v.catalogo || null, esg: v.esg || {}, contas: {}, contasZip: v.contasZip || {}, naoWhats: v.naoWhats || {} };
-    APR.contas.loja = { nome: v.lojaNome || 'Loja', catalogo: v.catalogo || null, esg: v.esg || {}, zap: v.zap || {}, fixos: v.fixos || {} };
-    Object.entries(v.contasNomes || {}).forEach(([id, nome]) => { if (id === 'loja') return; const d = (v.contas || {})[id] || {}; APR.contas[id] = { nome, catalogo: d.catalogo || null, esg: d.esg || {}, zap: d.zap || {}, fixos: d.fixos || {} }; });
+    APR.contas.loja = { nome: v.lojaNome || 'Loja', catalogo: v.catalogo || null, esg: v.esg || {}, zap: v.zap || {}, fixos: v.fixos || {}, adicionados: v.adicionados || {} };
+    Object.entries(v.contasNomes || {}).forEach(([id, nome]) => { if (id === 'loja') return; const d = (v.contas || {})[id] || {}; APR.contas[id] = { nome, catalogo: d.catalogo || null, esg: d.esg || {}, zap: d.zap || {}, fixos: d.fixos || {}, adicionados: d.adicionados || {} }; });
     usarConta(CONTA);
 }
 
@@ -742,11 +742,11 @@ function duvidaPdf() {
 
 // `faltando`: produtos do CTW que estão no PDF de hoje (têm estoque) mas não no catálogo da conta → "Adicionar no WhatsApp".
 // Só vale com catálogo exato (ZIP) e sem nome duvidoso pendente; `faltando` = { pid: { nome, preco } } já sem os "não vou colocar".
-function calcEsgotados(presenca, duvida, catalogo, esgAtual, faltando) {
+function calcEsgotados(presenca, duvida, catalogo, esgAtual, faltando, adicionados) {
     const cat = (catalogo && catalogo.itens) || {}, esg = esgAtual || {}, agora = Date.now();
     const upd = {}; let novos = 0;
     const duvCat = (catalogo && catalogo.duv) || {}, podeAdd = !!faltando && catalogo && catalogo.origem === 'zip';
-    const novosAdd = [];
+    const novosAdd = [], adic = adicionados || {}, catQuando = (catalogo && catalogo.atualizado) || 0;
     new Set([...Object.keys(cat), ...Object.keys(esg), ...(podeAdd ? Object.keys(faltando) : [])]).forEach(pid => {
         const e = esg[pid], c = cat[pid];
         if (duvida.has(pid)) return;
@@ -754,7 +754,8 @@ function calcEsgotados(presenca, duvida, catalogo, esgAtual, faltando) {
             if (c || !presenca.has(pid)) upd[pid] = null;
             return;
         }
-        if (!e && !c && podeAdd && faltando[pid] && !duvCat[pid]) { novosAdd.push(pid); return; }
+        // "Já adicionei" depois do último ZIP: o catálogo guardado ainda não tem o item, mas você já colocou. Um ZIP mais novo volta a ser a verdade.
+        if (!e && !c && podeAdd && faltando[pid] && !duvCat[pid]) { if (!(adic[pid] && adic[pid] > catQuando)) novosAdd.push(pid); return; }
         if (presenca.has(pid)) {
             if (e && e.estado === 'desativado') upd[pid] = { ...e, estado: 'reativar', desde: agora };
             else if (e && (e.estado === 'desativar' || e.estado === 'ainda')) upd[pid] = null;
@@ -834,7 +835,7 @@ function calcTodasEsg() {
     });
     Object.entries(APR.contas).forEach(([id, c]) => {
         if (!c.catalogo || !Object.keys(c.catalogo.itens || {}).length) return;
-        out[id] = { nome: c.nome, ...calcEsgotados(pres, duv, c.catalogo, c.esg, faltando) };
+        out[id] = { nome: c.nome, ...calcEsgotados(pres, duv, c.catalogo, c.esg, faltando, c.adicionados) };
     });
     return out;
 }
@@ -848,6 +849,7 @@ function motivoAdd(cid, p) {
     if (!presencaPdf().has(p.id)) return 'o PDF de hoje não trouxe este produto, ou o nome do PDF não foi ligado a ele';
     if (duvidaPdf().has(p.id)) return 'o nome dele no PDF ainda está em dúvida (pergunta sem resposta)';
     if (cat[p.id]) return `já está no catálogo do ZIP como “${cat[p.id].n}”`;
+    if ((c.adicionados || {})[p.id] > ((c.catalogo && c.catalogo.atualizado) || 0)) return 'você marcou “Já adicionei” depois do último ZIP: só volta a avisar se um ZIP novo continuar sem ele';
     if (duvCat[p.id]) return 'parece ser um item do ZIP ainda sem resposta (pergunta pulada ao ler o catálogo): responda ou envie o ZIP de novo';
     if (e && e.estado === 'adicionar') return 'já está na lista Adicionar';
     if (e) return `tem o estado “${e.estado}” guardado`;
@@ -1393,10 +1395,10 @@ function voltar() {
 
 // Executa uma ação da lista "Fazer no WhatsApp" e oferece "Desfazer" por 6 segundos
 async function acaoLista(act, id) {
-    const cid = CONTA, R = raiz(cid), db = getDb(), pz = `${R}/zap/${id}`, pe = `${R}/esg/${id}`, pf = `${R}/fixos/${id}`, pn = `${BASE}/naoWhats/${id}`;
+    const cid = CONTA, R = raiz(cid), db = getDb(), pz = `${R}/zap/${id}`, pe = `${R}/esg/${id}`, pf = `${R}/fixos/${id}`, pa = `${R}/adicionados/${id}`, pn = `${BASE}/naoWhats/${id}`;
     const todosEsg = Object.keys(APR.contas).map(c => `${raiz(c)}/esg/${id}`);
     const antes = {};
-    for (const k of new Set([pz, pe, pf, pn, ...todosEsg])) antes[k] = (await get(ref(db, k))).val();
+    for (const k of new Set([pz, pe, pf, pa, pn, ...todosEsg])) antes[k] = (await get(ref(db, k))).val();
     const z = antes[pz], e = antes[pe], upd = {}, extra = catExtra();
     let log = null, nome = '';
     if (act === 'zapok' && z) { nome = z.nome; upd[pz] = null; log = { tipo: 'preco', nome: z.nome || '', de: (z.de || 0) + extra, para: (z.para || 0) + extra }; }
@@ -1406,7 +1408,7 @@ async function acaoLista(act, id) {
     }
     else if (act === 'esgdesativei' && e && e.estado === 'desativar') { nome = e.nome; upd[pe] = { ...e, estado: 'desativado', desde: Date.now() }; log = { tipo: 'desativar', nome: e.nome || '' }; }
     else if (act === 'esgreativei' && e && e.estado === 'reativar') { nome = e.nome; upd[pe] = null; log = { tipo: 'reativar', nome: e.nome || '' }; }
-    else if (act === 'esgadicionei' && e && e.estado === 'adicionar') { nome = e.nome; upd[pe] = null; log = { tipo: 'adicionar', nome: e.nome || '', para: e.preco }; }
+    else if (act === 'esgadicionei' && e && e.estado === 'adicionar') { nome = e.nome; upd[pe] = null; upd[pa] = Date.now(); log = { tipo: 'adicionar', nome: e.nome || '', para: e.preco }; }   // pa: lembra que já foi adicionado (o catálogo guardado só muda com um ZIP novo)
     else if (act === 'esgnaovou' && e && e.estado === 'adicionar') {      // vale para todas as contas
         nome = e.nome; upd[pn] = { nome: e.nome || '', quando: Date.now(), usuario: usuario() };
         todosEsg.forEach(k => { if (antes[k] && antes[k].estado === 'adicionar') upd[k] = null; });
