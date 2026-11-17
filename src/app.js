@@ -2740,6 +2740,7 @@ function filterStockProducts() {
 
 
 function generateStockReport() {
+  try {
     const reportPreview = document.getElementById('reportPreview');
     const visibleProducts = onlyShowIgnored ? products.filter(p => p.ignorarContagem) : products.filter(p => !p.ignorarContagem);
     const searchTerm = document.getElementById('stockSearchInput').value;
@@ -2779,7 +2780,19 @@ function generateStockReport() {
     `;
     reportPreview.innerHTML = reportHTML;
     document.body.classList.add('print-only-report');
+    // Se o navegador não abrir a janela de impressão, avisa na tela (antes ficava mudo) com os dados para achar a causa
+    let abriu = false; const viu = () => { abriu = true; };
+    window.addEventListener('beforeprint', viu, { once: true });
     window.print();
+    setTimeout(() => {
+        window.removeEventListener('beforeprint', viu);
+        if (!abriu) showCustomModal({ message: `O navegador não abriu a impressão do relatório (${filteredProducts.length} produtos). Toque de novo; se continuar, me mande um print desta mensagem. [print=${typeof window.print}, standalone=${window.matchMedia('(display-mode: standalone)').matches}]`, onConfirm: () => {}, onCancel: () => {}, confirmText: 'OK', cancelText: 'Fechar' });
+    }, 1500);
+  } catch (err) {
+    document.body.classList.remove('print-only-report');
+    console.error('[relatório estoque]', err);
+    showCustomModal({ message: 'Não consegui montar o relatório: ' + ((err && err.message) || err), onConfirm: () => {}, onCancel: () => {}, confirmText: 'OK', cancelText: 'Fechar' });
+  }
 }
 
 function openColorPicker(productId) {
