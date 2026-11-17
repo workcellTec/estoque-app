@@ -76,7 +76,7 @@
          para a 1ª pintura, mas funciona igual em qualquer aparelho. -->
     <link href="bootstrap-icons-lite.css?v=1" rel="stylesheet"/>
     <link href="bootstrap-lite.css?v=1" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=150">
+    <link rel="stylesheet" href="style.css?v=151">
 
 
 
@@ -907,15 +907,6 @@
 
         <div id="adminSettingsContent" class="hidden">
             <div class="admin-section w-100">
-                <h4 class="mb-3 text-start"><i class="bi bi-robot"></i> Chave Groq — Scan de Estoque</h4>
-                <p class="text-secondary small">Cole sua chave da API Groq para usar o Scan de Cores no Estoque. Gratuito em <a href="https://console.groq.com" target="_blank" class="text-primary">console.groq.com</a></p>
-                <div class="input-group mb-2">
-                    <input type="password" class="form-control" id="groqApiKeyInput" placeholder="gsk_...">
-                    <button class="btn btn-outline-secondary" type="button" id="groqApiKeyToggle"><i class="bi bi-eye"></i></button>
-                </div>
-                <button class="btn btn-primary w-100" id="groqApiKeySaveBtn"><i class="bi bi-save-fill"></i> Salvar Chave</button>
-            </div>
-            <div class="admin-section w-100">
                 <h4 class="mb-3 text-start"><i class="bi bi-pencil-square"></i> Cabeçalho do Recibo</h4>
                 <p class="text-secondary small">Edite os dados da empresa que aparecem no topo do Bookip (Nome, CNPJ, Endereço, etc).</p>
                 <div class="form-group mb-3">
@@ -1737,14 +1728,7 @@
 
 
 <script src="ctw-ui.js?v=4" defer></script>
-<script src="app.js?v=1052" type="module" defer></script>
-<script>
-window.addEventListener('load', function() {
-    var s = document.createElement('script');
-    s.src = 'StockCount.js?v=3';
-    document.head.appendChild(s);
-});
-</script>
+<script src="app.js?v=1053" type="module" defer></script>
 
     <!-- Módulos independentes — carregam em paralelo após app.js -->
     <script type="module" defer>
@@ -3147,64 +3131,6 @@ window.addEventListener('load', function() {
     </div>
 </div>
 
-
-<!-- ======== SCAN IA OVERLAY ======== -->
-<div id="scanIaOverlay" class="scan-ia-overlay">
-    <div class="scan-ia-panel">
-        <div id="scanNoKeyScreen" class="scan-screen hidden">
-            <div class="text-center p-4">
-                <i class="bi bi-key-fill" style="font-size:3rem;color:var(--primary-color)"></i>
-                <h5 class="mt-3">Chave Groq não configurada</h5>
-                <p class="text-secondary small">Vá em Administração → Taxas e configure sua chave da API Groq.</p>
-                <button class="btn btn-primary mt-2" id="scanGoToSettingsBtn">Configurar agora</button>
-                <button class="btn btn-outline-secondary mt-2 ms-2" id="scanNoKeyCloseBtn">Fechar</button>
-            </div>
-        </div>
-        <div id="scanSelectScreen" class="scan-screen">
-            <div class="scan-ia-header">
-                <span><i class="bi bi-camera-fill"></i> Scan em Lote</span>
-                <button class="scan-ia-close" id="scanCloseBtn"><i class="bi bi-x-lg"></i></button>
-            </div>
-            <p class="text-secondary small mb-3">Fotografe todas as caixas do lote. A IA conta as unidades e identifica as cores.</p>
-            <div class="scan-dropzone" id="scanDropzone">
-                <i class="bi bi-images" style="font-size:2.5rem;color:var(--primary-color)"></i>
-                <p class="mt-2 mb-0 fw-bold">Selecione as fotos</p>
-                <div class="d-flex gap-2 mt-3 justify-content-center">
-                    <button class="btn btn-primary btn-sm" id="scanBtnGaleria"><i class="bi bi-image"></i> Galeria</button>
-                    <button class="btn btn-outline-light btn-sm" id="scanBtnCamera"><i class="bi bi-camera"></i> Câmera</button>
-                </div>
-            </div>
-            <input type="file" id="scanFileInputGaleria" accept="image/*" multiple style="display:none">
-            <input type="file" id="scanFileInput" accept="image/*" multiple capture="environment" style="display:none">
-            <div id="scanPreviewGrid" class="scan-preview-grid hidden"></div>
-            <button class="btn btn-success w-100 mt-3 fw-bold" id="scanBtnAnalisar" disabled>
-                <i class="bi bi-cpu-fill"></i> Analisar com IA
-            </button>
-        </div>
-        <div id="scanProcessingScreen" class="scan-screen hidden">
-            <div class="text-center p-4">
-                <div class="scan-ai-pulse"><i class="bi bi-cpu-fill"></i></div>
-                <h5 class="mt-4">Analisando fotos...</h5>
-                <p id="scanProcessingStatus" class="text-secondary small">Foto 1 de <span id="scanTotalFotos">?</span></p>
-                <div class="progress mt-3" style="height:6px;border-radius:10px;background:rgba(255,255,255,0.1)">
-                    <div id="scanProgressBar" class="progress-bar bg-success" style="width:0%;transition:width 0.3s ease"></div>
-                </div>
-            </div>
-        </div>
-        <div id="scanResultsScreen" class="scan-screen hidden">
-            <div class="scan-ia-header">
-                <span><i class="bi bi-check2-square"></i> Resultados</span>
-                <button class="btn btn-link btn-sm text-secondary p-0" id="scanVoltarBtn"><i class="bi bi-arrow-left"></i> Nova scan</button>
-            </div>
-            <p class="text-secondary small mb-3">Revise e confirme.</p>
-            <div id="scanResultsList"></div>
-            <button class="btn btn-success w-100 mt-3 fw-bold" id="scanBtnConfirmar">
-                <i class="bi bi-cloud-check-fill"></i> Confirmar e Atualizar Estoque
-            </button>
-        </div>
-    </div>
-</div>
-<!-- ===================================== -->
 
 <!-- ═══════════════════════════════════════════════
      SEÇÃO: REPOSIÇÃO — Lista de Compras

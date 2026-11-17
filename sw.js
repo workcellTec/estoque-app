@@ -1,12 +1,12 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-348'; // relatório do Estoque em PDF: emojis, grade e rodapé como o antigo
+const CACHE = 'ctw-349'; // removido o Scan/foto IA do Estoque (StockCount.js, scan em lote, chave Groq)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
     './', './index.html', './app.js', './style.css', './firebase-config.js',
-    './StockCount.js', './repairs.js', './notifications.js', './Bookip.js',
+    './repairs.js', './notifications.js', './Bookip.js',
     './reposicao.js', './creditoscan.js', './precosync.js', './fechamentoia.js', './buscaia.js', './modulodev.js', './fecharVenda.js', './ambilight.js',
     './icon-192.png', './icon-512.png', './icon-1024.png', './badge.png',
     './ctw-ui.js?v=4', './fuse.min.js?v=6.6.2', './bootstrap-lite.css?v=1', './bootstrap-icons-lite.css?v=1',
