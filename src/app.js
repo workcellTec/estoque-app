@@ -2739,60 +2739,65 @@ function filterStockProducts() {
 }
 
 
-function generateStockReport() {
-  try {
-    const reportPreview = document.getElementById('reportPreview');
-    const visibleProducts = onlyShowIgnored ? products.filter(p => p.ignorarContagem) : products.filter(p => !p.ignorarContagem);
-    const searchTerm = document.getElementById('stockSearchInput').value;
-    const fuseInstance = new Fuse(visibleProducts, { keys: ['nome'], threshold: 0.4 });
-    const filteredProducts = !searchTerm ? visibleProducts : fuseInstance.search(searchTerm).map(r => r.item);
-    
-    const today = new Date();
-    const dateString = today.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
-    const timeString = today.toLocaleTimeString('pt-BR');
+// Relatório do Estoque em PDF (jsPDF, como o contrato): a janela de impressão do navegador não existe no app do celular.
+function ctwGerarPdfRelatorioEstoque({ produtos, conferidos, titulo, filtro }) {
+    const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+    pdf.setProperties({ title: titulo, creator: 'Central Workcell' });
+    const F = CTW_PDF.fonte, L = 15, R = 195, W = R - L, ALT = CTW_PDF.alt;
+    const XCOR = L + 100, XQTD = R - 10;
+    let y = 0;
+    const cabecalhoTabela = () => {
+        pdf.setFillColor(238, 238, 238); pdf.rect(L, y, W, 7, 'F');
+        pdf.setFont(F, 'bold'); pdf.setFontSize(9); pdf.setTextColor(0);
+        pdf.text('Produto', L + 2, y + 4.8); pdf.text('Cores disponíveis', XCOR, y + 4.8); pdf.text('Qtd', XQTD, y + 4.8, { align: 'center' });
+        y += 7;
+    };
+    pdf.setFont(F, 'bold'); pdf.setFontSize(15); pdf.setTextColor(0);
+    pdf.text(ctwPdfTexto(titulo), CTW_PDF.larg / 2, 20, { align: 'center' });
+    pdf.setFont(F, 'normal'); pdf.setFontSize(9); pdf.setTextColor(90);
+    const agora = new Date();
+    pdf.text(`Gerado em: ${agora.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })} às ${agora.toLocaleTimeString('pt-BR')}`, CTW_PDF.larg / 2, 26.5, { align: 'center' });
+    y = 31;
+    if (filtro) { pdf.text(ctwPdfTexto('Filtro: ' + filtro), CTW_PDF.larg / 2, y + 1, { align: 'center' }); y += 5; }
+    cabecalhoTabela();
+    produtos.forEach(p => {
+        const conferido = !!(conferidos[p.id] && conferidos[p.id].checked);
+        pdf.setFont(F, 'normal'); pdf.setFontSize(9);
+        const linhasNome = pdf.splitTextToSize(ctwPdfTexto(p.nome || '') + (conferido ? '' : '  (NÃO CONFERIDO)'), 93);
+        const linhasCor = pdf.splitTextToSize(ctwPdfTexto((p.cores || []).map(c => c.nome).join(', ') || '-'), 56);
+        const h = Math.max(linhasNome.length, linhasCor.length) * 4.2 + 2.6;
+        if (y + h > ALT - 20) { pdf.addPage(); y = 15; cabecalhoTabela(); pdf.setFont(F, 'normal'); pdf.setFontSize(9); }
+        if (conferido) pdf.setTextColor(0); else pdf.setTextColor(200, 0, 0);
+        pdf.text(linhasNome, L + 2, y + 4.3); pdf.text(linhasCor, XCOR, y + 4.3); pdf.text(String(p.quantidade || 0), XQTD, y + 4.3, { align: 'center' });
+        pdf.setDrawColor(215); pdf.line(L, y + h, R, y + h);
+        y += h;
+    });
+    if (y + 10 > ALT - 14) { pdf.addPage(); y = 15; }
+    pdf.setFont(F, 'normal'); pdf.setFontSize(8); pdf.setTextColor(85);
+    pdf.text('* Itens em vermelho não foram marcados como conferidos.', L, y + 6);
+    const n = pdf.getNumberOfPages();
+    for (let i = 1; i <= n; i++) { pdf.setPage(i); pdf.setFontSize(8); pdf.setTextColor(120); pdf.text(`Página ${i} de ${n}`, CTW_PDF.larg / 2, ALT - 10, { align: 'center' }); }
+    return pdf.output('blob');
+}
 
-    let reportHTML = `
-    <h3>Relatório de Estoque</h3>
-    <p>Gerado em: ${dateString} às ${timeString}</p>
-    <table>
-        <thead>
-            <tr>
-                <th style="width: 50%;">Produto</th>
-                <th style="width: 30%;">Cores Disponíveis</th>
-                <th style="width: 20%; text-align: center;">Quantidade</th>
-            </tr>
-        </thead>
-        <tbody>
-            ${filteredProducts.map(p => {
-                const isChecked = checkedItems[p.id]?.checked || false;
-                const rowStyle = !isChecked ? 'style="color: red !important;"' : '';
-                const notCheckedIndicator = !isChecked ? ' <strong style="color: red !important;">(NÃO CONFERIDO)</strong>' : '';
-                return `
-                <tr ${rowStyle}>
-                    <td>${escapeHtml(p.nome)}${notCheckedIndicator}</td>
-                    <td>${(p.cores || []).map(c => c.nome).join(', ') || '-'}</td>
-                    <td style="text-align: center;">${p.quantidade || 0}</td>
-                </tr>`;
-            }).join('')}
-        </tbody>
-    </table>
-    <p style="text-align: left; font-size: 8pt; color: #555; margin-top: 15px;">* Itens em vermelho não foram marcados como conferidos.</p>
-    `;
-    reportPreview.innerHTML = reportHTML;
-    document.body.classList.add('print-only-report');
-    // Se o navegador não abrir a janela de impressão, avisa na tela (antes ficava mudo) com os dados para achar a causa
-    let abriu = false; const viu = () => { abriu = true; };
-    window.addEventListener('beforeprint', viu, { once: true });
-    window.print();
-    setTimeout(() => {
-        window.removeEventListener('beforeprint', viu);
-        if (!abriu) showCustomModal({ message: `O navegador não abriu a impressão do relatório (${filteredProducts.length} produtos). Toque de novo; se continuar, me mande um print desta mensagem. [print=${typeof window.print}, standalone=${window.matchMedia('(display-mode: standalone)').matches}]`, onConfirm: () => {}, onCancel: () => {}, confirmText: 'OK', cancelText: 'Fechar' });
-    }, 1500);
-  } catch (err) {
-    document.body.classList.remove('print-only-report');
-    console.error('[relatório estoque]', err);
-    showCustomModal({ message: 'Não consegui montar o relatório: ' + ((err && err.message) || err), onConfirm: () => {}, onCancel: () => {}, confirmText: 'OK', cancelText: 'Fechar' });
-  }
+async function generateStockReport() {
+    try {
+        const visibleProducts = onlyShowIgnored ? products.filter(p => p.ignorarContagem) : products.filter(p => !p.ignorarContagem);
+        const searchTerm = document.getElementById('stockSearchInput').value;
+        const fuseInstance = new Fuse(visibleProducts, { keys: ['nome'], threshold: 0.4 });
+        const filteredProducts = !searchTerm ? visibleProducts : fuseInstance.search(searchTerm).map(r => r.item);
+        if (!filteredProducts.length) { showCustomModal({ message: 'Não há produtos nesta lista para gerar o relatório.' }); return; }
+        showCustomModal({ message: 'Gerando o PDF do relatório…' });
+        await garantirPdfLibs({ soContrato: true });
+        if (!window.jspdf || !window.jspdf.jsPDF) throw new Error('as bibliotecas de PDF não carregaram (verifique a internet)');
+        const titulo = onlyShowIgnored ? 'Relatório de Estoque (ignorados)' : 'Relatório de Estoque';
+        const blob = ctwGerarPdfRelatorioEstoque({ produtos: filteredProducts, conferidos: checkedItems, titulo, filtro: searchTerm.trim() });
+        const d = new Date(), dia = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        await ctwEntregarPdf(blob, `Relatorio-Estoque-${dia}.pdf`, '', '', { titulo, texto: titulo + ' - Workcell Tecnologia', confirma: 'PDF do relatório pronto! Toque em "Compartilhar" para enviar ou salvar.' });
+    } catch (err) {
+        console.error('[relatório estoque]', err);
+        showCustomModal({ message: 'Não consegui gerar o PDF do relatório: ' + ((err && err.message) || err), onConfirm: () => {}, onCancel: () => {}, confirmText: 'OK', cancelText: 'Fechar' });
+    }
 }
 
 function openColorPicker(productId) {
@@ -4013,10 +4018,11 @@ function ctwBaixarPdf(blob, nomeArq) {
     setTimeout(() => URL.revokeObjectURL(url), 60000);   // revogar já causava download vazio em alguns Android
 }
 
-async function ctwEntregarPdf(blob, nomeArq, nomeCliente, telefone) {
+async function ctwEntregarPdf(blob, nomeArq, nomeCliente, telefone, textos) {
     const file = new File([blob], nomeArq, { type: 'application/pdf' });
     const baixar = () => ctwBaixarPdf(blob, nomeArq);
-    const dadosShare = { files: [file], title: 'Contrato Workcell Tecnologia', text: 'Olá ' + (nomeCliente || 'Cliente') + ', segue seu contrato em anexo.', telefone: telefone };
+    const tx = textos || {};      // outros PDFs (ex.: relatório do estoque) trocam os textos; o contrato usa os padrões
+    const dadosShare = { files: [file], title: tx.titulo || 'Contrato Workcell Tecnologia', text: tx.texto || ('Olá ' + (nomeCliente || 'Cliente') + ', segue seu contrato em anexo.'), telefone: telefone };
     if (!(navigator.canShare && navigator.canShare({ files: [file] }))) { baixar(); return 'baixado'; }
     try {
         await navigator.share(dadosShare);
@@ -4024,7 +4030,7 @@ async function ctwEntregarPdf(blob, nomeArq, nomeCliente, telefone) {
     } catch (e) {
         if (e && e.name === 'AbortError') return 'cancelado';
         // Gerar o PDF em celular lento gasta o "toque" do usuário; um novo toque libera o compartilhamento.
-        const compartilhar = await ctwConfirmar('PDF pronto! Toque em "Compartilhar" para enviar ao cliente.', 'Compartilhar', 'Só baixar');
+        const compartilhar = await ctwConfirmar(tx.confirma || 'PDF pronto! Toque em "Compartilhar" para enviar ao cliente.', 'Compartilhar', 'Só baixar');
         if (!compartilhar) { baixar(); return 'baixado'; }
         try { await navigator.share(dadosShare); return 'compartilhado'; }
         catch (e2) { if (!e2 || e2.name !== 'AbortError') baixar(); return 'baixado'; }
