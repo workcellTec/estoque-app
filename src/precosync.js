@@ -1902,10 +1902,12 @@ async function telaZap(aba) {
           <div class="ps-sub">${z.quando ? tempoAtras(z.quando) : ''}${z.usuario ? ' · ' + esc(z.usuario) : ''}</div>
           ${botoes('zapok', 'Já fiz', z.id, `<button type="button" class="ps-btn" data-act="zapfixo" data-id="${esc(z.id)}">Manter assim</button><div class="ps-sub">Use quando o preço do catálogo está diferente de propósito. O app só avisa de novo se o CTW mudar.</div>`)}
         </div>`;
+    // Preço para reativar = valor ATUAL do produto no CTW + extra à vista (o preço guardado no catálogo é de quando foi desativado e pode estar velho)
+    const precoReativar = id => { const pv = produtoVivo(id), v = pv ? valorCtw(pv) : NaN; return v > 0 ? brl(v + extra) : ''; };
     const cartaoEsg = e => `
         <div class="ps-lc">
           <div class="ps-nome">${esc(e.nome)}</div>
-          <div class="ps-sub2">${e.estado === 'reativar' ? 'Voltou no Stock 2.0: reative no catálogo' : e.estado === 'adicionar' ? `Tem estoque e não está no catálogo · cadastre por <b>${brl(e.preco)}</b>` : `Sem estoque · está no catálogo por ${brl(e.preco)}`}</div>
+          <div class="ps-sub2">${e.estado === 'reativar' ? `Voltou no Stock 2.0: reative no catálogo${precoReativar(e.id) ? ` por <b>${precoReativar(e.id)}</b>` : ''}` : e.estado === 'adicionar' ? `Tem estoque e não está no catálogo · cadastre por <b>${brl(e.preco)}</b>` : `Sem estoque · está no catálogo por ${brl(e.preco)}`}</div>
           <div class="ps-sub">${tempoAtras(e.desde || agora)}</div>
           ${e.estado === 'reativar' ? botoes('esgreativei', 'Já reativei', e.id)
             : e.estado === 'adicionar' ? botoes('esgadicionei', 'Já adicionei', e.id, `<button type="button" class="ps-btn" data-act="esgnaovou" data-id="${esc(e.id)}">Não vou colocar no WhatsApp</button><div class="ps-sub">Vale para todas as contas. O app para de cobrar este produto (dá para voltar em Avançado).</div>`)

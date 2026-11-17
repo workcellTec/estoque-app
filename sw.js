@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-349'; // removido o Scan/foto IA do Estoque (StockCount.js, scan em lote, chave Groq)
+const CACHE = 'ctw-350'; // Reativar no WhatsApp mostra o preço atual do CTW + extra
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
