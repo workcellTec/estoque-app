@@ -1,7 +1,6 @@
 package br.com.workcell.central;
 
 import android.app.Activity;
-import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
 import android.webkit.ValueCallback;
@@ -60,7 +59,7 @@ public class SeletorArquivos extends BridgeWebChromeClient {
             retorno = filePathCallback;
             lancador.launch(Intent.createChooser(pedido, "Escolha uma ação"));
             return true;
-        } catch (ActivityNotFoundException | RuntimeException e) {
+        } catch (RuntimeException e) { // inclui ActivityNotFoundException
             retorno = null;
             return super.onShowFileChooser(webView, filePathCallback, params);
         }
