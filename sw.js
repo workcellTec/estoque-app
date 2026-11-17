@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-350'; // Reativar no WhatsApp mostra o preço atual do CTW + extra
+const CACHE = 'ctw-352'; // CreditoScan: aviso de titularidade (extrato em nome de empresa/nome diferente do documento)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

@@ -1633,6 +1633,31 @@
                 .replace(/\s(De|Da|Do|Das|Dos|E)(?=\s)/g, function (m) { return m.toLowerCase(); });
     }
 
+    // Conferência de titularidade EM CÓDIGO: a IA sozinha aprovou "Pastelaria do junior" no documento de "Otair ... Junior" (casou só o "Junior").
+    // Só gera aviso (não reprova): MEI/empresa legítima existe; quem decide é a pessoa. Fraude clara continua sendo decidida pela IA (nomesBatem=false).
+    var TIT_IGNORA = { DE: 1, DA: 1, DO: 1, DAS: 1, DOS: 1, E: 1 };
+    var TIT_SUFIXO = { JUNIOR: 1, JR: 1, FILHO: 1, FILHA: 1, NETO: 1, NETA: 1, NETTO: 1, SOBRINHO: 1, SEGUNDO: 1, SEGUNDA: 1 };  // sozinhos não provam que é a mesma pessoa
+    function titTokens(s) {
+        return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim().split(' ')
+            .filter(function (t) { return t.length > 1 && !TIT_IGNORA[t]; });
+    }
+    function conferirTitularidade(nomeDoc, nomeRenda) {
+        var D = titTokens(nomeDoc), C = titTokens(nomeRenda);
+        if (!D.length || !C.length) return null;
+        var empresa = /\b(LTDA|MEI|EPP|EIRELI|CNPJ|S\s?\/?\s?A)\b/i.test(String(nomeRenda)) || /\d{8,}/.test(String(nomeRenda).replace(/[.\-\/\s]/g, ''));
+        var nomeC = C.filter(function (t) { return !/\d/.test(t) && !TIT_SUFIXO[t]; });
+        var comum = nomeC.filter(function (t) { return D.indexOf(t) !== -1; }).length;
+        var minimo = nomeC.length >= 3 ? 2 : 1;      // nome longo no extrato precisa bater em pelo menos 2 partes; nome curto ("Elvando") em 1
+        if (comum >= minimo && !(empresa && comum < 2)) return null;
+        return { tipo: empresa ? 'empresa' : 'nome', doc: String(nomeDoc || ''), comp: String(nomeRenda || '') };
+    }
+    function avisoTitularidade(t) {
+        if (!t) return '';
+        return t.tipo === 'empresa'
+            ? 'O extrato está em nome de empresa (' + t.comp + ') e o documento é de ' + t.doc + '. Confirme que o cliente é sócio/dono antes de vender.'
+            : 'O nome do extrato (' + t.comp + ') não confere com o documento (' + t.doc + '). Se for nome de empresa/fantasia, confirme que o cliente é sócio/dono; senão, confirme que a conta é dele antes de vender.';
+    }
+
     function extrair(texto) {
         var jsonStr = texto;
         try {
@@ -1641,6 +1666,7 @@
             var obj = JSON.parse(jsonStr);
 
             var nomesBatem = obj.nomesBatem !== false;
+            var titConferir = nomesBatem ? conferirTitularidade(obj.nomeDocumentoPessoal, obj.nomeComprovanteRenda) : null;
             var dec = (obj.decisao || '').toUpperCase();
             var nota = typeof obj.nota === 'number' ? obj.nota : parseInt(obj.nota || 0);
             if (nota > 92) nota = 92; // teto: nenhum cliente e perfeito
@@ -1689,7 +1715,7 @@
                 nomeCliente: primeiroNome, nomeCompleto: nomeCompleto,
                 nomeDocPessoal: obj.nomeDocumentoPessoal || '',
                 nomeRenda: obj.nomeComprovanteRenda || '',
-                nomesBatem: obj.nomesBatem, confianca: confianca,
+                nomesBatem: obj.nomesBatem, titConferir: titConferir, confianca: confianca,
                 perfil: obj.perfilCliente || '', analise: obj.analiseFinanceira || '',
                 calculo: obj.calculoPontuacao || '', conselho: obj.conselho || '',
                 resumoExec: obj.resumoExecutivo || '',
@@ -4434,13 +4460,14 @@
                 '<circle cx="48" cy="48" r="42" class="trk"/><circle cx="48" cy="48" r="42" class="val" stroke-dasharray="' + dash + ' 264" transform="rotate(-90 48 48)"/></svg>' +
                 '<div class="cs-ring-in"><b>' + d.nota + '</b><small>' + esc(riscoLabel) + '</small></div></div>' +
             '<div class="cs-hero-info"><div class="cs-hero-nome">' + esc(d.nomeCompleto || nomeDoJob(job)) + '</div>' +
-            '<span class="cs-pill ' + c + '"><i class="bi ' + (reprov ? 'bi-x-lg' : 'bi-check-lg') + '"></i>' + (reprov ? 'Reprovado — não vender' : 'Aprovado — pode vender') + '</span></div></div>';
+            (!reprov && d.titConferir ? '<span class="cs-pill warn"><i class="bi bi-exclamation-triangle-fill"></i>Conferir titularidade antes de vender</span>' : '<span class="cs-pill ' + c + '"><i class="bi ' + (reprov ? 'bi-x-lg' : 'bi-check-lg') + '"></i>' + (reprov ? 'Reprovado — não vender' : 'Aprovado — pode vender') + '</span>') + '</div></div>';
 
         if (job.tempos && temposTexto(job.tempos)) h += '<div class="cs-tempos"><i class="bi bi-stopwatch"></i><span>' + esc(temposTexto(job.tempos)) + '</span></div>';
 
         String(d.rendaDetalhe || '').split('\n').filter(function (l) { return l.charAt(0) === '⚠'; }).forEach(function (l) {
             h += '<div class="cs-alert warn"><i class="bi bi-exclamation-triangle-fill"></i><span>' + esc(l.replace(/^⚠\s*/, '')) + '</span></div>';
         });
+        if (d.titConferir) h += '<div class="cs-alert warn"><i class="bi bi-exclamation-triangle-fill"></i><span><strong>Conferir titularidade:</strong> ' + esc(avisoTitularidade(d.titConferir)) + '</span></div>';
         var divg = avisoDivergencia(d);
         if (divg) h += '<div class="cs-alert warn"><i class="bi bi-exclamation-triangle-fill"></i><span>' + esc(divg) + '</span></div>';
 
@@ -4466,7 +4493,7 @@
         var pct = pctComprometimento(d, sec);
         if (pct !== null) pct = Math.min(pct, 100);
         var casas = d.casasJogo || [], susp = d.suspeitasJogo || [];
-        var tit = d.nomesBatem === true ? ['Confirmada', 'ok'] : d.nomesBatem === false ? ['Divergência', 'bad'] : ['Sem documento', 'warn'];
+        var tit = d.titConferir && d.nomesBatem !== false ? ['Conferir', 'warn'] : d.nomesBatem === true ? ['Confirmada', 'ok'] : d.nomesBatem === false ? ['Divergência', 'bad'] : ['Sem documento', 'warn'];
         var div = sec['DIVIDAS ATIVAS'];
         var dv = !div ? ['—', ''] : /nenhum|sem d[ií]vida|n[aã]o (h[aá]|foram|identific|possui|consta)/i.test(div) ? ['Nenhuma', 'ok'] : ['Identificadas', 'warn'];
         h += '<div class="cs-grid2">' +
