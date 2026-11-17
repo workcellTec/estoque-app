@@ -2740,43 +2740,84 @@ function filterStockProducts() {
 
 
 // Relatório do Estoque em PDF (jsPDF, como o contrato): a janela de impressão do navegador não existe no app do celular.
+// As fontes do PDF não têm emoji; o emoji do começo do nome (🍏 🟡 🔵…) é desenhado como imagem, igual ao que o celular mostra.
+const CTW_EMOJI_RE = /\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*/gu;
+const ctwEmojiCache = {};
+function ctwEmojiPng(em) {
+    if (em in ctwEmojiCache) return ctwEmojiCache[em];
+    let png = null;
+    try {
+        const c = document.createElement('canvas'); c.width = c.height = 96;
+        const g = c.getContext('2d');
+        g.font = '72px "Noto Color Emoji","Apple Color Emoji","Segoe UI Emoji",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(em, 48, 52);
+        const px = g.getImageData(0, 0, 96, 96).data;
+        for (let i = 3; i < px.length; i += 4) { if (px[i] > 0) { png = c.toDataURL('image/png'); break; } }     // vazio = o celular não desenhou o emoji
+    } catch (e) { png = null; }
+    return (ctwEmojiCache[em] = png);
+}
+// { emojis: [...do começo], texto } — emoji no meio do nome é descartado (nunca vira "?")
+function ctwSepararEmojis(nome) {
+    const s = String(nome || '').trim();
+    const ini = /^(?:\s*\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*)+/u.exec(s);
+    const emojis = ini ? (ini[0].match(CTW_EMOJI_RE) || []) : [];
+    const resto = s.slice(ini ? ini[0].length : 0).replace(CTW_EMOJI_RE, '').replace(/[\uFE0F\u200D]/g, '').trim();
+    return { emojis, texto: resto };
+}
+
 function ctwGerarPdfRelatorioEstoque({ produtos, conferidos, titulo, filtro }) {
     const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
     pdf.setProperties({ title: titulo, creator: 'Central Workcell' });
-    const F = CTW_PDF.fonte, L = 15, R = 195, W = R - L, ALT = CTW_PDF.alt;
-    const XCOR = L + 100, XQTD = R - 10;
+    const F = CTW_PDF.fonte, L = 10, R = 200, W = R - L, ALT = CTW_PDF.alt;
+    const X1 = L, X2 = L + W * 0.5, X3 = L + W * 0.8;          // colunas: Produto 50% · Cores 30% · Quantidade 20%
+    const LH = 4.4, EM = 4, PTXT = 10;                          // altura de linha, tamanho do emoji (mm), fonte
     let y = 0;
+    const linha = (x1, y1, x2, y2) => { pdf.setDrawColor(204); pdf.setLineWidth(0.2); pdf.line(x1, y1, x2, y2); };
     const cabecalhoTabela = () => {
-        pdf.setFillColor(238, 238, 238); pdf.rect(L, y, W, 7, 'F');
-        pdf.setFont(F, 'bold'); pdf.setFontSize(9); pdf.setTextColor(0);
-        pdf.text('Produto', L + 2, y + 4.8); pdf.text('Cores disponíveis', XCOR, y + 4.8); pdf.text('Qtd', XQTD, y + 4.8, { align: 'center' });
-        y += 7;
+        pdf.setFillColor(240, 240, 240); pdf.rect(L, y, W, 9, 'F');
+        pdf.setDrawColor(204); pdf.setLineWidth(0.2); pdf.rect(L, y, W, 9);
+        linha(X2, y, X2, y + 9); linha(X3, y, X3, y + 9);
+        pdf.setFont(F, 'bold'); pdf.setFontSize(PTXT); pdf.setTextColor(0);
+        pdf.text('Produto', X1 + 2.5, y + 5.9); pdf.text('Cores Disponíveis', X2 + 2.5, y + 5.9); pdf.text('Quantidade', (X3 + R) / 2, y + 5.9, { align: 'center' });
+        y += 9;
     };
-    pdf.setFont(F, 'bold'); pdf.setFontSize(15); pdf.setTextColor(0);
+    pdf.setFont(F, 'bold'); pdf.setFontSize(16); pdf.setTextColor(0);
     pdf.text(ctwPdfTexto(titulo), CTW_PDF.larg / 2, 20, { align: 'center' });
     pdf.setFont(F, 'normal'); pdf.setFontSize(9); pdf.setTextColor(90);
     const agora = new Date();
     pdf.text(`Gerado em: ${agora.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })} às ${agora.toLocaleTimeString('pt-BR')}`, CTW_PDF.larg / 2, 26.5, { align: 'center' });
-    y = 31;
+    y = 32;
     if (filtro) { pdf.text(ctwPdfTexto('Filtro: ' + filtro), CTW_PDF.larg / 2, y + 1, { align: 'center' }); y += 5; }
     cabecalhoTabela();
+    let faltouConferir = false;
     produtos.forEach(p => {
         const conferido = !!(conferidos[p.id] && conferidos[p.id].checked);
-        pdf.setFont(F, 'normal'); pdf.setFontSize(9);
-        const linhasNome = pdf.splitTextToSize(ctwPdfTexto(p.nome || '') + (conferido ? '' : '  (NÃO CONFERIDO)'), 93);
-        const linhasCor = pdf.splitTextToSize(ctwPdfTexto((p.cores || []).map(c => c.nome).join(', ') || '-'), 56);
-        const h = Math.max(linhasNome.length, linhasCor.length) * 4.2 + 2.6;
-        if (y + h > ALT - 20) { pdf.addPage(); y = 15; cabecalhoTabela(); pdf.setFont(F, 'normal'); pdf.setFontSize(9); }
+        if (!conferido) faltouConferir = true;
+        const { emojis, texto } = ctwSepararEmojis(p.nome);
+        const imgs = emojis.map(ctwEmojiPng).filter(Boolean);
+        const recuo = imgs.length ? imgs.length * (EM + 0.8) + 0.6 : 0;
+        pdf.setFont(F, 'normal'); pdf.setFontSize(PTXT);
+        const linhasNome = pdf.splitTextToSize(ctwPdfTexto(texto) + (conferido ? '' : '  (NÃO CONFERIDO)'), (X2 - X1) - 5 - recuo);
+        const linhasCor = pdf.splitTextToSize(ctwPdfTexto((p.cores || []).map(c => c.nome).join(', ') || '-'), (X3 - X2) - 5);
+        const n = Math.max(linhasNome.length, linhasCor.length, 1), h = Math.max(10.6, n * LH + 4.2);
+        if (y + h > ALT - 16) { pdf.addPage(); y = 12; cabecalhoTabela(); pdf.setFont(F, 'normal'); pdf.setFontSize(PTXT); }
+        const topo = (hh, k) => y + (h - k * LH) / 2 + 3.3;     // 1ª linha de texto centrada na altura da célula
         if (conferido) pdf.setTextColor(0); else pdf.setTextColor(200, 0, 0);
-        pdf.text(linhasNome, L + 2, y + 4.3); pdf.text(linhasCor, XCOR, y + 4.3); pdf.text(String(p.quantidade || 0), XQTD, y + 4.3, { align: 'center' });
-        pdf.setDrawColor(215); pdf.line(L, y + h, R, y + h);
+        pdf.text(linhasNome, X1 + 2.5 + recuo, topo(h, linhasNome.length), { lineHeightFactor: LH / (PTXT * 0.3528) });
+        pdf.text(linhasCor, X2 + 2.5, topo(h, linhasCor.length), { lineHeightFactor: LH / (PTXT * 0.3528) });
+        pdf.text(String(p.quantidade || 0), (X3 + R) / 2, topo(h, 1), { align: 'center' });
+        imgs.forEach((png, i) => pdf.addImage(png, 'PNG', X1 + 2.5 + i * (EM + 0.8), y + (h - linhasNome.length * LH) / 2 + 0.2, EM, EM));
+        pdf.setDrawColor(204); pdf.setLineWidth(0.2);
+        pdf.rect(L, y, W, h); linha(X2, y, X2, y + h); linha(X3, y, X3, y + h);
         y += h;
     });
-    if (y + 10 > ALT - 14) { pdf.addPage(); y = 15; }
-    pdf.setFont(F, 'normal'); pdf.setFontSize(8); pdf.setTextColor(85);
-    pdf.text('* Itens em vermelho não foram marcados como conferidos.', L, y + 6);
+    if (faltouConferir) {
+        if (y + 10 > ALT - 14) { pdf.addPage(); y = 12; }
+        pdf.setFont(F, 'normal'); pdf.setFontSize(8); pdf.setTextColor(85);
+        pdf.text('* Itens em vermelho não foram marcados como conferidos.', L, y + 6);
+    }
     const n = pdf.getNumberOfPages();
-    for (let i = 1; i <= n; i++) { pdf.setPage(i); pdf.setFontSize(8); pdf.setTextColor(120); pdf.text(`Página ${i} de ${n}`, CTW_PDF.larg / 2, ALT - 10, { align: 'center' }); }
+    for (let i = 1; i <= n; i++) { pdf.setPage(i); pdf.setFontSize(8); pdf.setTextColor(120); pdf.text(`Página ${i} de ${n}`, CTW_PDF.larg / 2, ALT - 8, { align: 'center' }); }
     return pdf.output('blob');
 }
 
