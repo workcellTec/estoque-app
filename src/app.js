@@ -2255,7 +2255,7 @@ function loadProductsFromDB() {
         products = data ? Object.keys(data).map(key => ({ id: key, ...data[key] })) : [];
         window.products = products;
         if (window.ctwEhDev && window.ctwEhDev()) { window.ctwSemEstoqueOuvir(); window.ctwDevVigiar(); }
-        window.checkedItems = checkedItems;
+        loadCheckedItems();
         setupFuse();
         window._fuse = fuse; // expõe para fecharVenda.js
         
@@ -2608,13 +2608,13 @@ const colorPalette = [
     { nome: 'Amarelo', hex: '#FBC02D' }, { nome: 'Creme', hex: '#FFFDD0' }, { nome: 'Grafite', hex: '#455A64' }
 ];
 
+// A conferência é compartilhada entre aparelhos: o "conferido" mora em cada produto no Firebase (conferidoEm / conferidoPor).
+// A marcação antiga, guardada só no aparelho, foi descartada de propósito (a contagem recomeça do zero).
 function loadCheckedItems() {
-    const stored = safeStorage.getItem(CHECKED_ITEMS_KEY);
-    checkedItems = stored ? JSON.parse(stored) : {};
-}
-
-function saveCheckedItems() {
-    safeStorage.setItem(CHECKED_ITEMS_KEY, JSON.stringify(checkedItems));
+    safeStorage.removeItem(CHECKED_ITEMS_KEY);
+    checkedItems = {};
+    products.forEach(p => { if (p.conferidoEm) checkedItems[p.id] = { checked: true, timestamp: p.conferidoEm, por: p.conferidoPor || '' }; });
+    window.checkedItems = checkedItems;
 }
 
 function renderStockList(list) {
@@ -2674,7 +2674,7 @@ function renderStockList(list) {
                 <div class="stock-item-main">
                     <div class="product-info">
                         <div class="product-name">${escapeHtml(product.nome)}</div>
-                        ${product.ignorarContagem ? `<div class="stock-chips"><span class="stock-chip">Ignorado</span>${product.ignorarSempre ? '<span class="stock-chip" data-dev-only>Fixo · PDF não mexe</span>' : ''}</div>` : ''}
+                        ${product.ignorarContagem ? `<div class="stock-chips"><span class="stock-chip">Ignorado</span>${product.ignorarSempre ? '<span class="stock-chip" data-dev-only>Ignorar sempre · PDF não mexe</span>' : ''}</div>` : ''}
                         <div class="product-colors-display">${(product.cores || []).map(cor => `<div class="color-swatch-sm" style="background-color:${cor.hex};" title="${cor.nome}"></div>`).join('')}</div>
                     </div>
                     <div class="form-check form-switch d-flex align-items-center">
@@ -2692,7 +2692,7 @@ function renderStockList(list) {
                         <button class="btn btn-sm btn-secondary ignore-toggle-btn${product.ignorarContagem ? ' on' : ''}" data-id="${product.id}" title="${product.ignorarContagem ? 'Mostrar na contagem' : 'Ignorar na contagem'}">
                             <i class="bi ${product.ignorarContagem ? 'bi-eye-slash-fill' : 'bi-eye-fill'}"></i>
                         </button>
-                        <button class="btn btn-sm ignore-always-btn${product.ignorarSempre ? ' on' : ''}" data-dev-only data-id="${product.id}" aria-pressed="${!!product.ignorarSempre}">Fixo${product.ignorarSempre ? ' ✓' : ''}</button>
+                        <button class="btn btn-sm ignore-always-btn${product.ignorarSempre ? ' on' : ''}" data-dev-only data-id="${product.id}" aria-pressed="${!!product.ignorarSempre}">Ignorar sempre${product.ignorarSempre ? ' ✓' : ''}</button>
                     </div>
                 </div>
             </div>`;
@@ -6761,12 +6761,14 @@ document.getElementById('admin-nav-buttons')?.addEventListener('click', e => {
 
     document.getElementById('resetCountBtn')?.addEventListener('click', () => {
         showCustomModal({
-            message: "Tem certeza que deseja resetar o status de todos os itens para 'não conferido'?",
+            message: "Tem certeza que deseja resetar o status de todos os itens para 'não conferido'? Vale para todos os aparelhos.",
             confirmText: "Sim, Resetar",
-            onConfirm: () => {
-                checkedItems = {};
-                saveCheckedItems();
+            onConfirm: async () => {
+                const upd = {};
+                products.forEach(p => { if (p.conferidoEm) { upd[`products/${p.id}/conferidoEm`] = null; upd[`products/${p.id}/conferidoPor`] = null; delete p.conferidoEm; delete p.conferidoPor; } });
+                loadCheckedItems();
                 filterStockProducts();
+                if (Object.keys(upd).length) { try { await update(ref(db), upd); } catch (e) { showCustomModal({ message: 'Não consegui resetar para os outros aparelhos: ' + e.message }); } }
             },
             onCancel: () => {}
         });
@@ -6799,10 +6801,12 @@ document.getElementById('admin-nav-buttons')?.addEventListener('click', e => {
                         if (e.target.classList.contains('stock-checked-toggle')) {
                 const id = e.target.dataset.id;
                 const isChecked = e.target.checked;
+                const prod = products.find(x => x.id === id);
                 if (isChecked) {
-                    const timestamp = Date.now();
-                    checkedItems[id] = { checked: true, timestamp: timestamp };
-                    updateProductInDB(id, { lastCheckedTimestamp: timestamp });
+                    const timestamp = Date.now(), por = (localStorage.getItem('ctwUserProfile') || '').trim();
+                    checkedItems[id] = { checked: true, timestamp: timestamp, por };
+                    if (prod) { prod.conferidoEm = timestamp; prod.conferidoPor = por; }
+                    updateProductInDB(id, { lastCheckedTimestamp: timestamp, conferidoEm: timestamp, conferidoPor: por });
                     // Adiciona a notificação toast
                     const product = products.find(p => p.id === id);
                     if (product) {
@@ -6810,9 +6814,9 @@ document.getElementById('admin-nav-buttons')?.addEventListener('click', e => {
                     }
                 } else {
                     delete checkedItems[id];
-                    updateProductInDB(id, { lastCheckedTimestamp: null });
+                    if (prod) { delete prod.conferidoEm; delete prod.conferidoPor; }
+                    updateProductInDB(id, { lastCheckedTimestamp: null, conferidoEm: null, conferidoPor: null });
                 }
-                saveCheckedItems();
                 delete modificationTracker[id];
                 filterStockProducts();
             }
@@ -6848,7 +6852,7 @@ document.getElementById('admin-nav-buttons')?.addEventListener('click', e => {
                 }
             }
             if (alwaysBtn && window.ctwEhDev()) {
-                // "Fixo" (ignorarSempre): o PDF não mexe nesse produto. Ligar já liga o "ignorar contagem"; desligar só tira a trava nova.
+                // "Ignorar sempre" (ignorarSempre): o PDF não mexe nesse produto. Ligar já liga o "ignorar contagem"; desligar só tira a trava nova.
                 // Abre a explicação antes de mudar, para ficar claro o que o botão faz.
                 const id = alwaysBtn.dataset.id;
                 const product = products.find(p => p.id === id);
@@ -6856,9 +6860,9 @@ document.getElementById('admin-nav-buttons')?.addEventListener('click', e => {
                     const ligado = !!product.ignorarSempre;
                     showCustomModal({
                         message: ligado
-                            ? 'Fixo está ligado: a conferência por PDF não mexe na quantidade deste produto. Desligar deixa o PDF voltar a mudar a quantidade. O produto continua fora da contagem até você tocar no olho.'
-                            : 'Fixo: o PDF não mexe. Com o Fixo ligado, a conferência por PDF não muda a quantidade deste produto e ele fica fora da contagem, mesmo que o PDF traga uma quantidade.',
-                        confirmText: ligado ? 'Desligar Fixo' : 'Ligar Fixo',
+                            ? 'Ignorar sempre está ligado: a conferência por PDF não mexe na quantidade deste produto. Desligar deixa o PDF voltar a mudar a quantidade. O produto continua fora da contagem até você tocar no olho.'
+                            : 'Ignorar sempre: o PDF não mexe. Com ele ligado, a conferência por PDF não muda a quantidade deste produto e ele fica fora da contagem, mesmo que o PDF traga uma quantidade.',
+                        confirmText: ligado ? 'Desligar Ignorar sempre' : 'Ligar Ignorar sempre',
                         cancelText: 'Cancelar',
                         onConfirm: () => {
                             const vivo = products.find(p => p.id === id);

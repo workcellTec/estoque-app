@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-354'; // Nomes ligados: vários nomes do Stock 2.0 num produto do CTW (quantidade somada)
+const CACHE = 'ctw-355'; // Conferência de estoque compartilhada entre aparelhos; Fixo → Ignorar sempre
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
