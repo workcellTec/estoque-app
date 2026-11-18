@@ -859,6 +859,7 @@
         if (/^RESGATE (RDB|DE |CDB|INVEST)|^RESGATE/.test(u)) return { g: 'excluidas', motivo: 'resgate RDB' };
         if (/^(REEMBOLSO|ESTORNO|DEVOLUCAO)/.test(u)) return { g: 'excluidas', motivo: u.indexOf('ESTORNO') === 0 ? 'estorno' : 'reembolso' };
         if (/^(RENDIMENTO|JUROS|CASHBACK)/.test(u)) return { g: 'excluidas', motivo: 'rendimento' };
+        if (/^VALOR ADICIONADO NA CONTA/.test(u)) return { g: 'excluidas', motivo: 'valor adicionado por cartão de crédito' };   // Pix no crédito: o cliente usa o limite do cartão, não é renda
         if (/^CREDITO EM CONTA/.test(u)) return { g: 'excluidas', motivo: 'crédito em conta sem origem' };
         if (/EMPRESTIMO|FINANCIAMENTO|CONSIGNADO|ANTECIPACAO|SAQUE.ANIVERSARIO/.test(u)) return { g: 'excluidas', motivo: 'empréstimo' };
         if ((titular && u.indexOf(titular) !== -1) || (cpfMeio && u.indexOf(cpfMeio) !== -1)) return { g: 'excluidas', motivo: 'autotransferência' };
@@ -891,7 +892,7 @@
         if (datas.length === 2) per = { inicio: nuIsoData(datas[0].a, datas[0].m, datas[0].d), fim: nuIsoData(datas[1].a, datas[1].m, datas[1].d) };
 
         var dias = [], dia = null, modo = '', pend = null, pulando = false;
-        var RE_INICIO = /^(Transfer[eê]ncia|Resgate|Reembolso|Estorno|Cr[eé]dito|Dep[oó]sito|Pix\b|Rendimento|Pagamento|Cashback|Devolu|Aplica|Compra|Ajuste|Boleto|Saque|Estorno)/;
+        var RE_INICIO = /^(Transfer[eê]ncia|Resgate|Reembolso|Estorno|Cr[eé]dito|Dep[oó]sito|Pix\b(?!\s*$)|Valor adicionado na conta|Rendimento|Pagamento|Cashback|Devolu|Aplica|Compra|Ajuste|Boleto|Saque|Estorno)/;
         // Uma entrada = a linha de inicio + as linhas de continuacao (nome do pagador, banco, agencia). O valor e a UNICA linha que termina em "1.234,56".
         function fecharEntrada() {
             if (!pend) return true;
@@ -975,6 +976,14 @@
     function desvioDivergencia(c) {
         if (!c || !c.divergentes) return 0;
         return c.divergentes.reduce(function (a, d) { return a + (d.total > 0 ? Math.abs(d.total - d.soma) / d.total : 0); }, 0);
+    }
+
+    // Renda que o codigo fechou: vale mesmo sendo R$ 0 (todas as entradas sao autotransferencia, emprestimo, cartao...),
+    // desde que cada mes tenha o total impresso e a soma bata com ele. Sem isso, o R$ 0 pode ser so leitura falha: a etapa 2 recalcula.
+    function rendaFechada(c) {
+        if (!c || c.fonte !== 'codigo') return false;
+        if (c.renda > 0) return true;
+        return (c.usados || []).length > 0 && !(c.divergentes || []).length && !(c.faltando > 0) && c.usados.every(function (m) { return m.totalCreditos > 0; });
     }
 
     // Le UM arquivo (texto) em trechos. chamar(prompt, rotulo) -> Promise<texto da IA>.
@@ -3595,7 +3604,7 @@
         if (leituras.some(function (l) { return l === null; })) return null;
         var uniao = unirRendaArquivos(leituras.filter(Boolean));
         var c = uniao.rendaMeses.length ? calcularRenda(uniao) : null;
-        return c && c.renda > 0 ? c : null;
+        return rendaFechada(c) ? c : null;
     }
 
     function concluirJob(job, d, texto) {

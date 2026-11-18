@@ -54,7 +54,8 @@ const MOTOR = (function (R$) {
     var NOTA_REPROVA  = 50;     // nota 50 ou menos = reprovado (regra do dono)
     var MAX_MESES     = 3;      // so valem os 3 meses mais recentes do comprovante (regra do dono)
     var JANELA_MESES  = 4;      // extrato de "3 meses" costuma tocar 4 meses de calendario (pontas parciais)
-    var TOL_SOMA_PCT  = 0.05;   // soma lida pela IA x 'Total de creditos' impresso no extrato: tolerancia de 5%
+    var TOL_SOMA_PCT  = 0.03;   // soma lida pela IA x 'Total de creditos' impresso no extrato: tolerancia de 3% ou R$ 50 (o que for maior)
+    var TOL_SOMA_MIN  = 50;
     var DUVIDOSA_PCT  = 0.60;   // mais que isso das entradas excluidas = renda duvidosa (confira o extrato)
     var MESES_ABREV   = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
@@ -132,7 +133,7 @@ const MOTOR = (function (R$) {
             excl += m.excluidas; tot += soma;
             if (m.totalCreditos > 0) {
                 var dif = Math.abs(soma - m.totalCreditos);
-                if (dif > Math.max(m.totalCreditos * TOL_SOMA_PCT, 20)) divergentes.push({ mes: m.mes, soma: arred2(soma), total: arred2(m.totalCreditos) });
+                if (dif > Math.max(m.totalCreditos * TOL_SOMA_PCT, TOL_SOMA_MIN)) divergentes.push({ mes: m.mes, soma: arred2(soma), total: arred2(m.totalCreditos) });
             }
         });
         var pct = tot > 0 ? excl / tot : 0;
@@ -436,6 +437,7 @@ const MOTOR = (function (R$) {
         if (/^RESGATE (RDB|DE |CDB|INVEST)|^RESGATE/.test(u)) return { g: 'excluidas', motivo: 'resgate RDB' };
         if (/^(REEMBOLSO|ESTORNO|DEVOLUCAO)/.test(u)) return { g: 'excluidas', motivo: u.indexOf('ESTORNO') === 0 ? 'estorno' : 'reembolso' };
         if (/^(RENDIMENTO|JUROS|CASHBACK)/.test(u)) return { g: 'excluidas', motivo: 'rendimento' };
+        if (/^VALOR ADICIONADO NA CONTA/.test(u)) return { g: 'excluidas', motivo: 'valor adicionado por cartão de crédito' };   // Pix no crédito: o cliente usa o limite do cartão, não é renda
         if (/^CREDITO EM CONTA/.test(u)) return { g: 'excluidas', motivo: 'crédito em conta sem origem' };
         if (/EMPRESTIMO|FINANCIAMENTO|CONSIGNADO|ANTECIPACAO|SAQUE.ANIVERSARIO/.test(u)) return { g: 'excluidas', motivo: 'empréstimo' };
         if ((titular && u.indexOf(titular) !== -1) || (cpfMeio && u.indexOf(cpfMeio) !== -1)) return { g: 'excluidas', motivo: 'autotransferência' };
@@ -468,7 +470,7 @@ const MOTOR = (function (R$) {
         if (datas.length === 2) per = { inicio: nuIsoData(datas[0].a, datas[0].m, datas[0].d), fim: nuIsoData(datas[1].a, datas[1].m, datas[1].d) };
 
         var dias = [], dia = null, modo = '', pend = null, pulando = false;
-        var RE_INICIO = /^(Transfer[eê]ncia|Resgate|Reembolso|Estorno|Cr[eé]dito|Dep[oó]sito|Pix\b|Rendimento|Pagamento|Cashback|Devolu|Aplica|Compra|Ajuste|Boleto|Saque|Estorno)/;
+        var RE_INICIO = /^(Transfer[eê]ncia|Resgate|Reembolso|Estorno|Cr[eé]dito|Dep[oó]sito|Pix\b(?!\s*$)|Valor adicionado na conta|Rendimento|Pagamento|Cashback|Devolu|Aplica|Compra|Ajuste|Boleto|Saque|Estorno)/;
         // Uma entrada = a linha de inicio + as linhas de continuacao (nome do pagador, banco, agencia). O valor e a UNICA linha que termina em "1.234,56".
         function fecharEntrada() {
             if (!pend) return true;
@@ -552,6 +554,14 @@ const MOTOR = (function (R$) {
     function desvioDivergencia(c) {
         if (!c || !c.divergentes) return 0;
         return c.divergentes.reduce(function (a, d) { return a + (d.total > 0 ? Math.abs(d.total - d.soma) / d.total : 0); }, 0);
+    }
+
+    // Renda que o codigo fechou: vale mesmo sendo R$ 0 (todas as entradas sao autotransferencia, emprestimo, cartao...),
+    // desde que cada mes tenha o total impresso e a soma bata com ele. Sem isso, o R$ 0 pode ser so leitura falha: a etapa 2 recalcula.
+    function rendaFechada(c) {
+        if (!c || c.fonte !== 'codigo') return false;
+        if (c.renda > 0) return true;
+        return (c.usados || []).length > 0 && !(c.divergentes || []).length && !(c.faltando > 0) && c.usados.every(function (m) { return m.totalCreditos > 0; });
     }
 
     // Le UM arquivo (texto) em trechos. chamar(prompt, rotulo) -> Promise<texto da IA>.
@@ -1203,7 +1213,7 @@ const MOTOR = (function (R$) {
         );
     }
 
-  return { calcularRenda, unirRendaArquivos, montarTextoDigital, buildPromptRenda, buildPrompt, lerRendaPorTrechos, criarLimitador, PARALELO_IA, LIMITE_RENDA_ARQUIVO, dividirTrechos, somarTrechos };
+  return { rendaFechada, calcularRenda, unirRendaArquivos, montarTextoDigital, buildPromptRenda, buildPrompt, lerRendaPorTrechos, criarLimitador, PARALELO_IA, LIMITE_RENDA_ARQUIVO, dividirTrechos, somarTrechos };
 })((v) => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
 function resp(obj: unknown, status = 200): Response {
@@ -1438,7 +1448,7 @@ async function passoRenda(ent: any, prazo: number) {
   if (leituras.some((l: any) => l === null)) return null;
   const uniao = MOTOR.unirRendaArquivos(leituras.filter(Boolean));
   const c = uniao.rendaMeses.length ? MOTOR.calcularRenda(uniao) : null;
-  return c && c.renda > 0 ? c : null;
+  return MOTOR.rendaFechada(c) ? c : null;
 }
 
 async function passoAnalise(ent: any, rendaPre: any, prazo: number, opc: { temp?: number; diag?: any } = {}): Promise<string> {
