@@ -476,7 +476,8 @@
     var NOTA_REPROVA  = 50;     // nota 50 ou menos = reprovado (regra do dono)
     var MAX_MESES     = 3;      // so valem os 3 meses mais recentes do comprovante (regra do dono)
     var JANELA_MESES  = 4;      // extrato de "3 meses" costuma tocar 4 meses de calendario (pontas parciais)
-    var TOL_SOMA_PCT  = 0.05;   // soma lida pela IA x 'Total de creditos' impresso no extrato: tolerancia de 5%
+    var TOL_SOMA_PCT  = 0.03;   // soma lida pela IA x 'Total de creditos' impresso no extrato: tolerancia de 3% ou R$ 50 (o que for maior)
+    var TOL_SOMA_MIN  = 50;
     var DUVIDOSA_PCT  = 0.60;   // mais que isso das entradas excluidas = renda duvidosa (confira o extrato)
     var MESES_ABREV   = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
@@ -554,7 +555,7 @@
             excl += m.excluidas; tot += soma;
             if (m.totalCreditos > 0) {
                 var dif = Math.abs(soma - m.totalCreditos);
-                if (dif > Math.max(m.totalCreditos * TOL_SOMA_PCT, 20)) divergentes.push({ mes: m.mes, soma: arred2(soma), total: arred2(m.totalCreditos) });
+                if (dif > Math.max(m.totalCreditos * TOL_SOMA_PCT, TOL_SOMA_MIN)) divergentes.push({ mes: m.mes, soma: arred2(soma), total: arred2(m.totalCreditos) });
             }
         });
         var pct = tot > 0 ? excl / tot : 0;
@@ -1426,6 +1427,37 @@
     }
 
     // Texto do aviso quando a decisao final do sistema e diferente da recomendacao da IA ('' se concordam)
+    // Confiança da leitura (regra do dono: dinheiro próprio, na dúvida REPROVA e escreve o motivo).
+    // Só vale quando nenhuma outra regra já reprovou (apostas, nota, titularidade, renda mínima).
+    function textoCompromissoDuvida(d) {
+        var termos = d.sinaisCompromisso && d.sinaisCompromisso.termos || [];
+        return 'a IA não achou nenhum, mas o extrato tem ' + d.sinaisCompromisso.total + ' menções a ' +
+            (termos.length ? termos.map(function (t) { return t.replace(/\s*\(\d+\)$/, ''); }).join(', ') : 'fatura, parcela, aluguel ou similares');
+    }
+    function motivosConfiancaBaixa(d) {
+        var L = [], c = d.rendaCalc;
+        if (c && c.fonte === 'codigo') {
+            if ((c.divergentes || []).length) L.push({ t: 'Os extratos não batem', x: c.divergentes.map(function (v) { return labelMes(v.mes) + ': lido ' + reaisCurto(v.soma) + ', o extrato diz ' + reaisCurto(v.total) + '.'; }).join(' ') + ' Sem número confiável não dá para saber a renda.' });
+            var inc = [];
+            if (c.faltando > 0) inc.push('a IA detalhou só ' + c.usados.length + ' de ' + (c.usados.length + c.faltando) + ' meses do período');
+            if (c.agrupado) inc.push('a leitura juntou o período inteiro num item só, sem separar por mês');
+            if (c.curto) inc.push(c.dias != null ? 'o extrato cobre só ' + c.dias + ' dias (o mínimo é ' + DIAS_MINIMO + ')' : 'o extrato tem menos de 3 meses');
+            if (inc.length) { var t = inc.join('; '); L.push({ t: 'Extrato incompleto', x: t.charAt(0).toUpperCase() + t.slice(1) + '.' }); }
+        }
+        if (d.compromissoDuvida) L.push({ t: 'Compromissos fixos não confirmados', x: textoCompromissoDuvida(d).replace(/^a IA/, 'A IA') + '.' });
+        if (d.confianca === 'BAIXA') L.push({ t: 'Documento difícil de ler', x: 'A IA não conseguiu ler o documento com segurança. Peça uma foto ou um PDF melhor.' });
+        return L;
+    }
+    function aplicarConfiancaBaixa(d) {
+        if (d.reprovado) return;
+        var L = motivosConfiancaBaixa(d);
+        if (!L.length) return;
+        d.confBaixa = true; d.confMotivos = L;
+        d.aprov = false; d.reprovado = true; d.downgrade = false; d.entradaAlta = false;
+        d.nota = Math.min(d.nota, NOTA_REPROVA); d.risco = 'REPROVADO'; d.entradaPct = FAIXAS.REPROVADO.entradaPct;
+        d.motivos = 'Confiança baixa na leitura. Reprovado por segurança:\n' + L.map(function (m, i) { return (i + 1) + '. ' + m.t + ' — ' + m.x; }).join('\n');
+    }
+
     function avisoDivergencia(d) {
         if (!d.rawJson || d.nomesBatem === false) return '';
         var ia = iaReprovou(d), casas = (d.casasJogo || []).filter(Boolean);
@@ -1803,6 +1835,8 @@
                 total: d.total || null,
                 resumo: resumoIA,
                 confianca: d.confianca || 'ALTA',
+                confBaixa: d.confBaixa ? true : null,
+                confMotivos: d.confBaixa ? d.confMotivos : null,
                 textoCompleto: texto || '',
                 ts: now,
                 expira: now + HIST_DAYS * 86400000,
@@ -2338,7 +2372,7 @@
 
     function cardPronta(j) {
         var d = j.dados, c = d.reprovado ? 'bad' : cor(d.nota);
-        var sub = d.reprovado ? 'Reprovado' + (d.casasJogo && d.casasJogo.length ? ' · apostas detectadas' : '') :
+        var sub = d.reprovado ? 'Reprovado' + (d.confBaixa ? ' · confiança baixa' : '') + (d.casasJogo && d.casasJogo.length ? ' · apostas detectadas' : '') :
             'Aprovado' + (d.rendaEstimada > 0 ? ' · renda ' + R$(d.rendaEstimada).replace(',00', '') + '/mês' : '');
         return '<button type="button" class="cs-card cs-pronta" data-act="abrir" data-id="' + j.id + '">' +
             '<span class="cs-ring-sm ' + c + '">' + d.nota + '</span>' +
@@ -3533,6 +3567,7 @@
             d.risco = 'REPROVADO'; d.entradaPct = 0.60;
             d.motivos = (d.motivos ? d.motivos + '\n' : '') + 'Renda estimada = R$ 0,00. Impossivel aprovar sem comprovacao de renda.';
         }
+        aplicarConfiancaBaixa(d);
         prepararDados(d);
 
         job.fbKey = await salvarFB(d.nomeCompleto, '', resp, d, cpf, job.uid, job.usuario);
@@ -3609,6 +3644,7 @@
             // a nota da IA era baixa, mas o sistema aprovou: vale a decisao salva
             d.aprov = true; d.reprovado = false; d.motivos = '';
         }
+        if (it.confBaixa && Array.isArray(it.confMotivos)) { d.confBaixa = true; d.confMotivos = it.confMotivos; }
         if (typeof it.nota === 'number' || it.nota) d.nota = nota;
         if (!d.reprovado) { var rr = riscoPorNota(d.nota); d.risco = rr.risco; d.entradaPct = rr.entradaPct; }   // risco/entrada seguem a nota SALVA (o JSON da IA guarda a nota dela)
         if (d.rawJson) separarCasasJogo(d, it.casasJogo != null ? String(it.casasJogo).split(',').map(function (x) { return x.trim(); }).filter(Boolean) : null);
@@ -4454,27 +4490,34 @@
         var sub = el('cs_res_sub'); if (sub) sub.textContent = 'Análise de ' + dataAnalise(job.ts);
         var h = '';
 
+        var cb = !!d.confBaixa;
         // Nota + decisao
         h += '<div class="cs-hero ' + c + '">' +
             '<div class="cs-ring"><svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true">' +
                 '<circle cx="48" cy="48" r="42" class="trk"/><circle cx="48" cy="48" r="42" class="val" stroke-dasharray="' + dash + ' 264" transform="rotate(-90 48 48)"/></svg>' +
                 '<div class="cs-ring-in"><b>' + d.nota + '</b><small>' + esc(riscoLabel) + '</small></div></div>' +
             '<div class="cs-hero-info"><div class="cs-hero-nome">' + esc(d.nomeCompleto || nomeDoJob(job)) + '</div>' +
-            (!reprov && d.titConferir ? '<span class="cs-pill warn"><i class="bi bi-exclamation-triangle-fill"></i>Conferir titularidade antes de vender</span>' : '<span class="cs-pill ' + c + '"><i class="bi ' + (reprov ? 'bi-x-lg' : 'bi-check-lg') + '"></i>' + (reprov ? 'Reprovado — não vender' : 'Aprovado — pode vender') + '</span>') + '</div></div>';
+            (!reprov && d.titConferir ? '<span class="cs-pill warn"><i class="bi bi-exclamation-triangle-fill"></i>Conferir titularidade antes de vender</span>' : '<span class="cs-pill ' + c + '"><i class="bi ' + (reprov ? 'bi-x-lg' : 'bi-check-lg') + '"></i>' + (reprov ? (d.confBaixa ? 'Reprovado — confiança baixa' : 'Reprovado — não vender') : 'Aprovado — pode vender') + '</span>') + '</div></div>';
+
+        // confiança baixa: o motivo vem logo abaixo da decisão, antes de renda e indicadores
+        if (reprov && d.confBaixa && d.confMotivos && d.confMotivos.length) h += '<div class="cs-card cs-motivos cs-cb"><span class="cs-lab">Por que foi reprovado</span>' + d.confMotivos.map(function (m, i) {
+            return '<div class="cs-cb-m"><span class="cs-cb-n">' + (i + 1) + '</span><div><b>' + esc(m.t) + '</b><span>' + esc(m.x) + '</span></div></div>';
+        }).join('') + '</div>';
 
         if (job.tempos && temposTexto(job.tempos)) h += '<div class="cs-tempos"><i class="bi bi-stopwatch"></i><span>' + esc(temposTexto(job.tempos)) + '</span></div>';
 
-        String(d.rendaDetalhe || '').split('\n').filter(function (l) { return l.charAt(0) === '⚠'; }).forEach(function (l) {
+        // confiança baixa: os motivos vão todos no cartão "Por que foi reprovado"; os avisos soltos não se repetem
+        String(d.rendaDetalhe || '').split('\n').filter(function (l) { return !cb && l.charAt(0) === '⚠'; }).forEach(function (l) {
             h += '<div class="cs-alert warn"><i class="bi bi-exclamation-triangle-fill"></i><span>' + esc(l.replace(/^⚠\s*/, '')) + '</span></div>';
         });
         if (d.titConferir) h += '<div class="cs-alert warn"><i class="bi bi-exclamation-triangle-fill"></i><span><strong>Conferir titularidade:</strong> ' + esc(avisoTitularidade(d.titConferir)) + '</span></div>';
-        var divg = avisoDivergencia(d);
+        var divg = cb ? '' : avisoDivergencia(d);
         if (divg) h += '<div class="cs-alert warn"><i class="bi bi-exclamation-triangle-fill"></i><span>' + esc(divg) + '</span></div>';
 
-        if (d.compromissoDuvida) h += '<div class="cs-alert warn"><i class="bi bi-exclamation-triangle-fill"></i><span><strong>Compromissos fixos não confirmados:</strong> a IA não achou nenhum, mas o extrato tem ' + d.sinaisCompromisso.total + ' menções a ' + esc(d.sinaisCompromisso.termos.length ? d.sinaisCompromisso.termos.map(function (t) { return t.replace(/\s*\(\d+\)$/, ''); }).join(', ') : 'fatura, parcela, aluguel ou similares') + '. Confira no extrato antes de aprovar. Esse item não entrou na nota.</span></div>';
+        if (d.compromissoDuvida && !cb) h += '<div class="cs-alert warn"><i class="bi bi-exclamation-triangle-fill"></i><span><strong>Compromissos fixos não confirmados:</strong> ' + esc(textoCompromissoDuvida(d)) + '. Confira no extrato antes de aprovar. Esse item não entrou na nota.</span></div>';
 
-        if (d.confianca === 'BAIXA') h += '<div class="cs-alert warn"><i class="bi bi-exclamation-triangle-fill"></i><span><strong>Atenção:</strong> documento com qualidade baixa. Peça uma foto melhor.</span></div>';
-        else if (d.confianca === 'MEDIA') h += '<div class="cs-alert warn soft"><i class="bi bi-eye-fill"></i><span>Qualidade média — confira o nome manualmente.</span></div>';
+        if (d.confianca === 'BAIXA' && !cb) h += '<div class="cs-alert warn"><i class="bi bi-exclamation-triangle-fill"></i><span><strong>Atenção:</strong> documento com qualidade baixa. Peça uma foto melhor.</span></div>';
+        else if (d.confianca === 'MEDIA' && !cb) h += '<div class="cs-alert warn soft"><i class="bi bi-eye-fill"></i><span>Qualidade média — confira o nome manualmente.</span></div>';
 
         // Renda
         if (d.rendaEstimada > 0) {
@@ -4539,7 +4582,7 @@
         h += apHtmlCard(d);
 
         // Reprovado: motivos + mensagem
-        if (reprov && d.motivos) h += '<div class="cs-card cs-motivos"><span class="cs-lab">Motivos da reprovação</span><p>' + blocoTexto(d.motivos) + '</p></div>';
+        if (reprov && d.motivos && !cb) h += '<div class="cs-card cs-motivos"><span class="cs-lab">Motivos da reprovação</span><p>' + blocoTexto(d.motivos) + '</p></div>';
 
         // Parecer
         if (d.resumoExec || d.perfil) {
@@ -4971,6 +5014,8 @@
         '.cs-conf>div{flex:1;min-width:0}.cs-conf strong{display:block;font-size:20px;font-weight:700;margin-top:2px;color:var(--primary-color)}',
         '.cs-parecer p{margin:0;font-size:14px;line-height:1.6}.cs-parecer p.lead{font-weight:600;margin-bottom:6px}',
         '.cs-motivos{border-color:var(--cs-bad);background:rgba(239,107,107,.08)}.cs-motivos p{margin:0;font-size:14px;line-height:1.6}',
+        '.cs-cb{gap:12px}.cs-cb-m{display:flex;gap:10px;align-items:flex-start}.cs-cb-n{flex:none;width:24px;height:24px;border-radius:50%;background:var(--cs-bad);color:#fff;font:700 13px "Poppins",sans-serif;display:flex;align-items:center;justify-content:center}',
+        '.cs-cb-m>div{min-width:0}.cs-cb-m b{display:block;font-size:14px;font-weight:600}.cs-cb-m span:not(.cs-cb-n){display:block;font-size:13px;line-height:1.5;color:var(--text-secondary)}',
         '.cs-detalhe{background:var(--card-bg);border:1px solid var(--glass-border);border-radius:16px;overflow:hidden}',
         '.cs-detalhe summary{min-height:52px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;font:500 14px "Poppins",sans-serif;cursor:pointer;list-style:none}',
         '.cs-detalhe summary::-webkit-details-marker{display:none}',
