@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-358'; // Busca por IA: vários aparelhos, várias parcelas, mensagem organizada, mostrar/esconder sem estoque
+const CACHE = 'ctw-359'; // CreditoScan: mensagem do Plano C com o nome do aparelho
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
