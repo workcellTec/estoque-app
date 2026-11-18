@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-353'; // Adicionar no WhatsApp: "Já adicionei" passa a valer até o próximo ZIP
+const CACHE = 'ctw-354'; // Nomes ligados: vários nomes do Stock 2.0 num produto do CTW (quantidade somada)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

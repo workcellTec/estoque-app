@@ -216,7 +216,7 @@ async function excluirConta(id) {
 async function carregarAprendizado() {
     const snap = await get(ref(getDb(), BASE));
     const v = snap.val() || {};
-    APR = { aliases: v.aliases || {}, ignoradosPdf: v.ignoradosPdf || {}, ignoradosCtw: v.ignoradosCtw || {}, catAliases: v.catAliases || {}, catIgnorados: v.catIgnorados || {}, catalogo: v.catalogo || null, esg: v.esg || {}, contas: {}, contasZip: v.contasZip || {}, naoWhats: v.naoWhats || {} };
+    APR = { aliases: v.aliases || {}, ignoradosPdf: v.ignoradosPdf || {}, ignoradosCtw: v.ignoradosCtw || {}, catAliases: v.catAliases || {}, catIgnorados: v.catIgnorados || {}, ultimoPdf: v.ultimoPdf || null, catalogo: v.catalogo || null, esg: v.esg || {}, contas: {}, contasZip: v.contasZip || {}, naoWhats: v.naoWhats || {} };
     APR.contas.loja = { nome: v.lojaNome || 'Loja', catalogo: v.catalogo || null, esg: v.esg || {}, zap: v.zap || {}, fixos: v.fixos || {}, adicionados: v.adicionados || {} };
     Object.entries(v.contasNomes || {}).forEach(([id, nome]) => { if (id === 'loja') return; const d = (v.contas || {})[id] || {}; APR.contas[id] = { nome, catalogo: d.catalogo || null, esg: d.esg || {}, zap: d.zap || {}, fixos: d.fixos || {}, adicionados: d.adicionados || {} }; });
     usarConta(CONTA);
@@ -256,7 +256,33 @@ function classificar(linhasPdf, produtos) {
     const porKey = new Map();
     ctw.forEach(c => { if (!porKey.has(c.an.key)) porKey.set(c.an.key, []); porKey.get(c.an.key).push(c); });
 
-    const pdf = linhasPdf.map((l, i) => ({ ...l, i, an: analisar(l.nome), ignorar: NAO_SINCRONIZAR.test(l.nome) }));
+    let pdf = linhasPdf.map((l, i) => ({ ...l, i, an: analisar(l.nome), ignorar: NAO_SINCRONIZAR.test(l.nome) }));
+    // Vários nomes do Stock 2.0 ligados ao MESMO produto do CTW viram uma linha só: quantidade somada.
+    // Se os valores forem diferentes, o preço desse produto não é alterado (r.conflito) e a tela avisa para desligar um dos nomes.
+    const grupos = new Map();
+    pdf.forEach(r => {
+        if (r.ignorar) return;
+        const al = (r.codigo && APR.aliases[chaveCodigo(r.codigo)]) || APR.aliases[chaveNome(r.an)];
+        if (al && porId.has(al.pid) && al.spec === assinatura(r.an)) (grupos.get(al.pid) || grupos.set(al.pid, []).get(al.pid)).push(r);
+    });
+    // A linha que já casa pelo nome idêntico do produto (sem vínculo) também entra na soma do grupo.
+    const jaNoGrupo = new Set([].concat(...grupos.values()));
+    grupos.forEach((rs, pid) => {
+        const c = porId.get(pid), mesmo = c && porKey.get(c.an.key);
+        if (!mesmo || mesmo.length !== 1) return;
+        const propria = pdf.find(r => !r.ignorar && !jaNoGrupo.has(r) && r.an.key === c.an.key && !((r.codigo && APR.aliases[chaveCodigo(r.codigo)]) || APR.aliases[chaveNome(r.an)]));
+        if (propria) { rs.unshift(propria); jaNoGrupo.add(propria); }
+    });
+    const juntadas = new Set();
+    grupos.forEach(rs => {
+        if (rs.length < 2) return;
+        const p = rs[0];
+        p.juntas = rs.map(x => ({ nome: x.nome, valor: x.valor, qtd: x.qtd }));
+        p.qtd = rs.every(x => x.qtd != null) ? rs.reduce((t, x) => t + x.qtd, 0) : null;
+        if (!rs.every(x => igual(x.valor, p.valor))) p.conflito = rs.map(x => ({ nome: x.nome, valor: x.valor }));
+        rs.slice(1).forEach(x => juntadas.add(x));
+    });
+    if (juntadas.size) pdf = pdf.filter(r => !juntadas.has(r));
     const contaKey = new Map();
     pdf.filter(r => !r.ignorar).forEach(r => { (contaKey.get(r.an.key) || contaKey.set(r.an.key, []).get(r.an.key)).push(r); });
 
@@ -443,6 +469,10 @@ async function aoEscolherPdf(arq) {
         if (!produtos.length) throw new Error('O CTW ainda não carregou os produtos. Aguarde alguns segundos e tente de novo.');
         await carregarAprendizado();
         const cl = classificar(linhas, produtos);
+        try {      // últimas linhas do PDF: a aba Nomes ligados busca nelas para ligar mais de um nome ao mesmo produto
+            const itens = {}; linhas.forEach((l, i) => { if (!NAO_SINCRONIZAR.test(l.nome)) itens['l' + i] = { n: l.nome, c: l.codigo || '', q: l.qtd == null ? null : l.qtd, p: l.valor }; });
+            await update(ref(getDb()), { [`${BASE}/ultimoPdf`]: { quando: Date.now(), arquivo: arq.name || '', usuario: usuario(), itens } });
+        } catch (e) { /* só atrapalha a busca de nomes; segue sem */ }
         S = { arquivo: arq.name, pdfData: arq.lastModified || 0, temQtd: !!temQtd, avisos, cl, linhas, decisoes: [], novosAliases: [], novosIgnoradosPdf: [], pularResto: false, fila: cl.perguntas.slice(), total: cl.perguntas.length, aceitar: {} };
         proximaPergunta();
     } catch (e) {
@@ -495,8 +525,9 @@ function resultadoBusca(q) {
 function aoDigitar(e) {
     if (e.target.id === 'psBuscaVinc') {
         const q = norm(e.target.value).split(' ').filter(Boolean);
-        overlay.querySelectorAll('.ps-it[data-q]').forEach(el => { el.hidden = !q.every(t => el.dataset.q.includes(t)); });
+        overlay.querySelectorAll('.ps-it[data-q], .ps-vc[data-q]').forEach(el => { el.hidden = !q.every(t => el.dataset.q.includes(t)); });
     }
+    if (e.target.id === 'psBuscaLigar' && VINC.pid) { const box = overlay.querySelector('#psLigarRes'); if (box) box.innerHTML = resultadosLigar(VINC.pid, e.target.value); }
     if (e.target.id === 'psBusca' && S) resultadoBusca(e.target.value);
     if (e.target.id === 'psBuscaPdf' && S && S.vinculo) resultadoBuscaPdf(e.target.value);
     if (e.target.classList && e.target.classList.contains('psDiag') && S) { const box = e.target.closest('details').querySelector('.psDiagRes'); if (box) box.innerHTML = diagAdd(e.target.dataset.conta, e.target.value); }
@@ -534,9 +565,9 @@ function montarMudancas() {
         const de = c.valor, para = r.valor;
         const mudou = !igual(de, para);
         const pct = de > 0 ? (para - de) / de : null;
-        const invalido = !(para > 0);
+        const invalido = !(para > 0) || !!r.conflito;
         const suspeito = !invalido && mudou && (pct === null ? false : Math.abs(pct) > LIMITE_SUSPEITO);
-        return { r, c, origem, de, para, mudou, pct, invalido, suspeito, id: c.id };
+        return { r, c, origem, de, para, mudou, pct, invalido, suspeito, id: c.id, conflito: r.conflito || null };
     });
 }
 
@@ -546,7 +577,8 @@ function telaPrevia() {
     const m = S.mud;
     const muda = m.filter(x => x.mudou && !x.invalido);
     const sem = m.filter(x => !x.mudou && !x.invalido);
-    const inval = m.filter(x => x.invalido);
+    const inval = m.filter(x => x.invalido && !x.conflito);
+    const conflitos = m.filter(x => x.conflito);
     muda.forEach(x => { if (x.suspeito && !(x.id in S.aceitar)) S.aceitar[x.id] = false; });
     const linha = x => `
       <div class="ps-it${x.suspeito ? ' ps-sus' : ''}">
@@ -564,6 +596,7 @@ function telaPrevia() {
         ${inval.length ? `<div class="ps-lin"><span>Valor inválido no PDF (não aplico)</span><b>${inval.length}</b></div>` : ''}
         ${S.avisos.length ? `<details class="ps-det"><summary>${S.avisos.length} aviso(s) na leitura do PDF</summary>${S.avisos.map(a => `<div class="ps-sub">${esc(a)}</div>`).join('')}</details>` : ''}
       </div>
+      ${conflitos.length ? `<div class="ps-aviso-card"><b>${conflitos.length} produto(s) com valores diferentes (preço não alterado)</b>${conflitos.map(x => `<span><b>${esc(x.c.nome)}</b>: ${x.conflito.map(v => `${esc(v.nome)} ${brl(v.valor)}`).join(' · ')}. Desligue um dos nomes em Avançado › Nomes ligados.</span>`).join('')}</div>` : ''}
       ${cartaoWhats(calcTodasEsg())}
       ${cartaoQuantidades()}
       ${muda.length ? muda.map(linha).join('') : '<div class="ps-msg">Nenhum preço precisa mudar.</div>'}
@@ -1314,23 +1347,122 @@ async function telaAvHist() {
         <div class="ps-sub">${x.quando ? quando(x.quando) : ''}${x.usuario ? ' · ' + esc(x.usuario) : ''}</div></div></div>`).join('') || `<div class="ps-msg">Ainda não há histórico. Guarda as últimas ${MAX_ZAPLOG} ações.</div>`}`);
 }
 
+// ── Nomes ligados: a lista é de produtos do CTW; dentro de cada um ficam os nomes do Stock 2.0 e do WhatsApp ligados a ele ──
+let VINC = { pid: null, aberto: false };
+const pdfPorChave = () => {
+    const m = new Map();
+    Object.entries((APR.ultimoPdf && APR.ultimoPdf.itens) || {}).forEach(([l, it]) => { const k = chaveNome(analisar(it.n)); if (!m.has(k)) m.set(k, { l, ...it }); });
+    return m;
+};
+const infoPdf = (mapa, nomeEstoque) => mapa.get(chaveNome(analisar(nomeEstoque))) || null;
+const estoqueLigados = pid => {
+    const vistos = new Set();
+    return Object.values(APR.aliases).filter(v => { if (v.pid !== pid || !v.nomeEstoque || vistos.has(v.nomeEstoque)) return false; vistos.add(v.nomeEstoque); return true; });
+};
+// Linha do PDF que já casa pelo nome idêntico do produto (automática, sem vínculo): só conta quando há outros nomes ligados
+function nomePropriaPdf(p, lig, mapa) {
+    const i = lig.length ? infoPdf(mapa, p.nome || '') : null;
+    return i && !APR.aliases[chaveNome(analisar(i.n))] ? i : null;
+}
+// Soma das quantidades e valores diferentes entre os nomes ligados que vieram no último PDF
+function resumoLigados(nomes, mapa) {
+    const infos = nomes.map(n => infoPdf(mapa, n)).filter(Boolean);
+    const valores = [];
+    infos.forEach(i => { if (!valores.some(v => igual(v, i.p))) valores.push(i.p); });
+    return { infos, valores, divergente: infos.length > 1 && valores.length > 1, soma: infos.length > 1 && infos.every(i => i.q != null) ? infos.reduce((t, i) => t + i.q, 0) : null };
+}
+function nomeCatalogoLigado(k, v) {
+    const nomesCat = {};
+    Object.values(APR.contas).forEach(c => Object.values((c.catalogo && c.catalogo.itens) || {}).forEach(x => { try { nomesCat[chaveNome(analisar(x.n))] = x.n; } catch (e) {} }));
+    return v.n || nomesCat[k] || k.replace(/^n/, '').replace(/_/g, ' ').replace(/\bS0\b|\bR0\b/g, '').replace(/\bS(\d+)\b/g, '$1GB').replace(/\bR(\d+)\b/g, '$1GB RAM').replace(/\s+/g, ' ').trim();
+}
+
 async function telaVinculos() {
-    TELA = 'av-vinc'; titulo('Nomes ligados');
+    TELA = 'av-vinc'; titulo('Nomes ligados'); VINC = { pid: null, aberto: false };
     tela('<div class="ps-msg">Carregando…</div>');
     try { await carregarAprendizado(); } catch (e) { tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div>`); return; }
+    const prods = (window.products || []).filter(p => p && p.id).slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+    const ids = new Set(prods.map(p => p.id)), mapa = pdfPorChave();
+    const wa = {}; Object.values(APR.catAliases).forEach(v => { wa[v.pid] = (wa[v.pid] || 0) + 1; });
+    const card = p => {
+        const lig = estoqueLigados(p.id), nomes = lig.map(v => v.nomeEstoque), nW = wa[p.id] || 0, propria = nomePropriaPdf(p, lig, mapa), r = resumoLigados(propria ? nomes.concat([propria.n]) : nomes, mapa);
+        const st = nomes.length || nW
+            ? `<div class="ps-vst ps-vok">✓ ${nomes.length} ${nomes.length === 1 ? 'nome ligado' : 'nomes ligados'} do Stock 2.0${nW ? ` · ${nW} do WhatsApp` : ''}${r.soma != null ? ` · soma ${r.soma} un.` : ''}</div>`
+            : '<div class="ps-vst">Nenhum nome ligado</div>';
+        return `<div class="ps-vc" data-q="${esc(norm(p.nome + ' ' + nomes.join(' ')))}"><div class="ps-nome">${esc(p.nome || '')}</div>${st}
+          ${r.divergente ? '<div class="ps-vst ps-vam">⚠ Valores diferentes entre os nomes ligados</div>' : ''}
+          <button type="button" class="ps-b ps-b-g ps-b-full" data-act="vincprod" data-pid="${esc(p.id)}">${nomes.length || nW ? 'Abrir e ver ligações' : 'Abrir e ligar nomes'}</button></div>`;
+    };
+    // ligações de produtos que já não existem no CTW: continuam aparecendo para poder desligar
     const vistos = new Set();
-    const al = Object.entries(APR.aliases).filter(([k, v]) => { const id = v.pid + '|' + v.nomeEstoque; if (vistos.has(id)) return false; vistos.add(id); return true; });
-    const nomeCtw = pid => { const c = (window.products || []).find(x => x && x.id === pid); return c ? c.nome : '(produto removido do CTW)'; };
-    const nomesCat = {};      // nome original do WhatsApp, quando algum catálogo guardado ainda o tem
-    Object.values(APR.contas).forEach(c => Object.values((c.catalogo && c.catalogo.itens) || {}).forEach(x => { try { nomesCat[chaveNome(analisar(x.n))] = x.n; } catch (e) {} }));
-    const bonito = (k, v) => v.n || nomesCat[k] || k.replace(/^n/, '').replace(/_/g, ' ').replace(/\bS0\b|\bR0\b/g, '').replace(/\bS(\d+)\b/g, '$1GB').replace(/\bR(\d+)\b/g, '$1GB RAM').replace(/\s+/g, ' ').trim();
-    const catVinc = Object.entries(APR.catAliases).sort((a, b) => nomeCtw(a[1].pid).localeCompare(nomeCtw(b[1].pid)));
+    const orfasE = Object.values(APR.aliases).filter(v => { const id = v.pid + '|' + v.nomeEstoque; if (ids.has(v.pid) || vistos.has(id)) return false; vistos.add(id); return true; });
+    const orfasW = Object.entries(APR.catAliases).filter(([, v]) => !ids.has(v.pid));
     tela(`
-      <div class="ps-sub">Cada nome diferente de um mesmo produto fica ligado a ele. Desligue só o que ficou errado: o app volta a perguntar na próxima vez.</div>
-      <input type="search" id="psBuscaVinc" class="ps-inp ps-busca" placeholder="Buscar (nome do WhatsApp, Stock 2.0 ou CTW)…">
-      ${catVinc.length ? `<div class="ps-cap ps-esp">Nomes do WhatsApp (${catVinc.length})</div>` + catVinc.map(([k, v]) => `<div class="ps-it" data-q="${esc(norm(bonito(k, v) + ' ' + nomeCtw(v.pid)))}"><div class="ps-grow"><div class="ps-nome">${esc(bonito(k, v))}</div><div class="ps-sub">= ${esc(nomeCtw(v.pid))}</div></div><button type="button" class="ps-mini" data-act="rmcatvin" data-k="${esc(k)}">Desligar</button></div>`).join('') : ''}
-      <div class="ps-cap ps-esp">Nomes do Stock 2.0 (${al.length})</div>
-      ${al.map(([k, v]) => `<div class="ps-it" data-q="${esc(norm(v.nomeEstoque + ' ' + v.nomeCtw))}"><div class="ps-grow"><div class="ps-nome">${esc(v.nomeEstoque)}</div><div class="ps-sub">= ${esc(v.nomeCtw)}</div></div><button type="button" class="ps-mini" data-act="rmvinculo" data-pid="${esc(v.pid)}" data-nome="${esc(v.nomeEstoque)}">Desligar</button></div>`).join('') || '<div class="ps-msg">Nenhum nome ligado ainda.</div>'}`);
+      <div class="ps-sub">Escolha um produto do CTW. Dentro dele você liga os nomes do Stock 2.0 que são o mesmo produto.</div>
+      <input type="search" id="psBuscaVinc" class="ps-inp ps-busca" placeholder="Buscar produto do CTW ou nome ligado…">
+      ${prods.map(card).join('') || '<div class="ps-msg">O CTW ainda não carregou os produtos.</div>'}
+      ${orfasE.length || orfasW.length ? `<div class="ps-cap ps-esp">Ligações de produtos que não existem mais no CTW (${orfasE.length + orfasW.length})</div>
+        ${orfasE.map(v => `<div class="ps-vl"><div class="ps-grow"><div class="ps-nome">${esc(v.nomeEstoque || '')}</div><div class="ps-sub">Stock 2.0 · produto removido do CTW</div></div><button type="button" class="ps-b ps-b-r ps-b-sm" data-act="rmvinculo" data-pid="${esc(v.pid)}" data-nome="${esc(v.nomeEstoque)}">✕ Desligar</button></div>`).join('')}
+        ${orfasW.map(([k, v]) => `<div class="ps-vl"><div class="ps-grow"><div class="ps-nome">${esc(nomeCatalogoLigado(k, v))}</div><div class="ps-sub">WhatsApp · produto removido do CTW</div></div><button type="button" class="ps-b ps-b-r ps-b-sm" data-act="rmcatvin" data-k="${esc(k)}">✕ Desligar</button></div>`).join('')}` : ''}`);
+}
+
+async function telaVinculoProduto(pid) {
+    TELA = 'av-vincprod'; titulo('Nomes ligados'); VINC.pid = pid;
+    try { await carregarAprendizado(); } catch (e) { tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div>`); return; }
+    const p = produtoVivo(pid);
+    if (!p) return telaVinculos();
+    const mapa = pdfPorChave(), lig = estoqueLigados(pid);
+    const propriaNome = nomePropriaPdf(p, lig, mapa);
+    const r = resumoLigados(lig.map(v => v.nomeEstoque).concat(propriaNome ? [propriaNome.n] : []), mapa);
+    const catW = Object.entries(APR.catAliases).filter(([, v]) => v.pid === pid);
+    const linhaE = v => {
+        const i = infoPdf(mapa, v.nomeEstoque);
+        return `<div class="ps-vl"><div class="ps-grow"><div class="ps-nome">${esc(v.nomeEstoque)}</div><div class="ps-sub">${i ? `${i.q == null ? 'sem quantidade' : i.q + ' un.'} · ${brl(i.p)}` : 'não veio no último PDF'}</div></div>
+          <button type="button" class="ps-b ps-b-r ps-b-sm" data-act="rmvinculo" data-pid="${esc(pid)}" data-nome="${esc(v.nomeEstoque)}">✕ Desligar</button></div>`;
+    };
+    const ultimo = APR.ultimoPdf ? new Date(APR.ultimoPdf.quando).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+    tela(`
+      <div class="ps-card"><div class="ps-nome">${esc(p.nome || '')}</div><div class="ps-sub">No CTW: ${brl(valorCtw(p))} · ${qtdCtw(p)} un.</div></div>
+      <div class="ps-cap ps-esp">1 · Ligados a este produto (${lig.length})</div>
+      ${propriaNome ? `<div class="ps-vl"><div class="ps-grow"><div class="ps-nome">${esc(propriaNome.n)}</div><div class="ps-sub">${propriaNome.q == null ? 'sem quantidade' : propriaNome.q + ' un.'} · ${brl(propriaNome.p)} · mesmo nome do CTW (automático)</div></div></div>` : ''}
+      ${lig.map(linhaE).join('') || '<div class="ps-info">Ainda não tem nenhum nome do Stock 2.0 ligado. Use o botão verde abaixo.</div>'}
+      ${r.soma != null ? `<div class="ps-info"><b>Próximo PDF: ${r.soma} un.</b> no CTW (soma ${r.infos.map(i => i.q).join(' + ')}).</div>` : ''}
+      ${r.divergente ? `<div class="ps-info ps-info-am"><b>${r.infos.length} produtos ligados ao produto “${esc(p.nome || '')}” têm valores diferentes (${r.valores.map(brl).join(' e ')}).</b> O preço dele não é alterado enquanto for assim. Desligue um dos nomes do Stock 2.0.</div>` : ''}
+      <div class="ps-cap ps-esp">2 · Ligar outro nome do Stock 2.0</div>
+      ${VINC.aberto
+        ? `<input type="search" id="psBuscaLigar" class="ps-inp ps-busca" placeholder="Buscar no último PDF (ex.: iphone 15)…">
+           ${ultimo ? `<div class="ps-sub">Busca no último PDF enviado (${esc(ultimo)}).</div>` : ''}
+           <div id="psLigarRes">${resultadosLigar(pid, '')}</div>
+           <button type="button" class="ps-b ps-b-ng ps-b-full" data-act="vincfechar">Fechar busca</button>`
+        : '<button type="button" class="ps-b ps-b-g ps-b-full" data-act="vincabrir">＋ Ligar nome do Stock 2.0</button>'}
+      <div class="ps-cap ps-esp">Nomes do WhatsApp (${catW.length})</div>
+      ${catW.map(([k, v]) => `<div class="ps-vl"><div class="ps-grow"><div class="ps-nome">${esc(nomeCatalogoLigado(k, v))}</div></div><button type="button" class="ps-b ps-b-r ps-b-sm" data-act="rmcatvin" data-k="${esc(k)}">✕ Desligar</button></div>`).join('') || '<div class="ps-sub">Nenhum nome do WhatsApp ligado.</div>'}`);
+}
+
+// Itens do último PDF para ligar a este produto: sem texto, os mais parecidos; com texto, os que têm todas as palavras
+function resultadosLigar(pid, q) {
+    const itens = Object.entries((APR.ultimoPdf && APR.ultimoPdf.itens) || {}).map(([l, it]) => ({ l, ...it }));
+    if (!itens.length) return '<div class="ps-info">Ainda não tem PDF guardado. Envie o PDF do Stock 2.0 uma vez e a busca passa a funcionar.</div>';
+    const p = produtoVivo(pid), ja = new Set(estoqueLigados(pid).map(v => v.nomeEstoque)), termos = norm(q).split(' ').filter(Boolean);
+    let lista = itens.filter(it => !ja.has(it.n));
+    if (termos.length) lista = lista.filter(it => termos.every(t => norm(it.n).includes(t)));
+    else { const an = analisar(p.nome || ''); lista = lista.map(it => ({ it, s: similaridade(analisar(it.n).nucleo, an.nucleo) })).sort((a, b) => b.s - a.s).slice(0, 8).map(x => x.it); }
+    if (!lista.length) return '<div class="ps-sub">Nada encontrado no PDF.</div>';
+    const nomeDe = id => { const c = produtoVivo(id); return c ? c.nome : '(produto removido do CTW)'; };
+    return (termos.length ? '' : '<div class="ps-sub">Mais parecidos com este produto (ou digite para buscar):</div>') + lista.slice(0, 30).map(it => {
+        const an = analisar(it.n), al = (it.c && APR.aliases[chaveCodigo(it.c)]) || APR.aliases[chaveNome(an)], outro = al && al.pid !== pid ? al : null;
+        return `<div class="ps-vl"><div class="ps-grow"><div class="ps-nome">${esc(it.n)}</div><div class="ps-sub">${it.q == null ? 'sem quantidade' : it.q + ' un.'} · ${brl(it.p)}${outro ? ` · já ligado a ${esc(nomeDe(outro.pid))}` : ''}</div></div>
+          <button type="button" class="ps-b ${outro ? 'ps-b-am' : 'ps-b-g'} ps-b-sm" data-act="vinclig" data-l="${esc(it.l)}">${outro ? 'Mover pra cá' : '＋ Ligar'}</button></div>`;
+    }).join('');
+}
+
+async function ligarNomePdf(pid, l) {
+    const it = ((APR.ultimoPdf || {}).itens || {})[l], p = produtoVivo(pid);
+    if (!it || !p) return;
+    const an = analisar(it.n), val = { pid, nomeEstoque: it.n, nomeCtw: p.nome || '', codigo: it.c || '', spec: assinatura(an), quando: Date.now() };
+    const upd = { [`${BASE}/aliases/${chaveNome(an)}`]: val, [`${BASE}/ignoradosPdf/${chaveNome(an)}`]: null };
+    if (it.c) { upd[`${BASE}/aliases/${chaveCodigo(it.c)}`] = val; upd[`${BASE}/ignoradosPdf/${chaveCodigo(it.c)}`] = null; }
+    await update(ref(getDb()), upd);
 }
 
 async function removerVinculo(pid, nomeEstoque) {
@@ -1387,6 +1519,7 @@ async function desfazer(id) {
 // ── Cliques ─────────────────────────────────────────────────────
 function voltar() {
     if (TELA === 'hub') return fechar();
+    if (TELA === 'av-vincprod') return telaVinculos();
     if (TELA.startsWith('av-')) return telaAvancado();
     if (TELA === 'quantidades') return S && S.aplicados ? telaRelatorio() : telaPrevia();
     if ((TELA === 'revisar' || TELA === 'adicionar') && S && S.aplicados) return telaRelatorio();
@@ -1451,8 +1584,12 @@ async function aoClicar(e) {
             return;
         }
         if (act === 'mais') { const m = b.closest('.ps-lc'), menu = m && m.querySelector('.ps-menu'); if (menu) menu.hidden = !menu.hidden; return; }
-        if (act === 'rmvinculo') { await removerVinculo(b.dataset.pid, b.dataset.nome); return telaVinculos(); }
-        if (act === 'rmcatvin') { const k = b.dataset.k; await update(ref(getDb()), { [`${BASE}/catAliases/${k}`]: null }); delete APR.catAliases[k]; return telaVinculos(); }
+        if (act === 'rmvinculo') { await removerVinculo(b.dataset.pid, b.dataset.nome); return VINC.pid ? telaVinculoProduto(VINC.pid) : telaVinculos(); }
+        if (act === 'rmcatvin') { const k = b.dataset.k; await update(ref(getDb()), { [`${BASE}/catAliases/${k}`]: null }); delete APR.catAliases[k]; return VINC.pid ? telaVinculoProduto(VINC.pid) : telaVinculos(); }
+        if (act === 'vincprod') { VINC.pid = b.dataset.pid; VINC.aberto = false; return telaVinculoProduto(VINC.pid); }
+        if (act === 'vincabrir') { VINC.aberto = true; return telaVinculoProduto(VINC.pid); }
+        if (act === 'vincfechar') { VINC.aberto = false; return telaVinculoProduto(VINC.pid); }
+        if (act === 'vinclig') { await ligarNomePdf(VINC.pid, b.dataset.l); return telaVinculoProduto(VINC.pid); }
         if (act === 'esquecer1') {                         // um item só: volta a ser perguntado
             const col = b.dataset.col, k = b.dataset.k;
             if (!IGN_BLOCOS.some(x => x[0] === col)) return;

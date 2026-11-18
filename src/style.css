@@ -3648,6 +3648,7 @@ html.ctw-leve .ui-hero { background: var(--card-bg); border: 1px solid var(--ui-
 .ps-msg { padding: 14px; text-align: center; color: var(--ui-tx2); font-size: 14px; }
 .ps-erro { color: #FF6B6B; }
 .ps-busca input { width: 100%; box-sizing: border-box; border: 1px solid var(--ui-edge); background: var(--secondary-color); color: var(--text-color); border-radius: 12px; padding: 11px 12px; font-size: 15px; }
+.ps-inp.ps-busca { width: 100%; text-align: left; padding: 11px 12px; border-radius: 12px; }
 .ps-inp { width: 90px; box-sizing: border-box; border: 1px solid var(--ui-edge); background: var(--secondary-color); color: var(--text-color); border-radius: 10px; padding: 7px 10px; font-size: 15px; text-align: right; }
 .ps-it.ps-urg { box-shadow: inset 4px 0 0 #FF4D4D, inset 0 0 0 1.5px rgba(255, 77, 77, .55); background: var(--ui-bad-bg); }
 .ps-tag-urg { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .03em; color: #fff; background: #E5383B; border-radius: 6px; padding: 2px 7px; margin-bottom: 4px; }
@@ -4207,3 +4208,20 @@ html.ctw-at-ia-off [data-dev-atalho="ia"], html.ctw-at-precos-off [data-dev-atal
 .ctw-bia-pc b { color: var(--text-color); }
 .ctw-bia-tg { grid-column: 1 / -1; font-size: 0.72rem; color: var(--text-secondary); }
 
+
+/* Nomes ligados: lista de produtos do CTW e botões cheios (verde liga/abre, vermelho desliga, amarelo move) */
+.ps-b { display: flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 12px; font: inherit; font-weight: 700; font-size: 15px; min-height: 44px; padding: 0 16px; white-space: nowrap; cursor: pointer; box-shadow: 0 2px 0 rgba(0, 0, 0, .35); }
+.ps-b:active { transform: translateY(1px); box-shadow: none; }
+.ps-b-g { background: #34D399; color: #04281C; }
+.ps-b-r { background: #EF4444; color: #fff; }
+.ps-b-am { background: #F59E0B; color: #2B1D00; }
+.ps-b-ng { background: #3B3F46; color: #fff; }
+.ps-b-full { width: 100%; min-height: 50px; font-size: 16px; }
+.ps-b-sm { min-height: 40px; padding: 0 13px; font-size: 14px; flex: none; }
+.ps-vc { background: var(--card-bg); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.ps-vl { display: flex; align-items: center; gap: 10px; background: var(--card-bg); border-radius: 14px; padding: 12px; }
+.ps-vst { font-size: 13px; font-weight: 600; color: var(--ui-tx2); }
+.ps-vok { color: var(--ob-v); }
+.ps-vam { color: var(--ob-a); }
+.ps-info { border-radius: 12px; padding: 11px 13px; font-size: 13.5px; line-height: 1.4; background: var(--secondary-color); color: var(--text-color); }
+.ps-info-am { background: var(--ob-abg); color: var(--ob-a); }
