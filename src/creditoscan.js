@@ -3328,11 +3328,35 @@
                 function () { responderPergunta(job, false); }
             );
         } else if (p.tipo === 'reuso') {
-            mostrarModalReuso(job, p.dados.registro, p.dados.cpf);
+            mostrarModalReuso(job, p.dados.registro, p.dados.cpf, p.dados.porNome);
         }
     }
 
-    function mostrarModalReuso(job, registro, cpfFormatado) {
+    // CPF so vale com 11 digitos e digitos verificadores certos (a IA que le a foto do documento erra digito: ja veio com 12 digitos e com 9)
+    function cpfValido(c) {
+        c = String(c || '').replace(/\D/g, '');
+        if (c.length !== 11 || /^(\d)\1{10}$/.test(c)) return false;
+        for (var t = 9; t < 11; t++) {
+            var soma = 0;
+            for (var i = 0; i < t; i++) soma += +c.charAt(i) * (t + 1 - i);
+            var dv = (soma * 10) % 11 % 10;
+            if (dv !== +c.charAt(t)) return false;
+        }
+        return true;
+    }
+    // Nome para comparar clientes: sem acento, so letras, pelo menos 2 palavras; '' se curto demais para confiar
+    function nomeParaBusca(n) {
+        n = String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim();
+        return n.length >= 8 && n.split(' ').length >= 2 ? n : '';
+    }
+    // Mesma pessoa que um registro do historico? CPF certo dos dois lados decide; se algum CPF nao confere, vale o nome igual.
+    function mesmaPessoa(v, cpf, nome) {
+        var cv = String(v.cpf || '').replace(/\D/g, '');
+        if (cpf && cpfValido(cv)) return cv === cpf;
+        return !!nome && nomeParaBusca(v.nomeCliente) === nome;
+    }
+
+    function mostrarModalReuso(job, registro, cpfFormatado, porNome) {
         var modal = document.createElement('div');
         modal.id = 'cs_alerta_reuso';
         modal.className = 'cs-modal cs-scope';
@@ -3341,7 +3365,8 @@
         modal.innerHTML =
             '<div class="cs-modal-box">' +
                 '<div class="cs-modal-ttl"><i class="bi bi-exclamation-triangle-fill"></i> Cliente já analisado</div>' +
-                '<div class="cs-modal-txt"><strong>' + esc(registro.nomeCliente) + '</strong> (CPF: ' + esc(cpfFormatado) + ') fez uma análise nos últimos ' + HIST_DAYS + ' dias (' + dt + ').</div>' +
+                '<div class="cs-modal-txt"><strong>' + esc(registro.nomeCliente) + '</strong> ' + (cpfFormatado ? '(CPF: ' + esc(cpfFormatado) + ') ' : '') + 'fez uma análise nos últimos ' + HIST_DAYS + ' dias (' + dt + ').' +
+                (porNome ? '<br><small>Achado pelo nome: o CPF lido do documento não foi confiável. Confira se é a mesma pessoa.</small>' : '') + '</div>' +
                 '<div class="cs-modal-prev ' + (ap ? 'ok' : 'no') + '">' +
                     '<span>Resultado anterior</span>' +
                     '<strong>' + esc(registro.risco || registro.decisao || '--') + ' (' + (registro.nota || 0) + ' pts)</strong>' +
@@ -3402,22 +3427,27 @@
         if (job.docsId.length > 0) {
             try {
                 var promptId = 'Extraia o CPF e o Nome do titular deste documento. Retorne APENAS um JSON valido: {"cpf": "123.456.789-00", "nome": "Nome do Titular"}. Se nao achar CPF, retorne {"cpf": ""}';
-                var respId = await aiCallVision(job.docsId, '', promptId, chaveIA(job, 'cpf'));
-                var ir1 = respId.indexOf('{'), ir2 = respId.lastIndexOf('}');
-                if (ir1 !== -1 && ir2 > ir1) {
-                    var objId = JSON.parse(respId.substring(ir1, ir2 + 1));
-                    if (objId.cpf) cpf = String(objId.cpf).replace(/\D/g, '');
-                    if (objId.nome) job.nome = String(objId.nome).trim().substring(0, 80);
+                // a IA le a foto e erra digito: confere os digitos verificadores e relê UMA vez se nao fechar
+                for (var tCpf = 0; tCpf < 2 && !cpfValido(cpf); tCpf++) {
+                    var respId = await aiCallVision(job.docsId, '', promptId + (tCpf ? ' ATENCAO: o CPF tem exatamente 11 digitos. Leia digito por digito, sem inventar e sem repetir digitos.' : ''), chaveIA(job, tCpf ? 'cpf2' : 'cpf'));
+                    var ir1 = respId.indexOf('{'), ir2 = respId.lastIndexOf('}');
+                    if (ir1 !== -1 && ir2 > ir1) {
+                        var objId = JSON.parse(respId.substring(ir1, ir2 + 1));
+                        cpf = objId.cpf ? String(objId.cpf).replace(/\D/g, '') : '';
+                        if (objId.nome && (!job.nome || tCpf === 0)) job.nome = String(objId.nome).trim().substring(0, 80);
+                    }
                 }
             } catch (e) { console.warn('Falha na leitura antecipada do documento:', e); }
         } else {
             var mc = textosLocais.join(' ').match(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/);
             if (mc) cpf = mc[0].replace(/\D/g, '');
         }
+        if (!cpfValido(cpf)) cpf = '';   // CPF que nao fecha nao vale: nao busca nem grava errado (a busca cai para o nome)
+        var nomeBusca = nomeParaBusca(job.nome);
         job.tempos.cpf_s = Math.round((Date.now() - tIni) / 1000);
         andamento(job, 'Consultando histórico...', 14);
 
-        if (cpf.length === 11) {
+        if (cpf || nomeBusca) {
             try {
                 fb = fb || await import('https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js');
                 var db = window._firebaseDB;
@@ -3430,14 +3460,14 @@
                     if (snap.exists()) {
                         snap.forEach(function (c) {
                             var v = c.val();
-                            if (v && v.cpf === cpf && v.ts > limite) itens.push(Object.assign({ id: c.key }, v));
+                            if (v && v.ts > limite && mesmaPessoa(v, cpf, nomeBusca)) itens.push(Object.assign({ id: c.key }, v));
                         });
                     }
                     checar(job);
                     if (itens.length > 0) {
                         itens.sort(function (a, b) { return b.ts - a.ts; });
-                        var cpfMask = cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-                        var escolha = await perguntar(job, 'reuso', { registro: itens[0], cpf: cpfMask });
+                        var cpfMask = cpf ? cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '';
+                        var escolha = await perguntar(job, 'reuso', { registro: itens[0], cpf: cpfMask, porNome: !cpf || !cpfValido(itens[0].cpf) });
                         checar(job);
                         if (escolha === 'reusar') {
                             var dReuso = dadosDoRegistro(itens[0]);

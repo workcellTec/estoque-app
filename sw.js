@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-360'; // CreditoScan: leitor Nubank le 'valor adicionado por cartao' e renda R$ 0 fechada pelo codigo; tolerancia 3% ou R$ 50 tambem no servidor
+const CACHE = 'ctw-361'; // CreditoScan: CPF so vale com digitos verificadores (relê 1x) e o aviso de cliente ja analisado tambem acha pelo nome
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
