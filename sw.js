@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-357'; // Textos de etiqueta e à vista sincronizados por perfil
+const CACHE = 'ctw-358'; // Busca por IA: vários aparelhos, várias parcelas, mensagem organizada, mostrar/esconder sem estoque
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
