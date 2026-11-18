@@ -1742,7 +1742,7 @@
             fechamentoia: () => import('./fechamentoia.js?v=30'),
             buscaia:     () => import('./buscaia.js?v=2'),   // só pelo painel do Módulo dev
             modulodev:   () => import('./modulodev.js?v=2'),  // painel do Módulo dev (porta secreta na Administração)
-            precosync:   () => import('./precosync.js?v=34')   // só ao abrir Mais > WhatsApp e Preços (fora do carregamento em segundo plano)
+            precosync:   () => import('./precosync.js?v=35')   // só ao abrir Mais > WhatsApp e Preços (fora do carregamento em segundo plano)
         };
         const carregados = {};
         window.ctwCarregarModulo = (nome) => carregados[nome] || (carregados[nome] = pesados[nome]());

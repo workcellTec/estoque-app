@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-361'; // CreditoScan: CPF so vale com digitos verificadores (relê 1x) e o aviso de cliente ja analisado tambem acha pelo nome
+const CACHE = 'ctw-362'; // Ja adicionei definitivo por conta + lista Marcados como ja adicionados em Avancado
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

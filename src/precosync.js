@@ -779,7 +779,7 @@ function calcEsgotados(presenca, duvida, catalogo, esgAtual, faltando, adicionad
     const cat = (catalogo && catalogo.itens) || {}, esg = esgAtual || {}, agora = Date.now();
     const upd = {}; let novos = 0;
     const duvCat = (catalogo && catalogo.duv) || {}, podeAdd = !!faltando && catalogo && catalogo.origem === 'zip';
-    const novosAdd = [], adic = adicionados || {}, catQuando = (catalogo && catalogo.atualizado) || 0;
+    const novosAdd = [], adic = adicionados || {};
     new Set([...Object.keys(cat), ...Object.keys(esg), ...(podeAdd ? Object.keys(faltando) : [])]).forEach(pid => {
         const e = esg[pid], c = cat[pid];
         if (duvida.has(pid)) return;
@@ -787,8 +787,8 @@ function calcEsgotados(presenca, duvida, catalogo, esgAtual, faltando, adicionad
             if (c || !presenca.has(pid)) upd[pid] = null;
             return;
         }
-        // "Já adicionei" depois do último ZIP: o catálogo guardado ainda não tem o item, mas você já colocou. Um ZIP mais novo volta a ser a verdade.
-        if (!e && !c && podeAdd && faltando[pid] && !duvCat[pid]) { if (!(adic[pid] && adic[pid] > catQuando)) novosAdd.push(pid); return; }
+        // "Já adicionei" é definitivo (por conta): nem PDF nem ZIP novo cobram de novo. Para voltar a cobrar: Avançado > Marcados como já adicionados.
+        if (!e && !c && podeAdd && faltando[pid] && !duvCat[pid]) { if (!adic[pid]) novosAdd.push(pid); return; }
         if (presenca.has(pid)) {
             if (e && e.estado === 'desativado') upd[pid] = { ...e, estado: 'reativar', desde: agora };
             else if (e && (e.estado === 'desativar' || e.estado === 'ainda')) upd[pid] = null;
@@ -882,7 +882,7 @@ function motivoAdd(cid, p) {
     if (!presencaPdf().has(p.id)) return 'o PDF de hoje não trouxe este produto, ou o nome do PDF não foi ligado a ele';
     if (duvidaPdf().has(p.id)) return 'o nome dele no PDF ainda está em dúvida (pergunta sem resposta)';
     if (cat[p.id]) return `já está no catálogo do ZIP como “${cat[p.id].n}”`;
-    if ((c.adicionados || {})[p.id] > ((c.catalogo && c.catalogo.atualizado) || 0)) return 'você marcou “Já adicionei” depois do último ZIP: só volta a avisar se um ZIP novo continuar sem ele';
+    if ((c.adicionados || {})[p.id]) return 'você marcou “Já adicionei”: o app não cobra de novo (dá para desfazer em Avançado)';
     if (duvCat[p.id]) return 'parece ser um item do ZIP ainda sem resposta (pergunta pulada ao ler o catálogo): responda ou envie o ZIP de novo';
     if (e && e.estado === 'adicionar') return 'já está na lista Adicionar';
     if (e) return `tem o estado “${e.estado}” guardado`;
@@ -1213,6 +1213,7 @@ async function telaAvancado() {
     try { await carregarAprendizado(); } catch (e) { return tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div>`); }
     const nLig = new Set(Object.values(APR.aliases).map(v => v.pid + '|' + v.nomeEstoque)).size + Object.keys(APR.catAliases).length;
     const nFix = Object.values(APR.contas).reduce((t, c) => t + Object.keys(c.fixos || {}).length, 0);
+    const nAdic = Object.values(APR.contas).reduce((t, c) => t + Object.keys(c.adicionados || {}).length, 0);
     const nIg = Object.keys(APR.ignoradosPdf).length + Object.keys(APR.ignoradosCtw).length + Object.keys(APR.catIgnorados).length + Object.keys(APR.naoWhats).length;
     const nomes = Object.values(APR.contas).map(c => c.nome).join(', ');
     const lin = (act, tit, sub) => `<button type="button" class="ps-resumo" data-act="${act}"><span class="ps-grow"><b>${tit}</b><span class="ps-sub">${sub}</span></span><span class="ps-seta">›</span></button>`;
@@ -1223,6 +1224,7 @@ async function telaAvancado() {
         <input type="text" id="psCatExtra" class="ps-inp ps-extra" inputmode="decimal" value="${esc(String(catExtra()).replace('.', ','))}" aria-label="Extra à vista em reais"></div>
       ${lin('vinculos', 'Nomes ligados', `${nLig} · buscar, desligar o que ficou errado`)}
       ${lin('avignorados', 'Sem estoque e ignorados', nIg ? `${nIg} · ver a lista e voltar a perguntar` : 'Nada marcado')}
+      ${lin('avadic', 'Marcados como já adicionados', nAdic ? `${nAdic} produto(s) · voltar a cobrar` : 'Nenhum')}
       ${lin('avfixos', 'Preços mantidos de propósito', nFix ? `${nFix} produto(s) · voltar a avisar` : 'Nenhum')}
       ${lin('avprints', 'Catálogo por prints', 'Só se você não tiver o ZIP')}
       ${lin('avhist', 'Histórico', 'Importações de preço e o que foi feito no WhatsApp')}`);
@@ -1294,6 +1296,18 @@ async function telaAvIgnorados() {
     };
     const total = IGN_BLOCOS.reduce((t, b) => t + Object.keys(APR[b[0]] || {}).length, 0);
     tela(total ? IGN_BLOCOS.filter(b => Object.keys(APR[b[0]] || {}).length).map(bloco).join('') : '<div class="ps-msg">Nada ignorado no momento. Tudo é perguntado normalmente.</div>');
+}
+
+// Produtos marcados "Já adicionei": o app não cobra mais no Adicionar. Daqui dá para corrigir uma marca errada.
+async function telaAvAdicionados() {
+    TELA = 'av-adic'; titulo('Marcados como já adicionados');
+    try { await carregarAprendizado(); } catch (e) { return tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div>`); }
+    const multi = Object.keys(APR.contas).length > 1;
+    const blocos = Object.entries(APR.contas).map(([cid, c]) => {
+        const l = Object.entries(c.adicionados || {}).map(([id, q]) => ({ id, q: +q || 0, nome: nomeProd(id) })).sort((x, y) => y.q - x.q || x.nome.localeCompare(y.nome));
+        return l.length ? (multi ? `<div class="ps-cap ps-esp">${esc(c.nome)} · ${l.length}</div>` : '') + l.map(x => `<div class="ps-it"><div class="ps-grow"><div class="ps-nome">${esc(x.nome)}</div><div class="ps-sub">marcado${x.q ? ' em ' + diaMes(x.q) : ''}</div></div><button type="button" class="ps-ob ps-ob-sm" data-act="adicdesfazer" data-conta="${esc(cid)}" data-id="${esc(x.id)}">Voltar a cobrar</button></div>`).join('') : '';
+    }).join('');
+    tela(`<div class="ps-sub">Produtos que você marcou “Já adicionei”. O app não cobra mais no Adicionar, nem com PDF ou ZIP novo. Se marcou errado, toque em “Voltar a cobrar”: ele volta para a lista no próximo PDF.</div>${blocos || '<div class="ps-msg">Nenhum produto marcado.</div>'}`);
 }
 
 async function telaAvFixos() {
@@ -1574,6 +1588,7 @@ async function aoClicar(e) {
         if (act === 'avcontas') return telaAvContas();
         if (act === 'avignorados') return telaAvIgnorados();
         if (act === 'avfixos') return telaAvFixos();
+        if (act === 'avadic') return telaAvAdicionados();
         if (act === 'avprints') return telaAvPrints();
         if (act === 'avhist') return telaAvHist();
         if (act === 'desfazer') return desfazer(b.dataset.id);
@@ -1646,6 +1661,11 @@ async function aoClicar(e) {
             b.disabled = true;
             await gravarSemEstoque(true);
             return telaRelatorio();
+        }
+        if (act === 'adicdesfazer') {
+            b.disabled = true;
+            await update(ref(getDb()), { [`${raiz(b.dataset.conta || CONTA)}/adicionados/${b.dataset.id}`]: null });
+            return telaAvAdicionados();
         }
         if (act === 'fixodesfazer') {
             b.disabled = true;
