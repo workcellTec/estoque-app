@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-356'; // CreditoScan: confiança baixa na leitura reprova com o motivo escrito
+const CACHE = 'ctw-357'; // Textos de etiqueta e à vista sincronizados por perfil
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

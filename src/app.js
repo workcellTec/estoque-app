@@ -391,6 +391,7 @@ function setupTeamProfilesListener() {
             teamProfilesList = data;
             window.teamProfilesList = data; // expõe para módulos externos (syncSheetProfile, etc.)
             window.ctwAplicarDev();
+            ctwTextosIniciar();   // textos do perfil atual (etiquetas e à vista) acompanham o banco
             salvarCacheEquipe(data);
             renderizarEquipeNaTela(data);
             // Recarrega avatar quando Firebase confirmar os dados (inclui avatarUrl)
@@ -426,6 +427,7 @@ window.setProfileConfirmed = function(name) {
     currentUserProfile = name;
     localStorage.setItem('ctwUserProfile', name);
     window.ctwAplicarDev();
+    ctwTextosIniciar();
     if (window.ctwCSWidget) window.ctwCSWidget.publicar();   // widget do CreditoScan acompanha o perfil
     
     const displayMenu = document.getElementById('displayProfileName');
@@ -466,6 +468,7 @@ window.sairDoPerfil = function() {
                 // 1. Limpa o perfil salvo
                 currentUserProfile = '';
                 localStorage.removeItem('ctwUserProfile');
+                ctwTextosIniciar();
                 window.ctwAplicarDev();
                 if (window.ctwCSWidget) window.ctwCSWidget.publicar();   // widget do CreditoScan acompanha o perfil
 
@@ -5007,6 +5010,7 @@ function renderTagManagementUI() {
             antes: document.getElementById('avistaAntesInput').value.replace(/\r/g, ''),
             depois: document.getElementById('avistaDepoisInput').value.replace(/\r/g, '')
         }));
+        ctwTextosAvista(document.getElementById('avistaAntesInput').value.replace(/\r/g, ''), document.getElementById('avistaDepoisInput').value.replace(/\r/g, ''));
         if (typeof calculateAparelho === 'function') calculateAparelho();
         showCustomModal({ message: 'Configuração do à vista salva!' });
     });
@@ -5166,6 +5170,94 @@ function ctwAvistaTexto() {
     if (!semTexto && cfg.antes.trim()) texto = cfg.antes + '\n' + texto;
     if (!semTexto && cfg.depois.trim()) texto = texto + '\n' + cfg.depois;
     return texto;
+}
+
+// ── Textos por perfil: textos das etiquetas + à vista antes/depois + "não usar à vista nesta etiqueta" ──
+// Moram no Firebase em settings/textosPerfil/{idDoPerfil}; qualquer aparelho com aquele perfil usa e recebe as mudanças ao vivo.
+// O localStorage vira só cache (funciona sem internet). O valor extra à vista continua por aparelho.
+const TEXTOS_PATH = 'settings/textosPerfil';
+const TEXTOS_DONO_KEY = 'ctwTextosDono';   // de qual perfil é o cache deste aparelho
+const _tk = nome => encodeURIComponent(String(nome)).replace(/\./g, '%2E');   // chave segura do Firebase (sem . $ # [ ] /)
+const _tkDec = k => { try { return decodeURIComponent(k); } catch (e) { return k; } };
+let _textosCancel = null, _textosPid = null;
+
+function ctwTextosPid() {
+    const nome = (localStorage.getItem('ctwUserProfile') || '').trim();
+    if (!nome) return null;
+    const achou = Object.entries(window.teamProfilesList || {}).find(([id, p]) => p && p.name === nome);
+    return achou ? achou[0] : null;
+}
+
+function ctwTextosLocal() {
+    const cfg = ctwAvistaCfg(), off = ctwAvistaTagsOff(), tags = {}, tagsOff = {};
+    Object.keys(tagTexts).forEach(t => { if (tagTexts[t]) tags[_tk(t)] = tagTexts[t]; });
+    Object.keys(off).forEach(t => { if (off[t]) tagsOff[_tk(t)] = true; });
+    return { tags, tagsOff, avista: { antes: cfg.antes, depois: cfg.depois } };
+}
+
+function ctwTextosAplicar(v) {
+    const tags = {}, off = {}, a = v.avista || {}, cfg = ctwAvistaCfg();
+    Object.entries(v.tags || {}).forEach(([k, t]) => { tags[_tkDec(k)] = String(t); });
+    Object.keys(v.tagsOff || {}).forEach(k => { if (v.tagsOff[k]) off[_tkDec(k)] = true; });
+    tagTexts = tags;
+    safeStorage.setItem(TAG_TEXTS_KEY, JSON.stringify(tags));
+    safeStorage.setItem(AVISTA_TAGS_OFF_KEY, JSON.stringify(off));
+    safeStorage.setItem(AVISTA_CFG_KEY, JSON.stringify({ extra: cfg.extra, antes: String(a.antes || ''), depois: String(a.depois || '') }));
+}
+
+function ctwTextosIniciar() {
+    if (typeof db === 'undefined' || !db || !isAuthReady) return;
+    const pid = ctwTextosPid();
+    if (pid === _textosPid) return;
+    if (_textosCancel) { _textosCancel(); _textosCancel = null; }
+    _textosPid = pid;
+    if (!pid) return;
+    _textosCancel = onValue(ref(db, `${TEXTOS_PATH}/${pid}`), snap => {
+        const v = snap.val(), dono = safeStorage.getItem(TEXTOS_DONO_KEY);
+        if (v) { ctwTextosAplicar(v); safeStorage.setItem(TEXTOS_DONO_KEY, pid); return; }
+        // Perfil sem nada no banco ainda:
+        if (!dono) {   // cache antigo (de antes da sincronização): sobe uma vez, para ninguém perder os textos
+            const l = ctwTextosLocal();
+            if (Object.keys(l.tags).length || Object.keys(l.tagsOff).length || l.avista.antes.trim() || l.avista.depois.trim()) {
+                update(ref(db, `${TEXTOS_PATH}/${pid}`), l).catch(e => console.warn('Textos do perfil: não consegui enviar', e));
+            }
+        } else if (dono !== pid) {   // o cache era de OUTRO perfil: este perfil começa vazio
+            ctwTextosAplicar({});
+        }
+        safeStorage.setItem(TEXTOS_DONO_KEY, pid);
+    }, err => console.warn('Textos do perfil: sem acesso', err));
+}
+
+// Grava no perfil atual (e, ao renomear/apagar uma etiqueta, acerta a chave em TODOS os perfis).
+// antigo/novo: nome da etiqueta antes/depois (novo = null apaga); texto/off: valores do perfil atual.
+async function ctwTextosEtiqueta(antigo, novo, texto, off) {
+    const pid = ctwTextosPid(), up = {}, ko = _tk(antigo), kn = novo == null ? null : _tk(novo);
+    if (ko !== kn) {
+        try {
+            const todos = (await get(ref(db, TEXTOS_PATH))).val() || {};
+            Object.entries(todos).forEach(([id, v]) => {
+                if (!v) return;
+                ['tags', 'tagsOff'].forEach(g => {
+                    if (v[g] && v[g][ko] !== undefined) {
+                        if (kn && id !== pid) up[`${id}/${g}/${kn}`] = v[g][ko];
+                        up[`${id}/${g}/${ko}`] = null;
+                    }
+                });
+            });
+        } catch (e) { console.warn('Textos do perfil: não consegui ler os outros perfis', e); }
+    }
+    if (pid && kn) { up[`${pid}/tags/${kn}`] = texto || null; up[`${pid}/tagsOff/${kn}`] = off ? true : null; }
+    if (!Object.keys(up).length) return;
+    if (pid) safeStorage.setItem(TEXTOS_DONO_KEY, pid);
+    try { await update(ref(db, TEXTOS_PATH), up); }
+    catch (e) { showCustomModal({ message: 'Salvei neste aparelho, mas não consegui enviar os textos para os outros: ' + e.message }); }
+}
+
+function ctwTextosAvista(antes, depois) {
+    const pid = ctwTextosPid(); if (!pid) return;
+    safeStorage.setItem(TEXTOS_DONO_KEY, pid);
+    update(ref(db, `${TEXTOS_PATH}/${pid}/avista`), { antes, depois })
+        .catch(e => showCustomModal({ message: 'Salvei neste aparelho, mas não consegui enviar o texto à vista para os outros: ' + e.message }));
 }
 
 function loadTagTexts() {
@@ -6638,6 +6730,7 @@ document.getElementById('admin-nav-buttons')?.addEventListener('click', e => {
                             const tagsOffDel = ctwAvistaTagsOff(); delete tagsOffDel[tagToDelete];
                             safeStorage.setItem(AVISTA_TAGS_OFF_KEY, JSON.stringify(tagsOffDel));
                             safeStorage.setItem(TAG_TEXTS_KEY, JSON.stringify(tagTexts));
+                            await ctwTextosEtiqueta(tagToDelete, null);
                         },
                         onCancel: () => {}
                     });
@@ -6721,6 +6814,7 @@ document.getElementById('admin-nav-buttons')?.addEventListener('click', e => {
         safeStorage.setItem(AVISTA_TAGS_OFF_KEY, JSON.stringify(tagsOff));
         await saveTagList(currentTags);
         safeStorage.setItem(TAG_TEXTS_KEY, JSON.stringify(tagTexts));
+        await ctwTextosEtiqueta(originalName, newName, newText, !!tagsOff[newName]);
         
         if (originalName !== newName) {
             await updateTagNameInProducts(originalName, newName);
@@ -12687,6 +12781,7 @@ window.updateNotificationUI  = updateNotificationUI;
                 if (nome === currentUserProfile) {
                     currentUserProfile = '';
                     localStorage.removeItem('ctwUserProfile');
+                    ctwTextosIniciar();
                     if (window.ctwCSWidget) window.ctwCSWidget.publicar();   // widget do CreditoScan acompanha o perfil
                 }
 
