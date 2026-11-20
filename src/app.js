@@ -10280,6 +10280,14 @@ async function gerarPdfDoHistorico(dados, botao, modo, preparado, origem) {
         
         removerLoading();
 
+        // Gmail: se o servidor de e-mail estiver pronto e o cliente tiver e-mail, envia direto (sem abrir o Gmail).
+        // Devolve true quando já resolveu (enviou ou você cancelou); false = segue o jeito de sempre (abrir o Gmail).
+        if (modo === 'gmail') {
+            botao.innerHTML = textoOriginal;
+            botao.disabled = false;
+            if (await ctwEnviarEmailDireto({ dados, pdfBlob, nomeFinalArquivo, assunto: tituloEnvio, texto: montarTextoEnvio(), botao, origem })) return;
+        }
+
         // APK, Gmail ou Compartilhar: um toque só (no APK o Android não exige o segundo toque que o Chrome exige)
         if (nativo && (modo === 'gmail' || modo === 'compartilhar')) {
             botao.innerHTML = textoOriginal;
@@ -11087,6 +11095,115 @@ window.resetFormulariosBookip = function(opcoes) {
 
 
 
+
+// ============================================================
+// ENVIO DIRETO DE E-MAIL (função "enviar-email" do Supabase, pelo Gmail da loja)
+// Usa a mesma senha do servidor do CreditoScan (Configurações). Sem senha, sem e-mail do cliente
+// ou com o servidor de e-mail ainda não configurado: devolve false e o app abre o Gmail como sempre.
+// ============================================================
+function ctwEmailUrl() {
+    let u = '';
+    try { u = localStorage.getItem('ctwServerUrl') || ''; } catch (e) {}
+    const m = /^(https:\/\/[a-z0-9-]+\.supabase\.co\/functions\/v1)\/[A-Za-z0-9_-]+\/?$/i.exec(String(u).trim());
+    return (m ? m[1] : 'https://mgjkjwsotzwmhrcwefhg.supabase.co/functions/v1') + '/enviar-email';
+}
+function ctwFetchComTempo(url, opts, ms) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), ms);
+    return fetch(url, Object.assign({}, opts, { signal: ctl.signal })).finally(() => clearTimeout(t));
+}
+function ctwBlobParaBase64(blob) {
+    return new Promise((res, rej) => {
+        const fr = new FileReader();
+        fr.onload = () => res(String(fr.result).split(',')[1] || '');
+        fr.onerror = () => rej(fr.error || new Error('leitura do PDF falhou'));
+        fr.readAsDataURL(blob);
+    });
+}
+function ctwPerguntar(message, confirmText, cancelText) {
+    return new Promise(res => showCustomModal({ message, confirmText, cancelText, onConfirm: () => res(true), onCancel: () => res(false) }));
+}
+function ctwAvisar(message) {
+    return new Promise(res => showCustomModal({ message, confirmText: 'OK', onConfirm: () => res(), onCancel: () => res() }));
+}
+let _ctwEmailEnviando = false;   // trava contra duplo toque (um e-mail por vez, da pergunta até o fim do envio)
+async function ctwEnviarEmailDireto(args) {
+    if (_ctwEmailEnviando) return true;
+    _ctwEmailEnviando = true;
+    try { return await ctwEnviarEmailDiretoPasso(args); } finally { _ctwEmailEnviando = false; }
+}
+async function ctwEnviarEmailDiretoPasso({ dados, pdfBlob, nomeFinalArquivo, assunto, texto, botao, origem }) {
+    let token = '';
+    try { token = localStorage.getItem('ctwServerToken') || ''; } catch (e) {}
+    const para = String(dados.email || '').trim();
+    if (!token || !ctwEmailValido(para) || /[,;:()\[\]\\]/.test(para)) return false;
+
+    // O servidor de e-mail já tem o Gmail configurado? (senão nem oferece: abre o Gmail)
+    try {
+        const rs = await ctwFetchComTempo(ctwEmailUrl(), { method: 'GET', headers: { 'x-app-token': token } }, 5000);
+        const js = rs.ok ? await rs.json() : null;
+        if (!js || js.configurado !== true) return false;
+    } catch (e) { return false; }
+
+    const nomeDoc = dados.type === 'orcamento' ? 'orçamento' : 'documento';
+    let msg = 'Enviar o ' + nomeDoc + ' para ' + para + '?';
+    if (dados.statusEnvio === true) {
+        let quando = '';
+        try { if (dados.dataEnvio) quando = ' em ' + new Date(dados.dataEnvio).toLocaleDateString('pt-BR'); } catch (e) {}
+        msg = 'Este ' + nomeDoc + ' já foi enviado' + quando + '. Enviar de novo para ' + para + '?';
+    }
+    if (!(await ctwPerguntar(msg, 'Enviar', 'Cancelar'))) return true;
+
+    const textoBotao = botao.innerHTML;
+    botao.disabled = true;
+    botao.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Enviando...';
+    const restaurar = () => { botao.innerHTML = textoBotao; botao.disabled = false; };
+    try {
+        const pdfBase64 = await ctwBlobParaBase64(pdfBlob);
+        let r;
+        try {
+            r = await ctwFetchComTempo(ctwEmailUrl(), {
+                method: 'POST',
+                headers: { 'x-app-token': token, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ para, assunto, texto, nomeArquivo: nomeFinalArquivo, pdfBase64 })
+            }, 90000);
+        } catch (errRede) {
+            restaurar();
+            if (errRede && errRede.name === 'AbortError') {
+                // sem resposta: o Gmail pode ter enviado — não abre o Gmail para não duplicar
+                await ctwAvisar('Sem resposta do servidor de e-mail. Confira a pasta Enviados do Gmail antes de tentar de novo.');
+                return true;
+            }
+            await ctwAvisar('Sem conexão com o servidor de e-mail. Vou abrir o Gmail.');
+            return false;
+        }
+        let j = null;
+        try { j = await r.json(); } catch (e) {}
+        if (r.ok && j && j.ok === true) {
+            if ((dados.id || dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') {
+                marcarComoEnviadoNoBanco(dados.id || dados.docId, ctwColDoDoc(dados));
+            }
+            dados.statusEnvio = true; dados.dataEnvio = new Date().toISOString();
+            const btnMail = (origem || botao).closest('.accordion-body')?.querySelector('.email-history-btn');
+            if (btnMail) {
+                btnMail.classList.remove('btn-warning'); btnMail.classList.add('btn-dark');
+                btnMail.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
+                btnMail.title = 'Já enviado (reenviar)';
+            }
+            restaurar();
+            showCustomModal({ message: 'E-mail enviado para ' + para + ' ✅' });
+            return true;
+        }
+        restaurar();
+        const motivo = (j && (j.erro || j.detalhe)) ? String(j.erro === 'smtp' ? j.detalhe : j.erro) : ('HTTP ' + r.status);
+        await ctwAvisar('Não consegui enviar direto (' + motivo + '). Vou abrir o Gmail.');
+        return false;
+    } catch (err) {
+        restaurar();
+        await ctwAvisar('Não consegui enviar direto (' + ((err && err.message) || err) + '). Vou abrir o Gmail.');
+        return false;
+    }
+}
 
 // ============================================================
 // FUNÇÃO AUXILIAR: ATUALIZA STATUS NO FIREBASE

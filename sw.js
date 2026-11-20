@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-362'; // Ja adicionei definitivo por conta + lista Marcados como ja adicionados em Avancado
+const CACHE = 'ctw-363'; // Enviar PDF por e-mail direto pelo Gmail (funcao enviar-email), com confirmacao e fallback para abrir o Gmail
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
