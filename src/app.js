@@ -5346,6 +5346,15 @@ const ctwSavePreview = (() => {
         const dp = _el('ctwSpDlPct'); if (dp) dp.textContent = '0%';
         _el('ctwSpHint')?.classList.add('hidden');
         const c = _el('ctwSpBtnConfirm'); if (c) c.style.display = '';
+        _limparEnviado();
+    }
+
+    // Tira da tela o que só existe depois do envio por e-mail (selo, etiqueta e as cores dos botões)
+    function _limparEnviado() {
+        document.querySelector('#ctwSavePreviewOverlay .ctw-sp-selo')?.remove();
+        _el('ctwSpDocInfo')?.querySelector('.ctw-sp-chip-env')?.remove();
+        _el('ctwSpBtnConfirm')?.classList.remove('enviado');
+        _el('ctwSpBtnCancel')?.classList.remove('destaque', 'apagado');
     }
 
     // Troca os dois botões do rodapé (e os toques deles)
@@ -5353,6 +5362,7 @@ const ctwSavePreview = (() => {
         const c = _el('ctwSpBtnConfirm'), x = _el('ctwSpBtnCancel');
         const nc = c.cloneNode(false), nx = x.cloneNode(false);
         nc.innerHTML = rotConfirmar || ''; nx.innerHTML = rotCancelar;
+        nx.classList.remove('apagado');
         nc.style.display = rotConfirmar ? '' : 'none';
         c.replaceWith(nc); x.replaceWith(nx);
         nc.addEventListener('click', () => aoConfirmar && aoConfirmar(nc));
@@ -5395,6 +5405,7 @@ const ctwSavePreview = (() => {
         // Devolve { passo(texto), concluir({...}), falhar(mensagem, aoTentar, aoFechar), fechar() }
         salvando({ previewHtml = '', docInfo = '', etapas = [], titulo = 'Salvando na nuvem…', subtitulo = 'Só termina quando gravar de verdade. Não feche.' }) {
             clearInterval(_creep);
+            _limparEnviado();
             const overlay = _el('ctwSavePreviewOverlay');
             overlay.classList.add('ctw-sp-dlmode');
             const dl = _el('ctwSpDl'), hint = _el('ctwSpHint'), lista = _el('ctwSpSteps'), arcRect = _el('ctwSpArc');
@@ -5441,13 +5452,27 @@ const ctwSavePreview = (() => {
                     msg(aviso, true);
                     let pdf = null, enviando = false;
                     const fechar = () => { _close(); if (typeof aoFechar === 'function') aoFechar(); };
-                    const enviar = () => _botoes(`<i class="bi ${iconeEnvio}"></i> ${rotuloEnvio}`, '<i class="bi bi-x-lg"></i> Fechar',
-                        (botao) => {
-                            if (enviando || typeof onEnviar !== 'function') return;     // um toque de cada vez (a folha de compartilhar não abre duas vezes)
-                            enviando = true;
-                            let r; try { r = onEnviar(botao, pdf); } catch (e) { console.error(e); }
-                            Promise.resolve(r).catch(e => console.error(e)).finally(() => { enviando = false; });
-                        }, fechar);
+                    // enviado: depois de um envio de e-mail confirmado o botão vira "Enviado ✓" (toque = enviar de novo) e o Fechar ganha destaque
+                    const enviar = (enviado) => {
+                        _botoes(enviado ? '<span>Enviado ✓</span><small>toque para enviar de novo</small>' : `<i class="bi ${iconeEnvio}"></i> ${rotuloEnvio}`, '<i class="bi bi-x-lg"></i> Fechar',
+                            (botao) => {
+                                if (enviando || typeof onEnviar !== 'function') return;     // um toque de cada vez (a folha de compartilhar não abre duas vezes)
+                                enviando = true;
+                                let r; try { r = onEnviar(botao, pdf); } catch (e) { console.error(e); }
+                                Promise.resolve(r).then(res => { if (res && res.enviado) marcarEnviado(res); }).catch(e => console.error(e)).finally(() => { enviando = false; });
+                            }, fechar);
+                        _el('ctwSpBtnConfirm').classList.toggle('enviado', !!enviado);
+                        _el('ctwSpBtnCancel').classList.toggle('destaque', !!enviado);
+                    };
+                    const marcarEnviado = (res) => {
+                        titulos('✓ Enviado!', 'O PDF foi para o e-mail do cliente.');
+                        const roda = document.querySelector('#ctwSavePreviewOverlay .ctw-sp-ring-wrap');
+                        if (roda && !roda.querySelector('.ctw-sp-selo')) roda.insertAdjacentHTML('beforeend', '<div class="ctw-sp-selo"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg>ENVIADO</div>');
+                        const info = _el('ctwSpDocInfo');
+                        info?.querySelector('.ctw-sp-chip-env')?.remove();
+                        info?.insertAdjacentHTML('beforeend', '<div class="ctw-sp-chip-env"><i class="bi bi-envelope-at-fill"></i><span>' + escapeHtml(res.para || '') + ' · ' + escapeHtml(res.texto || '') + '</span></div>');
+                        enviar(true);
+                    };
                     const pronta = () => {
                         clearInterval(_creep);
                         _revelarEm(100); dl.classList.add('fim'); dica('');
@@ -7673,8 +7698,8 @@ function loadBookipHistory() {
             const clsMeus = filtroAtual !== 'todos' ? 'btn-light active fw-bold' : 'btn-outline-light';
 
             const filterHTML = `
-<div id="filterBarProfiles" class="d-flex gap-2 mb-3 overflow-auto pb-2 align-items-center justify-content-between">
-    
+<div id="filterBarProfiles" class="d-flex flex-wrap gap-2 mb-3 overflow-auto pb-2 align-items-center justify-content-between">
+
     <div class="d-flex gap-2">
         <button class="btn btn-sm ${clsTodos} filter-profile-btn" onclick="filtrarHistoricoPorPerfil('todos', this)" style="border-radius: 20px; padding: 5px 15px;">Todos</button>
         <button class="btn btn-sm ${clsMeus} filter-profile-btn" onclick="filtrarHistoricoPorPerfil('MEUS_ARQUIVOS_DINAMICO', this)" style="border-radius: 20px; padding: 5px 15px;">
@@ -7685,6 +7710,11 @@ function loadBookipHistory() {
     <button class="btn btn-sm btn-outline-danger" onclick="abrirLixeiraModal()" style="border-radius: 20px; padding: 5px 15px;" title="Ver Lixeira">
         <i class="bi bi-trash"></i> Lixeira
     </button>
+
+    <div class="d-flex gap-2 align-items-center w-100 ctw-filtro-email">
+        <span class="text-secondary" style="font-size: 0.7rem; letter-spacing: 0.8px;">E-MAIL</span>
+        ${[['todos', 'Todos'], ['nao', 'Não enviados'], ['sim', 'Enviados']].map(([v, t]) => `<button class="btn btn-sm ${(window.activeEmailFilter || 'todos') === v ? 'btn-light active fw-bold' : 'btn-outline-light'} filter-email-btn" onclick="filtrarHistoricoPorEmail('${v}', this)" style="border-radius: 20px; padding: 3px 12px; font-size: 0.8rem;">${t}</button>`).join('')}
+    </div>
 
 </div>`;
 
@@ -7830,8 +7860,14 @@ function loadBookipHistory() {
                 matchPerfil = item.criadoPor === window.activeProfileFilter;
             }
 
-            // Retorna apenas se TUDO for verdadeiro (Texto E Data E Perfil)
-            return matchTexto && matchData && matchPerfil;
+            // Filtro de e-mail (Todos / Não enviados / Enviados); na Garantia detalhada não vale
+            let matchEmailEnvio = true;
+            if (window.activeEmailFilter && window.activeEmailFilter !== 'todos' && !(window.ctwGdHistAtivo && window.ctwGdHistAtivo())) {
+                matchEmailEnvio = window.activeEmailFilter === 'sim' ? item.statusEnvio === true : item.statusEnvio !== true;
+            }
+
+            // Retorna apenas se TUDO for verdadeiro (Texto E Data E Perfil E E-mail)
+            return matchTexto && matchData && matchPerfil && matchEmailEnvio;
         });
 
         itensVisiveis = 50; // Reseta paginação ao filtrar
@@ -7963,9 +7999,13 @@ function loadBookipHistory() {
             const styleCard = `border-left: 6px solid ${corStatus}; background-color: ${fundoCard};`;
             
             // Botões
-            const classBtnEnvio = foiEnviado ? 'btn-dark' : 'btn-warning';
-            const iconBtnEnvio = foiEnviado ? 'bi-check-circle-fill text-success' : 'bi-envelope-at-fill';
-            const titleBtnEnvio = foiEnviado ? 'Já enviado por e-mail (reenviar)' : 'Enviar por Gmail';
+            const classBtnEnvio = foiEnviado ? 'ctw-env-ok' : 'btn-warning';
+            const iconBtnEnvio = 'bi-envelope-at-fill';
+            const titleBtnEnvio = foiEnviado ? 'Já enviado por e-mail (toque para enviar de novo)' : 'Enviar por Gmail';
+            // Etiqueta na linha do cartão: dá para ver sem abrir se já foi enviado, quando e quantas vezes
+            const chipEnvio = foiEnviado
+                ? `<span class="ctw-env-chip ok">✓ Enviado ${escapeHtml(ctwEnvioTexto(item))}</span>`
+                : `<span class="ctw-env-chip no">Não enviado</span>`;
 
                                     return `
             <div class="accordion-item" style="${styleCard}">
@@ -7977,6 +8017,7 @@ function loadBookipHistory() {
                         <div class="d-flex flex-column text-truncate" style="max-width: 160px;">
                             <span class="fw-bold">${item.nome}</span>
                             <span style="font-size: 0.75rem; color: ${textoCor}; font-weight: 700; text-transform: uppercase;">${textoStatus}</span>
+                            ${chipEnvio}
                         </div>
 
                         <div class="text-end ms-auto" style="min-width: 80px;">
@@ -10285,7 +10326,9 @@ async function gerarPdfDoHistorico(dados, botao, modo, preparado, origem) {
         if (modo === 'gmail') {
             botao.innerHTML = textoOriginal;
             botao.disabled = false;
-            if (await ctwEnviarEmailDireto({ dados, pdfBlob, nomeFinalArquivo, assunto: tituloEnvio, texto: montarTextoEnvio(), botao, origem })) return;
+            const direto = await ctwEnviarEmailDireto({ dados, pdfBlob, nomeFinalArquivo, assunto: tituloEnvio, texto: montarTextoEnvio(), botao, origem });
+            if (direto === 'enviado') return { enviado: true, para: String(dados.email || '').trim(), texto: ctwEnvioTexto(dados) };   // a tela de salvar vira "Enviado!"
+            if (direto) return;
         }
 
         // APK, Gmail ou Compartilhar: um toque só (no APK o Android não exige o segundo toque que o Chrome exige)
@@ -10304,14 +10347,9 @@ async function gerarPdfDoHistorico(dados, botao, modo, preparado, origem) {
                     await navigator.share({ files: [file], title: tituloEnvio, text: montarTextoEnvio() });
                 }
                 if ((dados.id || dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') {
-                    marcarComoEnviadoNoBanco(dados.id || dados.docId, ctwColDoDoc(dados));
+                    marcarComoEnviadoNoBanco(dados.id || dados.docId, ctwColDoDoc(dados), dados);
                 }
-                const btnMail = (origem || botao).closest('.accordion-body')?.querySelector('.email-history-btn');
-                if (btnMail) {
-                    btnMail.classList.remove('btn-warning'); btnMail.classList.add('btn-dark');
-                    btnMail.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
-                    btnMail.title = 'Já enviado (reenviar)';
-                }
+                ctwBtnEmailEnviado((origem || botao).closest('.accordion-body')?.querySelector('.email-history-btn'));
             } catch (errEnvio) {
                 if (errEnvio && errEnvio.name !== 'AbortError' && typeof showCustomModal === 'function') {
                     showCustomModal({ message: 'Não consegui abrir o envio: ' + (errEnvio.message || errEnvio) });
@@ -10353,7 +10391,7 @@ async function gerarPdfDoHistorico(dados, botao, modo, preparado, origem) {
                     if(card) { card.style.borderLeft = "6px solid #28a745"; card.style.backgroundColor = "rgba(var(--primary-color-rgb), 0.08)"; }
                     
                     if((dados.id || dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') {
-                        marcarComoEnviadoNoBanco(dados.id || dados.docId, ctwColDoDoc(dados));
+                        marcarComoEnviadoNoBanco(dados.id || dados.docId, ctwColDoDoc(dados), dados);
                     }
                 } catch (err) {
                     console.log("Compartilhamento cancelado", err);
@@ -11130,7 +11168,7 @@ let _ctwEmailEnviando = false;   // trava contra duplo toque (um e-mail por vez,
 async function ctwEnviarEmailDireto(args) {
     if (_ctwEmailEnviando) return true;
     _ctwEmailEnviando = true;
-    try { return await ctwEnviarEmailDiretoPasso(args); } finally { _ctwEmailEnviando = false; }
+    try { return await ctwEnviarEmailDiretoPasso(args); } finally { _ctwEmailEnviando = false; }   // 'enviado' | true (cancelou / sem resposta) | false (segue para o Gmail)
 }
 async function ctwEnviarEmailDiretoPasso({ dados, pdfBlob, nomeFinalArquivo, assunto, texto, botao, origem }) {
     let token = '';
@@ -11157,7 +11195,9 @@ async function ctwEnviarEmailDiretoPasso({ dados, pdfBlob, nomeFinalArquivo, ass
     const textoBotao = botao.innerHTML;
     botao.disabled = true;
     botao.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Enviando...';
-    const restaurar = () => { botao.innerHTML = textoBotao; botao.disabled = false; };
+    const fecharSheet = () => botao.closest('#ctwSpActions')?.querySelector('#ctwSpBtnCancel');   // na tela de salvar, o Fechar fica apagado enquanto envia
+    fecharSheet()?.classList.add('apagado');
+    const restaurar = () => { botao.innerHTML = textoBotao; botao.disabled = false; fecharSheet()?.classList.remove('apagado'); };
     try {
         const pdfBase64 = await ctwBlobParaBase64(pdfBlob);
         let r;
@@ -11181,18 +11221,14 @@ async function ctwEnviarEmailDiretoPasso({ dados, pdfBlob, nomeFinalArquivo, ass
         try { j = await r.json(); } catch (e) {}
         if (r.ok && j && j.ok === true) {
             if ((dados.id || dados.docId) && typeof marcarComoEnviadoNoBanco === 'function') {
-                marcarComoEnviadoNoBanco(dados.id || dados.docId, ctwColDoDoc(dados));
+                marcarComoEnviadoNoBanco(dados.id || dados.docId, ctwColDoDoc(dados), dados, { enviadoPara: para });
+            } else {
+                dados.statusEnvio = true; dados.dataEnvio = new Date().toISOString(); dados.enviosQtd = (Number(dados.enviosQtd) || 0) + 1;
             }
-            dados.statusEnvio = true; dados.dataEnvio = new Date().toISOString();
-            const btnMail = (origem || botao).closest('.accordion-body')?.querySelector('.email-history-btn');
-            if (btnMail) {
-                btnMail.classList.remove('btn-warning'); btnMail.classList.add('btn-dark');
-                btnMail.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
-                btnMail.title = 'Já enviado (reenviar)';
-            }
+            ctwBtnEmailEnviado((origem || botao).closest('.accordion-body')?.querySelector('.email-history-btn'));
             restaurar();
-            showCustomModal({ message: 'E-mail enviado para ' + para + ' ✅' });
-            return true;
+            if (!botao.closest('#ctwSpActions')) showCustomModal({ message: 'E-mail enviado para ' + para + ' ✅' });   // na tela de salvar quem avisa é a própria tela ("Enviado!")
+            return 'enviado';
         }
         restaurar();
         const motivo = (j && (j.erro || j.detalhe)) ? String(j.erro === 'smtp' ? j.detalhe : j.erro) : ('HTTP ' + r.status);
@@ -11211,27 +11247,58 @@ async function ctwEnviarEmailDiretoPasso({ dados, pdfBlob, nomeFinalArquivo, ass
 // ============================================================
 // CORREÇÃO: SALVAR NO REALTIME DATABASE (Compatível com seu histórico)
 // ============================================================
-async function marcarComoEnviadoNoBanco(idDocumento, colecao = 'bookips') {
+// dados (opcional): o documento aberto na tela; ele ganha na hora o novo status e a contagem de envios (a tela mostra sem esperar o Firebase).
+// extra (opcional): campos a mais para gravar junto (ex.: { enviadoPara }).
+async function marcarComoEnviadoNoBanco(idDocumento, colecao = 'bookips', dados = null, extra = null) {
     if (!idDocumento) return;
 
+    const agora = new Date().toISOString();
+    // Documento que já tinha sido enviado antes desta contagem existir vale 1 envio
+    const vezes = (Number(dados && dados.enviosQtd) || (dados && dados.statusEnvio === true ? 1 : 0)) + 1;
+    if (dados) { dados.statusEnvio = true; dados.dataEnvio = agora; dados.enviosQtd = vezes; }
+
+    // 1. Cria a referência para o item específico dentro da pasta 'bookips'
+    // ATENÇÃO: O 'db' aqui deve ser o mesmo objeto que você usa no loadBookipHistory
+    const itemRef = ref(db, `${colecao}/${idDocumento}`);
     try {
-        // 1. Cria a referência para o item específico dentro da pasta 'bookips'
-        // ATENÇÃO: O 'db' aqui deve ser o mesmo objeto que você usa no loadBookipHistory
-        // Se der erro de 'ref is not defined', certifique-se que importou { ref, update } do firebase
-        const itemRef = ref(db, `${colecao}/${idDocumento}`);
-        
-        // 2. Atualiza apenas o status
-        await update(itemRef, {
-            statusEnvio: true,
-            dataEnvio: new Date().toISOString()
-        });
-        
+        // 2. Atualiza o status, a data e a contagem de envios
+        await update(itemRef, Object.assign({ statusEnvio: true, dataEnvio: agora, enviosQtd: vezes }, extra || {}));
         console.log("✅ (Realtime DB) Status salvo com sucesso!");
     } catch (error) {
-        console.error("Erro ao atualizar no Realtime DB:", error);
-        // Tenta mostrar o erro na tela pra ajudar a debugar
-        alert("Erro ao salvar status: " + error.message);
+        console.error("Erro ao atualizar no Realtime DB (completo):", error);
+        try {
+            // se as regras do banco não aceitarem os campos novos, grava só o status de sempre
+            await update(itemRef, { statusEnvio: true, dataEnvio: agora });
+        } catch (error2) {
+            console.error("Erro ao atualizar no Realtime DB:", error2);
+            alert("Erro ao salvar status: " + error2.message);
+        }
     }
+}
+
+// Texto curto do último envio: "hoje 11:32 · 2x", "18/11" (a contagem só aparece a partir do 2º envio)
+function ctwEnvioTexto(item) {
+    let quando = '';
+    try {
+        if (item && item.dataEnvio) {
+            const d = new Date(item.dataEnvio);
+            if (!isNaN(d)) {
+                quando = d.toDateString() === new Date().toDateString()
+                    ? 'hoje ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                    : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+            }
+        }
+    } catch (e) {}
+    const n = Number(item && item.enviosQtd) || 0;
+    return (quando || 'já enviado') + (n > 1 ? ' · ' + n + 'x' : '');
+}
+
+// Botão de e-mail do Histórico no estado "já enviado" (verde cheio)
+function ctwBtnEmailEnviado(btn) {
+    if (!btn) return;
+    btn.classList.remove('btn-warning', 'btn-dark'); btn.classList.add('ctw-env-ok');
+    btn.innerHTML = '<i class="bi bi-envelope-at-fill"></i>';
+    btn.title = 'Já enviado por e-mail (toque para enviar de novo)';
 }
 
 // ============================================================
@@ -11785,6 +11852,17 @@ document.addEventListener('click', function(e) {
         console.log("Lixeira de impressão esvaziada!");
     }
 });
+// Filtro do histórico por e-mail: 'todos' | 'nao' (não enviados) | 'sim' (enviados)
+window.filtrarHistoricoPorEmail = function(valor, btn) {
+    window.activeEmailFilter = (valor === 'nao' || valor === 'sim') ? valor : 'todos';
+    document.querySelectorAll('.filter-email-btn').forEach(b => {
+        b.classList.remove('btn-light', 'active', 'fw-bold');
+        b.classList.add('btn-outline-light');
+    });
+    if (btn) { btn.classList.remove('btn-outline-light'); btn.classList.add('btn-light', 'active', 'fw-bold'); }
+    document.getElementById('bookipHistorySearch')?.dispatchEvent(new Event('input'));   // refaz a lista com o filtro novo
+};
+
 // ============================================================
 // 🔍 FUNÇÃO DE CLIQUE NO FILTRO (Adicione ao final do app.js)
 // ============================================================
