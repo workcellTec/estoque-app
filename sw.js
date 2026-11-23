@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-364'; // Tela Enviado! depois do e-mail direto (selo, etiqueta, botoes) + historico com etiqueta Enviado/Nao enviado, contagem e filtro
+const CACHE = 'ctw-365'; // CreditoScan: leitor universal de extrato (qualquer banco: codigo le e prova pela cadeia de saldos, IA so classifica; se nao fechar, segue o leitor de antes)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
