@@ -1023,14 +1023,14 @@
     function unIso(d) { return d ? nuIsoData(d.a, d.m, d.d) : ''; }
     // Linha de saldo (nao e lancamento). "TRANSF SALDO C/SAL" e lancamento: so vale o inicio da frase ou as expressoes de saldo conhecidas.
     var UN_RE_SALDO = /^(?:\([+=\-]\) ?)?SALDO (?:DO DIA|FINAL|INICIAL|ANTERIOR|EM CONTA|DE CONTA|DISPONIVEL|BLOQUEADO|AO FINAL|PARCIAL|TOTAL|ATUAL|DA CONTA|CONTABIL|EM \d)|SALDO (?:AO FINAL DO DIA|DO DIA)\b/;
-    var UN_RE_RESUMO = /^(?:\([+=\-]\) ?)?(?:TOTAL |LIMITE |RESUMO\b|JUROS (?:VENCIDOS|REMANESC|PREVISTOS)|TARIFAS (?:VENCIDAS|REMANESC)|PREVISAO|CHEQUE ESPECIAL|ENCARGOS|VENCIMENTO |TAXA |CUSTO EFETIVO|IOF PREV|SALDO BLOQUEADO)/;
+    var UN_RE_RESUMO = /^(?:\([+=\-]\) ?)?(?:(?:ENTRADAS?|SAIDAS?|CREDITOS|DEBITOS) ?:|TOTAL |LIMITE |RESUMO\b|JUROS (?:VENCIDOS|REMANESC|PREVISTOS)|TARIFAS (?:VENCIDAS|REMANESC)|PREVISAO|CHEQUE ESPECIAL|ENCARGOS|VENCIMENTO |TAXA |CUSTO EFETIVO|IOF PREV|SALDO BLOQUEADO)/;
     var UN_RE_CAB = /^DATA\b.*\b(?:DESCRICAO|HISTORICO|LANCAMENTOS?|MOVIMENTA\w*)\b.*\bSALDO\b/;   // cabecalho da tabela de lancamentos com coluna de saldo (reabre a leitura depois de um saldo final; tabelas de cartao/comprovantes nao reabrem)
     var UN_RE_ANO = /\b(?:JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)[A-Z]*\/(20\d\d)\b/;
     var UN_RE_DATA_PREFIXO = /\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{1,2} de [A-Za-zÀ-ÿ]+(?: de)? \d{4}|^\d{1,2}:\d{2}(?::\d{2})?|^\d{1,2}\/\d{1,2}(?![\d\/])/g;
 
     // Prova na ordem do tempo: entre dois saldos conhecidos (saldo de uma linha, saldo anterior, saldo final, saldo do dia),
     // a soma das linhas tem que ser a diferenca dos saldos. Devolve { ok, ... } ou { erro }.
-    function unProvar(rs, anc) {
+    function unProvar(rs, anc, rev) {
         var n = rs.length, i, q, viol = 0, dm = [], maxD = '', desord = false;
         for (q = 0; q < n; q++) {   // datas na ordem do tempo; alguns bancos (Santander) datam compras de debito uns dias fora do lugar: ai so valem os saldos de linha, nao os "saldo em dd/mm"
             var dq = unIso(rs[q].data);
@@ -1045,6 +1045,7 @@
             var pos = -1;
             if (a.tipo === 'abertura') pos = 0;
             else if (a.tipo === 'fechamento') pos = n;
+            else if (a.tipo === 'linha') pos = Math.max(0, Math.min(n, rev ? n - a.idx : a.idx));   // saldo impresso entre dois lancamentos (Itau: "saldo do dia" antes dos lancamentos do dia)
             else if (a.data) { var d = unIso(a.data); pos = d < ini ? 0 : d >= fim ? n : desord ? -1 : dm.filter(function (x) { return x <= d; }).length; }
             if (pos >= 0) A.push({ pos: pos, bal: a.bal });
         });
@@ -1100,14 +1101,16 @@
         anoRef = anosMes || +Object.keys(anos).sort(function (x, y) { return anos[y] - anos[x]; })[0] || 0;
         var semAno = anoRef && cheias < 3 ? anoRef : 0;   // so aceita "dd/mm" quando o extrato quase nao tem data completa (evita confundir "4/12" de pagina)
         // ── 1) lancamentos e linhas de saldo ──
-        var secs = [], sec = { recs: [], anc: [], fechada: false }, pend = [], dataAtual = null, ultimo = null;
+        var secs = [], sec = { recs: [], anc: [], fechada: false }, pend = [], dataAtual = null, ultimo = null, rotulo = '', fecha = [];
         secs.push(sec);
         for (var i = 0; i < linhas.length; i++) {
             var ln = linhas[i], din = unAchaDinheiro(ln), dts = unAchaDatas(ln, semAno);
             var inicia = (dts.length > 0 && dts[0].ini <= 12 && /^[A-Za-zÀ-ÿ\-]{0,14}[, ]*$/.test(ln.slice(0, dts[0].ini))) || /^\d{1,2}:\d{2}(?::\d{2})?\b/.test(ln);
             var resto = ln;
             for (var k = din.length - 1; k >= 0; k--) resto = resto.slice(0, din[k].ini) + ' ' + resto.slice(din[k].fim);
-            if (dts.length && inicia) dataAtual = dts[0];
+            var cabPeriodo = dts.length >= 2 && !din.length && /PERIODO|\bAL\b|\bATE\b|\bA\b/.test(nuSemAcento(ln));   // "De 01-09-2026 al 30-09-2026": periodo do cabecalho, nao abre lancamento
+            if (dts.length && inicia && !cabPeriodo) dataAtual = dts[0];
+            var rotAnt = rotulo; rotulo = '';
             var rs = resto.replace(/\s+/g, ' ').trim(), corpo = rs.replace(UN_RE_DATA_PREFIXO, ' ').replace(/\s+/g, ' ').trim();
             var U = nuSemAcento(rs).replace(/^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4} /, '').replace(/^\d{1,2}\/\d{1,2} /, '').replace(/^\d{1,2}:\d{2}(?::\d{2})? /, '');
             if (!din.length) {
@@ -1117,12 +1120,21 @@
                     if (pend.length && ultimo && ultimo.unica) ultimo.depois = pend.join(' ').slice(0, 120);
                     pend = [];
                     if (corpo.length > 2 && !UN_RE_SALDO.test(nuSemAcento(corpo)) && !UN_RE_RESUMO.test(nuSemAcento(corpo))) pend.push(corpo);
-                } else if (!UN_RE_SALDO.test(U) && !UN_RE_RESUMO.test(U)) pend.push(rs);
+                } else if (UN_RE_SALDO.test(U)) {   // "Saldo em conta" numa linha e o valor na seguinte
+                    if (U.length < 40) rotulo = /SALDO (?:ANTERIOR|INICIAL)/.test(U) ? 'abertura' : /SALDO (?:FINAL|ATUAL)/.test(U) ? 'fechamento' : 'linha';
+                } else if (!UN_RE_RESUMO.test(U)) pend.push(rs);
                 if (pend.length > 12) pend = pend.slice(-12);
                 continue;
             }
             // linha com valor: saldo (ancora), resumo ou lancamento
             if (sec.fechada) continue;   // tabelas depois do saldo final (resumo por periodo, comprovantes...) nao sao lancamentos
+            if (rotAnt && !dts.length && !rs) {   // valor da linha de saldo que veio so com o rotulo na linha de cima
+                var vb = din[din.length - 1], balR = (vb.s < 0 ? -1 : 1) * vb.v;
+                if (rotAnt === 'abertura') sec.anc.push({ tipo: 'abertura', data: null, bal: balR, soft: true });
+                else if (rotAnt === 'fechamento') fecha.push({ tipo: 'fechamento', data: null, bal: balR, soft: true });
+                else sec.anc.push({ tipo: 'linha', idx: sec.recs.length, bal: balR, soft: true });
+                pend = []; continue;
+            }
             if (UN_RE_SALDO.test(U) || /\bSALDO (?:DO DIA|AO FINAL DO DIA|FINAL DO DIA)\b/.test(U)) {
                 var tl = din[din.length - 1], tf = din[0];
                 var bal = (din.length >= 2 && tl.v === 0 && tf.v > 0) ? (tf.s < 0 ? -1 : 1) * tf.v : (tl.s < 0 ? -1 : 1) * tl.v;   // "SALDO ANTERIOR 4.659,16 C 0,00 C": o saldo e o primeiro
@@ -1130,13 +1142,19 @@
                 if (!dtA && emD && anoRef) dtA = { a: emD[3] ? (+emD[3] < 100 ? 2000 + +emD[3] : +emD[3]) : anoRef, m: +emD[2], d: +emD[1] };
                 var tipo = /SALDO (?:ANTERIOR|INICIAL)/.test(U) ? 'abertura' : /SALDO (?:FINAL|ATUAL)(?! DO DIA)/.test(U) && !dtA ? 'fechamento' : (dtA ? 'dia' : '');
                 if (tipo) {
-                    sec.anc.push({ tipo: tipo, data: dtA, bal: bal });
-                    var fimSecao = sec.recs.length > 0 && (tipo === 'fechamento' || (/SALDO (?:FINAL|ATUAL|EM \d)/.test(U) && !/DO DIA/.test(U) && dtA && unIso(dtA) >= unIso(sec.recs[sec.recs.length - 1].data)));
-                    if (fimSecao) sec.fechada = true;
+                    var a1 = { tipo: tipo, data: dtA, bal: bal }, ult = sec.recs.length ? sec.recs[sec.recs.length - 1] : null;
+                    var ehFim = tipo === 'fechamento' || (/SALDO (?:FINAL|ATUAL|EM \d)/.test(U) && !/DO DIA/.test(U) && dtA && ult && unIso(dtA) >= unIso(ult.data));
+                    if (ehFim && ult && (ult.saldo !== null ? Math.abs(ult.saldo - bal) <= 0.011 : true)) { sec.anc.push(a1); sec.fechada = true; }   // fecha com o ultimo lancamento: o que vem depois (resumos, comprovantes) nao e lancamento
+                    else if (tipo === 'fechamento') fecha.push(a1);   // saldo final impresso fora do lugar (topo/rodape da 1a pagina): vale no fim do extrato
+                    else sec.anc.push(a1);
                 }
                 pend = []; continue;
             }
             if (UN_RE_RESUMO.test(U)) { pend = []; continue; }
+            if (inicia && dts.length && !corpo && !pend.length && din.length === 1) {   // so data e valor: saldo do dia sem o rotulo (Itau)
+                sec.anc.push({ tipo: 'linha', idx: sec.recs.length, bal: (din[0].s < 0 ? -1 : 1) * din[0].v, soft: true });
+                continue;
+            }
             if (!dataAtual) { pend = []; continue; }   // valor antes de qualquer data (cabecalho/resumo)
             var unica = inicia;
             if (ultimo && ultimo.unica && pend.length) { ultimo.depois = pend.join(' ').slice(0, 120); pend = []; }
@@ -1148,6 +1166,7 @@
             sec.recs.push(rec); ultimo = rec; pend = [];
         }
         secs = secs.filter(function (z) { return z.recs.length || z.anc.length; });
+        if (secs.length) fecha.forEach(function (a) { secs[secs.length - 1].anc.push(a); });
         var total = 0; secs.forEach(function (z) { total += z.recs.length; });
         if (total < 5) return unNao('poucos lancamentos (' + total + ')');
         // ── 2) prova de cada secao (na ordem do tempo: tenta como esta e invertida) ──
@@ -1155,10 +1174,13 @@
         for (var zs = 0; zs < secs.length && !falha; zs++) {
             var zc = secs[zs], recs = zc.recs, nz = recs.length, prova = null, erros = [];
             if (!nz) continue;
-            [{ dir: 'asc', rs: recs.slice() }, { dir: 'desc', rs: recs.slice().reverse() }].forEach(function (t) {
-                if (prova) return;
-                var r = unProvar(t.rs, zc.anc);
-                if (r.ok) prova = { dir: t.dir, rs: t.rs, r: r }; else erros.push(t.dir + ': ' + r.erro);
+            var duras = zc.anc.filter(function (a) { return !a.soft; }), jogos = duras.length < zc.anc.length ? [zc.anc, duras] : [zc.anc];   // saldos "adivinhados" (rotulo solto, data+valor) valem primeiro; se estragarem a conta, tenta sem eles
+            jogos.forEach(function (av) {
+                [{ dir: 'asc', rs: recs.slice() }, { dir: 'desc', rs: recs.slice().reverse() }].forEach(function (t) {
+                    if (prova) return;
+                    var r = unProvar(t.rs, av, t.dir === 'desc');
+                    if (r.ok) prova = { dir: t.dir, rs: t.rs, r: r }; else erros.push(t.dir + ': ' + r.erro);
+                });
             });
             if (!prova) { falha = (secs.length > 1 ? 'secao ' + (zs + 1) + ' de ' + secs.length + ' (' + nz + ' linhas): ' : '') + erros.join(' | '); break; }
             if (prova.r.fora > Math.max(1, Math.floor(nz * 0.01))) { falha = 'linhas fora de qualquer trecho com saldo: ' + prova.r.fora + ' de ' + nz + ' (' + prova.dir + ')'; break; }
