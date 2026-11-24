@@ -4828,6 +4828,87 @@
     }
     function fmtNum(v) { return Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
+    // ── Catalogo: produto do CTW com acrescimo de 20% (so o valor com o acrescimo entra no calculo do boleto) ──
+    var ACRESCIMO_CATALOGO = 0.20;
+    // v + 20%, arredondado SEMPRE PARA CIMA ate o proximo final 9,90 (235 -> 239,90; 3.228 -> 3.229,90; 239,90 fica 239,90)
+    function precoComAcrescimo(v) {
+        var x = Math.round(Number(v) * (1 + ACRESCIMO_CATALOGO) * 100) / 100;
+        var n = Math.max(0, Math.ceil((x - 9.9) / 10 - 1e-9));
+        return Math.round((n * 10 + 9.9) * 100) / 100;
+    }
+    function semAcentoBusca(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+    // Busca nos produtos do CTW (window.products): todas as palavras digitadas precisam estar no nome. null = lista ainda nao carregou.
+    function buscarCatalogo(termo) {
+        var lista = window.products;
+        if (!Array.isArray(lista) || !lista.length) return null;
+        var ps = semAcentoBusca(termo).split(' ').filter(Boolean);
+        if (!ps.length) return [];
+        var sem = window.ctwSemEstoque;
+        var out = [];
+        lista.forEach(function (p) {
+            var valor = Number(p && p.valor);
+            if (!p || !p.id || !p.nome || !(valor > 0)) return;
+            var n = semAcentoBusca(p.nome);
+            for (var i = 0; i < ps.length; i++) if (n.indexOf(ps[i]) === -1) return;
+            out.push({ id: String(p.id), nome: String(p.nome), base: valor, preco: precoComAcrescimo(valor), sem: !!(sem && sem.has && sem.has(p.id)), pos: n.indexOf(ps[0]), tam: n.length });
+        });
+        out.sort(function (a, b) { return a.sem - b.sem || a.pos - b.pos || a.tam - b.tam || (a.nome < b.nome ? -1 : 1); });
+        return out.slice(0, 8);
+    }
+    var _catSug = [];   // ultimos resultados mostrados (o toque na linha busca aqui pelo id)
+    function renderSugestoes(termo) {
+        var box = el('cs_c_sug'); if (!box) return;
+        _catSug = [];
+        termo = String(termo || '').trim();
+        if (termo.length < 2) { box.innerHTML = ''; return; }
+        var r = buscarCatalogo(termo);
+        if (r === null) { box.innerHTML = '<div class="cs-sug-nota">Catálogo ainda não carregou. Digite o valor na mão.</div>'; return; }
+        if (!r.length) { box.innerHTML = '<div class="cs-sug-nota">Não achei no catálogo. Digite o valor para calcular um produto novo.</div>'; return; }
+        _catSug = r;
+        box.innerHTML = r.map(function (p) {
+            return '<button type="button" class="cs-sug-row' + (p.sem ? ' sem' : '') + '" data-act="cat-pick" data-id="' + esc(p.id) + '"' + (p.sem ? ' title="Sem estoque no último PDF"' : '') + '>' +
+                '<span>' + esc(p.nome) + '</span><b>' + R$(p.preco) + '</b></button>';
+        }).join('');
+    }
+    // Linha embaixo do valor: de onde veio o numero e o botao de somar/desfazer os 20%
+    function notaCatalogoHtml(c) {
+        var pct = Math.round(ACRESCIMO_CATALOGO * 100);
+        if (c && c.base > 0) {
+            var cru = Math.round(c.base * (1 + ACRESCIMO_CATALOGO) * 100) / 100;
+            return '<span>Base ' + R$(c.base) + ' + ' + pct + '% = ' + R$(cru) + ' → arredondado para ' + R$(c.sug) + '. Pode editar.</span> ' +
+                '<button type="button" class="cs-link" data-act="acr-toggle">Desfazer +' + pct + '%</button>';
+        }
+        return '<button type="button" class="cs-link" data-act="acr-toggle">Somar +' + pct + '% ao valor digitado</button>';
+    }
+    function pintarNotaCatalogo(c) { var n = el('cs_c_nota'); if (n) n.innerHTML = notaCatalogoHtml(c); }
+    // Toque num produto da busca: nome e valor (ja com 20%) vao para os campos
+    function escolherDoCatalogo(job, id) {
+        var p = null; _catSug.forEach(function (x) { if (x.id === id) p = x; });
+        if (!p || !job.calc) return;
+        var c = job.calc, ip = el('cs_c_prod'), iv = el('cs_c_val');
+        c.produto = p.nome; c.pickNome = p.nome; c.pid = p.id; c.base = p.base; c.sug = p.preco; c.valor = p.preco;
+        if (ip) ip.value = p.nome;
+        if (iv) iv.value = fmtNum(p.preco);
+        var box = el('cs_c_sug'); if (box) box.innerHTML = '';
+        _catSug = [];
+        pintarNotaCatalogo(c);
+        var erro = el('cs_c_erro'); if (erro) erro.textContent = '';
+    }
+    // Produto novo (fora do catalogo): o valor digitado vale como esta; o botao soma os 20% nele (ou desfaz)
+    function alternarAcrescimo(job) {
+        var c = job.calc, iv = el('cs_c_val'), erro = el('cs_c_erro'); if (!c || !iv) return;
+        if (c.base > 0) {   // desfaz: volta ao valor de antes dos 20%
+            iv.value = fmtNum(c.base); c.valor = c.base; c.base = 0; c.sug = 0; c.pid = '';
+        } else {
+            var v = numBR(iv.value);
+            if (!(v > 0)) { if (erro) erro.textContent = 'Digite o valor antes de somar os 20%.'; return; }
+            if (erro) erro.textContent = '';
+            c.base = v; c.sug = precoComAcrescimo(v); c.valor = c.sug; c.pid = '';
+            iv.value = fmtNum(c.sug);
+        }
+        pintarNotaCatalogo(c);
+    }
+
     function dataAnalise(ts) {
         var dt = new Date(ts || Date.now()), hoje = new Date();
         var hora = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -4944,8 +5025,8 @@
                 '<i class="bi bi-chevron-down cs-chev"></i></button>' +
                 '<div id="cs_calc" class="cs-calc' + (cc.aberto ? ' open' : '') + '">' +
                     '<div class="cs-card cs-calc-form">' +
-                        '<div class="cs-field"><label for="cs_c_prod">Produto <em>(opcional)</em></label><input id="cs_c_prod" class="cs-in" type="text" maxlength="80" placeholder="Ex: iPhone 13 128 GB" value="' + esc(cc.produto) + '" autocomplete="off"></div>' +
-                        '<div class="cs-field"><label for="cs_c_val">Valor do aparelho (R$)</label><input id="cs_c_val" class="cs-in" type="text" inputmode="decimal" placeholder="Ex: 2.000,00" value="' + (cc.valor > 0 ? fmtNum(cc.valor) : '') + '" autocomplete="off"></div>' +
+                        '<div class="cs-field"><label for="cs_c_prod">Produto <em>(busca no catálogo ou digite um novo)</em></label><input id="cs_c_prod" class="cs-in" type="text" maxlength="80" placeholder="Ex: iPhone 13 128 GB" value="' + esc(cc.produto) + '" autocomplete="off"><div id="cs_c_sug" class="cs-sug"></div></div>' +
+                        '<div class="cs-field"><label for="cs_c_val">Valor do aparelho (R$)</label><input id="cs_c_val" class="cs-in" type="text" inputmode="decimal" placeholder="Ex: 2.000,00" value="' + (cc.valor > 0 ? fmtNum(cc.valor) : '') + '" autocomplete="off"><div id="cs_c_nota" class="cs-det">' + notaCatalogoHtml(cc) + '</div></div>' +
                         '<div class="cs-err" id="cs_c_erro"></div>' +
                         '<button type="button" class="cs-btn cs-btn-pri" data-act="calc-go"><i class="bi bi-calculator"></i> Calcular</button>' +
                     '</div>' +
@@ -5072,6 +5153,9 @@
         if (!(val > 0)) { if (erroEl) erroEl.textContent = 'Informe o valor do aparelho.'; return; }
         if (erroEl) erroEl.textContent = '';
         c.produto = prod; c.valor = val;
+        // o valor so e "do catalogo" enquanto continua o que o catalogo + 20% deu; mexeu no valor ou no nome, deixa de ser
+        if (c.base > 0 && Math.abs(val - c.sug) > 0.005) { c.base = 0; c.sug = 0; c.pid = ''; pintarNotaCatalogo(c); }
+        else if (c.pid && prod !== c.pickNome) c.pid = '';
         c.en = null; c.np = PARCELAS_PADRAO; c.tx = TAXA_PADRAO;
         d._produto = prod;
         reavaliarDecisao(d, val);
@@ -5087,6 +5171,7 @@
         var vp = d.downgrade ? null : price(c.valor, enMin, PARCELAS_PADRAO, TAXA_PADRAO);
         var patch = {
             produto: c.produto || '', valorProduto: c.valor,
+            valorBase: c.base > 0 ? c.base : null, acrescimoPct: c.base > 0 ? Math.round(ACRESCIMO_CATALOGO * 100) : null, produtoId: c.pid || null,
             decisao: d.reprovado ? 'REPROVADO' : d.downgrade ? 'DOWNGRADE' : d.entradaAlta ? 'ENTRADA_ALTA' : 'APROVADO',
             risco: d.risco, entrada: d.downgrade ? null : enMin,
             parcelas: d.downgrade ? null : PARCELAS_PADRAO, vparcela: vp,
@@ -5190,6 +5275,8 @@
         else if (a === 'ap-wpp') apAbrirWpp(job);
         else if (a === 'ap-cfg') abrirConfig('ap');
         else if (a === 'calc-go') calcular();
+        else if (a === 'cat-pick') escolherDoCatalogo(job, b.getAttribute('data-id'));
+        else if (a === 'acr-toggle') alternarAcrescimo(job);
         else if (a === 'calc-toggle') {
             job.calc.aberto = !job.calc.aberto;
             b.classList.toggle('open', job.calc.aberto);
@@ -5399,6 +5486,11 @@
         '.cs-detalhe-in h4{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--primary-color);margin:12px 0 4px;text-align:left}',
         '.cs-detalhe-in p{margin:0}.cs-detalhe-in p.mono{font-size:12px;color:var(--text-secondary)}',
         /* ── calcular aparelho ── */
+        '.cs-sug{display:flex;flex-direction:column;border-radius:12px;overflow:hidden}.cs-sug:empty{display:none}.cs-sug:not(:empty){border:1px solid var(--input-border);background:var(--card-bg)}',
+        '.cs-sug-row{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:44px;padding:8px 12px;border:0;border-bottom:1px solid var(--input-border);background:transparent;color:var(--text-color);font:500 14px "Poppins",sans-serif;text-align:left;cursor:pointer}',
+        '.cs-sug-row:last-child{border-bottom:0}.cs-sug-row span{min-width:0}.cs-sug-row b{color:var(--primary-color);font-weight:600;white-space:nowrap}',
+        '.cs-sug-row.sem span,.cs-sug-row.sem b{color:var(--cs-bad)}',
+        '.cs-sug-nota{padding:10px 12px;font-size:12px;color:var(--text-secondary)}',
         '.cs-calc-toggle{min-height:72px;border-radius:18px;border:none;background:var(--primary-color);color:#0d1f15;padding:12px 16px;display:flex;align-items:center;gap:12px;text-align:left;font-family:"Poppins",sans-serif;cursor:pointer;width:100%}',
         '.cs-calc-toggle>i:first-child{font-size:1.6rem}',
         '.cs-calc-toggle span{flex:1;min-width:0;display:flex;flex-direction:column}',
@@ -5685,10 +5777,11 @@
         var rb=el('cs_res_body');
         if(rb){
             rb.addEventListener('click',acaoResultado);
-            rb.addEventListener('input',function(e){if(e.target.id==='cs_en')atualizarSim(false);else if(e.target.id==='cs_tel_res')mascararTelefone(e.target,'cs_tel_res_hint');});
+            rb.addEventListener('input',function(e){if(e.target.id==='cs_en')atualizarSim(false);else if(e.target.id==='cs_tel_res')mascararTelefone(e.target,'cs_tel_res_hint');else if(e.target.id==='cs_c_prod')renderSugestoes(e.target.value);});
+            rb.addEventListener('focusin',function(e){if(e.target.id==='cs_c_val'){var sg=el('cs_c_sug');if(sg)sg.innerHTML='';_catSug=[];}});
             rb.addEventListener('change',function(e){if(e.target.id==='cs_tel_res')salvarTelefoneResultado(e.target.value);else if(e.target.id==='cs_en'||e.target.id==='cs_np'||e.target.id==='cs_tx')atualizarSim(true);});
             rb.addEventListener('focusout',function(e){if(e.target.id==='cs_en'||e.target.id==='cs_tx')atualizarSim(true);});
-            rb.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.target.id==='cs_c_val'||e.target.id==='cs_c_prod')){e.preventDefault();e.target.blur();calcular();}});
+            rb.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.target.id==='cs_c_val'||e.target.id==='cs_c_prod')){e.preventDefault();if(e.target.id==='cs_c_prod'&&_catSug.length){escolherDoCatalogo(_view,_catSug[0].id);var v=el('cs_c_val');if(v)v.focus();return;}e.target.blur();calcular();}});
         }
         // Config
         on('cs_cfg_open','click',abrirConfig);
