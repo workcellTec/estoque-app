@@ -1059,29 +1059,85 @@ const MOTOR = (function (R$) {
     var SINAIS_COMPROMISSO = [
         { k: 'fatura de cartão', re: /fatura/g },
         { k: 'parcela', re: /parcel|presta[cç][aã]o/g },
-        { k: 'financiamento', re: /financ/g },
+        { k: 'financiamento', re: /financiamento/g },
         { k: 'empréstimo', re: /empr[eé]stimo|consignado/g },
         { k: 'consórcio', re: /cons[oó]rcio/g },
         { k: 'aluguel', re: /alugu[eé]l|imobili[aá]ri/g },
         { k: 'boleto', re: /boleto/g },
         { k: 'mensalidade', re: /mensalidade|faculdade|col[eé]gio/g },
-        { k: 'seguro/plano', re: /seguro|plano de sa[uú]de|unimed|\bamil\b/g },
+        { k: 'seguro/plano', re: /\bseguro\b|plano de sa[uú]de|unimed|\bamil\b/g },
         { k: 'carnê/crediário', re: /carn[eê]|credi[aá]rio/g }
     ];
     // Frases fixas dos extratos (propaganda, tabela de tarifas, rodape) que repetem as palavras acima sem ser compromisso
     var SINAIS_PROPAGANDA = /parcelamento em at[eé] \d+x|valor da mensalidade|mensalidade dos pacotes|mais seguro online|[íi]ndices econ[oô]micos ?\/ ?financeiros/g;
+    // Nome de banco/instituicao que contem as palavras acima (PagSeguro, CredSeguro, "Nu Financeira ... financiamento e investimento", "servicos financeiros") nao e compromisso
+    var SINAIS_INSTITUICAO = /pag ?seguro|cred ?seguro|nu financeira|financeira s\.?a|sociedade de cr[eé]dito[^\n]{0,60}|servi[cç]os? financeiros?|solu[cç][oõ]es financeiras?/g;
     var SINAIS_MINIMO = 3;   // ocorrencias no texto para a IA ter que justificar "nenhum compromisso"
 
     function detectarSinaisCompromisso(texto) {
         var t = String(texto || '').toLowerCase();
         if (!t) return null;
-        t = t.replace(SINAIS_PROPAGANDA, ' ');
+        t = t.replace(SINAIS_PROPAGANDA, ' ').replace(SINAIS_INSTITUICAO, ' ');
         var termos = [], total = 0;
         SINAIS_COMPROMISSO.forEach(function (s) {
             var m = t.match(s.re);
             if (m && m.length) { termos.push(s.k + ' (' + m.length + ')'); total += m.length; }
         });
         return total ? { total: total, termos: termos } : null;
+    }
+
+    // Pagamentos que se repetem em 2+ meses para o mesmo favorecido (boleto, fatura, parcela, financiamento, seguro, aluguel...), lidos do TEXTO pelo codigo.
+    // Serve quando a IA nao lista compromisso nenhum: o sistema nao reprova por "palavra no extrato", ele mostra o que achou. Devolve [{ desc, tipo, valor, meses }] (maior valor primeiro).
+    var RECOR_TERMO = /boleto|fatura|parcel|presta[cç][aã]o|financiamento|empr[eé]stimo|consignado|cons[oó]rcio|alugu[eé]l|mensalidade|\bseguro\b|plano de sa[uú]de|carn[eê]|credi[aá]rio/;
+    var RECOR_IGNORA = /receb|estorn|devol|reembols|cashback|rendimento|cr[eé]dito em conta/;
+    var RECOR_VALOR = /(\d{1,3}(?:\.\d{3})*,\d{2})\s*$/;
+    // extrato com coluna de saldo: a linha termina em "valor saldo" (o valor e o primeiro dos dois)
+    var RECOR_VALOR_SALDO = /(\d{1,3}(?:\.\d{3})*,\d{2})\s+(?:R\$\s*)?-?\d{1,3}(?:\.\d{3})*,\d{2}\s*$/;
+    var RECOR_MESES = { JAN: 1, FEV: 2, MAR: 3, ABR: 4, MAI: 5, JUN: 6, JUL: 7, AGO: 8, SET: 9, OUT: 10, NOV: 11, DEZ: 12 };
+    var RECOR_VAZIAS = { DE: 1, DA: 1, DO: 1, DAS: 1, DOS: 1, E: 1, EM: 1, PAGAMENTO: 1, PAGTO: 1, PAG: 1, EFETUADO: 1, EFETUADA: 1, BOLETO: 1, FATURA: 1, PARCELA: 1, PIX: 1, TRANSFERENCIA: 1, ENVIADA: 1, ENVIADO: 1, COM: 1, PARA: 1, CARTAO: 1, DEBITO: 1, LTDA: 1, SA: 1, ME: 1, EPP: 1 };
+    function dataDaLinha(ln) {
+        var m = /^\s*(\d{1,2}) ([A-Za-z]{3}) (\d{4})\b/.exec(ln);
+        if (m && RECOR_MESES[m[2].toUpperCase()]) return m[3] + '-' + (RECOR_MESES[m[2].toUpperCase()] < 10 ? '0' : '') + RECOR_MESES[m[2].toUpperCase()];
+        m = /^\s*(\d{2})[\/-](\d{2})[\/-](\d{4})\s*$/.exec(ln) || /^\s*(\d{2})\/(\d{2})\/(\d{4})\b/.exec(ln);
+        if (m && +m[2] >= 1 && +m[2] <= 12) return m[3] + '-' + m[2];
+        return null;
+    }
+    function detectarRecorrencias(texto) {
+        var linhas = String(texto || '').replace(SINAIS_PROPAGANDA, ' ').split('\n'), mes = null, grupos = {};
+        for (var i = 0; i < linhas.length; i++) {
+            var ln = linhas[i], dm = dataDaLinha(ln);
+            if (dm) mes = dm;
+            var baixo = ln.toLowerCase().replace(SINAIS_INSTITUICAO, ' ');
+            if (!mes || !RECOR_TERMO.test(baixo) || RECOR_IGNORA.test(baixo)) continue;
+            var corpo = ln.replace(/\s+/g, ' ').trim(), mv = RECOR_VALOR_SALDO.exec(corpo) || RECOR_VALOR.exec(corpo);
+            if (!mv) {   // o valor pode vir na linha de baixo (extratos que quebram a linha)
+                for (var j = i + 1; j <= i + 2 && j < linhas.length && !mv; j++) {
+                    var nx = linhas[j].replace(/\s+/g, ' ').trim();
+                    if (dataDaLinha(nx) || RECOR_TERMO.test(nx.toLowerCase())) break;
+                    mv = RECOR_VALOR.exec(nx);
+                    if (!mv && nx) corpo += ' ' + nx;
+                }
+                if (!mv) continue;
+            }
+            var valor = parseFloat(mv[1].replace(/\./g, '').replace(',', '.'));
+            if (!(valor > 0)) continue;
+            var nome = corpo.replace(RECOR_VALOR_SALDO, ' ').replace(RECOR_VALOR, ' ').replace(/[+\-−]\s*$/, '');
+            var toks = nome.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).filter(function (t) { return t.length >= 2 && /[A-Z]/.test(t) && !RECOR_VAZIAS[t]; });
+            if (!toks.length) continue;
+            var chave = toks.slice(0, 2).join(' ');
+            var g = grupos[chave] || (grupos[chave] = { chave: chave, meses: {}, valores: [], desc: '' });
+            g.meses[mes] = true; g.valores.push(valor);
+            if (!g.desc) g.desc = toks.slice(0, 4).join(' ').toLowerCase().replace(/(^| )([a-z])/g, function (x, a1, a2) { return a1 + a2.toUpperCase(); });
+        }
+        var out = [];
+        Object.keys(grupos).forEach(function (k) {
+            var g = grupos[k], nm = Object.keys(g.meses).length;
+            if (nm < 2) return;
+            var v = g.valores.slice().sort(function (a, b) { return a - b; }), med = v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2;
+            out.push({ desc: 'Pago todo mês: ' + g.desc, tipo: 'recorrente', valor: arred2(med), meses: nm });
+        });
+        out.sort(function (a, b) { return b.valor - a.valor; });
+        return out.slice(0, 8);
     }
 
     // Lista de compromissos da IA -> itens limpos e soma. Formato antigo: so o total em compromissosMensais.
@@ -1120,6 +1176,9 @@ const MOTOR = (function (R$) {
     // Lista vazia com varios sinais no extrato = duvida: o item nao pontua e a tela avisa.
     function calcularComprometimento(d) {
         var l = listarCompromissos(d.rawJson);
+        if ((!l || l.total === 0) && d.compromissosCodigo && d.compromissosCodigo.length) {   // a IA nao listou, mas o codigo achou pagamentos que se repetem no extrato
+            l = { fonte: 'codigo', itens: d.compromissosCodigo.map(function (i) { return { desc: i.desc, tipo: i.tipo, valor: i.valor, meses: i.meses }; }), total: arred2(d.compromissosCodigo.reduce(function (a, i) { return a + i.valor; }, 0)) };
+        }
         d.compromissos = l ? l.total : null;
         d.compromissosLista = l ? l.itens : [];
         d.compromissoDuvida = !!(l && l.total === 0 && d.sinaisCompromisso && d.sinaisCompromisso.total >= SINAIS_MINIMO);
