@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-368'; // CreditoScan: compromissos lidos do extrato pelo codigo (pagamentos que se repetem); nome de banco (PagSeguro, Nu Financeira) nao conta mais como sinal
+const CACHE = 'ctw-369'; // CreditoScan: leitor do Nubank nao perde mais o extrato inteiro quando o rodape nao tem a linha "Extrato gerado" (Douglas, nov/26)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

@@ -484,7 +484,7 @@ const MOTOR = (function (R$) {
         }
         for (var i = ini + 2; i < linhas.length; i++) {
             var ln = linhas[i];
-            if (/^(===|---)/.test(ln)) continue;
+            if (/^(===|---)/.test(ln)) { pulando = false; continue; }   // fim da pagina: o rodape acaba junto (extrato sem a linha "Extrato gerado" nao pode engolir o resto)
             if (/^(Tem alguma d[uú]vida|Asseguramos a autenticidade)/.test(ln)) { pulando = true; continue; }
             if (pulando) { if (/^Extrato gerado/.test(ln)) pulando = false; continue; }
             if (/^\d+ de \d+$/.test(ln)) continue;   // "5 de 16" (numero da pagina, quebrado em outra linha)
