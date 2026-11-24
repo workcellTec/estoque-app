@@ -5195,6 +5195,13 @@
             '<div class="cs-hero-info"><div class="cs-hero-nome">' + esc(d.nomeCompleto || nomeDoJob(job)) + '</div>' +
             (!reprov && d.titConferir ? '<span class="cs-pill warn"><i class="bi bi-exclamation-triangle-fill"></i>Conferir titularidade antes de vender</span>' : '<span class="cs-pill ' + c + '"><i class="bi ' + (reprov ? 'bi-x-lg' : 'bi-check-lg') + '"></i>' + (reprov ? (d.confBaixa ? 'Reprovado — confiança baixa' : 'Reprovado — não vender') : 'Aprovado — pode vender') + '</span>') + '</div></div>';
 
+        // Parcela confortavel (estimativa sem aparelho): logo abaixo da nota, e a primeira coisa que o vendedor precisa
+        if (!reprov && d.rendaEstimada > 0) {
+            h += '<div class="cs-card cs-conf"><div><span class="cs-lab">Parcela confortável (estimativa)</span>' +
+                '<strong>até ' + R$(d.rendaEstimada * tetoPct(d.nota)).replace(',00', '') + ' / mês</strong></div>' +
+                '<span class="cs-lab r">' + Math.round(tetoPct(d.nota) * 100) + '% da<br>renda</span></div>';
+        }
+
         // confiança baixa: o motivo vem logo abaixo da decisão, antes de renda e indicadores
         if (reprov && d.confBaixa && d.confMotivos && d.confMotivos.length) h += '<div class="cs-card cs-motivos cs-cb"><span class="cs-lab">Por que foi reprovado</span>' + d.confMotivos.map(function (m, i) {
             return '<div class="cs-cb-m"><span class="cs-cb-n">' + (i + 1) + '</span><div><b>' + esc(m.t) + '</b><span>' + esc(m.x) + '</span></div></div>';
@@ -5249,13 +5256,6 @@
         } else if (d.fluxoDescartado) {
             h += '<div class="cs-card cs-ind cs-fluxo"><span class="cs-lab">Saídas ÷ entradas</span><b class="warn">—</b>' +
                 '<span class="cs-det">Não deu para conferir as saídas deste extrato (a leitura das entradas não bateu). Este item ficou fora da análise.</span></div>';
-        }
-
-        // Parcela confortavel (estimativa sem aparelho)
-        if (!reprov && d.rendaEstimada > 0) {
-            h += '<div class="cs-card cs-conf"><div><span class="cs-lab">Parcela confortável (estimativa)</span>' +
-                '<strong>até ' + R$(d.rendaEstimada * tetoPct(d.nota)).replace(',00', '') + ' / mês</strong></div>' +
-                '<span class="cs-lab r">' + Math.round(tetoPct(d.nota) * 100) + '% da<br>renda</span></div>';
         }
 
         h += cartaoTelefone(job);

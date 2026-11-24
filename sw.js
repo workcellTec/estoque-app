@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-370'; // CreditoScan: saidas e saldos lidos e provados pelo codigo (Nubank/universal) + regra dos 20% de margem de erro na soma das entradas
+const CACHE = 'ctw-371'; // CreditoScan: card Parcela confortavel logo abaixo da nota
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
