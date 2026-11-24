@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-369'; // CreditoScan: leitor do Nubank nao perde mais o extrato inteiro quando o rodape nao tem a linha "Extrato gerado" (Douglas, nov/26)
+const CACHE = 'ctw-370'; // CreditoScan: saidas e saldos lidos e provados pelo codigo (Nubank/universal) + regra dos 20% de margem de erro na soma das entradas
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

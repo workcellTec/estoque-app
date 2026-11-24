@@ -56,6 +56,7 @@ const MOTOR = (function (R$) {
     var JANELA_MESES  = 4;      // extrato de "3 meses" costuma tocar 4 meses de calendario (pontas parciais)
     var TOL_SOMA_PCT  = 0.03;   // soma lida pela IA x 'Total de creditos' impresso no extrato: tolerancia de 3% ou R$ 50 (o que for maior)
     var TOL_SOMA_MIN  = 50;
+    var TOL_LEITURA   = 0.20;   // regra do dono: a leitura pode errar ate 20% do total impresso. Dentro disso vale o TOTAL do extrato (a sobra entra como "margem de erro"); acima disso a leitura e recusada
     var DUVIDOSA_PCT  = 0.60;   // mais que isso das entradas excluidas = renda duvidosa (confira o extrato)
     var MESES_ABREV   = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
@@ -127,8 +128,10 @@ const MOTOR = (function (R$) {
 
     // Conferencia da leitura da IA: soma por mes x "Total de creditos" do extrato, e peso das entradas excluidas
     function auditarMeses(meses, obj) {
-        var divergentes = [], excl = 0, tot = 0;
+        var divergentes = [], margens = [], excl = 0, tot = 0, somaMargem = 0, somaTotal = 0;
         meses.forEach(function (m) {
+            if (m.margem > 0) { margens.push({ mes: m.mes, valor: m.margem, tipo: m.margemTipo, total: m.totalCreditos }); somaMargem += m.margem; }
+            somaTotal += m.totalCreditos;
             var soma = m.fixa + m.variavel + m.app + m.excluidas;
             excl += m.excluidas; tot += soma;
             if (m.totalCreditos > 0) {
@@ -140,7 +143,7 @@ const MOTOR = (function (R$) {
         var det = (Array.isArray(obj && obj.excluidasDetalhe) ? obj.excluidasDetalhe : []).filter(function (e) { return e && typeof e === 'object' && numPos(e.valor) > 0; })
             .map(function (e) { return { mes: String(e.mes || ''), valor: numPos(e.valor), motivo: String(e.motivo || '').slice(0, 60) }; })
             .sort(function (a, b) { return b.valor - a.valor; }).slice(0, 8);
-        return { divergentes: divergentes, excluidasTotal: arred2(excl), pctExcluido: pct, excluidasDetalhe: det, duvidosa: divergentes.length > 0 || (tot > 0 && pct > DUVIDOSA_PCT) };
+        return { divergentes: divergentes, margens: margens, excluidasTotal: arred2(excl), pctExcluido: pct, excluidasDetalhe: det, duvidosa: divergentes.length > 0 || (tot > 0 && pct > DUVIDOSA_PCT) || (somaTotal > 0 && somaMargem / somaTotal > 0.10) };
     }
 
     // ── Pagador FIXO: quem paga todo mes (salario sem holerite, cliente fixo) nao leva o desconto de custo ──
@@ -221,14 +224,26 @@ const MOTOR = (function (R$) {
         var per = periodoDoc(obj.periodoDocumentos);
 
         var meses = lista.map(function (m) {
-            var fixa = numPos(m.fixa), variavel = numPos(m.variavel), app = numPos(m.app);
-            return {
-                mes: String(m.mes || ''), fixa: fixa, variavel: variavel, app: app, excluidas: numPos(m.excluidas),
-                totalCreditos: numPos(m.totalCreditos),
+            var fixa = numPos(m.fixa), variavel = numPos(m.variavel), app = numPos(m.app), exc = numPos(m.excluidas), tot = numPos(m.totalCreditos), margem = 0, margemTipo = '';
+            // Regra dos 20%: o total impresso no extrato e a verdade. Soma lida ate 20% fora do total: vale o total (faltou = entra como renda "aleatoria", com o desconto
+            // de ganho variavel; passou = reduz tudo na mesma proporcao). Acima de 20% nada e ajustado: a divergencia segue para a conferencia (leitura recusada).
+            if (tot > 0) {
+                var s0 = fixa + variavel + app + exc, dif0 = tot - s0;
+                if (Math.abs(dif0) > Math.max(tot * TOL_SOMA_PCT, TOL_SOMA_MIN) && Math.abs(dif0) <= tot * TOL_LEITURA) {
+                    if (dif0 > 0) { variavel = arred2(variavel + dif0); margem = arred2(dif0); margemTipo = 'falta'; }
+                    else { var fc = tot / s0; fixa = arred2(fixa * fc); variavel = arred2(variavel * fc); app = arred2(app * fc); exc = arred2(exc * fc); margem = arred2(-dif0); margemTipo = 'excesso'; }
+                }
+            }
+            var o = {
+                mes: String(m.mes || ''), fixa: fixa, variavel: variavel, app: app, excluidas: exc,
+                totalCreditos: tot,
                 parcial: (function () { var pp = mesParcialPeloPeriodo(m.mes, per); return pp !== null ? pp : (m.parcial === true || m.parcial === 'true'); })(),
                 liquido: arred2(fixa + variavel * (1 - DESC_VARIAVEL) + app * (1 - DESC_APP)),
                 abatido: arred2(variavel * DESC_VARIAVEL + app * DESC_APP)
             };
+            if (margem > 0) { o.margem = margem; o.margemTipo = margemTipo; }
+            ['saidas', 'saidasInvest', 'saidasProprias', 'saldoInicial', 'saldoFinal', 'menorSaldo'].forEach(function (f) { if (typeof m[f] === 'number' && isFinite(m[f])) o[f] = m[f]; });   // lidos e provados pelo codigo (Nubank/universal)
+            return o;
         });
 
         var soma = meses.reduce(function (a, m) { return a + m.fixa + m.variavel + m.app; }, 0);
@@ -254,7 +269,7 @@ const MOTOR = (function (R$) {
             return {
                 renda: arred2(totalLiq / span), fonte: 'codigo', meses: meses, usados: meses, media: arred2(totalLiq / span), mediana: arred2(totalLiq / span),
                 destoa: false, abatidoMedio: 0, parciaisIgnorados: 0, agrupado: true, span: span, itens: nItens, total: arred2(totalLiq), curto: curto, dias: per ? per.dias : null,
-                divergentes: aud.divergentes, excluidasTotal: aud.excluidasTotal, pctExcluido: aud.pctExcluido, excluidasDetalhe: aud.excluidasDetalhe, duvidosa: true
+                divergentes: aud.divergentes, margens: aud.margens, excluidasTotal: aud.excluidasTotal, pctExcluido: aud.pctExcluido, excluidasDetalhe: aud.excluidasDetalhe, duvidosa: true
             };
         }
 
@@ -275,7 +290,7 @@ const MOTOR = (function (R$) {
                     renda: arred2(totLiqP / eq), fonte: 'codigo', meses: meses, usados: meses, media: arred2(totLiqP / eq), mediana: arred2(totLiqP / eq),
                     destoa: false, abatidoMedio: arred2(totAbP / eq), parciaisIgnorados: 0, metodo: 'periodo', diasPeriodo: diasEf, equivMeses: arred2(eq), totalLiquido: arred2(totLiqP),
                     periodoTxt: fmtDataUtc(per.ini) + ' a ' + fmtDataUtc(per.fim), curto: per.dias < DIAS_MINIMO, dias: per.dias, faltando: faltaP,
-                    divergentes: aud.divergentes, excluidasTotal: aud.excluidasTotal, pctExcluido: aud.pctExcluido, excluidasDetalhe: aud.excluidasDetalhe,
+                    divergentes: aud.divergentes, margens: aud.margens, excluidasTotal: aud.excluidasTotal, pctExcluido: aud.pctExcluido, excluidasDetalhe: aud.excluidasDetalhe,
                     duvidosa: aud.duvidosa || faltaP > 0
                 };
             }
@@ -297,7 +312,7 @@ const MOTOR = (function (R$) {
             destoa: destoa, abatidoMedio: arred2(abatidoMedio), parciaisIgnorados: completos.length ? meses.length - completos.length : 0,
             periodoTxt: per && per.ini !== null ? fmtDataUtc(per.ini) + ' a ' + fmtDataUtc(per.fim) : '',
             curto: curto, dias: per ? per.dias : null, faltando: faltando,
-            divergentes: aud.divergentes, excluidasTotal: aud.excluidasTotal, pctExcluido: aud.pctExcluido, excluidasDetalhe: aud.excluidasDetalhe,
+            divergentes: aud.divergentes, margens: aud.margens, excluidasTotal: aud.excluidasTotal, pctExcluido: aud.pctExcluido, excluidasDetalhe: aud.excluidasDetalhe,
             duvidosa: aud.duvidosa || faltando > 0
         };
     }
@@ -314,6 +329,20 @@ const MOTOR = (function (R$) {
     function unirPeriodos(a, b) {
         if (!a || !b || a.ini === null || b.ini === null || a.fim === null || b.fim === null) return a && a.ini !== null ? a : b;
         return { ini: Math.min(a.ini, b.ini), fim: Math.max(a.fim, b.fim) };
+    }
+    // Metades do mesmo mes em dois arquivos: saidas somam; saldo final vale o do arquivo mais recente, saldo inicial o do mais antigo, menor saldo o menor.
+    // Se so um dos arquivos foi lido pelo codigo (com prova), o dado fica sem valor: o mes inteiro nao esta provado.
+    function unirSaidasSaldos(a, b, perA, perB) {
+        ['saidas', 'saidasInvest', 'saidasProprias'].forEach(function (f) {
+            if (typeof a[f] === 'number' && typeof b[f] === 'number') a[f] = arred2(a[f] + b[f]); else delete a[f];
+        });
+        if (typeof a.saldoFinal === 'number' && typeof b.saldoFinal === 'number' && perA && perB && perA.fim !== perB.fim) {
+            var bDepois = perB.fim > perA.fim;
+            a.saldoFinal = bDepois ? b.saldoFinal : a.saldoFinal;
+            a.saldoInicial = typeof a.saldoInicial === 'number' && typeof b.saldoInicial === 'number' ? (bDepois ? a.saldoInicial : b.saldoInicial) : undefined;
+            if (typeof a.menorSaldo === 'number' && typeof b.menorSaldo === 'number') a.menorSaldo = Math.min(a.menorSaldo, b.menorSaldo); else delete a.menorSaldo;
+            if (a.saldoInicial === undefined) delete a.saldoInicial;
+        } else { delete a.saldoFinal; delete a.saldoInicial; delete a.menorSaldo; }
     }
     function unirRendaArquivos(lista) {
         var porMes = {}, ordem = [], ini = '', fim = '', det = [], titular = '';
@@ -336,6 +365,7 @@ const MOTOR = (function (R$) {
                     if (v > atual.v) { atual.m = Object.assign({}, m); atual.v = v; }
                 } else {
                     ['fixa', 'variavel', 'app', 'excluidas', 'totalCreditos'].forEach(function (f) { atual.m[f] = numPos(atual.m[f]) + numPos(m[f]); });
+                    unirSaidasSaldos(atual.m, m, atual.per, per);
                     if (Array.isArray(m.pagadores) || Array.isArray(atual.m.pagadores)) atual.m.pagadores = somarPagadores(atual.m.pagadores, m.pagadores);
                     atual.v += v;
                 }
@@ -445,6 +475,46 @@ const MOTOR = (function (R$) {
         if (/SALARIO|PROVENTOS|FOLHA DE PAG|\bINSS\b|APOSENTADORIA|PENSAO|BENEFICIO/.test(u)) return { g: 'fixa', motivo: '' };
         return { g: 'variavel', motivo: '' };
     }
+    // Saidas e saldos do Nubank, lidos pelo CODIGO e provados: cada dia fecha com o "Total de saidas" impresso, a soma dos dias com o resumo
+    // do extrato, e saldo inicial + entradas - saidas = saldo final. Prova que falha = os campos nao sao gravados (a tela volta a usar a IA).
+    // Grava em cada mes: saidas (gasto real), saidasInvest (aplicacao), saidasProprias (Pix para a propria conta), saldoInicial/saldoFinal/menorSaldo (fim de cada dia).
+    function nuAnexarSaidas(porMes, dias, saiDias, saiOrdem, saiOk, resumo) {
+        if (!saiOk || !saiOrdem.length) return;
+        var somaSai = 0, somaEnt = 0;
+        for (var q = 0; q < saiOrdem.length; q++) {
+            var sd = saiDias[saiOrdem[q]];
+            if (Math.abs(sd.itens.reduce(function (a, it) { return a + it.v; }, 0) - sd.tot) > 0.011) return;
+            somaSai += sd.tot;
+        }
+        if (resumo && Math.abs(somaSai - resumo.saidas) > 0.011) return;
+        dias.forEach(function (d) { somaEnt += d.tot; });
+        var ch = (resumo ? resumo.inicial + somaEnt - somaSai : null);
+        var saldosOk = !!resumo && Math.abs(ch - resumo.final) <= 0.011;
+        Object.keys(porMes).forEach(function (k) { var m = porMes[k]; m.saidas = 0; m.saidasInvest = 0; m.saidasProprias = 0; });
+        saiOrdem.forEach(function (k) {
+            var sd = saiDias[k], m = porMes[nuIsoMes(sd.a, sd.m)];
+            if (!m) return;   // mes sem nenhuma entrada no extrato: nao entra na conta
+            sd.itens.forEach(function (it) {
+                var f = it.tipo === 'invest' ? 'saidasInvest' : it.tipo === 'proprio' ? 'saidasProprias' : 'saidas';
+                m[f] = arred2(m[f] + it.v);
+            });
+        });
+        if (!saldosOk) return;
+        var ev = {};   // saldo no fim de cada dia (a ordem dentro do dia nao e impressa)
+        dias.forEach(function (d) { var k = d.a * 10000 + d.m * 100 + d.d; ev[k] = (ev[k] || 0) + d.tot; });
+        saiOrdem.forEach(function (k) { var sd = saiDias[k], kk = sd.a * 10000 + sd.m * 100 + sd.d; ev[kk] = (ev[kk] || 0) - sd.tot; });
+        var saldo = resumo.inicial, st = {};
+        Object.keys(ev).map(Number).sort(function (a, b) { return a - b; }).forEach(function (kk) {
+            var mk = nuIsoMes(Math.floor(kk / 10000), Math.floor(kk / 100) % 100);
+            if (!st[mk]) st[mk] = { ini: saldo, min: saldo };
+            saldo = arred2(saldo + ev[kk]);
+            st[mk].min = Math.min(st[mk].min, saldo); st[mk].fim = saldo;
+        });
+        Object.keys(st).forEach(function (mk) {
+            if (!porMes[mk]) return;
+            porMes[mk].saldoInicial = arred2(st[mk].ini); porMes[mk].saldoFinal = arred2(st[mk].fim); porMes[mk].menorSaldo = arred2(st[mk].min);
+        });
+    }
     // texto = texto do PDF (como montarTextoDigital entrega). Devolve o objeto no formato de somarTrechos ou null.
     var NU_ULTIMO = 0;   // numero do motivo da ultima recusa (diagnostico)
     function nuNao(n) { NU_ULTIMO = n; return null; }
@@ -457,12 +527,17 @@ const MOTOR = (function (R$) {
         var titular = nuSemAcento(nome), cpf = /(\d{3}\.\d{3})-/.exec(cab), cpfMeio = cpf ? cpf[1] : '';
         if (titular.length < 5) return nuNao(2);
         // total do mes e periodo (cabecalho da primeira pagina)
-        var totMes = null, per = null, pm = /Total de entradas \+(\d[\d.]*,\d{2})/.exec(texto.replace(/\s+/g, ' '));
+        var totMes = null, per = null, resumo = null, pm = /Total de entradas \+(\d[\d.]*,\d{2})/.exec(texto.replace(/\s+/g, ' '));
         if (pm) totMes = nuValor(pm[1]);
-        if (totMes === null) {   // no texto do app os valores do resumo vem em linhas separadas, na ordem: saldo inicial, rendimento (+), entradas (+), saidas (-)
+        if (totMes === null) {   // no texto do app os valores do resumo vem em linhas separadas, na ordem: saldo inicial, rendimento (+), entradas (+), saidas (-), saldo final
             for (var j = ini; j < Math.min(linhas.length - 2, ini + 40); j++) {
-                var ra = /^\+(\d[\d.]*,\d{2})$/.exec(linhas[j]), rb = /^\+(\d[\d.]*,\d{2})$/.exec(linhas[j + 1]);
-                if (ra && rb && /^-\d[\d.]*,\d{2}$/.test(linhas[j + 2])) { totMes = nuValor(rb[1]); break; }
+                var ra = /^\+(\d[\d.]*,\d{2})$/.exec(linhas[j]), rb = /^\+(\d[\d.]*,\d{2})$/.exec(linhas[j + 1]), rc = /^-(\d[\d.]*,\d{2})$/.exec(linhas[j + 2]);
+                if (ra && rb && rc) {
+                    totMes = nuValor(rb[1]);
+                    var rsi = /^(\d[\d.]*,\d{2})$/.exec(linhas[j - 1] || ''), rsf = /^(\d[\d.]*,\d{2})$/.exec(linhas[j + 3] || '');
+                    if (rsi && rsf) resumo = { inicial: nuValor(rsi[1]), rendimento: nuValor(ra[1]), entradas: totMes, saidas: nuValor(rc[1]), final: nuValor(rsf[1]) };
+                    break;
+                }
             }
         }
         var datas = [], rd = /(\d{1,2}) DE ([A-ZÇ]+) DE (\d{4})/g, md;
@@ -470,6 +545,7 @@ const MOTOR = (function (R$) {
         if (datas.length === 2) per = { inicio: nuIsoData(datas[0].a, datas[0].m, datas[0].d), fim: nuIsoData(datas[1].a, datas[1].m, datas[1].d) };
 
         var dias = [], dia = null, modo = '', pend = null, pulando = false;
+        var saiDias = {}, saiOrdem = [], diaSai = null, pendS = null, saiOk = true;   // SAIDAS: lidas e provadas dia a dia contra o "Total de saidas" impresso; se algo nao fechar, so as saidas ficam sem prova (a renda segue valendo)
         var RE_INICIO = /^(Transfer[eê]ncia|Resgate|Reembolso|Estorno|Cr[eé]dito|Dep[oó]sito|Pix\b(?!\s*$)|Valor adicionado na conta|Rendimento|Pagamento|Cashback|Devolu|Aplica|Compra|Ajuste|Boleto|Saque|Estorno)/;
         // Uma entrada = a linha de inicio + as linhas de continuacao (nome do pagador, banco, agencia). O valor e a UNICA linha que termina em "1.234,56".
         function fecharEntrada() {
@@ -482,6 +558,25 @@ const MOTOR = (function (R$) {
             pend = null;
             return true;
         }
+        var RE_INICIO_SAIDA = /^(Transfer[eê]ncia|Pagamento|Aplica|Compra|Boleto|Saque|Pix\b(?!\s*$)|Plano|D[eé]bito|Tarifa|Recarga|Anuidade|IOF|Fatura|Parcela|Seguro|Mensalidade|Ajuste|Estorno|Resgate)/;
+        // Uma saida = mesma ideia da entrada. 'invest' (aplicacao RDB) e 'proprio' (Pix para a propria conta do titular) nao sao gasto.
+        function fecharSaida() {
+            if (!pendS) return true;
+            var valores = [];
+            pendS.forEach(function (l) { var mv = /(?:^|\s)(\d[\d.]*,\d{2})$/.exec(l); if (mv) valores.push(nuValor(mv[1])); });
+            var u = nuSemAcento(pendS.join(' '));
+            pendS = null;
+            if (valores.length !== 1 || !diaSai) return false;
+            var tipo = /^APLICA/.test(u) ? 'invest' : ((titular && u.indexOf(titular) !== -1) || (cpfMeio && u.indexOf(cpfMeio) !== -1)) ? 'proprio' : 'real';
+            diaSai.itens.push({ v: valores[0], tipo: tipo });
+            return true;
+        }
+        function abrirDiaSaida(a, m, d, tot) {
+            var k = a + '-' + m + '-' + d;
+            if (!saiDias[k]) { saiDias[k] = { a: a, m: m, d: d, tot: 0, itens: [] }; saiOrdem.push(k); }
+            saiDias[k].tot = arred2(saiDias[k].tot + tot);
+            return saiDias[k];
+        }
         for (var i = ini + 2; i < linhas.length; i++) {
             var ln = linhas[i];
             if (/^(===|---)/.test(ln)) { pulando = false; continue; }   // fim da pagina: o rodape acaba junto (extrato sem a linha "Extrato gerado" nao pode engolir o resto)
@@ -491,9 +586,11 @@ const MOTOR = (function (R$) {
             if (nuSemAcento(ln) === titular || /CPF.*Ag[eê]ncia.*Conta|VALORES EM R\$|^\d{5,}-\d$/.test(ln)) continue;   // cabecalho repetido em cada pagina
             var dh = /^(?:(\d{1,2}) ([A-Z]{3}) (\d{4}) )?Total de entradas \+ (\d[\d.]*,\d{2})$/.exec(ln);
             var ds = /^(?:(\d{1,2}) ([A-Z]{3}) (\d{4}) )?Total de sa[ií]das /.test(ln);
+            var dsv = ds ? /^(?:(\d{1,2}) ([A-Z]{3}) (\d{4}) )?Total de sa[ií]das - ?(\d[\d.]*,\d{2})$/.exec(ln) : null;
             var dd = /^(\d{1,2}) ([A-Z]{3}) (\d{4}) /.exec(ln);
             if (dh || ds || dd) {
                 if (!fecharEntrada()) return nuNao(3);
+                if (!fecharSaida()) saiOk = false;
                 if (dh) {
                     var ant = dia;
                     if (dh[1]) { var mm = NU_MES_ABREV[dh[2]]; if (!mm) return nuNao(4); dia = { a: +dh[3], m: mm, d: +dh[1], tot: nuValor(dh[4]), itens: [] }; }
@@ -503,7 +600,14 @@ const MOTOR = (function (R$) {
                 } else {
                     modo = 'out';
                     if (dd && !dh) { if (!NU_MES_ABREV[dd[2]]) return nuNao(6); dia = { a: +dd[3], m: NU_MES_ABREV[dd[2]], d: +dd[1], tot: 0, itens: [], soSaidas: true }; }
+                    if (dsv && dia) diaSai = abrirDiaSaida(dia.a, dia.m, dia.d, nuValor(dsv[4]));   // o dia da saida e o da linha (ou o do bloco de entradas logo acima)
+                    else { diaSai = null; saiOk = false; }
                 }
+                continue;
+            }
+            if (modo === 'out') {   // itens de saida (so conferencia: qualquer duvida aqui NAO derruba a leitura da renda). Item novo = 1a linha depois do total do dia ou linha de inicio conhecida
+                if (!pendS || RE_INICIO_SAIDA.test(ln)) { if (!fecharSaida()) saiOk = false; pendS = [ln]; }
+                else pendS.push(ln);
                 continue;
             }
             if (modo !== 'in') continue;
@@ -512,6 +616,7 @@ const MOTOR = (function (R$) {
             else return nuNao(9);
         }
         if (!fecharEntrada() || !dias.length) return nuNao(10);
+        if (!fecharSaida()) saiOk = false;
         // conferencia: cada dia fecha ao centavo e a soma dos dias fecha com o total do mes impresso
         var somaDias = 0;
         for (var k = 0; k < dias.length; k++) {
@@ -532,6 +637,7 @@ const MOTOR = (function (R$) {
         });
         if (ordem.length === 1 && totMes !== null) porMes[ordem[0]].totalCreditos = arred2(totMes);   // extrato de mais de um mes: o total impresso e do periodo, nao de um mes
         det.sort(function (a, b) { return b.valor - a.valor; });
+        nuAnexarSaidas(porMes, dias, saiDias, saiOrdem, saiOk, resumo);
         return {
             titular: nome, periodoDocumentos: per, rendaMeses: ordem.map(function (k) { return porMes[k]; }),
             excluidasDetalhe: det.slice(0, 8), leituraCodigo: 'nubank'
@@ -824,6 +930,35 @@ const MOTOR = (function (R$) {
             if (l && !cls[l.i]) cls[l.i] = { g: { F: 'fixa', V: 'variavel', A: 'app', X: 'excluidas' }[m[2].toUpperCase()], motivo: String(m[3] || '').trim().slice(0, 50) };
         }
     }
+    // Saidas e saldos pelo codigo (a cadeia de saldos ja deu o sinal de cada linha). So grava quando TODAS as linhas ficaram dentro de trechos provados.
+    // saidas = debitos reais; aplicacao/investimento e Pix para a propria conta ficam de fora. Saldo do mes = o da ultima linha com saldo impresso.
+    var UN_RE_INVEST = /APLICA[CÇ]|\bRDB\b|INVESTIMENT|INVEST FACIL|\bCDB\b|POUPAN|TESOURO|COMPRA DE (?:FUNDO|TITULO)|FUNDOS? DE INVEST/;
+    var UN_RE_PROPRIO = /PROPRIA CONTA|CONTA PROPRIA|MESMA TITULARIDADE|ENTRE CONTAS (?:PROPRIAS|MESMA)|MESMO TITULAR/;
+    function unAnexarSaidas(u, porMes) {
+        if (!u || !u.prova || u.prova.fora !== 0) return;
+        var meses = Object.keys(porMes);
+        meses.forEach(function (k) { porMes[k].saidas = 0; porMes[k].saidasInvest = 0; porMes[k].saidasProprias = 0; });
+        var ult = {}, menor = {}, ini = {}, linhas = {}, comSaldo = {}, soma = {};   // saldo do mes so vale se TODAS as linhas do mes trazem saldo e a conta fecha
+        u.lanc.forEach(function (l) {
+            var m = porMes[l.mes];
+            if (!m) return;
+            if (l.valor < 0) {
+                var v = -l.valor, t = nuSemAcento(l.desc);
+                var f = UN_RE_INVEST.test(t) ? 'saidasInvest' : UN_RE_PROPRIO.test(t) ? 'saidasProprias' : 'saidas';
+                m[f] = arred2(m[f] + v);
+            }
+            linhas[l.mes] = (linhas[l.mes] || 0) + 1; soma[l.mes] = (soma[l.mes] || 0) + l.valor;
+            if (typeof l.saldo === 'number') {
+                comSaldo[l.mes] = (comSaldo[l.mes] || 0) + 1;
+                if (!(l.mes in ini)) ini[l.mes] = arred2(l.saldo - l.valor);
+                ult[l.mes] = l.saldo; menor[l.mes] = l.mes in menor ? Math.min(menor[l.mes], l.saldo) : l.saldo;
+            }
+        });
+        meses.forEach(function (k) {
+            if (comSaldo[k] !== linhas[k] || Math.abs(ini[k] + soma[k] - ult[k]) > 0.011) return;
+            porMes[k].saldoInicial = ini[k]; porMes[k].saldoFinal = arred2(ult[k]); porMes[k].menorSaldo = arred2(Math.min(menor[k], ini[k]));
+        });
+    }
     // Leitura universal completa: o codigo acha e PROVA os lancamentos; a IA so classifica as entradas; o codigo soma por mes.
     // Devolve o mesmo formato do leitor Nubank ({ rendaMeses... }) ou null (volta para o leitor de antes).
     async function lerExtratoUniversalIA(texto, chamar, opts) {
@@ -858,6 +993,7 @@ const MOTOR = (function (R$) {
         });
         ordem.sort();
         det.sort(function (a, b) { return b.valor - a.valor; });
+        unAnexarSaidas(u, porMes);
         if (opts.log) opts.log('universal leu ' + u.lanc.length + ' lancamentos (' + cred.length + ' entradas, cadeia ' + u.prova.dir + ' ' + u.prova.pares + ' pares)' + (pendentes.length ? ', ' + pendentes.length + ' sem classe (contadas como variavel)' : ''));
         return {
             titular: '', periodoDocumentos: u.periodo, rendaMeses: ordem.map(function (k) { return porMes[k]; }),
@@ -880,7 +1016,8 @@ const MOTOR = (function (R$) {
     // O quanto a soma lida ficou longe do total impresso (0 = fechou). Serve para escolher a melhor de duas leituras.
     function desvioDivergencia(c) {
         if (!c || !c.divergentes) return 0;
-        return c.divergentes.reduce(function (a, d) { return a + (d.total > 0 ? Math.abs(d.total - d.soma) / d.total : 0); }, 0);
+        return c.divergentes.reduce(function (a, d) { return a + (d.total > 0 ? Math.abs(d.total - d.soma) / d.total : 0); }, 0) +
+            (c.margens || []).reduce(function (a, d) { return a + (d.total > 0 ? d.valor / d.total : 0); }, 0);
     }
 
     // Renda que o codigo fechou: vale mesmo sendo R$ 0 (todas as entradas sao autotransferencia, emprestimo, cartao...),
@@ -927,7 +1064,7 @@ const MOTOR = (function (R$) {
             return { obj: obj, c: c, n: trechos.length, alvo: alvo };
         }
         var p1 = await passada(ALVO_TRECHO, 'a');
-        var fechou = function (p) { return !!(p && p.c && p.c.fonte === 'codigo' && p.c.renda > 0 && !(p.c.divergentes && p.c.divergentes.length)); };
+        var fechou = function (p) { return !!(p && p.c && p.c.fonte === 'codigo' && p.c.renda > 0 && !(p.c.divergentes && p.c.divergentes.length) && !(p.c.margens && p.c.margens.length)); };   // com margem de erro ainda vale tentar a releitura (trechos menores)
         if (!p1 || fechou(p1)) return p1 ? p1.obj : null;
         var menor = Math.max(MIN_TRECHO, Math.floor(p1.alvo / 2));
         if (menor >= p1.alvo || dividirTrechos(texto, menor).length <= p1.n || (opts.sobra && opts.sobra() < 40000)) return p1.obj;   // sem trechos novos a releitura seria igual
@@ -984,6 +1121,11 @@ const MOTOR = (function (R$) {
         if (c.faltando > 0) L.push('⚠ A IA detalhou só ' + c.usados.length + ' de ' + (c.usados.length + c.faltando) + ' meses do período: a renda usa os meses lidos. Confira o extrato.');
         (c.divergentes || []).forEach(function (d) {
             L.push('⚠ ' + labelMes(d.mes) + ': a soma das entradas lidas (' + reaisCurto(d.soma) + ') não bate com o total do extrato (' + reaisCurto(d.total) + '). Confira.');
+        });
+        (c.margens || []).forEach(function (g) {
+            var pg = g.total > 0 ? Math.round(g.valor / g.total * 100) : 0;
+            L.push((pg > 10 ? '⚠ ' : '') + labelMes(g.mes) + ': margem de erro de leitura de ' + reaisCurto(g.valor) + ' (' + pg + '% do extrato). ' +
+                (g.tipo === 'falta' ? 'Valeu o total do extrato; a diferença entrou como renda aleatória (com o desconto de ganho variável).' : 'Valeu o total do extrato; o excesso lido foi descartado.'));
         });
         if (c.excluidasTotal > 0 && c.pctExcluido > 0) {
             var pct = Math.round(c.pctExcluido * 100);
@@ -1161,6 +1303,34 @@ const MOTOR = (function (R$) {
         return isFinite(comp) && comp >= 0 ? { fonte: 'total', itens: [], total: arred2(comp) } : null;
     }
 
+    // Entradas x saidas lidas pelo CODIGO (extrato Nubank/universal, com prova): entradas = fixa + variavel + app (sem resgate, estorno,
+    // autotransferencia, emprestimo) e saidas = gasto real (sem aplicacao e sem Pix para a propria conta). Sem prova em todos os meses = null.
+    function fluxoDoCodigo(calc) {
+        var ms = calc && calc.meses ? calc.meses.slice(-MAX_MESES) : [];
+        if (!ms.length || ms.some(function (m) { return typeof m.saidas !== 'number'; })) return null;
+        var ent = 0, sai = 0;
+        ms.forEach(function (m) { ent += m.fixa + m.variavel + m.app; sai += m.saidas; });
+        if (!(ent > 0)) return null;
+        return { entradas: arred2(ent), saidas: arred2(sai), pct: Math.round(sai / ent * 100), meses: ms.length, fonte: 'codigo' };
+    }
+    // Saldo de fim de mes lido pelo codigo (so quando TODOS os meses tem): mesmo formato de lerSaldos
+    function saldosDoCodigo(calc) {
+        var ms = calc && calc.meses ? calc.meses.slice(-MAX_MESES) : [];
+        if (!ms.length || ms.some(function (m) { return typeof m.saldoFinal !== 'number'; })) return null;
+        var neg = ms.filter(function (m) { return m.saldoFinal < 0 || (typeof m.menorSaldo === 'number' && m.menorSaldo < 0); }).length;
+        return { n: ms.length, negativos: neg, media: arred2(ms.reduce(function (a, m) { return a + m.saldoFinal; }, 0) / ms.length), fonte: 'codigo' };
+    }
+    // Fluxo para a nota: o do codigo quando existe; senao o da IA, mas so se as ENTRADAS dela ficarem a ate 20% das entradas ja conferidas
+    // (a IA le saidas sem total impresso para conferir: se ela erra as entradas, as saidas dela nao merecem confianca).
+    function fluxoConfiavel(raw, calc) {
+        var cod = fluxoDoCodigo(calc);
+        if (cod) return cod;
+        var ia = calcularFluxo(raw), ms = calc && calc.meses ? calc.meses.slice(-MAX_MESES) : [];
+        if (!ia || !ms.length) return null;
+        var ref = 0; ms.forEach(function (m) { ref += m.fixa + m.variavel + m.app; });
+        if (ref > 0 && Math.abs(ia.entradas - ref) > ref * TOL_LEITURA) return { descartado: true, entradasIA: ia.entradas, entradasRef: arred2(ref) };
+        return null;
+    }
     // Entradas x saidas por mes (informativo; nao entra na nota): quanto do que entrou foi embora
     function calcularFluxo(raw) {
         var lista = Array.isArray((raw || {}).fluxoMeses) ? raw.fluxoMeses : [];
@@ -1183,7 +1353,9 @@ const MOTOR = (function (R$) {
         d.compromissosLista = l ? l.itens : [];
         d.compromissoDuvida = !!(l && l.total === 0 && d.sinaisCompromisso && d.sinaisCompromisso.total >= SINAIS_MINIMO);
         d.comprometimentoPct = (!d.compromissoDuvida && d.compromissos !== null && d.rendaEstimada > 0) ? Math.round(d.compromissos / d.rendaEstimada * 100) : null;
-        d.fluxo = calcularFluxo(d.rawJson);
+        var fc = d.fluxoCodigo;   // do codigo (provado) ou {descartado:true} quando a IA errou as entradas
+        d.fluxo = fc ? (fc.descartado ? null : fc) : calcularFluxo(d.rawJson);
+        d.fluxoDescartado = !!(fc && fc.descartado);
         return d;
     }
 
@@ -1256,7 +1428,7 @@ const MOTOR = (function (R$) {
     function avaliarFaixa(d) {
         var raw = d.rawJson || {}, calc = d.rendaCalc, scan = d.sinaisRisco || null;
         var sin = raw.sinais && typeof raw.sinais === 'object' ? raw.sinais : {};
-        var saldos = lerSaldos(raw), fl = d.fluxo, pct = d.comprometimentoPct;
+        var saldos = d.saldosCodigo || lerSaldos(raw), fl = d.fluxo, pct = d.comprometimentoPct;
         var graves = [], leves = [], obs = [];
         function grupo(sev, nome, texto) {
             if (sev === 'grave') graves.push({ grupo: nome, texto: texto });
@@ -1377,6 +1549,8 @@ const MOTOR = (function (R$) {
         var calc = calcPre || calcularRenda(raw);
         separarCasasJogo(d);
         d.rendaCalc = calc || null;
+        d.fluxoCodigo = fluxoConfiavel(raw, calc);   // saidas e saldos provados pelo codigo (ou fluxo da IA descartado); fica salvo com a analise
+        d.saldosCodigo = saldosDoCodigo(calc);
         if (calc && calc.fonte === 'codigo') { d.rendaEstimada = calc.renda; d.rendaDetalhe = descreverRenda(calc); }
         else d.rendaDetalhe = '';
 
