@@ -1463,7 +1463,7 @@ function pdfDoUltimoEnvio() {
 // O que há de estranho em ligar o nome do Stock 2.0 (a) a este produto do CTW (b)? [] = parecem o mesmo produto
 function alertasLigacao(nomeA, nomeB) {
     const A = analisar(nomeA), B = analisar(nomeB), out = diferencas(A, B).filter(d => d.forte).map(d => d.t);
-    if (similaridade(A.nucleo, B.nucleo) < 0.75) out.push('os nomes são bem diferentes');
+    if (similaridade(A.nucleo, B.nucleo) < 0.75) out.push('nomes bem diferentes (pode ser só jeito de escrever; confira)');
     return out;
 }
 function diagnosticoPdf(termo) {
@@ -1521,9 +1521,9 @@ function ligacoesSuspeitas() {
         if (!c || !v.nomeEstoque || vistos.has(k)) return;
         vistos.add(k);
         const al = alertasLigacao(v.nomeEstoque, c.nome || '');
-        if (al.length) out.push({ pid: v.pid, nomeEstoque: v.nomeEstoque, nomeCtw: c.nome || '', alerta: al });
+        if (al.length) out.push({ pid: v.pid, nomeEstoque: v.nomeEstoque, nomeCtw: c.nome || '', alerta: al, forte: diferencas(analisar(v.nomeEstoque), analisar(c.nome || '')).filter(d => d.forte).length });
     });
-    return out;
+    return out.sort((a, b) => b.forte - a.forte);   // primeiro os que diferem em RAM, armazenamento ou novo/seminovo
 }
 async function telaDiagnostico() {
     TELA = 'av-diag'; titulo('Por que este produto?');
