@@ -899,6 +899,7 @@ const MOTOR = (function (R$) {
         opts = opts || {};
         var nb = lerExtratoNubank(texto);   // extrato Nubank que fecha com os totais impressos: sem IA
         if (nb) return nb;
+        if (opts.log && NU_ULTIMO > 1) opts.log('nubank recusou: motivo ' + NU_ULTIMO);   // 1 = nao e Nubank; os outros dizem onde o leitor do Nubank parou
         if (opts.universal) {   // qualquer banco: o codigo le e prova pela cadeia de saldos, a IA so classifica (se nao fechar, segue o leitor de antes)
             var un = await lerExtratoUniversalIA(texto, chamar, opts);
             if (un) return un;
