@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-367'; // CreditoScan: Calcular aparelho busca o produto no catálogo e usa o valor +20% (arredondado em 9,90)
+const CACHE = 'ctw-368'; // CreditoScan: compromissos lidos do extrato pelo codigo (pagamentos que se repetem); nome de banco (PagSeguro, Nu Financeira) nao conta mais como sinal
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [
