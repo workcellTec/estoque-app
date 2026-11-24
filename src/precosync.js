@@ -527,6 +527,7 @@ function aoDigitar(e) {
         const q = norm(e.target.value).split(' ').filter(Boolean);
         overlay.querySelectorAll('.ps-it[data-q], .ps-vc[data-q]').forEach(el => { el.hidden = !q.every(t => el.dataset.q.includes(t)); });
     }
+    if (e.target.id === 'psBuscaDiag') { const box = overlay.querySelector('#psDiagRes'); if (box) box.innerHTML = diagnosticoPdf(e.target.value); }
     if (e.target.id === 'psBuscaLigar' && VINC.pid) { const box = overlay.querySelector('#psLigarRes'); if (box) box.innerHTML = resultadosLigar(VINC.pid, e.target.value); }
     if (e.target.id === 'psBusca' && S) resultadoBusca(e.target.value);
     if (e.target.id === 'psBuscaPdf' && S && S.vinculo) resultadoBuscaPdf(e.target.value);
@@ -1223,6 +1224,7 @@ async function telaAvancado() {
       <div class="ps-resumo"><span class="ps-grow"><b>Extra à vista</b><span class="ps-sub">Preço do catálogo = valor do CTW + extra</span></span>
         <input type="text" id="psCatExtra" class="ps-inp ps-extra" inputmode="decimal" value="${esc(String(catExtra()).replace('.', ','))}" aria-label="Extra à vista em reais"></div>
       ${lin('vinculos', 'Nomes ligados', `${nLig} · buscar, desligar o que ficou errado`)}
+      ${lin('diag', 'Por que este produto?', 'Ver como um item do Stock 2.0 foi tratado e achar ligações trocadas')}
       ${lin('avignorados', 'Sem estoque e ignorados', nIg ? `${nIg} · ver a lista e voltar a perguntar` : 'Nada marcado')}
       ${lin('avadic', 'Marcados como já adicionados', nAdic ? `${nAdic} produto(s) · voltar a cobrar` : 'Nenhum')}
       ${lin('avfixos', 'Preços mantidos de propósito', nFix ? `${nFix} produto(s) · voltar a avisar` : 'Nenhum')}
@@ -1453,6 +1455,90 @@ async function telaVinculoProduto(pid) {
       ${catW.map(([k, v]) => `<div class="ps-vl"><div class="ps-grow"><div class="ps-nome">${esc(nomeCatalogoLigado(k, v))}</div></div><button type="button" class="ps-b ps-b-r ps-b-sm" data-act="rmcatvin" data-k="${esc(k)}">✕ Desligar</button></div>`).join('') || '<div class="ps-sub">Nenhum nome do WhatsApp ligado.</div>'}`);
 }
 
+// ── Por que este produto? Mostra, para o último PDF enviado, como o sistema trata cada item (ligado, pergunta, sem CTW...) e se alguma ligação parece trocada ──
+// A conferência roda de novo agora, com as ligações de hoje; nada é gravado.
+function pdfDoUltimoEnvio() {
+    return Object.values((APR.ultimoPdf && APR.ultimoPdf.itens) || {}).map(it => ({ nome: it.n, codigo: it.c || '', qtd: it.q == null ? null : it.q, valor: it.p }));
+}
+// O que há de estranho em ligar o nome do Stock 2.0 (a) a este produto do CTW (b)? [] = parecem o mesmo produto
+function alertasLigacao(nomeA, nomeB) {
+    const A = analisar(nomeA), B = analisar(nomeB), out = diferencas(A, B).filter(d => d.forte).map(d => d.t);
+    if (similaridade(A.nucleo, B.nucleo) < 0.75) out.push('os nomes são bem diferentes');
+    return out;
+}
+function diagnosticoPdf(termo) {
+    const q = norm(termo).split(' ').filter(Boolean);
+    if (!q.length) return '';
+    const linhas = pdfDoUltimoEnvio();
+    if (!linhas.length) return '<div class="ps-info">Ainda não há PDF guardado. Envie o PDF do Stock 2.0 uma vez (Sincronizar preços) e volte aqui.</div>';
+    const produtos = (window.products || []).filter(p => p && p.id);
+    const cl = classificar(linhas, produtos);
+    const noPdf = new Set(cl.pdf.map(r => r.i));
+    const casado = new Map(cl.casados.map(x => [x.r, x])), pergunta = new Set(cl.perguntas), semCtw = new Set(cl.semCtw);
+    const fixos = (APR.contas[CONTA] && APR.contas[CONTA].fixos) || {};
+    const linha = (tit, corpo, cor) => `<div class="ps-info${cor ? ' ps-info-' + cor : ''}"><b>${tit}</b><br>${corpo}</div>`;
+    let h = '';
+    linhas.forEach((l, i) => {
+        if (!q.every(t => norm(l.nome).includes(t))) return;
+        const r = cl.pdf.find(x => x.i === i) || { ...l, i, an: analisar(l.nome) };
+        const cab = `${esc(l.nome)}<br>Stock 2.0: ${brl(l.valor)}${l.qtd != null ? ' · ' + l.qtd + ' un.' : ''}${l.codigo ? ' · código ' + esc(l.codigo) : ''}`;
+        let est, cor = '';
+        if (!noPdf.has(i)) {   // vários nomes do Stock 2.0 ligados ao mesmo produto do CTW: viram uma linha só
+            const al = (l.codigo && APR.aliases[chaveCodigo(l.codigo)]) || APR.aliases[chaveNome(analisar(l.nome))], c = al && produtos.find(p => p.id === al.pid);
+            const alerta = c ? alertasLigacao(l.nome, c.nome) : [];
+            est = `Ligado ao produto do CTW <b>${c ? esc(c.nome) : '?'}</b> junto com outro nome do Stock 2.0 (a quantidade soma; se os valores forem diferentes, o preço desse produto <b>não é alterado</b>).`;
+            if (alerta.length) { est += `<br>⚠ <b>Confira:</b> ${esc(alerta.join(' · '))}. Se não for o mesmo produto, desligue em Nomes ligados.`; cor = 'am'; }
+        }
+        else if (casado.has(r)) {
+            const { c, origem } = casado.get(r), alerta = alertasLigacao(l.nome, c.nome);
+            est = `Ligado ao produto do CTW <b>${esc(c.nome)}</b> (${origem === 'aprendido' ? 'ligação feita por você' : 'nome idêntico'}) · no CTW ${brl(c.valor)} → ${igual(c.valor, l.valor) ? 'mesmo valor, nada a mudar' : 'valor diferente, aparece como mudança de preço'}.`
+                + (fixos[c.id] ? ' Este produto está em “Preços mantidos de propósito”: o preço não é avisado.' : '');
+            if (alerta.length) { est += `<br>⚠ <b>Confira:</b> ${esc(alerta.join(' · '))}. Se não for o mesmo produto, desligue em Nomes ligados.`; cor = 'am'; }
+        }
+        else if (pergunta.has(r)) est = 'Vai perguntar “é o mesmo produto?” no próximo PDF (há produto parecido no CTW).';
+        else if (semCtw.has(r)) {
+            const ig = (l.codigo && APR.ignoradosPdf[chaveCodigo(l.codigo)]) || APR.ignoradosPdf[chaveNome(r.an)];
+            est = ig ? 'Você respondeu “não existe no CTW” antes: o sistema não pergunta de novo e ele <b>não entra</b> em Adicionar ao CTW. Para voltar a perguntar: Avançado › Sem estoque e ignorados.'
+                : 'Não existe no CTW: entra em “Adicionar ao CTW”.';
+            cor = ig ? 'am' : '';
+        } else est = 'Não é sincronizado.';
+        h += linha(cab, est, cor);
+    });
+    if (!h) h = '<div class="ps-info">Nenhum item do último PDF tem essas palavras.</div>';
+    const ctwAch = produtos.filter(p => q.every(t => norm(p.nome).includes(t))).slice(0, 12);
+    h += `<div class="ps-cap ps-esp">Produtos do CTW com essas palavras (${ctwAch.length})</div>` + (ctwAch.map(c => {
+        const x = cl.ctw.find(y => y.id === c.id), r = x && cl.reivindicado.get(x.id);
+        const ig = APR.ignoradosCtw[c.id];
+        const est = r ? `Recebe o preço do item <b>${esc(r.nome)}</b> do Stock 2.0 (${brl(r.valor)})` : (ig ? 'Marcado para não aparecer na revisão (ignorado/esgotado).' : 'Nenhum item do último PDF está ligado a ele.');
+        return linha(`${esc(c.nome)} · ${brl(valorCtw(c))}`, est, r ? '' : 'am');
+    }).join('') || '<div class="ps-info">Nenhum produto do CTW com essas palavras.</div>');
+    return h;
+}
+function ligacoesSuspeitas() {
+    const porId = new Map((window.products || []).filter(p => p && p.id).map(p => [p.id, p])), vistos = new Set(), out = [];
+    Object.values(APR.aliases).forEach(v => {
+        const k = v.pid + '|' + v.nomeEstoque, c = porId.get(v.pid);
+        if (!c || !v.nomeEstoque || vistos.has(k)) return;
+        vistos.add(k);
+        const al = alertasLigacao(v.nomeEstoque, c.nome || '');
+        if (al.length) out.push({ pid: v.pid, nomeEstoque: v.nomeEstoque, nomeCtw: c.nome || '', alerta: al });
+    });
+    return out;
+}
+async function telaDiagnostico() {
+    TELA = 'av-diag'; titulo('Por que este produto?');
+    tela('<div class="ps-msg">Carregando…</div>');
+    try { await carregarAprendizado(); } catch (e) { tela(`<div class="ps-msg ps-erro">${esc(e.message)}</div>`); return; }
+    const sus = ligacoesSuspeitas();
+    tela(`
+      <div class="ps-sub">Digite o nome (ex.: iphone 17 semi). Mostra como o último PDF enviado trata esse produto e a quem ele está ligado.</div>
+      <input type="search" id="psBuscaDiag" class="ps-inp ps-busca" placeholder="iphone 17 semi…" autocomplete="off">
+      <div id="psDiagRes" class="ps-col"></div>
+      <div class="ps-cap ps-esp">Ligações que parecem trocadas (${sus.length})</div>
+      ${sus.map(x => `<div class="ps-info ps-info-am"><b>${esc(x.nomeEstoque)}</b> (Stock 2.0)<br>está ligado a <b>${esc(x.nomeCtw)}</b> (CTW)<br>⚠ ${esc(x.alerta.join(' · '))}
+        <button type="button" class="ps-b ps-b-g ps-b-full" data-act="vincprod" data-pid="${esc(x.pid)}">Abrir e desligar</button></div>`).join('') || '<div class="ps-info">Nenhuma ligação suspeita: todos os nomes ligados parecem o mesmo produto.</div>'}`);
+}
+
 // Itens do último PDF para ligar a este produto: sem texto, os mais parecidos; com texto, os que têm todas as palavras
 function resultadosLigar(pid, q) {
     const itens = Object.entries((APR.ultimoPdf && APR.ultimoPdf.itens) || {}).map(([l, it]) => ({ l, ...it }));
@@ -1585,6 +1671,7 @@ async function aoClicar(e) {
         if (act === 'escolherarq') { const inp = overlay.querySelector(b.dataset.alvo); if (inp) inp.click(); return; }   // abre o seletor de arquivos direto do toque
         if (act === 'enviar') return telaEnviar();
         if (act === 'vinculos') return telaVinculos();
+        if (act === 'diag') return telaDiagnostico();
         if (act === 'avcontas') return telaAvContas();
         if (act === 'avignorados') return telaAvIgnorados();
         if (act === 'avfixos') return telaAvFixos();
