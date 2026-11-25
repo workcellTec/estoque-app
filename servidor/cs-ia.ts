@@ -29,7 +29,7 @@ const SLOTS = 2;                    // análises rodando ao mesmo tempo
 const MAX_FILA = 30;                // análises esperando + rodando
 const RETENCAO_DIAS = 30;           // documentos e resultados
 // Plano grátis: a função morre em 150 s. No plano pago pode-se criar o segredo PASSO_LIMITE_S (ex.: 330) para dar mais tempo à IA.
-const PASSO_LIMITE_MS = Math.min(Math.max(Number(Deno.env.get('PASSO_LIMITE_S')) || 135, 60), 380) * 1000;
+const PASSO_LIMITE_MS = Math.min(Math.max(Number(Deno.env.get('PASSO_LIMITE_S')) || 110, 60), 380) * 1000;
 const LEASE_S = Math.round(PASSO_LIMITE_MS / 1000) + 35;   // "estou trabalhando nisso"; passou disso, a fila resgata
 const RE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RE_MODELO = /^[\w.\-]+\/[\w.\-:]+$/;
@@ -1991,8 +1991,8 @@ function prepararEntrada(docsId: any[], docsRend: any[]) {
 // Chamada à OpenRouter em streaming, com tentativas (429/5xx/rede/sem resposta) dentro do tempo que sobrou ao passo.
 // Streaming serve para duas coisas: (1) abortar rápido quando o provedor nem começa a responder (em vez de esperar o passo inteiro)
 // e (2) saber, quando falha, o que de fato aconteceu (quantos caracteres gerou, em quanto tempo, qual provedor): vai em `diag` e na mensagem de erro.
-const SEM_INICIO_MS = (Number(Deno.env.get('IA_SEM_INICIO_S')) || 50) * 1000;   // nenhum pedaço de resposta em 50 s -> tenta de novo (outro provedor)
-const PARADO_MS = (Number(Deno.env.get('IA_PARADO_S')) || 40) * 1000;           // começou e parou de gerar por 40 s -> tenta de novo
+const SEM_INICIO_MS = (Number(Deno.env.get('IA_SEM_INICIO_S')) || 25) * 1000;   // nenhum pedaço de resposta em 25 s -> tenta de novo (outro provedor); os normais começam em 1-5 s
+const PARADO_MS = (Number(Deno.env.get('IA_PARADO_S')) || 25) * 1000;           // começou e parou de gerar por 25 s -> tenta de novo
 // Provedor que responde "pingando" (ex.: Venice gerou 1293 caracteres em 135 s): o tempo parado nunca estoura, mas a análise leva minutos e o servidor morre no meio.
 // Depois de LENTO_APOS_S segundos gerando, se a velocidade estiver abaixo de LENTO_MIN_CPS caracteres/s, troca de provedor. Os normais fazem ~100 caracteres/s.
 const LENTO_APOS_S = Number(Deno.env.get('IA_LENTO_APOS_S')) || 20;
