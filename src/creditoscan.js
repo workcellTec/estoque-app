@@ -1187,6 +1187,80 @@
         return { ok: true, sinal: melhorD.sinal, ancoras: P.length, fora: fora, foraIni: P[0].pos };
     }
 
+    // Layout "Relatorio de movimentacoes" (InfinitePay/CloudWalk): linhas "HH:MM Tipo Nome Detalhe +/-valor" SEM data na linha (a data vem dos rotulos
+    // "05 Out, 2026" impressos no fim de cada pagina, um por bloco de dia) e "Saldo do dia" fechando cada dia. O resumo do topo traz saldo inicial,
+    // total de entradas, total de saidas e saldo final. PROVA: saldo anterior + soma do dia = "Saldo do dia", entradas/saidas somadas = totais impressos
+    // e o saldo final fecha. Devolve undefined (nao e esse layout), null (e esse layout mas a prova nao fechou) ou o mesmo formato do leitor universal.
+    var UN_RE_ROTULO_DIA = /^(\d{1,2}) (JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)[A-Z]*\.?,? (\d{4})$/i;
+    var UN_RE_VALOR_FIM = /([+\-−–]+)\s*(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})\s*$/;
+    var UN_MES_ABREV = { JAN: 1, FEV: 2, MAR: 3, ABR: 4, MAI: 5, JUN: 6, JUL: 7, AGO: 8, SET: 9, OUT: 10, NOV: 11, DEZ: 12 };
+    function unLerPorDia(linhas) {
+        if (!/Relat[oó]rio de movimenta/i.test(linhas.slice(0, 12).join(' '))) return undefined;
+        if (!linhas.some(function (l) { return /^Data Hora Tipo de transa/i.test(l); }) || !linhas.some(function (l) { return /^Saldo do dia\b/i.test(l); })) return undefined;
+        var assinado = function (sg, num) { return (/\+/.test(sg) ? 1 : -1) * nuValor(num); };
+        var rotulo = function (m) { return { a: +m[3], m: UN_MES_ABREV[m[2].toUpperCase()], d: +m[1] }; };
+        var NUM = '([+\\-−–]) ?(\\d{1,3}(?:\\.\\d{3})*,\\d{2})$', R = {
+            ini: new RegExp('^Saldo inicial ' + NUM, 'i'), ent: new RegExp('^Total de entradas ' + NUM, 'i'),
+            sai: new RegExp('^Total de sa[ií]das ' + NUM, 'i'), fim: new RegExp('^Saldo fi ?nal do per[ií]odo ' + NUM, 'i'), dia: new RegExp('^Saldo do dia ' + NUM, 'i')
+        };
+        var resumo = {}, per = null, titular = '', pag = 0, totPag = 0, vistas = {}, rotulos = {}, segsPag = {}, segs = [], seg = null, aberta = null, m, i;
+        for (i = 0; i < linhas.length; i++) {
+            var ln = linhas[i];
+            if ((m = /^P[aá]gina (\d+) de (\d+)\b/i.exec(ln))) { pag = +m[1]; totPag = +m[2]; vistas[pag] = 1; rotulos[pag] = []; segsPag[pag] = []; continue; }
+            if (/^Relat[oó]rio de movimenta/i.test(ln) || / - \d{4} - [\dXx-]+$/.test(ln)) continue;   // cabecalho repetido em toda pagina (nome da conta, banco - agencia - conta)
+            if (/CNPJ:|CPF:/.test(ln)) { if (!titular && (m = /^(?:[\d.]+ )?(.+?) - (?:CNPJ|CPF):/i.exec(ln))) titular = nuSemAcento(m[1]).replace(/\s+/g, ' ').trim(); continue; }
+            if (/^Data Hora Tipo de transa/i.test(ln)) {
+                if (aberta) return unNao('linha sem valor (' + aberta.txt.slice(0, 40) + ')');
+                seg = { pag: pag, idx: segsPag[pag] ? segsPag[pag].length : 0, rows: [], saldoFim: null }; segs.push(seg); if (segsPag[pag]) segsPag[pag].push(seg);
+                continue;
+            }
+            if (!seg) {   // resumo do topo da 1a pagina
+                if (!per && (m = /^(\d{1,2}) (JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)[A-Z]*\.?,? (\d{4}) - (\d{1,2}) (JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)[A-Z]*\.?,? (\d{4})/i.exec(ln))) {
+                    per = { inicio: unIso(rotulo([0, m[1], m[2], m[3]])), fim: unIso(rotulo([0, m[4], m[5], m[6]])) }; continue;
+                }
+                ['ini', 'ent', 'sai', 'fim'].forEach(function (k) { var r = R[k].exec(ln); if (r && !(k in resumo)) resumo[k] = k === 'ini' || k === 'fim' ? assinado(r[1], r[2]) : Math.abs(assinado(r[1], r[2])); });   // entradas/saidas ficam positivas
+                continue;
+            }
+            if (!aberta && (m = R.dia.exec(ln))) { seg.saldoFim = assinado(m[1], m[2]); seg.fechado = true; continue; }
+            if (!aberta && (m = UN_RE_ROTULO_DIA.exec(ln))) { if (rotulos[pag]) rotulos[pag].push(rotulo(m)); continue; }
+            if ((m = /^(\d{1,2}):(\d{2})\b ?(.*)$/.exec(ln))) {
+                if (aberta) return unNao('linha sem valor (' + aberta.txt.slice(0, 40) + ')');
+                if (seg.fechado) return unNao('lancamento depois do saldo do dia');
+                aberta = { txt: m[3] || '' };
+            } else if (aberta) aberta.txt += ' ' + ln;
+            else continue;   // sobra de pagina (rodape, aviso): so vale linha que abre com hora
+            var mv = UN_RE_VALOR_FIM.exec(aberta.txt);
+            if (mv) { seg.rows.push({ v: assinado(mv[1], mv[2]), desc: aberta.txt.slice(0, mv.index).replace(/\s+/g, ' ').trim() }); aberta = null; }
+        }
+        if (aberta) return unNao('linha sem valor no fim (' + aberta.txt.slice(0, 40) + ')');
+        if (!per || ['ini', 'ent', 'sai', 'fim'].some(function (k) { return typeof resumo[k] !== 'number' || !isFinite(resumo[k]); })) return unNao('resumo do topo (saldo inicial, entradas, saidas, saldo final) nao encontrado');
+        for (i = 1; i <= totPag; i++) if (!vistas[i]) return unNao('pagina ' + i + ' de ' + totPag + ' ausente no texto');
+        if (!totPag) return unNao('paginas nao numeradas');
+        // data de cada bloco = rotulo de mesmo numero na pagina; sem rotulos certos so vale se o periodo inteiro e um mes so
+        var umMes = per.inicio.slice(0, 7) === per.fim.slice(0, 7), lanc = [], corrente = resumo.ini, ent = 0, sai = 0, ultData = '', dias = 0;
+        for (i = 0; i < segs.length; i++) {
+            var sg = segs[i], rs = rotulos[sg.pag] || [], ps = segsPag[sg.pag] || [], dt = null;
+            if (rs.length === ps.length) dt = rs[sg.idx]; else if (umMes) { var pi = (ultData || per.inicio).split('-'); dt = { a: +pi[0], m: +pi[1], d: +pi[2] }; } else return unNao('rotulos de dia nao batem com os blocos na pagina ' + sg.pag + ' (' + rs.length + ' x ' + ps.length + ')');
+            var iso = unIso(dt);
+            if (iso < per.inicio || iso > per.fim) return unNao('dia ' + iso + ' fora do periodo ' + per.inicio + ' a ' + per.fim);
+            if (iso < ultData) return unNao('dias fora de ordem em ' + iso);
+            ultData = iso;
+            for (var r = 0; r < sg.rows.length; r++) {
+                var row = sg.rows[r];
+                corrente = arred2(corrente + row.v);
+                if (row.v > 0) ent = arred2(ent + row.v); else sai = arred2(sai - row.v);
+                var d2 = row.desc;
+                if (titular && /\b(?:PIX|TED)\b/.test(nuSemAcento(d2)) && nuSemAcento(d2).indexOf(titular) !== -1) d2 += ' (propria conta)';   // Pix/TED com o nome do proprio titular
+                lanc.push({ i: lanc.length, data: iso, mes: nuIsoMes(dt.a, dt.m), valor: row.v, saldo: corrente, desc: d2.slice(0, 150) });
+            }
+            if (sg.saldoFim !== null) { dias++; if (Math.abs(corrente - sg.saldoFim) > 0.011) return unNao('saldo do dia ' + iso + ' nao fecha: lido ' + corrente.toFixed(2) + ' x impresso ' + sg.saldoFim.toFixed(2)); }
+        }
+        if (lanc.length < 1) return unNao('nenhum lancamento (layout por hora)');
+        if (Math.abs(ent - resumo.ent) > 0.005 || Math.abs(sai - resumo.sai) > 0.005) return unNao('totais nao fecham: entradas ' + ent.toFixed(2) + ' x ' + resumo.ent.toFixed(2) + ', saidas ' + sai.toFixed(2) + ' x ' + resumo.sai.toFixed(2));
+        if (Math.abs(corrente - resumo.fim) > 0.011) return unNao('saldo final nao fecha: ' + corrente.toFixed(2) + ' x ' + resumo.fim.toFixed(2));
+        return { lanc: lanc, periodo: per, cabecalho: linhas.slice(0, 8).join(' | ').slice(0, 300), prova: { dir: 'asc', pares: dias + 1, linhas: lanc.length, fora: 0, secoes: 1 } };
+    }
+
     // texto = texto do PDF (como montarTextoDigital entrega). Devolve { lanc:[{i,data,mes,valor,saldo,desc}], periodo, ... } ou null.
     function lerExtratoUniversal(texto) {
         var T = String(texto || '');
@@ -1194,6 +1268,8 @@
         var linhas = [];
         T.split('\n').forEach(function (l) { if (/^(---|===)/.test(l)) return; var n = unNormalizarLinha(l); if (n) linhas.push(n); });
         if (linhas.length < 8) return unNao('texto curto');
+        var porDia = unLerPorDia(linhas);   // layout por hora com "Saldo do dia" (InfinitePay): leitor proprio, com a mesma prova
+        if (porDia !== undefined) return porDia;
         // ano de referencia (extratos com datas "05/08"): primeira data completa ou "agosto/2026" do cabecalho
         var anoRef = 0, cheias = 0, ia, anosMes = 0, anos = {};
         for (ia = 0; ia < linhas.length; ia++) {
@@ -1327,7 +1403,7 @@
     function unNomePagador(desc) {
         var t = String(desc || '');
         for (var k = 0; k < 4; k++) t = t.replace(/^(?:PIX|TED|DOC|TRANSF\w*|TRANSFER[EÊ]NCIA|RECEBID[OA]S?|RECEBIMENTO|CR[EÉ]DITO|DEP[OÓ]SITO|REM|DE|DO|DA|POR|CP)\b[:.\s-]*/i, '');
-        t = t.replace(/["“”]/g, ' ').replace(/[•*\d.\-\/]{5,}/g, ' ').replace(/\s+/g, ' ').trim();
+        t = t.replace(/["“”]/g, ' ').replace(/[•*\d.\-\/]{5,}/g, ' ').replace(/\s+/g, ' ').replace(/ (?:Recebido|Enviado|Devolvido|Revertido)$/i, '').trim();   // InfinitePay: o status vem colado no nome
         return t.split(' ').slice(0, 5).join(' ').slice(0, 40);
     }
     function unPromptClassificar(cabecalho, lote) {
