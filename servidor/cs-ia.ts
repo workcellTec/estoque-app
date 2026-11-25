@@ -2024,7 +2024,7 @@ async function chamarIA(modelo: string, messages: any[], prazo: number, maxMs = 
         const txt = await r.text();
         let m = 'HTTP ' + r.status;
         try { m = JSON.parse(txt).error.message || m; } catch (_) { /* fica o HTTP */ }
-        if ([429, 502, 503, 504, 524].includes(r.status) && t < 2) { ultimo = m; await dorme(2500 * (t + 1)); continue; }
+        if ([429, 500, 502, 503, 504, 524].includes(r.status) && t < 2) { ultimo = m; await dorme(2500 * (t + 1)); continue; }
         throw new Error(m);
       }
       const leitor = r.body!.getReader(), dec = new TextDecoder();
@@ -2040,8 +2040,8 @@ async function chamarIA(modelo: string, messages: any[], prazo: number, maxMs = 
           const dado = linha.slice(5).trim();
           if (!dado || dado === '[DONE]') continue;
           let j: any; try { j = JSON.parse(dado); } catch (_) { continue; }
-          if (j.error) throw new Error(String(j.error.message || 'erro da IA'));
           if (j.provider) prov = String(j.provider);
+          if (j.error) { const er: any = new Error(String(j.error.message || 'erro da IA')); er.doProvedor = true; throw er; }   // erro do provedor no meio da resposta: tenta outro
           const c = j.choices && j.choices[0];
           if (c && c.delta && c.delta.content) {
             if (!primeiro) primeiro = Date.now();
@@ -2064,6 +2064,12 @@ async function chamarIA(modelo: string, messages: any[], prazo: number, maxMs = 
         if (motivo === 'total') { ultimo = 'IA sem resposta no tempo (' + resumo() + ')'; break; }
         ultimo = motivo === 'inicio' ? 'IA não começou a responder em ' + SEM_INICIO_MS / 1000 + 's (' + resumo() + ')' : motivo === 'laco' ? 'IA entrou em repetição (' + resumo() + ')' : motivo === 'lento' ? 'IA muito lenta (' + resumo() + ')' : 'IA parou de gerar (' + resumo() + ')';
         continue;   // outro provedor pode responder: tenta de novo enquanto houver tempo no passo
+      }
+      if ((e as any)?.doProvedor && t < 2) {   // "Provider returned error": o provedor que respondeu sai da lista desta chamada e o seguinte assume
+        ultimo = String((e as Error).message || e);
+        if (prov && !ignorar.includes(prov)) ignorar.push(prov);
+        if (opc.diag) Object.assign(opc.diag, { prov, erroProv: ultimo, tent: t + 1 });
+        await dorme(1500 * (t + 1)); continue;
       }
       if (nome === 'TypeError' && t < 2) { ultimo = String((e as Error).message || e); await dorme(1500 * (t + 1)); continue; }
       throw e;
