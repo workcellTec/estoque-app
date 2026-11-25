@@ -63,7 +63,7 @@
         });
     }
 
-    async function pdfToImages(file) {
+    async function pdfToImages(file, maxPag) {
         try {
             if (!window.pdfjsLib) {
                 await new Promise(function(ok,fail){
@@ -75,7 +75,7 @@
             }
             var ab  = await file.arrayBuffer();
             var pdf = await window.pdfjsLib.getDocument({data:ab}).promise;
-            var limit = Math.min(pdf.numPages, MAX_PDF_PGS);
+            var limit = Math.min(pdf.numPages, maxPag || MAX_PDF_PGS);
             var out = [];
             var OCR_MAX = 1280;
             for (var i=1;i<=limit;i++) {
@@ -99,7 +99,7 @@
 
     // Extrai texto de PDF digital (extratos do app do banco — zero OCR)
     // Reconstroi quebras de linha baseado na posicao Y dos itens
-    async function extrairTextoPdfDigital(file) {
+    async function extrairTextoPdfDigital(file, maxPag) {
         try {
             if (!window.pdfjsLib) {
                 await new Promise(function(ok,fail){
@@ -111,7 +111,7 @@
             }
             var ab  = await file.arrayBuffer();
             var pdf = await window.pdfjsLib.getDocument({data:ab}).promise;
-            var limit = Math.min(pdf.numPages, MAX_PDF_PGS);
+            var limit = Math.min(pdf.numPages, maxPag || MAX_PDF_PGS);
             var textos = [], totalChars = 0;
             for (var i=1;i<=limit;i++) {
                 var pg = await pdf.getPage(i);
@@ -138,8 +138,8 @@
                 totalChars += pageText.length;
             }
             var ehDigital = (totalChars / limit) > 50;
-            return { textos: textos, ehDigital: ehDigital };
-        } catch(e) { return { textos: [], ehDigital: false }; }
+            return { textos: textos, ehDigital: ehDigital, numPaginas: pdf.numPages };
+        } catch(e) { return { textos: [], ehDigital: false, numPaginas: 0 }; }
     }
 
     function filtrarLinhasRelevantes(textos) {
@@ -2903,6 +2903,33 @@
         renderRascunho();
     }
 
+    // Le UM arquivo de documento pessoal (foto ou PDF curto) e acrescenta em `destino`. Usado pelo envio normal e pelo Lote.
+    async function lerArquivoId(f, aid, destino) {
+        try {
+            if (f.type.startsWith('image/')) {
+                var b64 = await resizeToBase64(f);
+                if (b64) destino.push({ base64: b64, dataUrl: URL.createObjectURL(f), arq: f.name, aid: aid });
+            } else if (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')) {
+                // Verifica quantas paginas tem ANTES de processar
+                var numPags = 0;
+                try {
+                    if (!window.pdfjsLib) await new Promise(function (ok, fail) { var s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'; s.onload = ok; s.onerror = fail; document.head.appendChild(s); });
+                    if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                    var ab = await f.arrayBuffer();
+                    var pdfDoc = await window.pdfjsLib.getDocument({ data: ab }).promise;
+                    numPags = pdfDoc.numPages;
+                } catch (e) {}
+                if (numPags > MAX_PDF_PGS_ID) {
+                    avisar('Este PDF tem ' + numPags + ' paginas. Documentos pessoais (RG/CNH) tem no maximo ' + MAX_PDF_PGS_ID + ' paginas. Coloque extratos e holerites na secao COMPROVANTE DE RENDA.');
+                    return;
+                }
+                // PDF ok: usa so a primeira pagina como imagem
+                var imgs = await pdfToImages(f);
+                if (imgs.length > 0 && destino.length < MAX_DOCS_ID) destino.push({ base64: imgs[0].base64, dataUrl: imgs[0].dataUrl, arq: f.name, aid: aid });
+            }
+        } catch (eF) { console.warn('Falha ao ler arquivo:', f.name, eF); avisar('Não consegui ler "' + f.name + '". Tente outro arquivo.'); }
+    }
+
     async function handleFilesId(files) {
         files = Array.prototype.slice.call(files || []);
         if (!files.length) return;
@@ -2913,32 +2940,37 @@
                 if (_docsId.length >= MAX_DOCS_ID) { avisar('Maximo ' + MAX_DOCS_ID + ' fotos de documento pessoal.'); break; }
                 statusUpload('Lendo ' + (f.name || 'arquivo') + '...');
                 var aid = ++_arqSeq;
-                try {
-                    if (f.type.startsWith('image/')) {
-                        var b64 = await resizeToBase64(f);
-                        if (b64) _docsId.push({ base64: b64, dataUrl: URL.createObjectURL(f), arq: f.name, aid: aid });
-                    } else if (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')) {
-                        // Verifica quantas paginas tem ANTES de processar
-                        var numPags = 0;
-                        try {
-                            if (!window.pdfjsLib) await new Promise(function (ok, fail) { var s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'; s.onload = ok; s.onerror = fail; document.head.appendChild(s); });
-                            if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-                            var ab = await f.arrayBuffer();
-                            var pdfDoc = await window.pdfjsLib.getDocument({ data: ab }).promise;
-                            numPags = pdfDoc.numPages;
-                        } catch (e) {}
-                        if (numPags > MAX_PDF_PGS_ID) {
-                            avisar('Este PDF tem ' + numPags + ' paginas. Documentos pessoais (RG/CNH) tem no maximo ' + MAX_PDF_PGS_ID + ' paginas. Coloque extratos e holerites na secao COMPROVANTE DE RENDA.');
-                            continue;
-                        }
-                        // PDF ok: usa so a primeira pagina como imagem
-                        var imgs = await pdfToImages(f);
-                        if (imgs.length > 0 && _docsId.length < MAX_DOCS_ID) _docsId.push({ base64: imgs[0].base64, dataUrl: imgs[0].dataUrl, arq: f.name, aid: aid });
-                    }
-                } catch (eF) { console.warn('Falha ao ler arquivo:', f.name, eF); avisar('Não consegui ler "' + f.name + '". Tente outro arquivo.'); }
+                await lerArquivoId(f, aid, _docsId);
                 renderRascunho();
             }
         } finally { _enviando--; renderRascunho(); }
+    }
+
+    // Le UM comprovante de renda (foto ou PDF; PDF digital ja traz o texto) e acrescenta em `destino`. Usado pelo envio normal e pelo Lote.
+    async function lerArquivoRend(f, aid, destino, rotulo) {
+        try {
+            if (f.type.startsWith('image/')) {
+                statusUpload('Lendo foto ' + rotulo + '...');
+                var b = await resizeToBase64(f);
+                if (b) destino.push({ dataUrl: URL.createObjectURL(f), base64: b, tipo: 'imagem', textos: [], ehDigital: false, arq: f.name, aid: aid });
+            } else if (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')) {
+                statusUpload('Lendo PDF ' + rotulo + '...');
+                // Extrai texto com posicao Y (PDF digital nao precisa gastar imagem na IA)
+                var txtResult = await extrairTextoPdfDigital(f);
+                var textos = txtResult.textos || [];
+                var digital = txtResult.ehDigital;
+                // Renderiza imagens pra preview (e pra IA se escaneado)
+                var imgs = await pdfToImages(f);
+                imgs.forEach(function (im, idx) {
+                    if (destino.length < MAX_DOCS_RND)
+                        destino.push({
+                            dataUrl: im.dataUrl, base64: im.base64, tipo: 'imagem',
+                            textos: textos[idx] ? [textos[idx]] : [], ehDigital: digital,
+                            arq: f.name, aid: aid
+                        });
+                });
+            }
+        } catch (eF) { console.warn('Falha ao ler arquivo:', f.name, eF); avisar('Não consegui ler "' + f.name + '". Tente outro arquivo.'); }
     }
 
     async function handleFilesRend(files) {
@@ -2951,35 +2983,330 @@
                 if (_docsRend.length >= MAX_DOCS_RND) { avisar('Maximo de ' + MAX_DOCS_RND + ' paginas atingido.'); break; }
                 var rotulo = (i + 1) + '/' + files.length + ' · ' + (f.name || 'arquivo');
                 var aid = ++_arqSeq;
-                try {
-                    if (f.type.startsWith('image/')) {
-                        statusUpload('Lendo foto ' + rotulo + '...');
-                        var b = await resizeToBase64(f);
-                        if (b) _docsRend.push({ dataUrl: URL.createObjectURL(f), base64: b, tipo: 'imagem', textos: [], ehDigital: false, arq: f.name, aid: aid });
-                    } else if (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')) {
-                        statusUpload('Lendo PDF ' + rotulo + '...');
-                        // Extrai texto com posicao Y (PDF digital nao precisa gastar imagem na IA)
-                        var txtResult = await extrairTextoPdfDigital(f);
-                        var textos = txtResult.textos || [];
-                        var digital = txtResult.ehDigital;
-                        // Renderiza imagens pra preview (e pra IA se escaneado)
-                        var imgs = await pdfToImages(f);
-                        imgs.forEach(function (im, idx) {
-                            if (_docsRend.length < MAX_DOCS_RND)
-                                _docsRend.push({
-                                    dataUrl: im.dataUrl, base64: im.base64, tipo: 'imagem',
-                                    textos: textos[idx] ? [textos[idx]] : [], ehDigital: digital,
-                                    arq: f.name, aid: aid
-                                });
-                        });
-                    }
-                } catch (eF) { console.warn('Falha ao ler arquivo:', f.name, eF); avisar('Não consegui ler "' + f.name + '". Tente outro arquivo.'); }
+                await lerArquivoRend(f, aid, _docsRend, rotulo);
                 renderRascunho();
             }
         } finally { _enviando--; renderRascunho(); }
     }
     function uploadId(capture,mode){var inp=document.createElement('input');inp.type='file';inp.accept=(mode==='pdf')?'application/pdf,.pdf':'image/*,application/pdf';inp.multiple=true;if(capture&&capture!==false)inp.capture='environment';inp.onchange=function(e){handleFilesId(e.target.files);};inp.click();}
     function uploadRend(accept,capture){var inp=document.createElement('input');inp.type='file';inp.accept=accept||'image/*,application/pdf';inp.multiple=true;if(capture)inp.capture='environment';inp.onchange=function(e){handleFilesRend(e.target.files);};inp.click();}
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // LOTE: vários documentos + vários extratos de uma vez; o sistema descobre de quem é cada arquivo pelo NOME (e pelo CPF quando dá).
+    // Esta parte é só código (sem IA, sem tela): leitura do nome no extrato, comparação de nomes e agrupamento em pessoas.
+    // Regra de ouro: NUNCA casar por um nome só ("Pastelaria do Junior" x "Otair Junior"). Na dúvida não casa sozinho: vira "confirmar".
+    // ════════════════════════════════════════════════════════════════════════════
+    var LT_STOP = /^(?:DE|DA|DO|DAS|DOS|LTDA|ME|MEI|EPP|EIRELI|SA)$/;
+    // "Maria de Souza", "SANTOS, MARIA", "51.602.474 ANA CAROLINA ..." -> ['MARIA','SOUZA'] (sem acento, sem preposição, sem número). Inicial solta ("S") fica.
+    function ltTokens(nome) {
+        var s = nuSemAcento(nome).replace(/\s+/g, ' ').trim();
+        var vir = /^([^,]{2,40}),\s*(.+)$/.exec(s);
+        if (vir) s = vir[2] + ' ' + vir[1];
+        return s.replace(/[^A-Z ]/g, ' ').split(/\s+/).filter(function (t) { return t && (t.length === 1 ? t !== 'E' : !LT_STOP.test(t)); });
+    }
+    function ltIniciaisOk(a, b) { return (a.length === 1 && b.charAt(0) === a) || (b.length === 1 && a.charAt(0) === b); }
+    // Compara duas listas de tokens: ex = palavras iguais, tudo = a lista menor cabe inteira na maior (inicial vale como palavra), dice = parecença 0..1
+    function ltCompara(A, B) {
+        var P = A.length <= B.length ? A : B, G = A.length <= B.length ? B : A, usados = {}, ex = 0, ok = 0, i, j;
+        var casouP = new Array(P.length);
+        for (i = 0; i < P.length; i++) for (j = 0; j < G.length; j++) if (!usados[j] && P[i] === G[j]) { usados[j] = 1; casouP[i] = 1; ex++; ok++; break; }
+        for (i = 0; i < P.length; i++) {
+            if (casouP[i]) continue;
+            for (j = 0; j < G.length; j++) if (!usados[j] && ltIniciaisOk(P[i], G[j])) { usados[j] = 1; casouP[i] = 1; ok++; break; }
+        }
+        var primeiro = P.length > 0 && G.indexOf(P[0]) !== -1;   // o 1º nome da lista menor aparece na maior (ex.: "Caroline Silva" x "Ana Caroline Silva")
+        return { ex: ex, tudo: P.length > 0 && ok === P.length, dice: A.length + B.length ? 2 * ok / (A.length + B.length) : 0, primeiro: primeiro, nP: P.length };
+    }
+    // Quanto um nome (e CPF parcial) combina com outro. n: 2 = certo (CPF igual + ao menos 1 palavra), 1 = casa sozinho (>=2 palavras iguais, a menor lista cabe
+    // inteira na maior e o 1º nome bate), 0.5 = "talvez" (só sugere), 0 = não.
+    function ltForca(a, b) {
+        var c = ltCompara(a.tok, b.tok), cpfIgual = !!(a.cpfMeio && b.cpfMeio && a.cpfMeio === b.cpfMeio);
+        var n = 0;
+        if (a.cpfMeio && b.cpfMeio && !cpfIgual) return { n: 0, dice: c.dice, ex: c.ex };   // CPFs diferentes = pessoas diferentes (homônimos), por mais parecido que seja o nome
+        if (cpfIgual && c.ex >= 1) n = 2;
+        else if (c.ex >= 2 && c.tudo && c.primeiro) n = 1;
+        else if (c.ex >= 1 && c.dice >= 0.4) n = 0.5;
+        return { n: n, dice: c.dice, ex: c.ex };
+    }
+    // CPF impresso no extrato/documento -> os 6 dígitos do MEIO (o Nubank esconde o começo e o fim: •••.047.201-••). '' se não achar.
+    function ltCpfMeio(texto) {
+        var t = String(texto || ''), m = /(?:^|[^\d])(?:\d{3}|[•*Xx.]{2,3})\.(\d{3})\.(\d{3})-(?:\d{2}|[•*Xx]{2})(?!\d)/.exec(t);
+        if (m) return m[1] + m[2];
+        m = /CPF(?:\/CNPJ)?\s*:?\s*(\d{11})(?!\d)/i.exec(t);   // sem pontuação (Mercado Pago)
+        return m ? m[1].slice(3, 9) : '';
+    }
+    function ltCpfMeioDeCpf(cpf) { var d = String(cpf || '').replace(/\D/g, ''); return d.length === 11 ? d.slice(3, 9) : ''; }
+    // Nome de pessoa (mais folgado que nomeValido: nome completo de brasileiro chega a 9 palavras) ou '' se parece rótulo/empresa
+    function ltNomeOk(n) {
+        n = String(n || '').replace(/[^A-Za-zÀ-ÿ'. -]/g, ' ').replace(/\s+/g, ' ').trim();
+        if (n.length < 6 || n.length > 80 || NOME_PROIBIDO.test(n)) return '';
+        var pal = n.split(' ').filter(Boolean), reais = pal.filter(function (w) { return !/^(d[eao]s?|e)$/i.test(w); });
+        return reais.length >= 2 && pal.length <= 12 && reais.every(function (w) { return w.length >= 2; }) ? n : '';
+    }
+    // Nome do titular no texto da 1ª página do extrato: InfinitePay ("12.345.678 NOME - CNPJ: ..."), "Nome" numa linha e o nome na seguinte (Santander),
+    // depois "Nome: X" e "NOME + CPF" (Nubank, Itaú, Mercado Pago, Inter).
+    function ltNomeExtrato(texto) {
+        var linhas = String(texto || '').split(/\r?\n/).map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(Boolean).slice(0, 100), m, i, n;
+        for (i = 0; i < linhas.length; i++) {
+            m = /^(?:[\d.\/-]{6,} )?(.{6,80}?) - (?:CNPJ|CPF):/i.exec(linhas[i]);
+            if (m && (n = ltNomeOk(m[1]))) return n;
+        }
+        for (i = 0; i + 1 < linhas.length; i++) {
+            if (/^(?:nome|titular|nome do cliente|cliente)\s*:?$/i.test(linhas[i]) && (n = ltNomeOk(linhas[i + 1]))) return n;
+        }
+        return nomeNoTexto(linhas.join('\n'));
+    }
+    // Tipo do PDF pelo texto: 'ext' (extrato/comprovante), 'doc' (RG/CNH digital) ou '' (texto não diz: a IA olha a 1ª página).
+    // CNH digital (CNH-e) costuma trazer só o aviso de assinatura digital no texto: por isso PDF curto SEM palavra de extrato fica '' e não 'ext'.
+    function ltTipoPdf(texto, numPag, digital) {
+        if (!digital) return '';
+        if (numPag > 3) return 'ext';
+        var T = nuSemAcento(texto), ehExtrato = /EXTRATO|SALDO|HOLERITE|CONTRACHEQUE|MOVIMENTA|COMPROVANTE DE RENDA|DEMONSTRATIVO DE PAGAMENTO|\bPIX\b/.test(T);
+        if (!ehExtrato && /CARTEIRA NACIONAL DE HABILITA|REGISTRO GERAL|CARTEIRA DE IDENTIDADE|DOCUMENTO DE IDENTIFICA|REPUBLICA FEDERATIVA DO BRASIL/.test(T)) return 'doc';
+        return ehExtrato ? 'ext' : '';
+    }
+    // Junta tudo em PESSOAS. arqs: [{aid, tipo:'doc'|'ext', nome (da pessoa, '' se não leu), cpfMeio, ancora?, removido?}].
+    // 1) extratos que são da mesma pessoa viram um grupo; 2) cada documento vai para o grupo que combina (sem empate); 3) ajustes manuais (ancora).
+    // Devolve { pessoas:[{id, nome, exts:[arq], docs:[arq], talvez:[{doc, dice}]}], semExtrato:[doc], soltos:[arq] }
+    function ltAgrupar(arqs) {
+        var vivos = arqs.filter(function (a) { return !a.removido; });
+        vivos.forEach(function (a) { a.tok = ltTokens(a.nome || ''); });
+        var exts = vivos.filter(function (a) { return a.tipo === 'ext' && a.tok.length >= 2; });
+        var docs = vivos.filter(function (a) { return a.tipo === 'doc' && a.tok.length >= 2; });
+        var soltos = vivos.filter(function (a) { return a.tok.length < 2 || (a.tipo !== 'ext' && a.tipo !== 'doc'); });
+        var pai = {}; exts.forEach(function (a) { pai[a.aid] = a.aid; });
+        var raiz = function (x) { while (pai[x] !== x) { pai[x] = pai[pai[x]]; x = pai[x]; } return x; };
+        for (var i = 0; i < exts.length; i++) for (var j = i + 1; j < exts.length; j++) {
+            if (!exts[i].sep && !exts[j].sep && ltForca(exts[i], exts[j]).n >= 1) pai[raiz(exts[i].aid)] = raiz(exts[j].aid);   // sep = o usuário separou este extrato
+        }
+        var porRaiz = {}, pessoas = [];
+        exts.forEach(function (a) {
+            var r = raiz(a.aid);
+            if (!porRaiz[r]) { porRaiz[r] = { id: 0, nome: '', tok: [], cpfMeio: '', exts: [], docs: [], talvez: [] }; pessoas.push(porRaiz[r]); }
+            var p = porRaiz[r]; p.exts.push(a);
+            if (a.tok.length > p.tok.length) { p.tok = a.tok; p.nome = a.nome; }   // o nome mais completo do grupo
+            if (!p.cpfMeio && a.cpfMeio) p.cpfMeio = a.cpfMeio;
+        });
+        pessoas.forEach(function (p) { p.id = Math.min.apply(null, p.exts.map(function (a) { return a.aid; })); });
+        // documentos: vai para o grupo que combina; empate (dois grupos quase iguais) = não anexa, só sugere
+        var semExtrato = [];
+        docs.forEach(function (d) {
+            var cand = pessoas.map(function (p) { var f = ltForca({ tok: p.tok, cpfMeio: p.cpfMeio }, d); return { p: p, n: f.n, dice: f.dice }; })
+                .filter(function (c) { return c.n > 0; }).sort(function (x, y) { return y.n - x.n || y.dice - x.dice; });
+            var melhor = cand[0], segundo = cand[1];
+            if (melhor && melhor.n >= 1 && (!segundo || segundo.n < melhor.n || melhor.dice - segundo.dice >= 0.2)) {
+                melhor.p.docs.push(d); d.pessoaId = melhor.p.id;
+            } else if (melhor && melhor.n >= 1) {   // empate entre pessoas: o usuário decide
+                cand.filter(function (c) { return c.n >= 1; }).forEach(function (c) { c.p.talvez.push({ doc: d, dice: c.dice }); });
+                semExtrato.push(d);
+            } else {
+                cand.forEach(function (c) { c.p.talvez.push({ doc: d, dice: c.dice }); });   // fraco ("talvez"): só sugere
+                semExtrato.push(d);
+            }
+        });
+        // dois documentos no mesmo grupo que são de pessoas diferentes (ex.: "Ana Paula Silva" e "Ana Clara Silva" para o grupo "Ana Silva"): desanexa os dois
+        pessoas.forEach(function (p) {
+            var ruim = {};
+            for (var i = 0; i < p.docs.length; i++) for (var j = i + 1; j < p.docs.length; j++) {
+                if (ltForca(p.docs[i], p.docs[j]).n < 1) { ruim[p.docs[i].aid] = 1; ruim[p.docs[j].aid] = 1; }
+            }
+            if (!Object.keys(ruim).length) return;
+            p.docs = p.docs.filter(function (d) { if (!ruim[d.aid]) return true; d.pessoaId = null; p.talvez.push({ doc: d, dice: 0.5 }); semExtrato.push(d); return false; });
+        });
+        // ajustes manuais: arquivo com "ancora" (aid de um arquivo da pessoa de destino) vai para essa pessoa
+        var achar = function (aid) { return pessoas.filter(function (p) { return p.exts.concat(p.docs).some(function (a) { return a.aid === aid; }); })[0] || null; };
+        var manuais = vivos.filter(function (a) { return a.ancora; });
+        manuais.forEach(function (a) {
+            var alvo = achar(a.ancora);
+            if (!alvo && a.ancora === a.aid) return;
+            pessoas.forEach(function (p) { p.exts = p.exts.filter(function (x) { return x !== a; }); p.docs = p.docs.filter(function (x) { return x !== a; }); });
+            semExtrato = semExtrato.filter(function (x) { return x !== a; }); soltos = soltos.filter(function (x) { return x !== a; });
+            if (!alvo) { (a.tipo === 'doc' && a.tok.length >= 2 ? semExtrato : soltos).push(a); return; }
+            if (a.tipo === 'ext') alvo.exts.push(a); else alvo.docs.push(a);
+            a.pessoaId = alvo.id;
+        });
+        var vazias = pessoas.filter(function (p) { return !p.exts.length; });   // grupo que perdeu todos os extratos
+        vazias.forEach(function (p) { p.docs.forEach(function (d) { semExtrato.push(d); }); });
+        pessoas = pessoas.filter(function (p) { return p.exts.length; });
+        pessoas.forEach(function (p) { p.id = Math.min.apply(null, p.exts.map(function (a) { return a.aid; })); });   // o id acompanha os arquivos depois dos ajustes manuais
+        pessoas.forEach(function (p) {
+            var feitos = {}; p.talvez = p.talvez.filter(function (t) { if (feitos[t.doc.aid] || p.docs.indexOf(t.doc) !== -1 || semExtrato.indexOf(t.doc) === -1) return false; feitos[t.doc.aid] = 1; return true; })
+                .sort(function (x, y) { return y.dice - x.dice; }).slice(0, 2);
+        });
+        pessoas.sort(function (x, y) { return x.id - y.id; });
+        return { pessoas: pessoas, semExtrato: semExtrato, soltos: soltos };
+    }
+
+    // ── LOTE: leitura dos arquivos (nome, tipo) e tela ──────────────────────────────────────────────────────────
+    var _lote = { arqs: [], lendo: false, analisando: false, excl: {}, status: '' };
+    var LT_PROMPT_IA = 'Esta imagem e um documento de uma pessoa brasileira. Responda APENAS um JSON valido: {"tipo":"doc","nome":"","cpf":""}. ' +
+        'tipo = "doc" para RG, CNH ou outro documento de identificacao pessoal (inclusive so o verso); "renda" para extrato bancario, holerite, contracheque ou comprovante de renda. ' +
+        'nome = nome completo da PESSOA (titular do documento ou do extrato), exatamente como impresso; vazio se nao houver nome legivel (ex.: verso do RG). ' +
+        'cpf = somente os 11 digitos se aparecerem, senao vazio. Nao invente nada.';
+
+    function loteChave(f) { return [f.name, f.size, f.lastModified].join('|'); }
+    function loteStatus(msg) { _lote.status = msg || ''; var s = el('cs_lt_status'); if (s) s.textContent = _lote.status; }
+
+    // Foto, ou 1ª página de PDF escaneado: a IA diz se é documento/comprovante e lê o nome (e o CPF, que vale mais que o nome)
+    async function loteLerPorIA(a) {
+        var f = a.file, b64 = '';
+        if (f.type.indexOf('image/') === 0) b64 = await resizeToBase64(f);
+        else { var imgs = await pdfToImages(f, 1); b64 = imgs.length ? imgs[0].base64 : ''; }
+        if (!b64) { a.aviso = 'Não consegui abrir a imagem.'; return; }
+        var resp = await aiCallVision([{ base64: b64 }], '', LT_PROMPT_IA, null);
+        var i1 = resp.indexOf('{'), i2 = resp.lastIndexOf('}');
+        if (i1 === -1 || i2 <= i1) { a.aviso = 'A IA não respondeu direito.'; return; }
+        var o = JSON.parse(resp.substring(i1, i2 + 1));
+        if (!a.tipo || a.tipo === '?') a.tipo = String(o.tipo).toLowerCase() === 'renda' ? 'ext' : 'doc';
+        var nome = ltNomeOk(o.nome); if (nome && !a.nome) a.nome = nome;
+        var cpf = String(o.cpf || '').replace(/\D/g, '');
+        if (cpfValido(cpf)) { a.cpfFull = cpf; a.cpfMeio = ltCpfMeioDeCpf(cpf); }
+    }
+
+    // Descobre o tipo e o nome de UM arquivo, lendo só o começo (a leitura completa fica para depois da confirmação)
+    async function loteIdentificar(a) {
+        var f = a.file, ehPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+        if (!ehPdf && f.type.indexOf('image/') !== 0) { a.estado = 'erro'; a.aviso = 'Formato não aceito (use foto ou PDF).'; return; }
+        a.tipo = '?';
+        if (!ehPdf) { a.thumb = URL.createObjectURL(f); await loteLerPorIA(a); return; }
+        var r = await extrairTextoPdfDigital(f, 2), t1 = (r.textos || []).join('\n');
+        a.numPag = r.numPaginas || 0;
+        var tipo = ltTipoPdf(t1, a.numPag, r.ehDigital);
+        if (tipo === 'ext') { a.tipo = 'ext'; a.nome = ltNomeExtrato(t1); a.cpfMeio = ltCpfMeio(t1); if (!a.nome) await loteLerPorIA(a); return; }
+        await loteLerPorIA(a);   // RG/CNH em PDF ou PDF escaneado
+        if (a.numPag > 3) a.tipo = 'ext';   // PDF longo nunca é documento pessoal
+    }
+
+    async function loteAdicionar(files) {
+        files = Array.prototype.slice.call(files || []);
+        if (!files.length) return;
+        var vistos = {}, dup = 0;
+        _lote.arqs.forEach(function (a) { if (!a.removido) vistos[a.chave] = 1; });
+        files.forEach(function (f) {
+            var k = loteChave(f);
+            if (vistos[k]) { dup++; return; }
+            vistos[k] = 1;
+            _lote.arqs.push({ aid: ++_arqSeq, file: f, arq: f.name || 'arquivo', chave: k, tipo: '?', nome: '', cpfMeio: '', cpfFull: '', numPag: 0, estado: 'fila', aviso: '', thumb: '' });
+        });
+        if (dup) avisar(dup + (dup > 1 ? ' arquivos já estavam na lista e foram ignorados.' : ' arquivo já estava na lista e foi ignorado.'));
+        renderLote();
+        if (_lote.lendo) return;
+        _lote.lendo = true;
+        try {
+            for (;;) {
+                var a = _lote.arqs.filter(function (x) { return x.estado === 'fila' && !x.removido; })[0];
+                if (!a) break;
+                a.estado = 'lendo'; renderLote();
+                try { await loteIdentificar(a); if (a.estado === 'lendo') a.estado = 'ok'; }
+                catch (e) { console.warn('Lote: falha ao identificar', a.arq, e); a.estado = 'erro'; a.aviso = 'Não consegui ler este arquivo.'; }
+                renderLote();
+            }
+        } finally { _lote.lendo = false; renderLote(); }
+    }
+
+    function loteLiberar(a) { try { if (a && a.thumb) URL.revokeObjectURL(a.thumb); } catch (e) {} if (a) a.thumb = ''; }
+    function loteRemover(a) { loteLiberar(a); a.removido = true; a.ancora = 0; }
+    function loteNomePessoa(p) { return capNome(p.docs.length && p.docs[0].nome ? p.docs[0].nome : p.nome); }
+    function loteLimpar() { _lote.arqs.forEach(loteLiberar); _lote.arqs = []; _lote.excl = {}; _lote.status = ''; }
+
+    function loteArqHtml(a, g, atual) {
+        var ico = a.thumb ? '<img src="' + esc(a.thumb) + '" alt="">' : '<i class="bi ' + (a.tipo === 'doc' ? 'bi-person-vcard' : 'bi-file-earmark-text') + '"></i>';
+        var igual = !!(atual && a.nome && ltTokens(a.nome).join(' ') === ltTokens(loteNomePessoa(atual)).join(' '));   // nome igual ao da pessoa: não repete, só confirma
+        var info = a.estado === 'lendo' || a.estado === 'fila' ? 'Lendo…' : a.estado === 'erro' ? a.aviso :
+            [igual ? '✓ nome confere' : a.nome ? esc(capNome(a.nome)) : 'sem nome legível', a.numPag > 1 ? a.numPag + ' páginas' : ''].filter(Boolean).join(' · ');
+        var opc = '<option value="">Mover…</option>';
+        g.pessoas.forEach(function (p) { if (p !== atual) opc += '<option value="p:' + p.exts[0].aid + '">Para ' + esc(loteNomePessoa(p)) + '</option>'; });
+        if (a.tipo === 'ext' && atual && atual.exts.length > 1) opc += '<option value="sep">Separar em outra pessoa</option>';
+        opc += '<option value="x">Remover da lista</option>';
+        return '<div class="cs-lt-f' + (a.estado === 'erro' ? ' erro' : '') + '">' + ico +
+            '<span class="cs-lt-n"><b>' + esc(a.arq) + '</b><small' + (a.estado === 'erro' || !a.nome ? ' class="w"' : '') + '>' + info + '</small></span>' +
+            '<button type="button" class="cs-lt-tp" data-lt="tipo" data-aid="' + a.aid + '" aria-label="Trocar entre documento e comprovante">' + (a.tipo === 'doc' ? 'Doc' : a.tipo === 'ext' ? 'Extrato' : '?') + '</button>' +
+            '<select class="cs-lt-sel" data-lt="mover" data-aid="' + a.aid + '" aria-label="Mover arquivo">' + opc + '</select></div>';
+    }
+
+    function renderLote() {
+        var corpo = el('cs_lt_body'); if (!corpo) return;
+        var g = ltAgrupar(_lote.arqs), h = '', pend = _lote.arqs.filter(function (a) { return !a.removido && (a.estado === 'fila' || a.estado === 'lendo'); }).length;
+        var incl = g.pessoas.filter(function (p) { return !_lote.excl[p.id]; }).length;
+        if (!_lote.arqs.some(function (a) { return !a.removido; })) h += '<p class="cs-hint">Selecione de uma vez os documentos (RG/CNH) e os extratos de vários clientes. O sistema lê o nome de cada arquivo e junta tudo por pessoa.</p>';
+        g.pessoas.forEach(function (p) {
+            var nome = loteNomePessoa(p), marcado = !_lote.excl[p.id];
+            h += '<div class="cs-card cs-lt-p' + (marcado ? '' : ' off') + '">' +
+                '<label class="cs-lt-hd"><input type="checkbox" data-lt="incl" data-id="' + p.id + '"' + (marcado ? ' checked' : '') + '><b>' + esc(nome) + '</b></label>' +
+                (p.docs.length ? '<span class="cs-lt-bd ok"><i class="bi bi-check-circle-fill"></i> Documento anexado</span>' : '<span class="cs-lt-bd warn"><i class="bi bi-exclamation-circle"></i> Sem documento · usa o nome do extrato</span>') +
+                p.docs.map(function (a) { return loteArqHtml(a, g, p); }).join('') +
+                p.exts.map(function (a) { return loteArqHtml(a, g, p); }).join('') +
+                p.talvez.map(function (t) { return '<div class="cs-lt-sug">Documento possível: <b>' + esc(capNome(t.doc.nome)) + '</b> <button type="button" class="cs-link" data-lt="anexar" data-aid="' + t.doc.aid + '" data-id="' + p.exts[0].aid + '">Anexar</button></div>'; }).join('') +
+                '</div>';
+        });
+        if (g.semExtrato.length) h += '<div class="cs-card cs-lt-p"><div class="cs-lt-hd"><b>Documentos sem extrato</b></div><p class="cs-hint" style="text-align:left">Sem extrato não dá para analisar. Se o extrato desta pessoa estiver na lista com outro nome, mova o documento para ela.</p>' + g.semExtrato.map(function (a) { return loteArqHtml(a, g, null); }).join('') + '</div>';
+        if (g.soltos.length) h += '<div class="cs-card cs-lt-p"><div class="cs-lt-hd"><b>Não identificados</b></div><p class="cs-hint" style="text-align:left">Não deu para ler o nome. Mova cada arquivo para a pessoa certa (ou toque em Doc/Extrato se o tipo estiver errado).</p>' + g.soltos.map(function (a) { return loteArqHtml(a, g, null); }).join('') + '</div>';
+        corpo.innerHTML = h;
+        var st = el('cs_lt_status'), btn = el('cs_lt_go'), add = el('cs_lt_add');
+        if (st) st.textContent = _lote.analisando ? _lote.status : pend ? 'Lendo arquivos… ' + pend + ' restante' + (pend > 1 ? 's' : '') : '';
+        if (btn) { btn.disabled = !incl || !!pend || _lote.analisando; btn.innerHTML = '<i class="bi bi-check2-circle"></i> ' + (incl ? 'Analisar ' + incl + (incl > 1 ? ' pessoas' : ' pessoa') : 'Nada para analisar'); }
+        if (add) add.disabled = _lote.analisando;
+    }
+
+    function loteAcao(e) {
+        var t = e.target, bt = t.closest && t.closest('[data-lt]'); if (!bt) return;
+        var act = bt.getAttribute('data-lt'), aid = +bt.getAttribute('data-aid'), a = _lote.arqs.filter(function (x) { return x.aid === aid; })[0];
+        if (_lote.analisando) return;
+        if (act === 'incl') { _lote.excl[+bt.getAttribute('data-id')] = !bt.checked; renderLote(); return; }
+        if (!a) return;
+        if (act === 'tipo') { a.tipo = a.tipo === 'doc' ? 'ext' : 'doc'; a.ancora = 0; renderLote(); }
+        else if (act === 'anexar') { a.ancora = +bt.getAttribute('data-id'); renderLote(); }
+        else if (act === 'mover') {
+            var v = bt.value; if (!v) return;
+            if (v === 'x') loteRemover(a);
+            else if (v === 'sep') { a.sep = true; a.ancora = 0; }
+            else if (v.indexOf('p:') === 0) { a.ancora = +v.slice(2); a.sep = false; }
+            renderLote();
+        }
+    }
+
+    function loteAbrir() { var o = el('cs_lote_ov'); if (!o) return; renderLote(); o.classList.add('active'); }
+    function loteFechar() { var o = el('cs_lote_ov'); if (o) o.classList.remove('active'); }
+    function loteEscolher() {
+        var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*,application/pdf'; inp.multiple = true;
+        inp.onchange = function () { loteAdicionar(inp.files); };
+        inp.click();
+    }
+
+    // Uma análise normal por pessoa (mesmos arquivos, mesma fila, mesmo servidor); o nome vai da conferência para a lista
+    async function loteAnalisar() {
+        if (_lote.analisando || _lote.lendo) return;
+        var g = ltAgrupar(_lote.arqs), alvo = g.pessoas.filter(function (p) { return !_lote.excl[p.id]; });
+        if (!alvo.length) return;
+        _lote.analisando = true; renderLote();
+        var feitos = 0, falhas = [];
+        try {
+            for (var i = 0; i < alvo.length; i++) {
+                var p = alvo[i], nome = loteNomePessoa(p), docsId = [], docsRend = [], k;
+                loteStatus('Preparando ' + (i + 1) + ' de ' + alvo.length + ' · ' + nome + '…');
+                var docs = p.docs.slice(0, MAX_DOCS_ID);
+                for (k = 0; k < docs.length; k++) await lerArquivoId(docs[k].file, docs[k].aid, docsId);
+                var exts = p.exts.slice().sort(function (x, y) { return x.aid - y.aid; });
+                for (k = 0; k < exts.length; k++) await lerArquivoRend(exts[k].file, exts[k].aid, docsRend, (k + 1) + '/' + exts.length + ' · ' + exts[k].arq);
+                var incompleto = exts.filter(function (x) {   // extrato que perdeu paginas na leitura = mes faltando na renda: nao lanca
+                    var lidas = docsRend.filter(function (d) { return d.aid === x.aid; }).length;
+                    return !lidas || (x.numPag && lidas < Math.min(x.numPag, MAX_PDF_PGS));
+                });
+                if (incompleto.length) { falhas.push(nome + ' (' + incompleto.map(function (x) { return x.arq; }).join(', ') + ')'); continue; }
+                lancarJob(docsId, docsRend, '', { usuario: usuarioAtual(), nome: nome.substring(0, 80) });
+                processarFila();
+                feitos++;
+                p.docs.concat(p.exts).forEach(function (a) { loteRemover(a); });   // já foi para a fila: sai da conferência
+            }
+        } finally {
+            _lote.analisando = false; loteStatus('');
+            _lote.arqs = _lote.arqs.filter(function (a) { return !a.removido; });
+            if (feitos) { _formAberto = false; aplicarForm(); renderLista(); }
+            renderLote();
+        }
+        if (falhas.length) avisar('Não consegui ler os extratos de: ' + falhas.join(', ') + '. Essas pessoas continuam na lista.');
+        if (feitos && !_lote.arqs.some(function (a) { return a.tipo === 'ext'; })) { loteLimpar(); loteFechar(); }
+    }
 
     // ================================================================
     // TELA INICIAL: nova analise + andamento + prontas
@@ -3169,7 +3496,7 @@
 
     // Fecha tudo do CreditoScan (as analises continuam rodando em segundo plano)
     function fecharTudo() {
-        ['cs_ov', 'cs_hist_ov', 'cs_res_ov'].forEach(function (id) { el(id) && el(id).classList.remove('active'); });
+        ['cs_ov', 'cs_hist_ov', 'cs_res_ov', 'cs_lote_ov'].forEach(function (id) { el(id) && el(id).classList.remove('active'); });
         if (el('cs_cfg_ov')) el('cs_cfg_ov').classList.remove('active');
     }
 
@@ -3863,20 +4190,26 @@
         }, extra || {});
     }
 
-    function iniciarAnalise() {
-        if (!_docsRend.length || _enviando > 0) return;
-        var campoTel = el('cs_tel');
-        var job = criarJob(_docsId, _docsRend, normalizarTelefone(campoTel ? campoTel.value : ''), { usuario: usuarioAtual() });
+    // Cria a analise e coloca na lista/fila de envio. Quem chama decide quando rodar processarFila() e redesenhar (envio normal e Lote).
+    function lancarJob(docsId, docsRend, tel, extra) {
+        var job = criarJob(docsId, docsRend, tel, extra);
         try {
             if (window.ctwNativo && window.ctwNativo.ativo()) window.ctwNativo.pedirNotificacao();
             else if (window.Notification && Notification.permission === 'default') Notification.requestPermission();
         } catch (e) {}   // para o aviso "Analise pronta" com o app em segundo plano
-        if (campoTel) { campoTel.value = ''; mascararTelefone(campoTel, 'cs_tel_hint'); }
-        _docsId = []; _docsRend = [];
         _jobs.unshift(job);
         _formAberto = false;
         if (filaProvavel()) upIniciar(job);   // tela de envio: trava o app ate o servidor confirmar o recebimento
         persistirJob(job);   // copia no aparelho: se o Android fechar o app, a analise e retomada ao reabrir
+        return job;
+    }
+
+    function iniciarAnalise() {
+        if (!_docsRend.length || _enviando > 0) return;
+        var campoTel = el('cs_tel'), docsId = _docsId, docsRend = _docsRend;
+        lancarJob(docsId, docsRend, normalizarTelefone(campoTel ? campoTel.value : ''), { usuario: usuarioAtual() });
+        if (campoTel) { campoTel.value = ''; mascararTelefone(campoTel, 'cs_tel_hint'); }
+        _docsId = []; _docsRend = [];
         renderRascunho(); aplicarForm(); renderLista();
         processarFila();
     }
@@ -5676,9 +6009,9 @@
         var s=document.createElement('style');s.id='cs-st';
         s.textContent=[
         /* ── camadas: ficam ABAIXO do menu inferior do app (z 1060) para ele continuar visivel ── */
-        '#cs_ov,#cs_hist_ov,#cs_res_ov,#cs_cfg_ov{display:none;position:fixed;inset:0;background:var(--bg-color,#16171A);color:var(--text-color);flex-direction:column;overflow:hidden;font-family:"Poppins",sans-serif}',
-        '#cs_ov{z-index:1050}#cs_hist_ov{z-index:1051}#cs_res_ov{z-index:1052}#cs_cfg_ov{z-index:1053}',
-        '#cs_ov.active,#cs_hist_ov.active,#cs_res_ov.active,#cs_cfg_ov.active{display:flex}',
+        '#cs_ov,#cs_hist_ov,#cs_res_ov,#cs_cfg_ov,#cs_lote_ov{display:none;position:fixed;inset:0;background:var(--bg-color,#16171A);color:var(--text-color);flex-direction:column;overflow:hidden;font-family:"Poppins",sans-serif}',
+        '#cs_ov{z-index:1050}#cs_hist_ov{z-index:1051}#cs_res_ov{z-index:1052}#cs_cfg_ov{z-index:1053}#cs_lote_ov{z-index:1054}',
+        '#cs_ov.active,#cs_hist_ov.active,#cs_res_ov.active,#cs_cfg_ov.active,#cs_lote_ov.active{display:flex}',
         '.cs-scope{--cs-warn:#E9B44C;--cs-bad:#EF6B6B;--cs-info:#6FA8DC;--cs-ok:var(--primary-color)}',
         '[data-theme="light"] .cs-scope{--cs-warn:#B7791F;--cs-bad:#D14343;--cs-info:#2F6FAE}',
         '.cs-h{display:none!important}',
@@ -5924,7 +6257,16 @@
         '.cs-apc-ib{width:36px;height:36px;border-radius:50%;border:0;background:var(--input-bg);color:var(--text-secondary);display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;flex:none}',
         '.cs-apc-ib.d{color:var(--cs-bad)}.cs-apc-ib.d.arm{background:var(--cs-bad);color:#fff;width:auto;border-radius:18px;padding:0 12px;font:700 12px "Poppins",sans-serif}',
         '.cs-apc-bar{display:flex;gap:8px}.cs-apc-bar .cs-btn{flex:1}',
-        '.cs-apc-res{font-size:13px;line-height:1.5;text-align:left}.cs-apc-res .ok{color:var(--cs-ok)}.cs-apc-res .bad{color:var(--cs-bad)}'
+        '.cs-apc-res{font-size:13px;line-height:1.5;text-align:left}.cs-apc-res .ok{color:var(--cs-ok)}.cs-apc-res .bad{color:var(--cs-bad)}',
+        '.cs-lt-p{gap:8px}.cs-lt-p.off{opacity:.55}',
+        '.cs-lt-hd{display:flex;align-items:center;gap:10px;font-size:14px;min-height:36px;cursor:pointer}.cs-lt-hd input{width:20px;height:20px;accent-color:var(--primary-color);flex-shrink:0}.cs-lt-hd b{min-width:0;overflow-wrap:anywhere}',
+        '.cs-lt-bd{font-size:12px;display:flex;align-items:center;gap:6px}.cs-lt-bd.ok{color:var(--cs-ok)}.cs-lt-bd.warn{color:var(--cs-warn)}',
+        '.cs-lt-f{display:flex;align-items:center;gap:8px;background:rgba(var(--primary-color-rgb),.08);border-radius:12px;padding:6px 8px;min-width:0}.cs-lt-f.erro{background:rgba(239,107,107,.12)}',
+        '.cs-lt-f img{width:32px;height:32px;border-radius:7px;object-fit:cover;flex-shrink:0}.cs-lt-f>i.bi{color:var(--primary-color);font-size:1.1rem;flex-shrink:0}',
+        '.cs-lt-n{flex:1;min-width:0;display:flex;flex-direction:column}.cs-lt-n b{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cs-lt-n small{font-size:11px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cs-lt-n small.w{color:var(--cs-warn)}',
+        '.cs-lt-tp{min-height:36px;padding:0 10px;border-radius:99px;border:1px solid var(--glass-border);background:transparent;color:var(--text-secondary);font:600 11px "Poppins",sans-serif;cursor:pointer;flex-shrink:0}',
+        '.cs-lt-sel{min-height:36px;max-width:96px;border-radius:10px;border:1px solid var(--glass-border);background:var(--card-bg);color:var(--text-color);font:500 11px "Poppins",sans-serif;flex-shrink:0}',
+        '.cs-lt-sug{font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px;flex-wrap:wrap}'
         ].join('');
         document.head.appendChild(s);
     }
@@ -5943,6 +6285,7 @@
         '</div>'+
         '<div class="cs-body">'+
             '<button type="button" class="cs-novaform cs-h" id="cs_btn_novaform"><i class="bi bi-plus-lg"></i> Nova análise</button>'+
+            '<button type="button" class="cs-btn cs-btn-ghost" id="cs_btn_lote"><i class="bi bi-people"></i> Lote · vários clientes de uma vez</button>'+
             '<div id="cs_form" style="display:flex;flex-direction:column;gap:14px">'+
                 '<div class="cs-intro"><h2>Nova análise</h2><p>Envie os documentos do cliente. Produto e valor ficam para depois.</p></div>'+
                 '<div class="cs-card">'+
@@ -5968,6 +6311,16 @@
                 '</div>'+
             '</div>'+
             '<div id="cs_lista" style="display:flex;flex-direction:column;gap:10px"></div>'+
+        '</div>');
+
+        // ── Lote: varios documentos + varios extratos, o sistema separa por pessoa ──
+        slot('cs_lote_ov','',
+        '<div class="cs-hhdr"><button type="button" class="cs-back" id="cs_lote_close" aria-label="Voltar"><i class="bi bi-arrow-left"></i></button><div style="flex:1"><span class="cs-hhdr-ttl">Lote</span><div class="cs-hhdr-sub">Vários clientes de uma vez</div></div></div>'+
+        '<div class="cs-hbody" style="padding:8px 16px 28px;gap:12px">'+
+            '<button type="button" class="cs-btn cs-btn-ghost" id="cs_lt_add"><i class="bi bi-plus-lg"></i> Adicionar documentos e extratos</button>'+
+            '<p class="cs-hint" id="cs_lt_status"></p>'+
+            '<button type="button" class="cs-btn cs-btn-pri cs-btn-big" id="cs_lt_go" disabled><i class="bi bi-check2-circle"></i> Nada para analisar</button>'+
+            '<div id="cs_lt_body" style="display:flex;flex-direction:column;gap:12px"></div>'+
         '</div>');
 
         // ── Resultado ──
@@ -6088,6 +6441,11 @@
         on('cs_rend_gal','click',function(){uploadRend('image/*,application/pdf');});
         on('cs_rend_pdf','click',function(){uploadRend('image/*,application/pdf');});
         on('cs_btn_analisar','click',iniciarAnalise);
+        on('cs_btn_lote','click',loteAbrir);
+        on('cs_lote_close','click',loteFechar);
+        on('cs_lt_add','click',loteEscolher);
+        on('cs_lt_go','click',loteAnalisar);
+        var lb=el('cs_lt_body');if(lb){lb.addEventListener('click',loteAcao);lb.addEventListener('change',loteAcao);}
         on('cs_tel','input',function(e){mascararTelefone(e.target,'cs_tel_hint');});
         on('cs_btn_novaform','click',function(){_formAberto=true;aplicarForm();});
         on('cs_form','click',function(e){var x=e.target.closest('.cs-file-x');if(x)removerArquivo(x.getAttribute('data-t'),x.getAttribute('data-aid'));});
@@ -6578,7 +6936,7 @@
     window._creditoScanBack=function(){
         if(upBloqueando())return true;   // enviando documentos ao servidor: o botao voltar nao faz nada
         if(document.querySelector('.cs-modal,#cs_modal_docq'))return true;
-        var ids=['cs_cfg_ov','cs_res_ov','cs_hist_ov','cs_ov'];
+        var ids=['cs_lote_ov','cs_cfg_ov','cs_res_ov','cs_hist_ov','cs_ov'];
         for(var i=0;i<ids.length;i++){
             var o=el(ids[i]);
             if(o&&o.classList.contains('active')){if(ids[i]==='cs_res_ov')fecharResultado();else o.classList.remove('active');return true;}
