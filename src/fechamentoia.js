@@ -1160,6 +1160,7 @@ function gdDigita(e) {
     if (!G) return;
     const t = e.target, ck = t.dataset && t.dataset.ck, f = t.dataset && t.dataset.f;
     if (t.id === 'gdLucIn') { LUC.q = t.value; LUC.aberto = null; lucPintar(); return; }
+    if (t.id === 'gdLucDe' || t.id === 'gdLucAte') { LUC[t.id === 'gdLucDe' ? 'de' : 'ate'] = t.value; LUC.aberto = null; lucPintar(); return; }
     if (t.dataset && t.dataset.money !== undefined) { mascararDinheiro(t, e.inputType === 'insertFromPaste'); return; }
     if (t.dataset && t.dataset.dv !== undefined) { G.dataVenda = t.value; gdAtualizar(); gdPersistir(); return; }
     if (ck) {
@@ -1835,9 +1836,9 @@ async function decorarHistorico(container, lista) {
 // ── Histórico da Detalhada: busca por lucro ("+50" = vendas que fecharam com pelo menos R$ 50,00 de líquido) ──
 // Usa só o líquido já gravado (settings/fechamentosIA): o app não recalcula nada aqui. Fica de fora o que não tem líquido válido:
 // pagamento incompleto, valor da garantia mudado depois do cálculo, ou garantia da Detalhada sem pagamento informado (contados no aviso).
-const LUC_PER = [['dia', 'Hoje'], ['semana', 'Semana'], ['mes', 'Mês'], ['tudo', 'Tudo']];
+const LUC_PER = [['dia', 'Hoje'], ['semana', 'Semana'], ['mes', 'Mês'], ['tudo', 'Tudo'], ['datas', 'Datas']];
 const LUC_RAPIDO = [['+30', '+30'], ['+50', '+50'], ['+100', '+100'], ['+200', '+200'], ['-1', 'Prejuízo']];
-const LUC = { q: '', per: 'mes', exp: false, info: false, aberto: null, dados: null, escopo: '', ts: 0, erro: '', carregando: false, seq: 0 };
+const LUC = { q: '', per: 'mes', de: '', ate: '', exp: false, info: false, aberto: null, dados: null, escopo: '', ts: 0, erro: '', carregando: false, seq: 0 };
 const sanePerfil = n => String(n || '').trim().replace(/[.#$\[\]\/]/g, '_').slice(0, 60);
 
 // "+50", "50", "+1.250,50", "R$ 80" → { n: 50 }; "-20" → { n: -20, perda: true }; vazio → null; ilegível → { erro: true }
@@ -1851,6 +1852,18 @@ function lucParse(q) {
 }
 const lucBate = (lucro, r) => r.perda ? lucro <= r.n + 0.005 : (r.n === 0 ? lucro > 0.005 : lucro >= r.n - 0.005);
 const lucIni = p => p === 'dia' ? inicioDia(Date.now()).getTime() : desde(p);   // 'tudo' → 0
+// "Datas": de tal dia a tal dia, os dois incluídos. Só um lado preenchido vale como "a partir de" / "até"; De maior que Até: troca.
+function lucDatas() { let de = LUC.de, ate = LUC.ate; if (de && ate && de > ate) [de, ate] = [ate, de]; return { de, ate }; }
+function lucNoPer(x, p) {
+    if (p !== 'datas') return x.dia >= lucIni(p);
+    const { de, ate } = lucDatas(), d = dataLocal(x.dia);
+    return (!de || d >= de) && (!ate || d <= ate);
+}
+function lucRotPer(p) {
+    if (p !== 'datas') return { dia: 'hoje', semana: 'nesta semana', mes: 'neste mês', tudo: 'em todo o tempo' }[p];
+    const { de, ate } = lucDatas(), f = iso => iso.split('-').reverse().join('/');
+    return de && ate ? (de === ate ? 'em ' + f(de) : `de ${f(de)} a ${f(ate)}`) : de ? 'a partir de ' + f(de) : ate ? 'até ' + f(ate) : 'em todo o tempo';
+}
 function lucDia(doc, rec) {                      // dia da venda: a data digitada na garantia; sem ela, o dia em que foi criada
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(doc.dataVenda || '');
     return m ? new Date(+m[1], +m[2] - 1, +m[3]).getTime() : inicioDia(doc.criadoEm || (rec && rec.ts) || Date.now()).getTime();
@@ -1908,8 +1921,8 @@ function lucResultado() {
     if (LUC.erro) return { falha: LUC.erro };
     const base = lucBase();
     if (!base || LUC.carregando) return { carregando: true, r };
-    const cont = p => base.filter(x => x.ok && x.dia >= lucIni(p) && lucBate(x.lucro, r)).length;
-    const ini = lucIni(LUC.per), noPer = base.filter(x => x.dia >= ini);
+    const cont = p => base.filter(x => x.ok && lucNoPer(x, p) && lucBate(x.lucro, r)).length;
+    const noPer = base.filter(x => lucNoPer(x, LUC.per));
     const L = noPer.filter(x => x.ok && lucBate(x.lucro, r)).sort((a, b) => b.dia - a.dia || b.lucro - a.lucro);
     return { r, cont, L, fora: noPer.filter(x => !x.ok).length };
 }
@@ -1930,9 +1943,9 @@ function lucPintar() {
     const per = GO.querySelector('#gdLucPer'), res = GO.querySelector('#gdLucRes'), av = GO.querySelector('#gdLucAv'), hist = GO.querySelector('#gdHist');
     const R = lucResultado(), q = lucParse(LUC.q);
     GO.querySelector('#gdLucIn').classList.toggle('bad', !!(q && q.erro));
-    per.innerHTML = R.cont ? LUC_PER.map(p => `<button type="button" data-gd="luc-per" data-v="${p[0]}" class="${LUC.per === p[0] ? 'on' : ''}">${p[1]}<b>${R.cont(p[0])}</b></button>`).join('') : '';
+    per.innerHTML = R.cont ? LUC_PER.map(p => `<button type="button" data-gd="luc-per" data-v="${p[0]}" class="${LUC.per === p[0] ? 'on' : ''}">${p[1]}${p[0] === 'datas' && !LUC.de && !LUC.ate ? '' : `<b>${R.cont(p[0])}</b>`}</button>`).join('') : '';
     const crit = R.r && (R.r.perda ? `prejuízo de ${brl(-R.r.n)} ou mais` : R.r.n === 0 ? 'lucro' : `lucro de ${brl(R.r.n)} ou mais`);
-    const rot = { dia: 'hoje', semana: 'nesta semana', mes: 'neste mês', tudo: 'em todo o tempo' }[LUC.per];
+    const rot = lucRotPer(LUC.per);
     let html = '', aviso = '', lista = '';
     if (R.erro) html = '<div class="gd-luc-s nada">Não entendi esse valor. Use por exemplo <b>+50</b>, <b>80</b> ou <b>+120,50</b>. Para prejuízo, <b>-20</b>.</div>';
     else if (R.falha) html = `<div class="gd-luc-s nada">Não consegui ler os registros: ${esc(R.falha)}. <b>Tente de novo</b> em instantes.</div>`;
@@ -1948,6 +1961,7 @@ function lucPintar() {
     sum.innerHTML = html; av.textContent = aviso; res.innerHTML = lista;
     GO.querySelector('#gdLucEsc').textContent = R.L && q && !q.erro ? `${LUC.q.trim()} · ${lucPlural(R.L.length, 'venda', 'vendas')}` : lucRotEscopo();   // fechado, o título ainda diz o que está filtrado
     GO.querySelector('#gdLucBody').hidden = !LUC.exp;
+    GO.querySelector('#gdLucDt').hidden = LUC.per !== 'datas';
     const hd = GO.querySelector('#gdLucHd'); hd.setAttribute('aria-expanded', LUC.exp); hd.classList.toggle('open', LUC.exp);
     hist.classList.toggle('gd-busca', !!(q && !q.erro));        // com uma busca ativa, a lista comum sai de cena
 }
@@ -1957,13 +1971,17 @@ function lucMontar() {
     hist.insertAdjacentHTML('afterbegin', `<div class="gd-luc"><button type="button" class="gd-luc-h" id="gdLucHd" data-gd="luc-mod" aria-controls="gdLucBody">${ico('trend')}<b>Buscar lucro</b><small id="gdLucEsc"></small>${ico('down')}</button>
         <div class="gd-luc-b" id="gdLucBody" hidden><div class="gd-luc-v"><input class="gd-in" id="gdLucIn" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="+50" aria-label="Lucro mínimo da venda" value="${esc(LUC.q)}"><button type="button" data-gd="luc-limpa" aria-label="Limpar busca">${ico('x')}</button></div>
         <div class="gd-luc-q">${LUC_RAPIDO.map(r => `<button type="button" data-gd="luc-rapido" data-v="${r[0]}">${r[1]}</button>`).join('')}</div>
-        <div class="gd-luc-p" id="gdLucPer"></div><div id="gdLucSum"></div><p class="gd-luc-w" id="gdLucAv"></p></div></div><div class="gd-luc-r" id="gdLucRes"></div>`);
+        <div class="gd-luc-p" id="gdLucPer"></div>
+        <div class="gd-luc-d" id="gdLucDt" hidden><label>De<input class="gd-in" id="gdLucDe" type="date" max="${gdHoje()}" value="${esc(LUC.de)}" aria-label="Vendas a partir do dia"></label><label>Até<input class="gd-in" id="gdLucAte" type="date" max="${gdHoje()}" value="${esc(LUC.ate)}" aria-label="Vendas até o dia"></label></div><div id="gdLucSum"></div><p class="gd-luc-w" id="gdLucAv"></p></div></div><div class="gd-luc-r" id="gdLucRes"></div>`);
     lucPintar(); lucCarregar(false);
 }
 
 function lucClique(a, b) {
     if (a === 'luc-mod') { LUC.exp = !LUC.exp; lucPintar(); if (LUC.exp) { const i = GO.querySelector('#gdLucIn'); if (i && !LUC.q) i.focus(); } return; }
-    if (a === 'luc-per') { LUC.per = b.dataset.v; LUC.aberto = null; }
+    if (a === 'luc-per') {
+        LUC.per = b.dataset.v; LUC.aberto = null;
+        if (LUC.per === 'datas' && !LUC.de && !LUC.ate) { LUC.de = LUC.ate = gdHoje(); GO.querySelector('#gdLucDe').value = GO.querySelector('#gdLucAte').value = LUC.de; }   // abre já em "hoje", para a pessoa só ajustar
+    }
     else if (a === 'luc-rapido') { LUC.q = b.dataset.v; LUC.aberto = null; GO.querySelector('#gdLucIn').value = LUC.q; }
     else if (a === 'luc-limpa') { LUC.q = ''; LUC.aberto = null; const i = GO.querySelector('#gdLucIn'); i.value = ''; i.focus(); }
     else if (a === 'luc-info') LUC.info = !LUC.info;

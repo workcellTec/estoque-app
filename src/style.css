@@ -4027,9 +4027,13 @@ input.fia-cli { background: var(--tertiary-color); border: 1px solid var(--ui-ed
 .gd-luc-q { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
 .gd-luc-q::-webkit-scrollbar { display: none; }
 .gd-luc-q button { flex: none; height: 28px; padding: 0 11px; border: 1.5px solid var(--input-border); border-radius: 999px; background: transparent; color: var(--text-secondary); font-size: 12px; }
-.gd-luc-p { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.gd-luc-p { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.gd-luc-d { display: flex; gap: 8px; }
+.gd-luc-d[hidden] { display: none; }
+.gd-luc-d label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--text-secondary); }
+.gd-luc-d .gd-in { min-height: 40px; padding: 6px 10px; font-size: 14px; border-radius: 12px; }
 .gd-luc-p:empty { display: none; }
-.gd-luc-p button { min-width: 0; height: 32px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 0 2px; border: 1px solid var(--input-border); border-radius: 12px; background: var(--input-bg); color: var(--text-secondary); font-size: 12px; }
+.gd-luc-p button { min-width: 0; height: 32px; display: flex; align-items: center; justify-content: center; gap: 3px; padding: 0 1px; border: 1px solid var(--input-border); border-radius: 12px; background: var(--input-bg); color: var(--text-secondary); font-size: 11.5px; }
 .gd-luc-p button b { font-size: 13px; font-weight: 700; color: var(--text-color); }
 .gd-luc-p button.on { background: var(--primary-grad); border-color: transparent; color: var(--on-primary); }
 .gd-luc-p button.on b { color: var(--on-primary); }

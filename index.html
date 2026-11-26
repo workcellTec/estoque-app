@@ -1375,8 +1375,18 @@
             <i class="bi bi-calendar-event" id="calendarIconDisplay" style="color: var(--text-secondary); font-size: 1.1rem;"></i>
         </span>
 
-        <input type="date" id="bookipHistoryDate" 
-               style="position: absolute; right: 0; top: 0; bottom: 0; width: 50px; opacity: 0; z-index: 10; cursor: pointer;">
+    </div>
+
+    <div id="bookipDatePanel" class="hidden mt-2">
+        <div class="d-flex flex-wrap align-items-center gap-2 p-2" style="background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 12px;">
+            <label class="d-flex align-items-center gap-2 mb-0 text-secondary small" style="flex: 1 1 130px; min-width: 0;">De
+                <input type="date" id="bookipDateFrom" class="form-control form-control-sm" style="min-width: 0;">
+            </label>
+            <label class="d-flex align-items-center gap-2 mb-0 text-secondary small" style="flex: 1 1 130px; min-width: 0;">Até
+                <input type="date" id="bookipDateTo" class="form-control form-control-sm" style="min-width: 0;">
+            </label>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="bookipDateClear" style="border-radius: 20px;">Limpar</button>
+        </div>
     </div>
 </div>
 

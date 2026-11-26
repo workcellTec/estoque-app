@@ -7789,28 +7789,28 @@ function loadBookipHistory() {
     // --- FUNÇÕES INTERNAS DE FILTRO ---
     function configurarFiltros() {
         const searchInput = document.getElementById('bookipHistorySearch');
-        const dateInput = document.getElementById('bookipHistoryDate');
+        const de = document.getElementById('bookipDateFrom'), ate = document.getElementById('bookipDateTo');
+        const painel = document.getElementById('bookipDatePanel'), limpar = document.getElementById('bookipDateClear');
         const iconDisplay = document.getElementById('calendarIconDisplay');
 
         if (searchInput) searchInput.oninput = aplicarFiltrosCombinados;
-        if (dateInput) {
-            dateInput.onchange = aplicarFiltrosCombinados;
-            if (iconDisplay && iconDisplay.parentElement) {
-                iconDisplay.parentElement.onclick = function() {
-                    if (dateInput.showPicker) dateInput.showPicker();
-                    else dateInput.focus();
-                };
-            }
+        [de, ate].forEach(el => { if (el) { el.max = ctwHojeISO(); el.onchange = aplicarFiltrosCombinados; } });
+        if (limpar) limpar.onclick = () => { if (de) de.value = ''; if (ate) ate.value = ''; aplicarFiltrosCombinados(); };
+        if (iconDisplay && iconDisplay.parentElement && painel) {
+            iconDisplay.parentElement.onclick = () => painel.classList.toggle('hidden');   // o calendário abre/fecha o "De / Até"
         }
     }
 
     function aplicarFiltrosCombinados() {
         const elTexto = document.getElementById('bookipHistorySearch');
-        const elData = document.getElementById('bookipHistoryDate');
+        const elDe = document.getElementById('bookipDateFrom'), elAte = document.getElementById('bookipDateTo');
         const elIcone = document.getElementById('calendarIconDisplay');
 
         const termo = elTexto ? elTexto.value.toLowerCase().trim() : '';
-        const dataFiltro = elData ? elData.value : ''; 
+        // Intervalo "de tal dia a tal dia" (inclui os dois). Só um lado preenchido vale como "a partir de" / "até". De maior que Até: troca.
+        let dataDe = elDe ? elDe.value : '', dataAte = elAte ? elAte.value : '';
+        if (dataDe && dataAte && dataDe > dataAte) [dataDe, dataAte] = [dataAte, dataDe];
+        const dataFiltro = dataDe || dataAte;
 
         // Visual do ícone de data
         if (elIcone) {
@@ -7849,8 +7849,11 @@ function loadBookipHistory() {
             let matchData = true;
             if (dataFiltro) {
                 let dataItem = item.dataVenda || '';
-                if (!dataItem && item.criadoEm) dataItem = item.criadoEm.split('T')[0];
-                matchData = (dataItem === dataFiltro);
+                if (!dataItem && item.criadoEm) {           // sem data da venda: o dia (local) em que foi criado
+                    const c = new Date(item.criadoEm);
+                    if (!isNaN(c)) dataItem = c.getFullYear() + '-' + String(c.getMonth() + 1).padStart(2, '0') + '-' + String(c.getDate()).padStart(2, '0');
+                }
+                matchData = !!dataItem && (!dataDe || dataItem >= dataDe) && (!dataAte || dataItem <= dataAte);
             }
 
             // --- AQUI ESTÁ A CORREÇÃO (O FILTRO DE PERFIL AGORA FUNCIONA) ---
