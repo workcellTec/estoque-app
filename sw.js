@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-376'; // Sincronizar precos: Avancado > Por que este produto? (como o Stock 2.0 foi tratado e ligacoes trocadas)
+const CACHE = 'ctw-377'; // Sincronizar precos: Avancado > Por que este produto? (como o Stock 2.0 foi tratado e ligacoes trocadas)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

@@ -7873,6 +7873,8 @@ function loadBookipHistory() {
             return matchTexto && matchData && matchPerfil && matchEmailEnvio;
         });
 
+        window._ctwHistIds = listaFiltradaCache.map(i => i.id);          // o que o filtro deixou passar: a contagem e o filtro de lucro da Garantia detalhada partem daqui
+        document.dispatchEvent(new Event('ctw-hist-filtrado'));
         itensVisiveis = 50; // Reseta paginação ao filtrar
         renderizarLote();
     }
