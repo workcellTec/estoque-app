@@ -1581,11 +1581,12 @@
 
     <div class="custom-modal-overlay" id="editPriceModalOverlay">
         <div class="custom-modal-content">
-            <h4>Editar Valor do Produto</h4>
-            <p class="text-warning small mb-3"><i class="bi bi-exclamation-triangle"></i> Atenção: Isso altera o preço oficial do produto no sistema.</p>
+            <h4 id="editPriceTitulo">Editar Valor do Produto</h4>
+            <p class="text-warning small mb-3" id="editPriceAviso"><i class="bi bi-exclamation-triangle"></i> Atenção: Isso altera o preço oficial do produto no sistema.</p>
             <input class="form-control form-control-lg mb-3" id="editPriceInput" type="text" inputmode="numeric" placeholder="R$ 0,00"/>
 
             <input type="hidden" id="editPriceProductIndex">
+            <input type="hidden" id="editPriceModo" value="calculo">
             <div class="d-flex gap-2 justify-content-center mt-3">
                 <button class="btn btn-secondary" id="cancelEditPriceBtn">Cancelar</button>
                 <button class="btn btn-primary" id="confirmEditPriceBtn">Confirmar</button>

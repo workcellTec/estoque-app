@@ -1698,6 +1698,9 @@ case "nubank": maxInstallments = 12; break; // <--- ADICIONE ESSA LINHA
     exportContainer.style.display = tableRows.trim() !== "" ? 'block' : 'none';
 }
 
+// Só o perfil dev mexe no cadastro oficial (nome, valor e cores gravam no banco). Os demais ajustam só o valor deste cálculo.
+const ctwPodeEditarSistema = () => !!(window.ctwPerfilDev && window.ctwPerfilDev());
+
 function renderCarrinho() {
     const container = document.getElementById('carrinhoAparelhosContainer');
     if (!container) return;
@@ -1739,9 +1742,10 @@ function renderCarrinho() {
                 <div class="product-action-info" style="flex: 1;">
                     <h5 ${ctwSemPid(product.id)} class="mb-1 text-start${ctwSemCls(product.id)}"${ctwSemCls(product.id) ? ' title="Sem estoque no último PDF"' : ''}>${escapeHtml(product.nome)}</h5>
                     <div class="product-action-date text-start"><i class="bi bi-clock-history"></i> ${dateInfo}</div>
+                    ${product.valorOriginal !== undefined ? `<div class="product-adj-badge text-start"><i class="bi bi-pencil-square"></i> Valor ajustado neste cálculo (original ${ctwBRL(product.valorOriginal)})</div>` : ''}
                 </div>
                 
-                <button class="btn-settings-toggle" title="Opções do Sistema (Valor/Cores)">
+                <button class="btn-settings-toggle" title="${ctwPodeEditarSistema() ? 'Ajustar valor / editar cadastro' : 'Ajustar o valor neste cálculo'}">
                     <i class="bi bi-gear-fill"></i>
                 </button>
 
@@ -1754,7 +1758,16 @@ function renderCarrinho() {
                 ${colorsHtml}
             </div>
 
-            <div class="product-admin-panel">
+            <div class="product-adjust-panel">
+                <span class="adjust-label"><i class="bi bi-sliders"></i> Ajustar neste cálculo</span>
+                <div class="product-action-buttons">
+                    <button class="btn-action-sm adj-price-btn" data-index="${index}"><i class="bi bi-cash-coin"></i> Valor</button>
+                    ${product.valorOriginal !== undefined ? `<button class="btn-action-sm adj-reset-btn" data-index="${index}"><i class="bi bi-arrow-counterclockwise"></i> Voltar ao original</button>` : ''}
+                </div>
+                <small class="adjust-hint">Vale só para esta conta. O cadastro do sistema não muda.</small>
+            </div>
+
+            ${ctwPodeEditarSistema() ? `<div class="product-admin-panel">
                 <span class="admin-warning-label"><i class="bi bi-exclamation-triangle"></i> Editar Cadastro no Sistema</span>
                 
                 <div class="product-action-buttons">
@@ -1768,7 +1781,7 @@ function renderCarrinho() {
                         <i class="bi bi-palette"></i> Cores
                     </button>
                 </div>
-            </div>
+            </div>` : ''}
 
             <div class="mt-2 pt-2 border-top border-secondary border-opacity-10 text-center">
                  <button class="btn btn-sm text-warning w-100 save-favorite-shortcut" data-index="${index}" style="background: transparent; border: none; font-size: 0.9rem;">
@@ -1851,8 +1864,9 @@ function ctwTextoEtiqueta() {
 function ctwSepProdutos() {
     const extra = parseFloat(document.getElementById('valorExtraAparelho').value) || 0, avExtra = ctwAvistaCfg().extra, g = new Map();
     carrinhoDeAparelhos.forEach(p => {
-        if (!g.has(p.nome)) g.set(p.nome, { nome: p.nome, qtd: 0, valor: parseFloat(p.valor) || 0 });
-        g.get(p.nome).qtd++;
+        const k = p.nome + '|' + (parseFloat(p.valor) || 0);   // mesmo nome com valor ajustado diferente nao se funde
+        if (!g.has(k)) g.set(k, { nome: p.nome, qtd: 0, valor: parseFloat(p.valor) || 0 });
+        g.get(k).qtd++;
     });
     return [...g.values()].map(p => ({ ...p, base: p.valor + extra, avista: p.valor + avExtra, rotulo: p.qtd > 1 ? `${p.qtd}x ${p.nome} (cada)` : p.nome }));
 }
@@ -5749,57 +5763,42 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // --- AJUSTE NO BOTÃO "CONFIRMAR" PARA LER O VALOR FORMATADO ---
-    
-    // ATENÇÃO: Você precisa substituir o seu listener do "confirmEditPriceBtn" antigo por este novo,
-    // pois agora ele precisa "limpar" o R$ antes de salvar no banco de dados.
-
-    // Remova o listener antigo do 'confirmEditPriceBtn' e coloque este:
-       // ATUALIZAÇÃO: BOTÃO "CONFIRMAR EDIÇÃO DE PREÇO" (Salva no Banco de Dados)
+    // Confirmar valor: modo 'calculo' (ajuste só desta conta, todos os perfis) ou 'sistema' (grava no banco, só perfil dev)
     document.getElementById('confirmEditPriceBtn')?.addEventListener('click', async () => {
         const index = document.getElementById('editPriceProductIndex').value;
+        const modo = document.getElementById('editPriceModo').value;
         const itemCarrinho = carrinhoDeAparelhos[index]; // O item no carrinho
-        const productId = itemCarrinho.id; // Precisamos do ID para salvar no banco
-        
+        if (!itemCarrinho) { closePriceModal(); return; }
+
         // Pega o valor do campo e limpa a formatação (R$)
-        let rawValue = document.getElementById('editPriceInput').value;
-        rawValue = rawValue.replace(/\D/g, ""); // Remove tudo que não é número
-        const cleanValue = parseFloat(rawValue) / 100;
+        const cleanValue = (parseFloat(document.getElementById('editPriceInput').value.replace(/\D/g, "")) || NaN) / 100;
+        if (!(cleanValue > 0)) { showCustomModal({ message: "Valor inválido." }); return; }
 
-        if (!isNaN(cleanValue) && cleanValue > 0) {
-            try {
-                // 1. ATUALIZA NO BANCO DE DADOS (Oficial)
-                await updateProductInDB(productId, { valor: cleanValue });
+        if (modo === 'calculo') {
+            // Ajuste só deste cálculo: não toca no banco nem na lista de produtos (o item do carrinho é uma cópia)
+            const original = itemCarrinho.valorOriginal !== undefined ? itemCarrinho.valorOriginal : itemCarrinho.valor;
+            itemCarrinho.valor = cleanValue;
+            if (Math.abs(cleanValue - original) < 0.005) delete itemCarrinho.valorOriginal; else itemCarrinho.valorOriginal = original;
+            renderCarrinho(); calculateAparelho(); closePriceModal();
+            return;
+        }
 
-                // 2. Atualiza o item que já está no carrinho localmente para refletir a mudança
-                itemCarrinho.valor = cleanValue;
-
-                // 3. Atualiza também na lista geral de produtos (na memória) para buscas futuras
-                const produtoNaMemoria = products.find(p => p.id === productId);
-                if (produtoNaMemoria) {
-                    produtoNaMemoria.valor = cleanValue;
-                }
-
-                // 4. Recalcula e redesenha a tela
-                renderCarrinho();
-                calculateAparelho();
-                
-                closePriceModal();
-                showCustomModal({ message: "Preço atualizado no sistema com sucesso!" });
-
-            } catch (error) {
-                console.error(error);
-                showCustomModal({ message: "Erro ao salvar no banco de dados." });
-            }
-        } else {
-            showCustomModal({ message: "Valor inválido." });
+        // Modo sistema: grava o preço oficial (só perfil dev)
+        if (!ctwPodeEditarSistema()) { closePriceModal(); showCustomModal({ message: 'Só o perfil dev altera o cadastro do sistema.' }); return; }
+        const productId = itemCarrinho.id;
+        try {
+            await updateProductInDB(productId, { valor: cleanValue });
+            carrinhoDeAparelhos.forEach(it => { if (it.id === productId) { it.valor = cleanValue; delete it.valorOriginal; } });
+            const produtoNaMemoria = products.find(p => p.id === productId);
+            if (produtoNaMemoria) produtoNaMemoria.valor = cleanValue;
+            renderCarrinho(); calculateAparelho(); closePriceModal();
+            showCustomModal({ message: "Preço atualizado no sistema com sucesso!" });
+        } catch (error) {
+            console.error(error);
+            showCustomModal({ message: "Erro ao salvar no banco de dados." });
         }
     });
 
-
-    
-    
-    
     // LISTENER PARA O NOVO CARD (Cores e Preço)
         // LISTENER ATUALIZADO PARA O CARRINHO UNIFICADO
     // Mudamos de 'aparelhoInfoNote' para 'carrinhoAparelhosContainer'
@@ -5814,13 +5813,38 @@ document.addEventListener('DOMContentLoaded', () => {
             if (gearBtn) {
                 e.preventDefault();
                 const card = gearBtn.closest('.product-action-card');
-                const panel = card.querySelector('.product-admin-panel');
-                
-                // Liga/Desliga
-                panel.classList.toggle('active');
-                gearBtn.classList.toggle('active');
+                const abrir = !gearBtn.classList.contains('active');
+                // Liga/Desliga os painéis do card (ajuste do cálculo e, para o dev, o cadastro do sistema)
+                card.querySelectorAll('.product-adjust-panel, .product-admin-panel').forEach(pn => pn.classList.toggle('active', abrir));
+                gearBtn.classList.toggle('active', abrir);
                 return; // Para aqui e não executa o resto
             }
+
+            // 0. Ajuste só deste cálculo (todos os perfis)
+            const adjBtn = e.target.closest('.adj-price-btn');
+            if (adjBtn) {
+                e.preventDefault();
+                const index = adjBtn.dataset.index, item = carrinhoDeAparelhos[index];
+                if (!item) return;
+                document.getElementById('editPriceModo').value = 'calculo';
+                document.getElementById('editPriceTitulo').textContent = 'Ajustar valor neste cálculo';
+                document.getElementById('editPriceAviso').innerHTML = '<i class="bi bi-info-circle"></i> Vale só para esta conta. O preço do sistema não muda.';
+                document.getElementById('editPriceInput').value = ctwBRL(parseFloat(item.valor) || 0);
+                document.getElementById('editPriceProductIndex').value = index;
+                document.getElementById('editPriceModalOverlay').classList.add('active');
+                setTimeout(() => document.getElementById('editPriceInput').focus(), 100);
+                return;
+            }
+            const resetBtn = e.target.closest('.adj-reset-btn');
+            if (resetBtn) {
+                e.preventDefault();
+                const item = carrinhoDeAparelhos[resetBtn.dataset.index];
+                if (item && item.valorOriginal !== undefined) { item.valor = item.valorOriginal; delete item.valorOriginal; renderCarrinho(); calculateAparelho(); }
+                return;
+            }
+
+            // Edição do cadastro oficial: só perfil dev (a tela já nem mostra os botões para os demais)
+            if (e.target.closest('.edit-colors-btn, .edit-price-btn, .edit-name-btn') && !ctwPodeEditarSistema()) return;
 
             // 1. Botão Editar Cores
             const colorBtn = e.target.closest('.edit-colors-btn');
@@ -5836,7 +5860,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.preventDefault();
                 const index = priceBtn.dataset.index;
                 const item = carrinhoDeAparelhos[index];
-                document.getElementById('editPriceInput').value = item.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                document.getElementById('editPriceModo').value = 'sistema';
+                document.getElementById('editPriceTitulo').textContent = 'Editar Valor do Produto';
+                document.getElementById('editPriceAviso').innerHTML = '<i class="bi bi-exclamation-triangle"></i> Atenção: Isso altera o preço oficial do produto no sistema.';
+                document.getElementById('editPriceInput').value = (item.valorOriginal !== undefined ? item.valorOriginal : item.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                 document.getElementById('editPriceProductIndex').value = index;
                 document.getElementById('editPriceModalOverlay').classList.add('active');
                 setTimeout(() => document.getElementById('editPriceInput').focus(), 100);
@@ -5891,6 +5918,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (_cancelEditNameBtn) _cancelEditNameBtn?.addEventListener('click', closeNameModal);
     if (_editNameModalOverlay) _editNameModalOverlay?.addEventListener('click', (e) => { if (e.target.id === 'editNameModalOverlay') closeNameModal(); });
     if (_confirmEditNameBtn) _confirmEditNameBtn?.addEventListener('click', async () => {
+        if (!ctwPodeEditarSistema()) { closeNameModal(); return; }
         const newName = document.getElementById('editNameInput').value.trim();
         const productId = document.getElementById('editNameProductId').value;
         const index = document.getElementById('editNameProductIndex').value;
@@ -6901,7 +6929,7 @@ document.getElementById('admin-nav-buttons')?.addEventListener('click', e => {
     document.getElementById('cancelColorPicker')?.addEventListener('click', () => colorPickerModal.classList.remove('active'));
         // --- CORREÇÃO: SALVAR COR E ATUALIZAR O CARRINHO IMEDIATAMENTE ---
     document.getElementById('saveColorPicker')?.addEventListener('click', () => {
-        if (currentEditingProductId) {
+        if (currentEditingProductId && ctwPodeEditarSistema()) {
             const newTimestamp = Date.now();
             
             // 1. Atualiza no Banco de Dados (Para o futuro)

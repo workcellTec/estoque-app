@@ -1755,6 +1755,19 @@ tr, td, .card, .list-group-item {
     display: block;
 }
 
+/* Ajuste do valor só neste cálculo (todos os perfis) */
+.product-adjust-panel {
+    display: none;
+    background: rgba(var(--primary-color-rgb), .08);
+    border: 1px solid rgba(var(--primary-color-rgb), .28);
+    border-radius: 12px; padding: 12px; margin: 10px 0; text-align: center;
+    animation: slideDownFade 0.2s ease-out;
+}
+.product-adjust-panel.active { display: block; }
+.adjust-label { display: block; margin-bottom: 8px; font-size: .75rem; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: var(--primary-color); }
+.adjust-hint { display: block; margin-top: 8px; color: var(--text-secondary); font-size: .75rem; }
+.product-adj-badge { margin-top: 4px; font-size: .78rem; font-weight: 600; color: var(--primary-color); }
+
 /* Texto de Aviso */
 .admin-warning-label {
     font-size: 0.7rem;
