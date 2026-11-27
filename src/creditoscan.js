@@ -3270,7 +3270,7 @@
         }
     }
 
-    function loteAbrir() { var o = el('cs_lote_ov'); if (!o) return; renderLote(); o.classList.add('active'); }
+    function loteAbrir() { var o = el('cs_lote_ov'); if (!o || !ehDevPerfil()) return; renderLote(); o.classList.add('active'); }   // Lote e so do dev
     function loteFechar() { var o = el('cs_lote_ov'); if (o) o.classList.remove('active'); }
     function loteEscolher() {
         var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*,application/pdf'; inp.multiple = true;
@@ -6367,8 +6367,8 @@
         '</div>'+
         '<div class="cs-body">'+
             '<button type="button" class="cs-btn cs-btn-pri cs-btn-big cs-h" id="cs_btn_novaform"><i class="bi bi-plus-lg"></i> Nova análise</button>'+
-            '<div class="cs-acoes">'+
-                '<button type="button" class="cs-btn cs-btn-ghost cs-acao" id="cs_btn_lote"><i class="bi bi-people-fill"></i> Lote de clientes</button>'+
+            '<div class="cs-acoes cs-h" id="cs_acoes">'+
+                '<button type="button" class="cs-btn cs-btn-ghost cs-acao cs-h" id="cs_btn_lote"><i class="bi bi-people-fill"></i> Lote de clientes</button>'+
                 '<button type="button" class="cs-btn cs-btn-ghost cs-acao cs-h" id="cs_btn_fila"><i class="bi bi-hourglass-split"></i> Fila do gestor <span class="cs-fila-n cs-h" id="cs_fila_n"></span></button>'+
             '</div>'+
             '<div id="cs_form" style="display:flex;flex-direction:column;gap:14px">'+
@@ -7058,6 +7058,7 @@
     var _ppSug = { f: [], p: [] };   // sugestoes do catalogo mostradas
 
     function ehGestor() { return !!(window.ctwPerfilGestor && window.ctwPerfilGestor()); }
+    function ehDevPerfil() { return !!(window.ctwPerfilDev && window.ctwPerfilDev()); }
     function veTudo() { return ehGestor(); }   // so quem tem a tag de gestor ve nota/renda de todas e responde a fila (dev sem a tag e vendedor comum)
     function restrito() { return !veTudo(); }
     function fbKeyDe(uid) { return 'cs' + String(uid).replace(/-/g, ''); }
@@ -7468,6 +7469,9 @@
         ppTop('f'); apCarregar(false).then(function () { ppTop('f'); });
     }
     function pedFormToggle() {
+        var bl = el('cs_btn_lote'), ac = el('cs_acoes');
+        if (bl) bl.classList.toggle('cs-h', !ehDevPerfil());
+        if (ac) ac.classList.toggle('cs-h', !ehDevPerfil() && !veTudo());
         var bf = el('cs_btn_fila');
         if (bf) {
             bf.classList.toggle('cs-h', !veTudo());
