@@ -6211,10 +6211,10 @@
         '.cs-dot{width:16px;height:16px;border-radius:50%;border:1.5px solid currentColor;box-sizing:border-box;flex-shrink:0}',
         '.cs-lote-link{align-self:center;border:0;background:none;color:var(--text-secondary);font:500 12px "Poppins",sans-serif;min-height:44px;display:flex;align-items:center;gap:6px;padding:0 12px;cursor:pointer}',
         '.cs-tag-dev{border:1px solid var(--glass-border);border-radius:10px;padding:1px 7px;font-size:10px}',
-        '.cs-sbar{position:sticky;bottom:var(--cs-nav,96px);z-index:5;margin:0 -16px;padding:10px 16px 6px;background:var(--bg-color,#16171A);border-top:1px solid var(--glass-border);display:flex;flex-direction:column;gap:8px}',
+        '.cs-sbar{position:sticky;bottom:0;z-index:5;margin:0 -16px;padding:10px 16px 6px;background:var(--bg-color,#16171A);border-top:1px solid var(--glass-border);display:flex;flex-direction:column;gap:8px}',
         '.cs-sbar::after{content:"";position:absolute;left:0;right:0;top:100%;height:var(--cs-nav,96px);background:var(--bg-color,#16171A)}',
         'html.cs-kb-on .cs-sbar{position:static}html.cs-kb-on .cs-sbar::after{display:none}',
-        '#cs_ov .cs-body{padding-bottom:calc(var(--cs-nav,96px) + 16px)}',
+        '#cs_ov .cs-body{padding-bottom:var(--cs-nav,96px)}',   /* o sticky ja desconta esse padding: o botao fica logo acima do menu de baixo */
         '.cs-link{background:none;border:none;font:500 13px "Poppins",sans-serif;min-height:44px;padding:0 6px;cursor:pointer;color:var(--text-secondary)}',
         '.cs-link.bad{color:var(--cs-bad)}',
         /* ── listas: em andamento / prontas ── */
