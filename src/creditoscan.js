@@ -26,11 +26,13 @@
 
     var _docsId     = [];    // rascunho da proxima analise: RG/CNH
     var _docsRend   = [];    // rascunho da proxima analise: comprovantes
+    var _docMeta    = {};    // aid -> { rot: etiqueta mostrada (RG/CNH, Extrato...), incerto: o sistema nao soube separar }
     var _enviando   = 0;     // arquivos sendo lidos agora
     var _jobs       = [];    // analises desta sessao (a mais nova primeiro)
     var _jobSeq     = 0;
     var _view       = null;  // analise aberta na tela de resultado
     var _formAberto = null;  // formulario de nova analise visivel?
+    var _filaRaiz = false;   // a Fila do gestor e a primeira tela (voltar fecha o CreditoScan) ou foi aberta de dentro da Nova analise (voltar volta pra ela)
 
     async function getApiKey() {
         var local = safeGet(OR_KEY_LS);
@@ -2871,40 +2873,67 @@
         else alert(msg);
     }
 
-    function listaArquivos(docs, tipo) {
+    // Lista unica de arquivos (RG/CNH e comprovantes juntos, na ordem em que entraram), cada um com a etiqueta do que o sistema entendeu
+    function docsHtml() {
         var grupos = [], pos = {};
-        docs.forEach(function (d) {
-            if (pos[d.aid] === undefined) { pos[d.aid] = grupos.length; grupos.push({ aid: d.aid, nome: d.arq || 'arquivo', n: 0, thumb: d.dataUrl || '' }); }
-            grupos[pos[d.aid]].n++;
-        });
+        function juntar(lista, kind) {
+            lista.forEach(function (d) {
+                if (pos[d.aid] === undefined) { pos[d.aid] = grupos.length; grupos.push({ aid: d.aid, kind: kind, nome: d.arq || 'arquivo', n: 0, thumb: d.dataUrl || '' }); }
+                grupos[pos[d.aid]].n++;
+            });
+        }
+        juntar(_docsId, 'id'); juntar(_docsRend, 'rend');
+        grupos.sort(function (a, b) { return a.aid - b.aid; });
         return grupos.map(function (g) {
+            var m = _docMeta[g.aid] || {}, rot = m.rot || (g.kind === 'id' ? 'RG/CNH' : 'Comprovante');
             var ico = g.thumb ? '<img src="' + esc(g.thumb) + '" alt="">' : '<i class="bi bi-file-earmark-check"></i>';
+            var sub = m.incerto ? 'Não consegui identificar · toque para escolher' : g.n > 1 ? g.n + ' páginas' : g.kind === 'id' ? 'Documento pessoal' : 'Comprovante de renda';
+            var chips = m.incerto
+                ? '<button type="button" class="cs-chip warn" data-aid="' + g.aid + '" data-para="id">RG/CNH</button><button type="button" class="cs-chip warn" data-aid="' + g.aid + '" data-para="rend">Comprovante</button>'
+                : '<button type="button" class="cs-chip" data-aid="' + g.aid + '" data-para="' + (g.kind === 'id' ? 'rend' : 'id') + '" aria-label="' + esc(rot) + ' (toque para trocar o tipo)">' + esc(rot) + '</button>';
             return '<div class="cs-file">' + ico +
-                '<span>' + esc(g.nome) + (g.n > 1 ? ' · ' + g.n + ' páginas' : '') + '</span>' +
-                '<button type="button" class="cs-file-x" data-t="' + tipo + '" data-aid="' + g.aid + '" aria-label="Remover"><i class="bi bi-x-lg"></i></button>' +
+                '<div class="cs-fi"><b>' + esc(g.nome) + '</b><em' + (m.incerto ? ' class="warn"' : '') + '>' + esc(sub) + '</em></div>' + chips +
+                '<button type="button" class="cs-file-x" data-t="' + g.kind + '" data-aid="' + g.aid + '" aria-label="Remover"><i class="bi bi-x-lg"></i></button>' +
             '</div>';
         }).join('');
     }
+    function chkLinha(ok, nome, tag, obrig) {
+        return ok ? '<div class="cs-chk ok"><i class="bi bi-check-lg"></i>' + nome + ' · anexado</div>'
+                  : '<div class="cs-chk' + (obrig ? ' warn' : '') + '"><span class="cs-dot"></span>' + nome + ' · ' + tag + '</div>';
+    }
+    function passoEstado(id, ok, num) { var e = el(id); if (!e) return; e.classList.toggle('ok', ok); e.innerHTML = ok ? '<i class="bi bi-check-lg"></i>' : num; }
 
     function renderRascunho() {
-        var gi = el('cs_docs_id'), gr = el('cs_docs_rend');
-        if (gi) gi.innerHTML = listaArquivos(_docsId, 'id');
-        if (gr) gr.innerHTML = listaArquivos(_docsRend, 'rend');
-        var ci = el('cs_counter_id'); if (ci) ci.textContent = _docsId.length ? _docsId.length + '/' + MAX_DOCS_ID : '';
-        var b = el('cs_btn_analisar'); if (b) b.disabled = !(_docsRend.length > 0) || _enviando > 0;
+        var lista = el('cs_docs_all'); if (lista) lista.innerHTML = docsHtml();
+        var aids = {}; _docsId.concat(_docsRend).forEach(function (d) { aids[d.aid] = 1; });
+        var total = Object.keys(aids).length;
+        var z = el('cs_zone'), mais = el('cs_doc_mais'), cnt = el('cs_docs_cnt');
+        if (z) z.classList.toggle('cs-h', total > 0);
+        if (mais) mais.classList.toggle('cs-h', total === 0);
+        if (cnt) cnt.textContent = total ? total + (total > 1 ? ' arquivos' : ' arquivo') : '';
+        var chk = el('cs_docs_chk');
+        if (chk) chk.innerHTML = chkLinha(_docsRend.length > 0, 'Comprovante de renda', 'obrigatório', true) + chkLinha(_docsId.length > 0, 'RG ou CNH', 'opcional', false);
+        var pin = el('cs_pp_in_f'), temProd = _ppSel.f.length > 0 || !!(pin && pin.value.trim().length >= 2);
+        passoEstado('cs_step1', _docsRend.length > 0, '1'); passoEstado('cs_step2', temProd, '2');
+        var b = el('cs_btn_analisar'); if (b) b.disabled = !(_docsRend.length > 0) || !temProd || _enviando > 0;
         var st = el('cs_up_status'); if (st) st.classList.toggle('cs-h', !(_enviando > 0));
+        var falta = []; if (!_docsRend.length) falta.push('o comprovante de renda'); if (!temProd) falta.push('o produto');
         var hint = el('cs_hint_analisar');
-        if (hint) hint.textContent = _enviando > 0 ? 'Aguarde terminar de ler os arquivos...' :
-            (_docsRend.length ? (filaProvavel() ? 'Os documentos vão para o servidor. Depois de "Enviado" pode fechar o app.' : 'Roda em segundo plano. Pode sair desta tela, avisamos quando ficar pronta.') : 'Adicione ao menos um comprovante de renda.');
+        if (hint) hint.textContent = _enviando > 0 ? 'Aguarde terminar de ler os arquivos...' : falta.length ? 'Falta ' + falta.join(' e ') + '.' :
+            (filaProvavel() ? 'Os documentos vão para o servidor. Depois de "Enviado" pode fechar o app.' : 'Roda em segundo plano. Pode sair desta tela, avisamos quando ficar pronta.');
     }
 
     function statusUpload(msg) { var s = el('cs_up_status_txt'); if (s) s.textContent = msg; }
 
+    function tirarPorAid(arr, aid) {   // tira de dentro do proprio array (uma leitura em andamento continua escrevendo nele)
+        var tirados = [];
+        for (var i = arr.length - 1; i >= 0; i--) if (String(arr[i].aid) === String(aid)) tirados.unshift(arr.splice(i, 1)[0]);
+        return tirados;
+    }
     function removerArquivo(tipo, aid) {
         var arr = tipo === 'id' ? _docsId : _docsRend;
-        for (var i = arr.length - 1; i >= 0; i--) {
-            if (String(arr[i].aid) === String(aid)) { liberarDoc(arr[i]); arr.splice(i, 1); }
-        }
+        tirarPorAid(arr, aid).forEach(liberarDoc);
+        delete _docMeta[aid];
         renderRascunho();
     }
 
@@ -2935,22 +2964,6 @@
         } catch (eF) { console.warn('Falha ao ler arquivo:', f.name, eF); avisar('Não consegui ler "' + f.name + '". Tente outro arquivo.'); }
     }
 
-    async function handleFilesId(files) {
-        files = Array.prototype.slice.call(files || []);
-        if (!files.length) return;
-        _enviando++; renderRascunho();
-        try {
-            for (var i = 0; i < files.length; i++) {
-                var f = files[i];
-                if (_docsId.length >= MAX_DOCS_ID) { avisar('Maximo ' + MAX_DOCS_ID + ' fotos de documento pessoal.'); break; }
-                statusUpload('Lendo ' + (f.name || 'arquivo') + '...');
-                var aid = ++_arqSeq;
-                await lerArquivoId(f, aid, _docsId);
-                renderRascunho();
-            }
-        } finally { _enviando--; renderRascunho(); }
-    }
-
     // Le UM comprovante de renda (foto ou PDF; PDF digital ja traz o texto) e acrescenta em `destino`. Usado pelo envio normal e pelo Lote.
     async function lerArquivoRend(f, aid, destino, rotulo) {
         try {
@@ -2978,23 +2991,83 @@
         } catch (eF) { console.warn('Falha ao ler arquivo:', f.name, eF); avisar('Não consegui ler "' + f.name + '". Tente outro arquivo.'); }
     }
 
-    async function handleFilesRend(files) {
+    // ── Campo unico de documentos: o sistema separa RG/CNH de comprovante de renda sozinho ──
+    // PDF digital: pelo texto (o mesmo do Lote). Foto e PDF escaneado: a IA olha. Sem certeza: vira comprovante e a etiqueta pede confirmacao.
+    function rotuloRenda(texto) {
+        var T = nuSemAcento(texto || '');
+        if (/HOLERITE|CONTRACHEQUE|DEMONSTRATIVO DE PAGAMENTO/.test(T)) return 'Holerite';
+        if (/EXTRATO|MOVIMENTA|SALDO|\bPIX\b/.test(T)) return 'Extrato';
+        return 'Comprovante';
+    }
+    async function classificarPorIA(f) {
+        var b64 = '';
+        if (f.type.indexOf('image/') === 0) b64 = await resizeToBase64(f);
+        else { var imgs = await pdfToImages(f, 1); b64 = imgs.length ? imgs[0].base64 : ''; }
+        if (!b64) return null;
+        var resp = await aiCallVision([{ base64: b64 }], '', LT_PROMPT_IA, null);
+        var i1 = resp.indexOf('{'), i2 = resp.lastIndexOf('}');
+        if (i1 === -1 || i2 <= i1) return null;
+        var t = String(JSON.parse(resp.substring(i1, i2 + 1)).tipo || '').toLowerCase();
+        return t === 'renda' ? { tipo: 'rend', rot: 'Comprovante' } : t === 'doc' ? { tipo: 'id', rot: 'RG/CNH' } : null;
+    }
+    async function classificarArquivo(f) {
+        var duvida = { tipo: 'rend', rot: 'Comprovante', incerto: true };
+        try {
+            if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '')) {
+                var r = await extrairTextoPdfDigital(f, 2), t1 = (r.textos || []).join('\n'), np = r.numPaginas || 0, tp = ltTipoPdf(t1, np, r.ehDigital);
+                if (tp === 'ext') return { tipo: 'rend', rot: rotuloRenda(t1) };
+                if (tp === 'doc') return { tipo: 'id', rot: 'RG/CNH' };
+                if (np > MAX_PDF_PGS_ID) return { tipo: 'rend', rot: 'Comprovante' };   // PDF longo nunca e documento pessoal
+            }
+            return (await classificarPorIA(f)) || duvida;
+        } catch (e) { console.warn('CreditoScan: nao consegui classificar', f && f.name, e); return duvida; }
+    }
+
+    async function handleFilesDocs(files) {
         files = Array.prototype.slice.call(files || []);
         if (!files.length) return;
         _enviando++; renderRascunho();
         try {
             for (var i = 0; i < files.length; i++) {
-                var f = files[i];
-                if (_docsRend.length >= MAX_DOCS_RND) { avisar('Maximo de ' + MAX_DOCS_RND + ' paginas atingido.'); break; }
-                var rotulo = (i + 1) + '/' + files.length + ' · ' + (f.name || 'arquivo');
-                var aid = ++_arqSeq;
-                await lerArquivoRend(f, aid, _docsRend, rotulo);
+                var f = files[i], nome = f.name || 'arquivo';
+                if (!/^image\//.test(f.type) && f.type !== 'application/pdf' && !/\.pdf$/i.test(nome)) { avisar('"' + nome + '" não é foto nem PDF.'); continue; }
+                statusUpload('Identificando ' + (i + 1) + '/' + files.length + ' · ' + nome + '...');
+                var c = await classificarArquivo(f), aid = ++_arqSeq;
+                if (c.tipo === 'id') {
+                    if (_docsId.length >= MAX_DOCS_ID) { avisar('Máximo de ' + MAX_DOCS_ID + ' fotos de documento pessoal.'); continue; }
+                    await lerArquivoId(f, aid, _docsId);
+                } else {
+                    if (_docsRend.length >= MAX_DOCS_RND) { avisar('Máximo de ' + MAX_DOCS_RND + ' páginas atingido.'); break; }
+                    await lerArquivoRend(f, aid, _docsRend, (i + 1) + '/' + files.length + ' · ' + nome);
+                }
+                if (_docsId.concat(_docsRend).some(function (d) { return d.aid === aid; })) _docMeta[aid] = { rot: c.rot, incerto: !!c.incerto };   // so guarda se o arquivo foi lido
                 renderRascunho();
             }
         } finally { _enviando--; renderRascunho(); }
     }
-    function uploadId(capture,mode){var inp=document.createElement('input');inp.type='file';inp.accept=(mode==='pdf')?'application/pdf,.pdf':'image/*,application/pdf';inp.multiple=true;if(capture&&capture!==false)inp.capture='environment';inp.onchange=function(e){handleFilesId(e.target.files);};inp.click();}
-    function uploadRend(accept,capture){var inp=document.createElement('input');inp.type='file';inp.accept=accept||'image/*,application/pdf';inp.multiple=true;if(capture)inp.capture='environment';inp.onchange=function(e){handleFilesRend(e.target.files);};inp.click();}
+    function uploadDocs(camera) {
+        var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*,application/pdf'; inp.multiple = true;
+        if (camera) inp.capture = 'environment';
+        inp.onchange = function (e) { handleFilesDocs(e.target.files); };
+        inp.click();
+    }
+    // Toque na etiqueta: troca o arquivo entre documento pessoal e comprovante de renda (o sistema errou, ou estava em duvida)
+    function trocarTipoDoc(aid, para) {
+        var meta = _docMeta[aid] || (_docMeta[aid] = {});
+        if (para === 'rend') {
+            var doId = tirarPorAid(_docsId, aid); if (!doId.length) { meta.incerto = false; renderRascunho(); return; }
+            doId.forEach(function (d) { _docsRend.push({ dataUrl: d.dataUrl, base64: d.base64, tipo: 'imagem', textos: [], ehDigital: false, arq: d.arq, aid: d.aid }); });
+            meta.rot = 'Comprovante';
+        } else {
+            if (_docsId.some(function (d) { return String(d.aid) === String(aid); })) { meta.incerto = false; renderRascunho(); return; }
+            if (_docsId.length >= MAX_DOCS_ID) { avisar('Máximo de ' + MAX_DOCS_ID + ' fotos de documento pessoal.'); return; }
+            var doRend = tirarPorAid(_docsRend, aid); if (!doRend.length) return;
+            _docsId.push({ base64: doRend[0].base64, dataUrl: doRend[0].dataUrl, arq: doRend[0].arq, aid: doRend[0].aid });
+            meta.rot = 'RG/CNH';
+        }
+        meta.incerto = false;
+        renderRascunho();
+    }
 
     // ════════════════════════════════════════════════════════════════════════════
     // LOTE: vários documentos + vários extratos de uma vez; o sistema descobre de quem é cada arquivo pelo NOME (e pelo CPF quando dá).
@@ -3316,10 +3389,14 @@
     // ================================================================
     // TELA INICIAL: nova analise + andamento + prontas
     // ================================================================
+    // Abas da tela inicial: "Nova analise" (formulario) e "Historico do dia" (em andamento + prontas)
     function aplicarForm() {
-        var f = el('cs_form'), b = el('cs_btn_novaform');
-        if (f) f.classList.toggle('cs-h', _formAberto === false);
-        if (b) b.classList.toggle('cs-h', _formAberto !== false);
+        var nova = _formAberto !== false;
+        var f = el('cs_form'), l = el('cs_lista'), tn = el('cs_tab_nova'), th = el('cs_tab_hist');
+        if (f) f.classList.toggle('cs-h', !nova);
+        if (l) l.classList.toggle('cs-h', nova);
+        if (tn) { tn.classList.toggle('on', nova); tn.setAttribute('aria-selected', nova ? 'true' : 'false'); }
+        if (th) { th.classList.toggle('on', !nova); th.setAttribute('aria-selected', nova ? 'false' : 'true'); }
     }
 
     function cor(nota) { return nota >= 60 ? 'ok' : nota > NOTA_REPROVA ? 'warn' : 'bad'; }
@@ -3384,6 +3461,8 @@
         var andam = _jobs.filter(function (j) { return j.estado !== 'pronta' && passaFiltro(j.usuario); });
         var noServidor = filaItensTela().filter(function (a) { return passaFiltro(a.usuario); });
         var prontas = prontasDeHoje();
+        var nTab = andam.length + noServidor.length + prontas.length, tn = el('cs_tab_n');
+        if (tn) { tn.textContent = nTab || ''; tn.classList.toggle('cs-h', !nTab); }
         var html = filaAvisoHtml() + filtroHtml();
         if (andam.length || noServidor.length) {
             html += '<div class="cs-sec-h"><span>Em andamento</span><em>' + (andam.length + noServidor.length) + '</em></div>' +
@@ -3499,9 +3578,15 @@
         var ov = el('cs_ov'); if (!ov) return;
         ov.classList.add('active');
         if (_formAberto === null) _formAberto = _jobs.length === 0 && !filaItensTela().length;
-        renderRascunho(); aplicarForm(); renderLista(); pedFormRender();
+        navAltura(); renderRascunho(); aplicarForm(); renderLista(); pedFormRender();
         pedIniciar();
         filaBuscar(); hojeBuscar();   // atualiza por tras; a lista que ja esta na tela aparece na hora
+    }
+    // O menu de baixo do app fica por cima da tela: o botao fixo "Analisar credito" sobe essa altura para nao ficar escondido
+    function navAltura() {
+        var ov = el('cs_ov'), nav = el('ctwBottomNav'), h = 96; if (!ov) return;
+        try { if (nav && getComputedStyle(nav).display !== 'none') { var r = nav.getBoundingClientRect(); if (r.height > 0) h = Math.max(0, Math.round(window.innerHeight - r.top) + 12); } } catch (e) {}
+        ov.style.setProperty('--cs-nav', h + 'px');
     }
     function closeOverlay() { el('cs_ov') && el('cs_ov').classList.remove('active'); }
 
@@ -3536,7 +3621,7 @@
                 var b = e.target.closest('[data-bact]'); if (!b) return;
                 var j = jobPorId(b.getAttribute('data-id'));
                 var a = b.getAttribute('data-bact');
-                if (a === 'pver') { var bid = b.getAttribute('data-id'); removerBanner(bid); if (veTudo()) { openOverlay(); _pedAba = 'pend'; el('cs_fila_ov').classList.add('active'); filaRender(); var pk = bid.slice(2); if (_ped[pk]) pedAbrir(pk); } else pedAbrir(bid.slice(2)); return; }
+                if (a === 'pver') { var bid = b.getAttribute('data-id'); removerBanner(bid); if (veTudo()) { var jaAb = el('cs_ov') && el('cs_ov').classList.contains('active'); openOverlay(); _filaRaiz = !jaAb; _pedAba = 'pend'; el('cs_fila_ov').classList.add('active'); filaRender(); var pk = bid.slice(2); if (_ped[pk]) pedAbrir(pk); } else pedAbrir(bid.slice(2)); return; }
                 if (a === 'x') { removerBanner(b.getAttribute('data-id')); return; }
                 if (!j) { removerBanner(b.getAttribute('data-id')); return; }
                 removerBanner(j.id);
@@ -4232,7 +4317,7 @@
         pedCriarNoEnvio(jobNovo);   // produtos pedidos no envio: o pedido nasce agora e fecha quando a analise terminar
         _ppSel.f = []; ppTop('f');
         if (campoTel) { campoTel.value = ''; mascararTelefone(campoTel, 'cs_tel_hint'); }
-        _docsId = []; _docsRend = [];
+        _docsId = []; _docsRend = []; _docMeta = {};
         renderRascunho(); aplicarForm(); renderLista();
         processarFila();
     }
@@ -6051,11 +6136,11 @@
         '.cs-hdr,.cs-hhdr{display:flex;align-items:center;gap:10px;padding:calc(14px + env(safe-area-inset-top,0px)) 16px 12px;flex-shrink:0}',
         '.cs-hdr-ttl,.cs-hhdr-ttl{font-size:18px;font-weight:700;line-height:1.2;color:var(--text-color)}',
         '.cs-hdr-sub,.cs-hhdr-sub{font-size:12px;color:var(--text-secondary)}',
-        '.cs-back,.cs-ibtn,.cs-hbtn{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border:1px solid var(--glass-border);background:var(--card-bg);color:var(--text-color);font:500 13px "Poppins",sans-serif;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent}',
+        '.cs-hlink{min-height:44px;padding:0 12px;border:0;border-radius:12px;background:transparent;color:var(--text-secondary);font:500 12px "Poppins",sans-serif;display:flex;align-items:center;gap:6px;cursor:pointer;flex-shrink:0;white-space:nowrap}.cs-hlink:active{background:var(--glass-border)}',
+        '.cs-back,.cs-ibtn{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border:1px solid var(--glass-border);background:var(--card-bg);color:var(--text-color);font:500 13px "Poppins",sans-serif;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent}',
         '.cs-back{width:44px;border-radius:50%;padding:0;font-size:1.1rem}',
         '.cs-ibtn{width:44px;border-radius:14px;padding:0}',
-        '.cs-hbtn{padding:0 14px;border-radius:14px}',
-        '.cs-back:active,.cs-ibtn:active,.cs-hbtn:active{transform:scale(.96)}',
+        '.cs-back:active,.cs-ibtn:active{transform:scale(.96)}',
         /* ── corpo rolavel (folga para o menu inferior) ── */
         '.cs-body,.cs-hbody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 16px 28px;display:flex;flex-direction:column;gap:12px;min-height:0}',
         'body.ctw-v2-active .cs-body,body.ctw-v2-active .cs-hbody{padding-bottom:calc(112px + env(safe-area-inset-bottom,0px))}',
@@ -6100,8 +6185,36 @@
         '.cs-btn-ghost{background:transparent;border:1px solid rgba(var(--primary-color-rgb),.6);color:var(--primary-color);font-weight:600}',
         '.cs-btn-sm{min-height:44px;width:auto;font-size:13px}',
         '.cs-hint{font-size:12px;color:var(--text-secondary);text-align:center;line-height:1.5;margin:0}',
-        '.cs-acoes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}',
-        '.cs-acao{min-height:52px;font-size:13px;white-space:nowrap}',
+        /* ── tela inicial: abas, documentos juntos, botao fixo ── */
+        '.cs-tab-n{margin-left:6px;min-width:20px;height:20px;padding:0 6px;box-sizing:border-box;border-radius:10px;background:var(--glass-border);color:var(--text-color);font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle}',
+        '.cs-seg button.on .cs-tab-n{background:#0d1f15;color:var(--primary-color)}',
+        '.cs-step{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--primary-color);color:var(--primary-color);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-sizing:border-box}',
+        '.cs-step.ok{background:var(--primary-color);color:#0d1f15}',
+        '.cs-step i.bi{font-size:14px!important;color:inherit!important}',
+        '#cs_ov .cs-body>*,#cs_form>*{flex-shrink:0}',
+        '.cs-zone{border:1.5px dashed rgba(var(--primary-color-rgb),.55);border-radius:14px;padding:16px 12px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}',
+        '.cs-zone>i.bi{font-size:1.6rem;color:var(--primary-color)}',
+        '.cs-zone>b{font-size:14px;font-weight:600}',
+        '.cs-zone>span{font-size:12px;color:var(--text-secondary);line-height:1.5}',
+        '.cs-zone .cs-ubtns{width:100%}',
+        '.cs-more{height:44px;border-radius:12px;border:1.5px dashed rgba(var(--primary-color-rgb),.55);background:transparent;color:var(--primary-color);font:600 13px "Poppins",sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;width:100%}',
+        '.cs-file{min-height:52px}',
+        '.cs-fi{flex:1;min-width:0;display:flex;flex-direction:column}',
+        '.cs-fi b{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+        '.cs-fi em{font-style:normal;font-size:11px;color:var(--text-secondary)}',
+        '.cs-fi em.warn{color:var(--cs-warn)}',
+        '.cs-chip{min-height:32px;padding:0 10px;border-radius:16px;border:0;background:rgba(var(--primary-color-rgb),.16);color:var(--primary-color);font:600 12px "Poppins",sans-serif;cursor:pointer;flex-shrink:0}',
+        '.cs-chip.warn{background:rgba(255,179,0,.18);color:var(--cs-warn)}',
+        '.cs-chks{display:flex;flex-direction:column;gap:8px}',
+        '.cs-chk{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary)}',
+        '.cs-chk.ok{color:var(--primary-color)}.cs-chk.warn{color:var(--cs-warn)}',
+        '.cs-dot{width:16px;height:16px;border-radius:50%;border:1.5px solid currentColor;box-sizing:border-box;flex-shrink:0}',
+        '.cs-lote-link{align-self:center;border:0;background:none;color:var(--text-secondary);font:500 12px "Poppins",sans-serif;min-height:44px;display:flex;align-items:center;gap:6px;padding:0 12px;cursor:pointer}',
+        '.cs-tag-dev{border:1px solid var(--glass-border);border-radius:10px;padding:1px 7px;font-size:10px}',
+        '.cs-sbar{position:sticky;bottom:var(--cs-nav,96px);z-index:5;margin:0 -16px;padding:10px 16px 6px;background:var(--bg-color,#16171A);border-top:1px solid var(--glass-border);display:flex;flex-direction:column;gap:8px}',
+        '.cs-sbar::after{content:"";position:absolute;left:0;right:0;top:100%;height:var(--cs-nav,96px);background:var(--bg-color,#16171A)}',
+        'html.cs-kb-on .cs-sbar{position:static}html.cs-kb-on .cs-sbar::after{display:none}',
+        '#cs_ov .cs-body{padding-bottom:calc(var(--cs-nav,96px) + 16px)}',
         '.cs-link{background:none;border:none;font:500 13px "Poppins",sans-serif;min-height:44px;padding:0 6px;cursor:pointer;color:var(--text-secondary)}',
         '.cs-link.bad{color:var(--cs-bad)}',
         /* ── listas: em andamento / prontas ── */
@@ -6362,42 +6475,40 @@
         '<div class="cs-hdr">'+
             '<button type="button" class="cs-back" id="cs_close" aria-label="Voltar"><i class="bi bi-arrow-left"></i></button>'+
             '<div style="flex:1;min-width:0"><div class="cs-hdr-ttl">CreditoScan</div><div class="cs-hdr-sub">Análise de crédito</div></div>'+
-            '<button type="button" class="cs-hbtn" id="cs_hist_open"><i class="bi bi-clock-history"></i> Histórico</button>'+
+            '<button type="button" class="cs-ibtn" id="cs_hist_open" aria-label="Histórico completo"><i class="bi bi-clock-history"></i></button>'+
             '<button type="button" class="cs-ibtn" id="cs_cfg_open" aria-label="Configurações"><i class="bi bi-gear-fill"></i></button>'+
         '</div>'+
         '<div class="cs-body">'+
-            '<button type="button" class="cs-btn cs-btn-pri cs-btn-big cs-h" id="cs_btn_novaform"><i class="bi bi-plus-lg"></i> Nova análise</button>'+
-            '<div class="cs-acoes cs-h" id="cs_acoes">'+
-                '<button type="button" class="cs-btn cs-btn-ghost cs-acao cs-h" id="cs_btn_lote"><i class="bi bi-people-fill"></i> Lote de clientes</button>'+
-                '<button type="button" class="cs-btn cs-btn-ghost cs-acao cs-h" id="cs_btn_fila"><i class="bi bi-hourglass-split"></i> Fila do gestor <span class="cs-fila-n cs-h" id="cs_fila_n"></span></button>'+
+            '<div class="cs-seg" role="tablist" aria-label="Tela">'+
+                '<button type="button" role="tab" class="on" id="cs_tab_nova" aria-selected="true">Nova análise</button>'+
+                '<button type="button" role="tab" id="cs_tab_hist" aria-selected="false">Histórico do dia<span class="cs-tab-n cs-h" id="cs_tab_n"></span></button>'+
             '</div>'+
+            '<button type="button" class="cs-btn cs-btn-ghost cs-h" id="cs_btn_fila"><i class="bi bi-hourglass-split"></i> Fila do gestor <span class="cs-fila-n cs-h" id="cs_fila_n"></span></button>'+
             '<div id="cs_form" style="display:flex;flex-direction:column;gap:14px">'+
-                '<div class="cs-intro"><h2>Nova análise</h2><p id="cs_intro_p">Envie os documentos do cliente e informe o produto que ele quer.</p></div>'+
                 '<div class="cs-card">'+
-                    '<div class="cs-up-h"><i class="bi bi-person-vcard"></i><b>RG ou CNH</b><span class="cs-cnt" id="cs_counter_id"></span><small>Opcional</small></div>'+
-                    '<div class="cs-files" id="cs_docs_id"></div>'+
-                    '<div class="cs-ubtns"><button type="button" class="cs-ubtn" id="cs_id_cam"><i class="bi bi-camera"></i> Câmera</button><button type="button" class="cs-ubtn" id="cs_id_gal"><i class="bi bi-image"></i> Galeria</button><button type="button" class="cs-ubtn" id="cs_id_pdf"><i class="bi bi-file-earmark-pdf"></i> PDF</button></div>'+
+                    '<div class="cs-up-h"><span class="cs-step" id="cs_step1">1</span><b>Documentos do cliente</b><span class="cs-cnt" id="cs_docs_cnt"></span></div>'+
+                    '<div class="cs-zone" id="cs_zone"><i class="bi bi-upload"></i><b>Anexe tudo de uma vez</b><span>RG ou CNH, extratos e holerites juntos.<br>O sistema separa cada documento sozinho.</span>'+
+                        '<div class="cs-ubtns"><button type="button" class="cs-ubtn" id="cs_doc_cam"><i class="bi bi-camera"></i> Câmera</button><button type="button" class="cs-ubtn" id="cs_doc_gal"><i class="bi bi-image"></i> Galeria</button><button type="button" class="cs-ubtn" id="cs_doc_pdf"><i class="bi bi-file-earmark-pdf"></i> PDF</button></div>'+
+                    '</div>'+
+                    '<div class="cs-files" id="cs_docs_all"></div>'+
+                    '<button type="button" class="cs-more cs-h" id="cs_doc_mais"><i class="bi bi-plus-lg"></i> Adicionar mais documentos</button>'+
+                    '<div class="cs-chks" id="cs_docs_chk"></div>'+
                 '</div>'+
-                '<div class="cs-card">'+
-                    '<div class="cs-up-h"><i class="bi bi-file-earmark-text"></i><b>Comprovante de renda</b><small class="req">Obrigatório</small></div>'+
-                    '<div class="cs-files" id="cs_docs_rend"></div>'+
-                    '<div class="cs-ubtns"><button type="button" class="cs-ubtn" id="cs_rend_cam"><i class="bi bi-camera"></i> Câmera</button><button type="button" class="cs-ubtn" id="cs_rend_gal"><i class="bi bi-image"></i> Galeria</button><button type="button" class="cs-ubtn" id="cs_rend_pdf"><i class="bi bi-file-earmark-pdf"></i> PDF</button></div>'+
-                    '<div class="cs-hint" style="margin-top:-2px">Extratos e holerites. PDF digital é detectado automaticamente.</div>'+
+                '<div class="cs-card" id="cs_prod_card">'+
+                    '<div class="cs-up-h"><span class="cs-step" id="cs_step2">2</span><b>Produto que o cliente quer</b><small class="req">Obrigatório</small></div>'+
+                    ppHtml('f')+
+                    '<div class="cs-hint" style="margin-top:-2px">Produto da lista responde sozinho quando a análise terminar. Os outros vão para o gestor.</div>'+
                 '</div>'+
                 '<div class="cs-card cs-tel-form">'+
                     '<div class="cs-up-h"><i class="bi bi-whatsapp"></i><b>WhatsApp do cliente</b><small>Opcional</small></div>'+
                     '<input id="cs_tel" class="cs-in" type="tel" inputmode="tel" autocomplete="off" maxlength="24" placeholder="(62) 99999-9999" aria-label="WhatsApp do cliente">'+
                     '<div class="cs-hint" id="cs_tel_hint" style="margin-top:-2px">Com o número, os botões de WhatsApp abrem direto na conversa do cliente.</div>'+
                 '</div>'+
-                '<div class="cs-card" id="cs_prod_card">'+
-                    '<div class="cs-up-h"><i class="bi bi-phone"></i><b>Produto que o cliente quer</b><small class="req">Obrigatório</small></div>'+
-                    ppHtml('f')+
-                    '<div class="cs-hint" style="margin-top:-2px">Produto da lista responde sozinho quando a análise terminar. Os outros vão para o gestor.</div>'+
-                '</div>'+
                 '<div class="cs-up-status cs-h" id="cs_up_status"><i class="bi bi-arrow-repeat"></i><span id="cs_up_status_txt">Lendo arquivos...</span></div>'+
-                '<div style="display:flex;flex-direction:column;gap:8px">'+
+                '<button type="button" class="cs-lote-link cs-h" id="cs_btn_lote"><i class="bi bi-people-fill"></i> Lote · vários clientes <span class="cs-tag-dev">dev</span></button>'+
+                '<div class="cs-sbar" id="cs_bar">'+
                     '<button type="button" class="cs-btn cs-btn-pri cs-btn-big" id="cs_btn_analisar" disabled><i class="bi bi-check2-circle"></i> Analisar crédito</button>'+
-                    '<p class="cs-hint" id="cs_hint_analisar">Adicione ao menos um comprovante de renda.</p>'+
+                    '<p class="cs-hint" id="cs_hint_analisar">Falta o comprovante de renda e o produto.</p>'+
                 '</div>'+
             '</div>'+
             '<div id="cs_lista" style="display:flex;flex-direction:column;gap:10px"></div>'+
@@ -6436,7 +6547,7 @@
 
         // ── Gestor: fila e pedido (mesma camada do historico; o resultado completo abre por cima) ──
         slot('cs_fila_ov','',
-        '<div class="cs-hhdr"><button type="button" class="cs-back" id="cs_fila_close" aria-label="Voltar"><i class="bi bi-arrow-left"></i></button><div style="flex:1"><span class="cs-hhdr-ttl">Fila do gestor</span><div class="cs-hhdr-sub">Pedidos de produto esperando resposta</div></div></div>'+
+        '<div class="cs-hhdr"><button type="button" class="cs-back" id="cs_fila_close" aria-label="Voltar"><i class="bi bi-arrow-left"></i></button><div style="flex:1"><span class="cs-hhdr-ttl">Fila do gestor</span><div class="cs-hhdr-sub">Pedidos esperando resposta</div></div><button type="button" class="cs-hlink" id="cs_fila_nova"><i class="bi bi-plus-lg"></i> Fazer análise</button></div>'+
         '<div class="cs-hbody" id="cs_fila_body" style="padding:8px 16px 28px;gap:10px"></div>');
         slot('cs_ped_ov','',
         '<div class="cs-hhdr"><button type="button" class="cs-back" id="cs_ped_close" aria-label="Voltar"><i class="bi bi-arrow-left"></i></button><div style="flex:1;min-width:0"><span class="cs-hhdr-ttl" id="cs_ped_ttl">Pedido</span><div class="cs-hhdr-sub" id="cs_ped_sub"></div></div></div>'+
@@ -6531,17 +6642,19 @@
         on('cs_hist_open','click',abrirHist);
         on('cs_hist_close','click',function(){el('cs_hist_ov')&&el('cs_hist_ov').classList.remove('active');});
         on('cs_res_close','click',fecharResultado);
-        on('cs_id_cam','click',function(){uploadId(true);});
-        on('cs_id_gal','click',function(){uploadId();});
+        on('cs_doc_cam','click',function(){uploadDocs(true);});
         // Galeria e PDF abrem o seletor do Android que pergunta o app (Arquivos, Pasta Segura da Samsung...)
-        on('cs_id_pdf','click',function(){uploadId();});
-        on('cs_rend_cam','click',function(){uploadRend('image/*',true);});
-        on('cs_rend_gal','click',function(){uploadRend('image/*,application/pdf');});
-        on('cs_rend_pdf','click',function(){uploadRend('image/*,application/pdf');});
+        on('cs_doc_gal','click',function(){uploadDocs();});
+        on('cs_doc_pdf','click',function(){uploadDocs();});
+        on('cs_doc_mais','click',function(){uploadDocs();});
+        on('cs_tab_nova','click',function(){_formAberto=true;aplicarForm();});
+        on('cs_tab_hist','click',function(){_formAberto=false;aplicarForm();});
+        window.addEventListener('resize',navAltura);
         on('cs_btn_analisar','click',iniciarAnalise);
         on('cs_btn_lote','click',loteAbrir);
         on('cs_btn_fila','click',filaAbrir);
-        on('cs_fila_close','click',function(){el('cs_fila_ov').classList.remove('active');renderLista();});
+        on('cs_fila_close','click',filaFechar);
+        on('cs_fila_nova','click',filaParaAnalise);
         on('cs_ped_close','click',pedFechar);
         var fbd=el('cs_fila_body');if(fbd)fbd.addEventListener('click',filaAcao);
         var pbd=el('cs_ped_body');if(pbd){pbd.addEventListener('click',pedAcao);pbd.addEventListener('input',pedCampo);pbd.addEventListener('keydown',ppEnter);}
@@ -6551,8 +6664,7 @@
         on('cs_lt_go','click',loteAnalisar);
         var lb=el('cs_lt_body');if(lb){lb.addEventListener('click',loteAcao);lb.addEventListener('change',loteAcao);}
         on('cs_tel','input',function(e){mascararTelefone(e.target,'cs_tel_hint');});
-        on('cs_btn_novaform','click',function(){_formAberto=true;aplicarForm();});
-        on('cs_form','click',function(e){var x=e.target.closest('.cs-file-x');if(x)removerArquivo(x.getAttribute('data-t'),x.getAttribute('data-aid'));});
+        on('cs_form','click',function(e){var x=e.target.closest('.cs-file-x');if(x)return removerArquivo(x.getAttribute('data-t'),x.getAttribute('data-aid'));var c=e.target.closest('.cs-chip');if(c)trocarTipoDoc(c.getAttribute('data-aid'),c.getAttribute('data-para'));});
         on('cs_lista','click',acaoLista);
         // Resultado: botoes e simulador (delegado — o conteudo e refeito a cada abertura)
         var rb=el('cs_res_body');
@@ -7437,6 +7549,7 @@
     function ppDigitou(e) {
         var t = e.target; if (!t || !t.id || t.id.indexOf('cs_pp_in_') !== 0) return false;
         var ctx = t.id.slice(9), box = el('cs_pp_sug_' + ctx); if (!box) return true;
+        if (ctx === 'f') renderRascunho();
         var termo = String(t.value || '').trim();
         _ppSug[ctx] = [];
         if (termo.length < 2) { box.innerHTML = ''; return true; }
@@ -7454,6 +7567,7 @@
         return true;
     }
     function ppAtualizarBotao(ctx) {
+        if (ctx === 'f') { renderRascunho(); return; }
         if (ctx !== 'p') return;
         var b = el('cs_ped_enviar'); if (b) { b.disabled = !_ppSel.p.length; }
     }
@@ -7469,9 +7583,7 @@
         ppTop('f'); apCarregar(false).then(function () { ppTop('f'); });
     }
     function pedFormToggle() {
-        var bl = el('cs_btn_lote'), ac = el('cs_acoes');
-        if (bl) bl.classList.toggle('cs-h', !ehDevPerfil());
-        if (ac) ac.classList.toggle('cs-h', !ehDevPerfil() && !veTudo());
+        var bl = el('cs_btn_lote'); if (bl) bl.classList.toggle('cs-h', !ehDevPerfil());   // Lote: discreto, so do dev
         var bf = el('cs_btn_fila');
         if (bf) {
             bf.classList.toggle('cs-h', !veTudo());
@@ -7691,9 +7803,22 @@
     // ── Fila do gestor ──
     function filaAbrir() {
         if (!veTudo()) return;
+        var ja = el('cs_ov') && el('cs_ov').classList.contains('active');
         openOverlay();
+        _filaRaiz = !ja;
         el('cs_fila_ov').classList.add('active');
         filaRender();
+    }
+    // Fila fechada pelo botao voltar: se era a primeira tela, sai do CreditoScan; senao volta para a Nova analise
+    function filaFechar() {
+        el('cs_fila_ov').classList.remove('active');
+        if (_filaRaiz) { _filaRaiz = false; closeOverlay(); } else renderLista();
+    }
+    // "Fazer analise": o gestor sai da Fila e vai para a Nova analise
+    function filaParaAnalise() {
+        _filaRaiz = false; _formAberto = true;
+        el('cs_fila_ov').classList.remove('active');
+        aplicarForm(); renderLista();
     }
     function filaRender() {
         var body = el('cs_fila_body'); if (!body) return;
@@ -7725,7 +7850,7 @@
 
     function init(){injectCSS();injectHTML();injectMenuBtns();wireEvents();apWire();filaIniciar();hojeIniciar();pedIniciar();atualizarBadge();retomarAnalises();wgIniciar();}
     if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}else{init();}
-    window._creditoScanOpen=openOverlay;
+    window._creditoScanOpen=function(){if(veTudo())filaAbrir();else openOverlay();};   // gestor entra direto na Fila (botao "Fazer analise" leva para a Nova analise)
     // Botao voltar do celular: fecha a camada mais de cima do CreditoScan (true = tratou)
     window._creditoScanBack=function(){
         if(upBloqueando())return true;   // enviando documentos ao servidor: o botao voltar nao faz nada
@@ -7733,7 +7858,7 @@
         var ids=['cs_lote_ov','cs_cfg_ov','cs_res_ov','cs_ped_ov','cs_fila_ov','cs_hist_ov','cs_ov'];
         for(var i=0;i<ids.length;i++){
             var o=el(ids[i]);
-            if(o&&o.classList.contains('active')){if(ids[i]==='cs_res_ov')fecharResultado();else if(ids[i]==='cs_ped_ov')pedFechar();else{o.classList.remove('active');if(ids[i]==='cs_fila_ov')renderLista();}return true;}
+            if(o&&o.classList.contains('active')){if(ids[i]==='cs_res_ov')fecharResultado();else if(ids[i]==='cs_ped_ov')pedFechar();else if(ids[i]==='cs_fila_ov')filaFechar();else o.classList.remove('active');return true;}
         }
         return false;
     };
