@@ -7058,8 +7058,7 @@
     var _ppSug = { f: [], p: [] };   // sugestoes do catalogo mostradas
 
     function ehGestor() { return !!(window.ctwPerfilGestor && window.ctwPerfilGestor()); }
-    function ehDevPerfil() { return !!(window.ctwPerfilDev && window.ctwPerfilDev()); }
-    function veTudo() { return ehGestor() || ehDevPerfil(); }   // gestor e dev veem nota/renda de todas e respondem a fila
+    function veTudo() { return ehGestor(); }   // so quem tem a tag de gestor ve nota/renda de todas e responde a fila (dev sem a tag e vendedor comum)
     function restrito() { return !veTudo(); }
     function fbKeyDe(uid) { return 'cs' + String(uid).replace(/-/g, ''); }
     function pedNorm(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ''); }
@@ -7122,7 +7121,7 @@
         if (pedRespGestor(p)) return { txt: 'Gestor respondeu', cls: 'ok', ico: 'bi-check-lg' };
         return { txt: 'Resposta pronta', cls: 'ok', ico: 'bi-check-lg' };
     }
-    // O que o gestor/dev ve a mais no cartao da lista
+    // O que o gestor ve a mais no cartao da lista
     function pedSufixoGestor(key) {
         var p = _ped[key]; if (!pedAtivo(p)) return '';
         if (pedAguardando(p).length) return ' · com o gestor';
@@ -7306,7 +7305,7 @@
                 var novos = pedAguardando(p).filter(function (x) { return !ag[x.pid]; });
                 if (novos.length) pedBanner(key, 'gestor', 'Pedido novo para o gestor', (p.nome || 'Cliente') + ' · ' + novos.map(function (x) { return x.nome; }).join(', '), 'Responder');
             }
-            if (ehDono(p.vendedor) && p.vendedor) {   // perfil e vendedor E gestor/dev: avisa quando OUTRO gestor responde o pedido dele (a propria resposta nao precisa de aviso)
+            if (ehDono(p.vendedor) && p.vendedor) {   // perfil e vendedor E gestor: avisa quando OUTRO gestor responde o pedido dele (a propria resposta nao precisa de aviso)
                 var eu = usuarioAtual();
                 var respondidos = pedProdutos(p).filter(function (x) { return ag[x.pid] && (x.estado === 'aprovado' || x.estado === 'recusado') && !(veTudo() && x.gestor && x.gestor === eu); });
                 if (respondidos.length) pedBanner(key, 'vend', 'O gestor respondeu', (p.nome || 'Cliente') + ' · ' + respondidos.map(function (x) { return x.nome; }).join(', '), 'Ver resposta');
@@ -7346,7 +7345,7 @@
         lista.sort(function (a, b) { return b.t - a.t; });
         return lista;
     }
-    // Numero do selo: gestor/dev = pedidos esperando; vendedor = respostas novas do gestor
+    // Numero do selo: gestor = pedidos esperando; vendedor = respostas novas do gestor
     function pedBadgeN() {
         if (veTudo()) return pedPendentes().length;
         return Object.keys(_ped).filter(pedNova).length;
@@ -7463,7 +7462,7 @@
         if (inp && inp.value.trim()) { if (ppAdicionar(ctx, inp.value)) inp.value = ''; }
     }
 
-    // "Nova analise": o card do produto aparece para todos (todo perfil vende); gestor/dev so ganham a Fila a mais
+    // "Nova analise": o card do produto aparece para todos (todo perfil vende); o gestor so ganha a Fila a mais
     function pedFormRender() {
         pedFormToggle();
         ppTop('f'); apCarregar(false).then(function () { ppTop('f'); });
