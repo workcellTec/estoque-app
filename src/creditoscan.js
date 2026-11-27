@@ -6211,10 +6211,10 @@
         '.cs-dot{width:16px;height:16px;border-radius:50%;border:1.5px solid currentColor;box-sizing:border-box;flex-shrink:0}',
         '.cs-lote-link{align-self:center;border:0;background:none;color:var(--text-secondary);font:500 12px "Poppins",sans-serif;min-height:44px;display:flex;align-items:center;gap:6px;padding:0 12px;cursor:pointer}',
         '.cs-tag-dev{border:1px solid var(--glass-border);border-radius:10px;padding:1px 7px;font-size:10px}',
-        '.cs-sbar{position:sticky;bottom:0;z-index:5;margin:0 -16px;padding:10px 16px 6px;background:var(--bg-color,#16171A);border-top:1px solid var(--glass-border);display:flex;flex-direction:column;gap:8px}',
+        '.cs-sbar{position:fixed;left:0;right:0;bottom:var(--cs-nav,96px);z-index:5;margin:0;padding:10px 16px 6px;background:var(--bg-color,#16171A);border-top:1px solid var(--glass-border);display:flex;flex-direction:column;gap:8px}',   /* fixo na tela, acima do menu de baixo: nao rola com a lista */
         '.cs-sbar::after{content:"";position:absolute;left:0;right:0;top:100%;height:var(--cs-nav,96px);background:var(--bg-color,#16171A)}',
-        'html.cs-kb-on .cs-sbar{position:static}html.cs-kb-on .cs-sbar::after{display:none}',
-        '#cs_ov .cs-body{padding-bottom:var(--cs-nav,96px)}',   /* o sticky ja desconta esse padding: o botao fica logo acima do menu de baixo */
+        'html.cs-kb-on .cs-sbar,html.ctw-teclado .cs-sbar{position:static;margin:0 -16px}html.cs-kb-on .cs-sbar::after,html.ctw-teclado .cs-sbar::after{display:none}',
+        '#cs_ov .cs-body{padding-bottom:calc(var(--cs-nav,96px) + 112px)}',   /* espaco para o botao fixo + menu de baixo */   /* o sticky ja desconta esse padding: o botao fica logo acima do menu de baixo */
         '.cs-link{background:none;border:none;font:500 13px "Poppins",sans-serif;min-height:44px;padding:0 6px;cursor:pointer;color:var(--text-secondary)}',
         '.cs-link.bad{color:var(--cs-bad)}',
         /* ── listas: em andamento / prontas ── */
@@ -6633,7 +6633,7 @@
     }
     function injectMenuBtns(){
         var goCS2=el('goCS2');
-        if(goCS2&&!goCS2._csListenerOk){goCS2.addEventListener('click',openOverlay);goCS2._csListenerOk=true;}
+        if(goCS2&&!goCS2._csListenerOk){goCS2.addEventListener('click',entrarCreditoScan);goCS2._csListenerOk=true;}
     }
 
     function wireEvents(){
@@ -7801,6 +7801,8 @@
     }
 
     // ── Fila do gestor ──
+    // Entrada do CreditoScan (card do menu): gestor cai direto na Fila; os demais, na Nova analise
+    function entrarCreditoScan() { if (veTudo()) filaAbrir(); else openOverlay(); }
     function filaAbrir() {
         if (!veTudo()) return;
         var ja = el('cs_ov') && el('cs_ov').classList.contains('active');
@@ -7850,7 +7852,7 @@
 
     function init(){injectCSS();injectHTML();injectMenuBtns();wireEvents();apWire();filaIniciar();hojeIniciar();pedIniciar();atualizarBadge();retomarAnalises();wgIniciar();}
     if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}else{init();}
-    window._creditoScanOpen=function(){if(veTudo())filaAbrir();else openOverlay();};   // gestor entra direto na Fila (botao "Fazer analise" leva para a Nova analise)
+    window._creditoScanOpen=entrarCreditoScan;   // gestor entra direto na Fila (botao "Fazer analise" leva para a Nova analise)
     // Botao voltar do celular: fecha a camada mais de cima do CreditoScan (true = tratou)
     window._creditoScanBack=function(){
         if(upBloqueando())return true;   // enviando documentos ao servidor: o botao voltar nao faz nada
