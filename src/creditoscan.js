@@ -6093,7 +6093,8 @@
         '.cs-btn-ghost{background:transparent;border:1px solid rgba(var(--primary-color-rgb),.6);color:var(--primary-color);font-weight:600}',
         '.cs-btn-sm{min-height:44px;width:auto;font-size:13px}',
         '.cs-hint{font-size:12px;color:var(--text-secondary);text-align:center;line-height:1.5;margin:0}',
-        '.cs-novaform{min-height:56px;border-radius:16px;border:1px dashed rgba(var(--primary-color-rgb),.5);background:transparent;color:var(--primary-color);font:600 14px "Poppins",sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;width:100%}',
+        '.cs-acoes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}',
+        '.cs-acao{min-height:52px;font-size:13px;white-space:nowrap}',
         '.cs-link{background:none;border:none;font:500 13px "Poppins",sans-serif;min-height:44px;padding:0 6px;cursor:pointer;color:var(--text-secondary)}',
         '.cs-link.bad{color:var(--cs-bad)}',
         /* ── listas: em andamento / prontas ── */
@@ -6358,9 +6359,11 @@
             '<button type="button" class="cs-ibtn" id="cs_cfg_open" aria-label="Configurações"><i class="bi bi-gear-fill"></i></button>'+
         '</div>'+
         '<div class="cs-body">'+
-            '<button type="button" class="cs-novaform cs-h" id="cs_btn_novaform"><i class="bi bi-plus-lg"></i> Nova análise</button>'+
-            '<button type="button" class="cs-btn cs-btn-ghost" id="cs_btn_lote"><i class="bi bi-people"></i> Lote · vários clientes de uma vez</button>'+
-            '<button type="button" class="cs-btn cs-btn-ghost cs-h" id="cs_btn_fila"><i class="bi bi-hourglass-split"></i> Fila do gestor <span class="cs-fila-n cs-h" id="cs_fila_n"></span></button>'+
+            '<button type="button" class="cs-btn cs-btn-pri cs-btn-big cs-h" id="cs_btn_novaform"><i class="bi bi-plus-lg"></i> Nova análise</button>'+
+            '<div class="cs-acoes">'+
+                '<button type="button" class="cs-btn cs-btn-ghost cs-acao" id="cs_btn_lote"><i class="bi bi-people-fill"></i> Lote de clientes</button>'+
+                '<button type="button" class="cs-btn cs-btn-ghost cs-acao cs-h" id="cs_btn_fila"><i class="bi bi-hourglass-split"></i> Fila do gestor <span class="cs-fila-n cs-h" id="cs_fila_n"></span></button>'+
+            '</div>'+
             '<div id="cs_form" style="display:flex;flex-direction:column;gap:14px">'+
                 '<div class="cs-intro"><h2>Nova análise</h2><p id="cs_intro_p">Envie os documentos do cliente. Produto e valor ficam para depois.</p></div>'+
                 '<div class="cs-card">'+
