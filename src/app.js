@@ -1885,7 +1885,7 @@ function ctwHtmlSeparados(entrada) {
 // Juntos | Separados: só no modo dev e com 2+ produtos
 // ── Atalhos de "valor a mais" (modo dev) ──
 // Os valores são do próprio usuário (nascem vazios), guardados neste aparelho. "Ocultar" esconde os botões; 4 toques seguidos
-// (até 2s entre eles) na linha "Valor a mais" trazem de volta.
+// (até 2s entre eles) no título "Entrada (R$)" trazem de volta.
 const CTW_XR_KEY = 'ctwExtraRapido', CTW_XR_MAX = 8;
 function ctwXrCfg() {
     let c = {};
@@ -1898,12 +1898,13 @@ const ctwXrRotulo = v => `<span class="pl">+</span>R$ ${v.toLocaleString('pt-BR'
 function ctwXrRender(extra) {
     const xr = document.getElementById('extraRapido'); if (!xr) return;
     const ativo = carrinhoDeAparelhos.length > 0 && !!(window.ctwEhDev && window.ctwEhDev());
-    xr.hidden = !ativo; if (!ativo) return;
-    if (extra === undefined) extra = parseFloat(document.getElementById('valorExtraAparelho').value) || 0;
     const cfg = ctwXrCfg();
-    const topo = `<div class="ctw-xr-top"><span class="ctw-xr-l" data-xr-tap>Valor a mais: <b id="extraRapidoValor">${ctwBRL(extra)}</b></span>`
-        + (cfg.oculto ? '' : `<span class="ctw-xr-ic"><button type="button" data-xr-act="cfg" aria-label="Configurar atalhos"><i class="bi bi-gear"></i></button><button type="button" data-xr-act="hide" aria-label="Ocultar atalhos"><i class="bi bi-eye-slash"></i></button></span>`) + '</div>';
-    const pills = cfg.oculto ? '' : `<div class="ctw-xr-b">${cfg.vals.length
+    xr.hidden = !ativo || cfg.oculto;   // oculto: some tudo (inclusive "Valor a mais"); só 4 toques em "Entrada (R$)" trazem de volta
+    if (xr.hidden) return;
+    if (extra === undefined) extra = parseFloat(document.getElementById('valorExtraAparelho').value) || 0;
+    const topo = `<div class="ctw-xr-top"><span class="ctw-xr-l">Valor a mais: <b id="extraRapidoValor">${ctwBRL(extra)}</b></span>`
+        + `<span class="ctw-xr-ic"><button type="button" data-xr-act="cfg" aria-label="Configurar atalhos"><i class="bi bi-gear"></i></button><button type="button" data-xr-act="hide" aria-label="Ocultar atalhos"><i class="bi bi-eye-slash"></i></button></span></div>`;
+    const pills = `<div class="ctw-xr-b">${cfg.vals.length
         ? cfg.vals.map(v => `<button type="button" data-xr="${v}">${ctwXrRotulo(v)}</button>`).join('') + '<button type="button" class="zero" data-xr="zero"><i class="bi bi-arrow-counterclockwise"></i> Zerar</button>'
         : '<button type="button" class="cfg" data-xr-act="cfg"><i class="bi bi-plus-lg"></i> Configurar atalhos</button>'}</div>`;
     xr.innerHTML = topo + pills;
@@ -6260,16 +6261,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const act = e.target.closest('[data-xr-act]');
         if (act && act.dataset.xrAct === 'hide') {
             const cfg = ctwXrCfg(); cfg.oculto = true; ctwXrSalvar(cfg); ctwXrRender();
-            showCustomModal({ message: 'Atalhos ocultos. Toque 4x em "Valor a mais" para voltar.' });
+            showCustomModal({ message: 'Atalhos ocultos. Toque 4x em "Entrada (R$)" para voltar.' });
         } else if (act && act.dataset.xrAct === 'cfg') {
             ctwXrCfgLista(); document.getElementById('xrCfgInput').value = '';
             document.getElementById('xrCfgModalOverlay').classList.add('active');
-        } else if (e.target.closest('[data-xr-tap]') && ctwXrCfg().oculto) {
-            // 4 toques seguidos (até 2s entre eles) na linha "Valor a mais" trazem os atalhos de volta
-            const agora = Date.now();
-            _xrToques = agora - _xrUltimo > 2000 ? 1 : _xrToques + 1; _xrUltimo = agora;
-            if (_xrToques >= 4) { _xrToques = 0; const cfg = ctwXrCfg(); cfg.oculto = false; ctwXrSalvar(cfg); ctwXrRender(); }
         }
+    });
+    // Escondidos, os atalhos voltam com 4 toques seguidos (até 2s entre eles) no título "Entrada (R$)"; o toque não abre o teclado
+    document.getElementById('entradaAparelhoLbl')?.addEventListener('click', (e) => {
+        if (!(window.ctwEhDev && window.ctwEhDev()) || !ctwXrCfg().oculto) return;
+        e.preventDefault();
+        const agora = Date.now();
+        _xrToques = agora - _xrUltimo > 2000 ? 1 : _xrToques + 1; _xrUltimo = agora;
+        if (_xrToques >= 4) { _xrToques = 0; const cfg = ctwXrCfg(); cfg.oculto = false; ctwXrSalvar(cfg); ctwXrRender(); }
     });
     const xrOverlay = document.getElementById('xrCfgModalOverlay');
     const xrFechar = () => { xrOverlay.classList.remove('active'); ctwXrRender(); };
