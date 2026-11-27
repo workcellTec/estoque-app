@@ -2614,6 +2614,7 @@
             function isAp(it){ return it.decisao==='APROVADO'||it.decisao==='ENTRADA_ALTA'||it.decisao==='DOWNGRADE'; }
 
             function renderDashboard(){
+                if(restrito()){var sw0=document.getElementById('cs_hist_stats');if(sw0)sw0.innerHTML='';return;}   // vendedor nao ve nota media nem distribuicao
                 var since = Date.now() - periodDays * 86400000;
                 var sub = items.filter(function(i){ return i.ts >= since; });
                 var ap = sub.filter(isAp);
@@ -2738,6 +2739,7 @@
             var filtroAtual='todos', buscaAtual='';
 
             function renderItems(){
+                var rest=restrito(), frow=document.getElementById('cs_hist_filtros'); if(frow)frow.style.display=rest?'none':'flex';   // filtro "aprovados" entregaria a decisao
                 var since = Date.now() - periodDays * 86400000;
                 var busca=buscaAtual.toLowerCase().trim();
                 var filtrados=items.filter(function(it){ if(it.ts < since) return false;
@@ -2756,20 +2758,23 @@
                     try{
                         var idx=items.indexOf(it);
                         var ap=it.decisao==='APROVADO'||it.decisao==='ENTRADA_ALTA'||it.decisao==='DOWNGRADE';
+                        var opIt=it.operador&&it.operador!=='--'?it.operador:'', meu=ehDono(opIt), oculta=rest&&(ap||!meu);   // vendedor: so ve a nota da propria reprovada
                         var dt=it.ts?new Date(it.ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'--';
-                        var tc=ap?'#4ade80':'#f87171';
+                        var tc=rest&&ap?'#9ca3af':ap?'#4ade80':'#f87171';
                         var notaNum=typeof it.nota==='number'?it.nota:(parseInt(it.nota)||null);
                         var notaVal=notaNum!==null?notaNum:'--';
                         var notaCor=notaNum!==null?(notaNum>=80?'#16a34a':notaNum>=60?'#d97706':notaNum>=40?'#f59e0b':'#dc2626'):'#6b7280';
+                        if(oculta){notaVal='\u2014';notaCor='#6b7280';}
                         // resumo — forçar string para evitar crash em registros antigos
                         var resumoRaw=String(it.resumo||'');
                         var resumoLimpo=resumoRaw.length>100?resumoRaw.substring(0,100)+'...':resumoRaw;
                         var tags='';
-                        if(ap){
+                        if(ap&&!rest){
                             if(it.entrada!=null)tags+='<span class="cs-htag">'+R$(it.entrada)+' entrada</span>';
                             if(it.vparcela!=null)tags+='<span class="cs-htag">12x '+R$(it.vparcela)+'</span>';
                         }
-                        var btnReuso='<button class="cs-btn-reuso" data-i="'+idx+'"><i class="bi bi-box-arrow-up-right"></i> Abrir resultado (0 Tokens)</button>';
+                        if(oculta)resumoLimpo='';
+                        var btnReuso=rest&&!meu?'':'<button class="cs-btn-reuso" data-i="'+idx+'"><i class="bi bi-box-arrow-up-right"></i> '+(rest&&ap?'Ver pedido de produtos':'Abrir resultado (0 Tokens)')+'</button>';
                         htmlParts.push(
                             '<div class="cs-hitem2">'+
                                 '<div style="display:flex;align-items:flex-start;gap:9px">'+
@@ -2779,7 +2784,7 @@
                                     '<div style="flex:1;min-width:0">'+
                                         '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px">'+
                                             '<span style="font-size:.82rem;font-weight:800;color:var(--text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(String(it.nomeCliente||'--'))+'</span>'+
-                                            '<span style="font-size:.6rem;font-weight:800;color:'+tc+';white-space:nowrap;flex-shrink:0">'+(ap?'\u2705 APROV':'\u274c NEG')+'</span>'+
+                                            '<span style="font-size:.6rem;font-weight:800;color:'+tc+';white-space:nowrap;flex-shrink:0">'+(rest&&ap?'CONCLU\u00cdDA':ap?'\u2705 APROV':'\u274c NEG')+'</span>'+
                                         '</div>'+
                                         '<div style="font-size:.68rem;color:var(--ui-tx3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(String(it.produto||'--'))+'</div>'+
                                         (resumoLimpo?'<div style="font-size:.67rem;color:var(--ui-tx3);line-height:1.4;margin-top:4px;font-style:italic">'+esc(resumoLimpo)+'</div>':'')+
@@ -3355,8 +3360,10 @@
 
     function cardPronta(j) {
         var d = j.dados, c = d.reprovado ? 'bad' : cor(d.nota);
+        if (restrito()) return cardRestrito({ key: j.fbKey || fbKeyDe(j.uid), nome: nomeDoJob(j), dono: j.usuario || usuarioAtual(), reprovado: !!d.reprovado, nota: d.nota,
+            extra: (d.confBaixa ? ' · confiança baixa' : '') + (d.casasJogo && d.casasJogo.length ? ' · apostas detectadas' : ''), nova: !j.visto, act: 'abrir', attr: 'data-id="' + j.id + '"' });
         var sub = d.reprovado ? 'Reprovado' + (d.confBaixa ? ' · confiança baixa' : '') + (d.casasJogo && d.casasJogo.length ? ' · apostas detectadas' : '') :
-            'Aprovado' + (d.rendaEstimada > 0 ? ' · renda ' + R$(d.rendaEstimada).replace(',00', '') + '/mês' : '');
+            'Aprovado' + (d.rendaEstimada > 0 ? ' · renda ' + R$(d.rendaEstimada).replace(',00', '') + '/mês' : '') + pedSufixoGestor(j.fbKey || (j.uid ? fbKeyDe(j.uid) : ''));
         return '<button type="button" class="cs-card cs-pronta" data-act="abrir" data-id="' + j.id + '">' +
             '<span class="cs-ring-sm ' + c + '">' + d.nota + '</span>' +
             '<span class="cs-job-info"><span class="cs-job-nome">' + esc(nomeDoJob(j)) + tagUsuario(j.usuario || usuarioAtual()) + '</span><span class="cs-job-sub ' + c + '">' + sub + '</span></span>' +
@@ -3372,6 +3379,7 @@
     }
 
     function renderLista() {
+        pedFormToggle();
         var box = el('cs_lista'); if (!box) return;
         var andam = _jobs.filter(function (j) { return j.estado !== 'pronta' && passaFiltro(j.usuario); });
         var noServidor = filaItensTela().filter(function (a) { return passaFiltro(a.usuario); });
@@ -3412,6 +3420,7 @@
                 if (!d || it.t < ini) return;
                 var nota = Math.round(Number(d.nota) || 0);
                 if (d.reprovado === true) { it.est = 'reprovada'; it.nota = nota; }
+                else if (d.aprov === true && restrito()) it.est = 'aguarda';   // vendedor nao ve nota nem aprovacao: o toque abre o pedido
                 else if (d.aprov === true) { it.est = 'aprovada'; it.nota = nota; it.faixa = WG_FAIXA[d.risco] || ''; }
                 else it.est = 'aguarda';   // sem decisao automatica (ex.: nomes nao batem): o vendedor decide no app
             } else if (j.estado === 'aguarda') it.est = 'aguarda';
@@ -3428,7 +3437,8 @@
         });
         hojeSemSessao(false).forEach(function (h) {   // prontas de hoje que vieram do historico
             var nota = Math.round(Number(h.nota) || 0), rep = h.decisao === 'REPROVADO';
-            itens.push({ id: 'h:' + h.id, nome: wgNomeCurto(h.nomeCliente), t: h.ts, est: rep ? 'reprovada' : 'aprovada', nota: nota, faixa: rep ? '' : (WG_FAIXA[riscoPorNota(nota).risco] || '') });
+            if (restrito() && !rep) itens.push({ id: 'h:' + h.id, nome: wgNomeCurto(h.nomeCliente), t: h.ts, est: 'aguarda' });
+            else itens.push({ id: 'h:' + h.id, nome: wgNomeCurto(h.nomeCliente), t: h.ts, est: rep ? 'reprovada' : 'aprovada', nota: nota, faixa: rep ? '' : (WG_FAIXA[riscoPorNota(nota).risco] || '') });
         });
         itens.sort(function (a, b) { return (WG_ORDEM[a.est] - WG_ORDEM[b.est]) || (b.t - a.t); });
         return { ts: Date.now(), perfil: usuarioAtual(), emAnalise: emAnalise, itens: itens.slice(0, 3).map(function (it) { delete it.t; return it; }) };
@@ -3475,7 +3485,7 @@
         filaAtualizarCartaoHome();
         wgAgendar();
         var n = _jobs.filter(function (j) { return (j.estado === 'pronta' && !j.visto) || j.estado === 'aguarda' || j.estado === 'erro'; }).length +
-            _fila.itens.filter(function (a) { return a.estado === 'erro'; }).length + hojeNaoVistas();
+            _fila.itens.filter(function (a) { return a.estado === 'erro'; }).length + hojeNaoVistas() + pedBadgeN();
         ['goCS2'].forEach(function (id) {
             var b = el(id); if (!b) return;
             var tag = b.querySelector('.cs-card-badge');
@@ -3489,14 +3499,15 @@
         var ov = el('cs_ov'); if (!ov) return;
         ov.classList.add('active');
         if (_formAberto === null) _formAberto = _jobs.length === 0 && !filaItensTela().length;
-        renderRascunho(); aplicarForm(); renderLista();
+        renderRascunho(); aplicarForm(); renderLista(); pedFormRender();
+        pedIniciar();
         filaBuscar(); hojeBuscar();   // atualiza por tras; a lista que ja esta na tela aparece na hora
     }
     function closeOverlay() { el('cs_ov') && el('cs_ov').classList.remove('active'); }
 
     // Fecha tudo do CreditoScan (as analises continuam rodando em segundo plano)
     function fecharTudo() {
-        ['cs_ov', 'cs_hist_ov', 'cs_res_ov', 'cs_lote_ov'].forEach(function (id) { el(id) && el(id).classList.remove('active'); });
+        ['cs_ov', 'cs_hist_ov', 'cs_res_ov', 'cs_lote_ov', 'cs_fila_ov', 'cs_ped_ov'].forEach(function (id) { el(id) && el(id).classList.remove('active'); });
         if (el('cs_cfg_ov')) el('cs_cfg_ov').classList.remove('active');
     }
 
@@ -3525,6 +3536,7 @@
                 var b = e.target.closest('[data-bact]'); if (!b) return;
                 var j = jobPorId(b.getAttribute('data-id'));
                 var a = b.getAttribute('data-bact');
+                if (a === 'pver') { var bid = b.getAttribute('data-id'); removerBanner(bid); if (veTudo()) { openOverlay(); _pedAba = 'pend'; el('cs_fila_ov').classList.add('active'); filaRender(); var pk = bid.slice(2); if (_ped[pk]) pedAbrir(pk); } else pedAbrir(bid.slice(2)); return; }
                 if (a === 'x') { removerBanner(b.getAttribute('data-id')); return; }
                 if (!j) { removerBanner(b.getAttribute('data-id')); return; }
                 removerBanner(j.id);
@@ -3566,7 +3578,7 @@
         if (tipo === 'pronta') {
             var d = job.dados;
             t = 'Análise pronta'; btn = 'Ver resultado';
-            sub = nome + ' · nota ' + d.nota + ' · ' + (d.reprovado ? 'Reprovado' : 'Aprovado');
+            sub = restrito() && !d.reprovado ? nome + ' · concluída' : nome + ' · nota ' + d.nota + ' · ' + (d.reprovado ? 'Reprovado' : 'Aprovado');
             if (d.reprovado) { c = 'bad'; ico = 'bi-x-lg'; }
         } else if (tipo === 'erro') {
             t = 'Análise não concluída'; btn = 'Ver'; c = 'bad'; ico = 'bi-exclamation-lg';
@@ -4207,7 +4219,11 @@
     function iniciarAnalise() {
         if (!_docsRend.length || _enviando > 0) return;
         var campoTel = el('cs_tel'), docsId = _docsId, docsRend = _docsRend;
-        lancarJob(docsId, docsRend, normalizarTelefone(campoTel ? campoTel.value : ''), { usuario: usuarioAtual() });
+        if (restrito()) ppFecharTexto('f');
+        var prodsEnvio = restrito() ? _ppSel.f.slice() : [];
+        var jobNovo = lancarJob(docsId, docsRend, normalizarTelefone(campoTel ? campoTel.value : ''), { usuario: usuarioAtual(), produtos: prodsEnvio });
+        pedCriarNoEnvio(jobNovo);   // produtos pedidos no envio: o pedido nasce agora e fecha quando a analise terminar
+        _ppSel.f = []; ppTop('f');
         if (campoTel) { campoTel.value = ''; mascararTelefone(campoTel, 'cs_tel_hint'); }
         _docsId = []; _docsRend = [];
         renderRascunho(); aplicarForm(); renderLista();
@@ -4247,6 +4263,7 @@
     function cancelarJob(job) {
         if (!job) return;
         job.cancelado = true;
+        pedCancelar(job);
         if (job.doServidor && job.estado === 'erro') filaPost('cancelar', job.uid).then(function () { filaBuscar(); });   // descarta tambem no servidor
         encerrarPersistencia(job);
         if (job.pergunta) { var p = job.pergunta; job.pergunta = null; p.resolve('cancelar'); }
@@ -4263,7 +4280,9 @@
         if (!job || job.estado !== 'erro') return;
         if (job.doServidor) { filaRepetirDoJob(job); return; }   // o resultado ja veio do servidor mas nao serviu: o servidor refaz
         job.estado = 'fila'; job.erro = ''; job.prog = 0; job.passo = 0; job.etapa = 'Na fila';
+        var uidAntigo = job.uid;
         job.uid = novoIdJob(); job.srvIds = [];   // outra rodada: nao reaproveita respostas guardadas da anterior
+        pedCancelar({ uid: uidAntigo }); pedCriarNoEnvio(job);   // o pedido de produtos acompanha o novo codigo da analise
         persistirJob(job);
         if (filaProvavel()) upIniciar(job);
         removerBanner(job.id);
@@ -4623,6 +4642,7 @@
         job.estado = 'pronta'; job.prog = 100; job.etapa = 'Pronta'; job.pergunta = null; job.tsFim = Date.now();
         job.calc = { aberto: false, produto: '', valor: 0 };
         liberarDocsDoJob(job);
+        pedFinalizar(job);   // pedido de produtos: reprovada apaga, aprovada separa o que responde sozinho do que vai ao gestor
         pedirRender();
         avisarJob(job, 'pronta');
     }
@@ -5400,8 +5420,10 @@
 
     function cardHoje(it) {
         var nota = typeof it.nota === 'number' ? it.nota : (parseInt(it.nota) || 0), rep = it.decisao === 'REPROVADO', c = rep ? 'bad' : cor(nota);
+        if (restrito()) return cardRestrito({ key: it.id, nome: it.nomeCliente || 'Cliente', dono: it.operador && it.operador !== '--' ? it.operador : '', reprovado: rep, nota: nota,
+            extra: it.casasJogo ? ' · apostas detectadas' : '', nova: ehMinha(it) && !hojeVisto(it.id), act: 'abrir-h', attr: 'data-hid="' + esc(it.id) + '"' });
         var sub = rep ? 'Reprovado' + (it.casasJogo ? ' · apostas detectadas' : '') :
-            'Aprovado' + (it.rendaEstimada > 0 ? ' · renda ' + R$(it.rendaEstimada).replace(',00', '') + '/mês' : '');
+            'Aprovado' + (it.rendaEstimada > 0 ? ' · renda ' + R$(it.rendaEstimada).replace(',00', '') + '/mês' : '') + pedSufixoGestor(it.id);
         return '<button type="button" class="cs-card cs-pronta" data-act="abrir-h" data-hid="' + esc(it.id) + '">' +
             '<span class="cs-ring-sm ' + c + '">' + nota + '</span>' +
             '<span class="cs-job-info"><span class="cs-job-nome">' + esc(it.nomeCliente || 'Cliente') + tagUsuario(it.operador && it.operador !== '--' ? it.operador : '') + '</span><span class="cs-job-sub ' + c + '">' + sub + '</span></span>' +
@@ -5569,6 +5591,7 @@
 
     function abrirResultado(job) {
         if (!job || !job.dados) return;
+        if (restrito() && pedInterceptar(job)) return;   // vendedor: aprovada abre o pedido (sem nota); so abre as proprias
         _view = job; job.visto = true;
         hojeMarcarVisto(job.fbKey);   // lembra que ja abriu (a etiqueta "Nova" nao volta ao reabrir o app)
         removerBanner(job.id);
@@ -5912,6 +5935,7 @@
         abrirResultado({
             id: 'h' + it.id, estado: 'pronta', ts: it.ts, nome: String(it.nomeCliente || ''),
             dados: d, texto: it.textoCompleto || '', fbKey: it.id, criadoAqui: false, tel: normalizarTelefone(it.telefone),
+            usuario: it.operador && it.operador !== '--' ? it.operador : '', resumoReg: String(it.resumo || ''),
             podeSalvarCalc: !it.produto, visto: true, calc: { aberto: false, produto: '', valor: 0 }
         });
     }
@@ -6009,9 +6033,10 @@
         var s=document.createElement('style');s.id='cs-st';
         s.textContent=[
         /* ── camadas: ficam ABAIXO do menu inferior do app (z 1060) para ele continuar visivel ── */
-        '#cs_ov,#cs_hist_ov,#cs_res_ov,#cs_cfg_ov,#cs_lote_ov{display:none;position:fixed;inset:0;background:var(--bg-color,#16171A);color:var(--text-color);flex-direction:column;overflow:hidden;font-family:"Poppins",sans-serif}',
+        '#cs_ov,#cs_hist_ov,#cs_fila_ov,#cs_ped_ov,#cs_res_ov,#cs_cfg_ov,#cs_lote_ov{display:none;position:fixed;inset:0;background:var(--bg-color,#16171A);color:var(--text-color);flex-direction:column;overflow:hidden;font-family:"Poppins",sans-serif}',
         '#cs_ov{z-index:1050}#cs_hist_ov{z-index:1051}#cs_res_ov{z-index:1052}#cs_cfg_ov{z-index:1053}#cs_lote_ov{z-index:1054}',
-        '#cs_ov.active,#cs_hist_ov.active,#cs_res_ov.active,#cs_cfg_ov.active,#cs_lote_ov.active{display:flex}',
+        '#cs_fila_ov,#cs_ped_ov{z-index:1051}',
+        '#cs_ov.active,#cs_hist_ov.active,#cs_fila_ov.active,#cs_ped_ov.active,#cs_res_ov.active,#cs_cfg_ov.active,#cs_lote_ov.active{display:flex}',
         '.cs-scope{--cs-warn:#E9B44C;--cs-bad:#EF6B6B;--cs-info:#6FA8DC;--cs-ok:var(--primary-color)}',
         '[data-theme="light"] .cs-scope{--cs-warn:#B7791F;--cs-bad:#D14343;--cs-info:#2F6FAE}',
         '.cs-h{display:none!important}',
@@ -6266,7 +6291,56 @@
         '.cs-lt-n{flex:1;min-width:0;display:flex;flex-direction:column}.cs-lt-n b{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cs-lt-n small{font-size:11px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cs-lt-n small.w{color:var(--cs-warn)}',
         '.cs-lt-tp{min-height:36px;padding:0 10px;border-radius:99px;border:1px solid var(--glass-border);background:transparent;color:var(--text-secondary);font:600 11px "Poppins",sans-serif;cursor:pointer;flex-shrink:0}',
         '.cs-lt-sel{min-height:36px;max-width:96px;border-radius:10px;border:1px solid var(--glass-border);background:var(--card-bg);color:var(--text-color);font:500 11px "Poppins",sans-serif;flex-shrink:0}',
-        '.cs-lt-sug{font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px;flex-wrap:wrap}'
+        '.cs-lt-sug{font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px;flex-wrap:wrap}',
+        /* ── gestor: produtos, pedido e fila ── */
+        '.cs-ro{cursor:default}',
+        '.cs-hint.left{text-align:left}',
+        '.cs-fila-n{min-width:22px;height:22px;padding:0 6px;box-sizing:border-box;border-radius:11px;background:var(--primary-color);color:#0d1f15;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}',
+        '.cs-pp{display:flex;flex-direction:column;gap:8px}',
+        '.cs-pp-top{display:flex;flex-direction:column;gap:8px}',
+        '.cs-pp-lab{font-size:11px;color:var(--text-secondary);font-weight:600;letter-spacing:.3px}',
+        '.cs-pp-sel{display:flex;flex-direction:column;gap:6px}',
+        '.cs-pp-tag{display:flex;align-items:center;gap:8px;padding:8px 10px 8px 12px;border-radius:12px;background:rgba(var(--primary-color-rgb),.1);border:1px solid rgba(var(--primary-color-rgb),.35)}',
+        '.cs-pp-tag.fora{background:rgba(233,180,76,.1);border-color:rgba(233,180,76,.45)}',
+        '.cs-pp-tag>span{flex:1;min-width:0;display:flex;flex-direction:column}',
+        '.cs-pp-tag b{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis}',
+        '.cs-pp-tag small{font-size:11px;color:var(--primary-color)}.cs-pp-tag.fora small{color:var(--cs-warn)}',
+        '.cs-pp-tag button{width:32px;height:32px;border:0;border-radius:50%;background:transparent;color:var(--text-secondary);font-size:.85rem;cursor:pointer;flex-shrink:0}',
+        '.cs-pp-chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}.cs-pp-chips::-webkit-scrollbar{display:none}',
+        '.cs-pp-chip{flex:none;min-height:36px;padding:0 12px;border-radius:99px;border:1px solid var(--glass-border);background:transparent;color:var(--text-color);font:500 12px "Poppins",sans-serif;cursor:pointer;white-space:nowrap}',
+        '.cs-pp-row{display:flex;gap:8px}.cs-pp-row .cs-btn{width:52px;padding:0;flex-shrink:0}',
+        '.cs-pp-sug{display:flex;flex-direction:column}',
+        '.cs-g-banner{display:flex;align-items:center;gap:12px;border-radius:16px;padding:12px 14px;border:1px solid}',
+        '.cs-g-banner>i{font-size:1.3rem}.cs-g-banner>div{display:flex;flex-direction:column}.cs-g-banner b{font-size:14px;font-weight:600}.cs-g-banner span{font-size:12px;color:var(--text-secondary)}',
+        '.cs-g-banner.ok{background:rgba(var(--primary-color-rgb),.12);border-color:rgba(var(--primary-color-rgb),.4)}.cs-g-banner.ok>i,.cs-g-banner.ok b{color:var(--cs-ok)}',
+        '.cs-g-banner.warn{background:rgba(233,180,76,.1);border-color:rgba(233,180,76,.4)}.cs-g-banner.warn>i,.cs-g-banner.warn b{color:var(--cs-warn)}',
+        '.cs-g-prod-h{display:flex;align-items:center;gap:8px}.cs-g-prod-h b{flex:1;min-width:0;font-size:14px;font-weight:600}',
+        '.cs-g-prod.recusado{box-shadow:inset 3px 0 0 var(--cs-bad)}',
+        '.cs-g-tag{flex:none;font-size:11px;font-weight:600;padding:3px 9px;border-radius:9px;background:rgba(var(--primary-color-rgb),.15);color:var(--cs-ok)}',
+        '.cs-g-tag.warn{background:rgba(233,180,76,.16);color:var(--cs-warn)}.cs-g-tag.bad{background:rgba(239,107,107,.16);color:var(--cs-bad)}',
+        '.cs-g-note{font-size:12px;color:var(--text-secondary);line-height:1.45}',
+        '.cs-g-vals{display:flex;gap:8px}.cs-g-vals>div{flex:1;background:rgba(0,0,0,.18);border-radius:12px;padding:8px 10px;display:flex;flex-direction:column}',
+        '[data-theme="light"] .cs-g-vals>div{background:rgba(0,0,0,.05)}',
+        '.cs-g-vals span{font-size:11px;color:var(--text-secondary)}.cs-g-vals b{font-size:15px;font-weight:600}',
+        '.cs-g-addbtn{flex:none;min-height:46px;border-radius:23px;border:1.5px dashed var(--glass-border);background:transparent;color:var(--primary-color);font:600 14px "Poppins",sans-serif;cursor:pointer}',
+        '.cs-g-sum-n{display:flex;gap:8px}.cs-g-sum-n>div{flex:1;background:rgba(0,0,0,.18);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column}.cs-g-sum-n>div.w{flex:1.4}',
+        '[data-theme="light"] .cs-g-sum-n>div{background:rgba(0,0,0,.05)}',
+        '.cs-g-sum-n span{font-size:11px;color:var(--text-secondary)}.cs-g-sum-n b{font-size:20px;font-weight:700;line-height:1.3}.cs-g-sum-n .w b{font-size:17px;font-weight:600}',
+        '.cs-g-sum-n b.ok{color:var(--cs-ok)}.cs-g-sum-n b.warn{color:var(--cs-warn)}.cs-g-sum-n b.bad{color:var(--cs-bad)}',
+        '.cs-g-sum-f{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-secondary)}.cs-g-sum-f b{color:var(--text-color);font-weight:600}',
+        '.cs-g-seg{display:flex;gap:4px;padding:4px;background:var(--input-bg);border:1px solid var(--input-border);border-radius:16px}',
+        '.cs-g-seg button{flex:1;min-height:38px;border:0;border-radius:12px;background:transparent;color:var(--text-secondary);font:500 13px "Poppins",sans-serif;cursor:pointer}',
+        '.cs-g-seg button.on{font-weight:700}.cs-g-seg button.on.ok{background:var(--primary-color);color:#0d1f15}.cs-g-seg button.on.bad{background:var(--cs-bad);color:#fff}',
+        '.cs-g-row{display:flex;gap:8px}',
+        '.cs-g-f{display:flex;flex-direction:column;gap:4px;min-width:0}.cs-g-f>span{font-size:11px;color:var(--text-secondary)}',
+        '.cs-g-err{font-size:12px;color:var(--cs-bad);min-height:0}.cs-g-err:empty{display:none}',
+        '.cs-g-info{display:flex;gap:10px;padding:2px 6px;font-size:12px;line-height:1.45;color:var(--text-secondary)}.cs-g-info i{margin-top:2px}',
+        '.cs-g-fila{cursor:pointer;gap:8px;position:relative}',
+        '.cs-g-fila.ok{box-shadow:inset 3px 0 0 var(--cs-ok)}.cs-g-fila.warn{box-shadow:inset 3px 0 0 var(--cs-warn)}.cs-g-fila.bad{box-shadow:inset 3px 0 0 var(--cs-bad)}',
+        '.cs-g-fila-h{display:flex;align-items:center;gap:8px}.cs-g-fila-h b{flex:1;min-width:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+        '.cs-g-fila-p{display:flex;align-items:center;gap:8px;font-size:13px}.cs-g-fila-p i{color:var(--text-secondary)}',
+        '.cs-g-fila-f{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-secondary)}.cs-g-fila-f b{color:var(--text-color);font-weight:600}',
+        '.cs-g-fila-f .ok{color:var(--cs-ok)}.cs-g-fila-f .warn{color:var(--cs-warn)}.cs-g-fila-f .bad{color:var(--cs-bad)}'
         ].join('');
         document.head.appendChild(s);
     }
@@ -6286,8 +6360,9 @@
         '<div class="cs-body">'+
             '<button type="button" class="cs-novaform cs-h" id="cs_btn_novaform"><i class="bi bi-plus-lg"></i> Nova análise</button>'+
             '<button type="button" class="cs-btn cs-btn-ghost" id="cs_btn_lote"><i class="bi bi-people"></i> Lote · vários clientes de uma vez</button>'+
+            '<button type="button" class="cs-btn cs-btn-ghost cs-h" id="cs_btn_fila"><i class="bi bi-hourglass-split"></i> Fila do gestor <span class="cs-fila-n cs-h" id="cs_fila_n"></span></button>'+
             '<div id="cs_form" style="display:flex;flex-direction:column;gap:14px">'+
-                '<div class="cs-intro"><h2>Nova análise</h2><p>Envie os documentos do cliente. Produto e valor ficam para depois.</p></div>'+
+                '<div class="cs-intro"><h2>Nova análise</h2><p id="cs_intro_p">Envie os documentos do cliente. Produto e valor ficam para depois.</p></div>'+
                 '<div class="cs-card">'+
                     '<div class="cs-up-h"><i class="bi bi-person-vcard"></i><b>RG ou CNH</b><span class="cs-cnt" id="cs_counter_id"></span><small>Opcional</small></div>'+
                     '<div class="cs-files" id="cs_docs_id"></div>'+
@@ -6303,6 +6378,11 @@
                     '<div class="cs-up-h"><i class="bi bi-whatsapp"></i><b>WhatsApp do cliente</b><small>Opcional</small></div>'+
                     '<input id="cs_tel" class="cs-in" type="tel" inputmode="tel" autocomplete="off" maxlength="24" placeholder="(62) 99999-9999" aria-label="WhatsApp do cliente">'+
                     '<div class="cs-hint" id="cs_tel_hint" style="margin-top:-2px">Com o número, os botões de WhatsApp abrem direto na conversa do cliente.</div>'+
+                '</div>'+
+                '<div class="cs-card cs-h" id="cs_prod_card">'+
+                    '<div class="cs-up-h"><i class="bi bi-phone"></i><b>Produtos que o cliente quer</b><small>Opcional</small></div>'+
+                    ppHtml('f')+
+                    '<div class="cs-hint" style="margin-top:-2px">Produto da lista responde sozinho quando a análise terminar. Os outros vão para o gestor.</div>'+
                 '</div>'+
                 '<div class="cs-up-status cs-h" id="cs_up_status"><i class="bi bi-arrow-repeat"></i><span id="cs_up_status_txt">Lendo arquivos...</span></div>'+
                 '<div style="display:flex;flex-direction:column;gap:8px">'+
@@ -6343,6 +6423,14 @@
           '<button class="cs-pchip" data-days="365">1 ano</button>'+
         '</div>'+
         '<div class="cs-hbody" id="cs_hist_list"></div>');
+
+        // ── Gestor: fila e pedido (mesma camada do historico; o resultado completo abre por cima) ──
+        slot('cs_fila_ov','',
+        '<div class="cs-hhdr"><button type="button" class="cs-back" id="cs_fila_close" aria-label="Voltar"><i class="bi bi-arrow-left"></i></button><div style="flex:1"><span class="cs-hhdr-ttl">Fila do gestor</span><div class="cs-hhdr-sub">Pedidos de produto esperando resposta</div></div></div>'+
+        '<div class="cs-hbody" id="cs_fila_body" style="padding:8px 16px 28px;gap:10px"></div>');
+        slot('cs_ped_ov','',
+        '<div class="cs-hhdr"><button type="button" class="cs-back" id="cs_ped_close" aria-label="Voltar"><i class="bi bi-arrow-left"></i></button><div style="flex:1;min-width:0"><span class="cs-hhdr-ttl" id="cs_ped_ttl">Pedido</span><div class="cs-hhdr-sub" id="cs_ped_sub"></div></div></div>'+
+        '<div class="cs-hbody" id="cs_ped_body" style="padding:8px 16px 28px;gap:12px"></div>');
 
         // ── Configuracoes ──
         slot('cs_cfg_ov','',
@@ -6442,6 +6530,12 @@
         on('cs_rend_pdf','click',function(){uploadRend('image/*,application/pdf');});
         on('cs_btn_analisar','click',iniciarAnalise);
         on('cs_btn_lote','click',loteAbrir);
+        on('cs_btn_fila','click',filaAbrir);
+        on('cs_fila_close','click',function(){el('cs_fila_ov').classList.remove('active');renderLista();});
+        on('cs_ped_close','click',pedFechar);
+        var fbd=el('cs_fila_body');if(fbd)fbd.addEventListener('click',filaAcao);
+        var pbd=el('cs_ped_body');if(pbd){pbd.addEventListener('click',pedAcao);pbd.addEventListener('input',pedCampo);pbd.addEventListener('keydown',ppEnter);}
+        var pcd=el('cs_prod_card');if(pcd){pcd.addEventListener('click',ppAcao);pcd.addEventListener('input',ppDigitou);pcd.addEventListener('keydown',ppEnter);}
         on('cs_lote_close','click',loteFechar);
         on('cs_lt_add','click',loteEscolher);
         on('cs_lt_go','click',loteAnalisar);
@@ -6929,17 +7023,704 @@
         return _jobs.some(function (j) { return j.estado === 'rodando' || j.estado === 'fila'; });
     };
 
-    function init(){injectCSS();injectHTML();injectMenuBtns();wireEvents();apWire();filaIniciar();hojeIniciar();atualizarBadge();retomarAnalises();wgIniciar();}
+    // ================================================================
+    // GESTOR: pedidos de produto e fila do gestor
+    // Vendedor (perfil comum): manda os documentos + os produtos que o cliente quer. Reprovada: ele ve nota e motivos.
+    // Aprovada: ele NAO ve nota/renda/aprovacao; so o andamento do pedido. Produto da lista de aparelhos liberados (e renda
+    // suficiente) responde sozinho; o resto vai para a fila do gestor, que informa entrada e parcelas na mao.
+    // Perfil gestor (tag dada pelo perfil dev) e perfil dev veem tudo e respondem a fila.
+    // Os pedidos ficam em settings/creditoscanPedidos/{chave da analise}.
+    // Obs.: os perfis do app nao sao login de verdade; esconder nota/renda e uma regra de TELA.
+    // ================================================================
+    var PED_PATH = 'settings/creditoscanPedidos';
+    var PED_VISTO_LS = 'ctwCsPedVisto';
+    var PED_MAX_PROD = 6;
+    var _ped = {};              // chave da analise -> pedido (espelho do banco)
+    var _pedLido = false;       // a primeira leitura do banco ja chegou
+    var _pedIniciado = false;
+    var _pedKey = null;         // pedido aberto na tela
+    var _pedMeta = null;        // dados da analise (para criar o pedido quando ainda nao existe)
+    var _pedAba = 'pend';       // aba da fila: 'pend' | 'resp'
+    var _pedForm = {};          // respostas do gestor ainda nao enviadas: pid -> { dec, entrada, parcelas, parcela, motivo }
+    var _pedAddAberto = false;  // seletor "Pedir outro produto" aberto
+    var _pedEnviando = false;
+    var _ppSel = { f: [], p: [] };   // produtos escolhidos: f = tela "Nova analise", p = tela do pedido
+    var _ppSug = { f: [], p: [] };   // sugestoes do catalogo mostradas
+
+    function ehGestor() { return !!(window.ctwPerfilGestor && window.ctwPerfilGestor()); }
+    function ehDevPerfil() { return !!(window.ctwPerfilDev && window.ctwPerfilDev()); }
+    function veTudo() { return ehGestor() || ehDevPerfil(); }   // gestor e dev veem nota/renda de todas e respondem a fila
+    function restrito() { return !veTudo(); }
+    function fbKeyDe(uid) { return 'cs' + String(uid).replace(/-/g, ''); }
+    function pedNorm(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ''); }
+    function pedNovoId() { return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+    function ehDono(vendedor) { var me = usuarioAtual(); return !vendedor || !me || vendedor === me; }
+
+    function pedProdutos(p) {
+        var o = (p && p.produtos) || {}, arr = [];
+        Object.keys(o).forEach(function (k) { var x = o[k]; if (x && typeof x === 'object') { x.pid = k; arr.push(x); } });
+        arr.sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
+        return arr;
+    }
+    function pedAguardando(p) { return pedProdutos(p).filter(function (x) { return x.estado === 'aguardando'; }); }
+    function pedAprovados(p) { return pedProdutos(p).filter(function (x) { return x.estado === 'aprovado' || x.estado === 'liberado'; }); }
+    function pedRespGestor(p) { return pedProdutos(p).some(function (x) { return x.origem === 'gestor' && (x.estado === 'aprovado' || x.estado === 'recusado'); }); }
+    function pedAtivo(p) { return !!p && p.fase === 'ativo'; }
+
+    // Quando: "hoje às 15:05" / "26/11 às 15:05"
+    function pedQuando(ts) {
+        if (!ts) return '';
+        var d = new Date(ts), hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+        var hm = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        return (ts >= hoje.getTime() ? 'hoje' : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })) + ' às ' + hm;
+    }
+    function pedEspera(ts) {
+        var m = Math.max(0, Math.floor((Date.now() - (ts || Date.now())) / 60000));
+        if (m < 1) return 'agora';
+        if (m < 60) return 'há ' + m + ' min';
+        var h = Math.floor(m / 60);
+        if (h < 24) return 'há ' + h + ' h';
+        var dd = Math.floor(h / 24);
+        return 'há ' + dd + (dd > 1 ? ' dias' : ' dia');
+    }
+    function pedCorEspera(ts) {
+        var m = (Date.now() - (ts || Date.now())) / 60000;
+        return m >= 1440 ? 'bad' : m >= 60 ? 'warn' : 'ok';
+    }
+
+    // ── "Nova" do vendedor: resposta do gestor que ele ainda nao abriu (lembrada no aparelho) ──
+    function pedVistoLer() { return lsLer(PED_VISTO_LS, {}); }
+    function pedMarcarVisto(key) {
+        var p = _ped[key]; if (!p || !p.tsResp) return;
+        var v = pedVistoLer(); v[key] = p.tsResp;
+        var ks = Object.keys(v); if (ks.length > 200) ks.slice(0, ks.length - 200).forEach(function (k) { delete v[k]; });
+        lsGravar(PED_VISTO_LS, v);
+    }
+    function pedNova(key) {
+        var p = _ped[key];
+        return !!(p && p.tsResp && restrito() && ehDono(p.vendedor) && p.tsResp > (pedVistoLer()[key] || 0));
+    }
+
+    // Situacao do pedido para o cartao da lista do vendedor
+    function pedStatus(key) {
+        var p = _ped[key];
+        if (p && p.fase === 'analisando') return { txt: 'Preparando o pedido', cls: 'warn', ico: 'bi-hourglass-split' };
+        if (!pedAtivo(p) || !pedProdutos(p).length) return { txt: 'Concluída · escolha o produto', cls: 'warn', ico: 'bi-phone' };
+        var prods = pedProdutos(p);
+        if (pedAguardando(p).length) return { txt: 'Aguardando o gestor', cls: 'warn', ico: 'bi-hourglass-split' };
+        if (prods.every(function (x) { return x.estado === 'recusado'; })) return { txt: 'Não aprovado pelo gestor', cls: 'bad', ico: 'bi-x-lg' };
+        if (pedRespGestor(p)) return { txt: 'Gestor respondeu', cls: 'ok', ico: 'bi-check-lg' };
+        return { txt: 'Resposta pronta', cls: 'ok', ico: 'bi-check-lg' };
+    }
+    // O que o gestor/dev ve a mais no cartao da lista
+    function pedSufixoGestor(key) {
+        var p = _ped[key]; if (!pedAtivo(p)) return '';
+        if (pedAguardando(p).length) return ' · com o gestor';
+        if (pedRespGestor(p)) return ' · respondido';
+        return '';
+    }
+
+    // ── Classificacao de um produto: na lista (e renda ok) responde sozinho; senao vai para o gestor ──
+    function pedClassificar(nome, apId, renda) {
+        var alvo = pedNorm(nome), ap = null;
+        (_aps || []).forEach(function (a) { if (!ap && a.ativo && ((apId && a.id === apId) || (alvo && pedNorm(a.nome) === alvo))) ap = a; });
+        var x = { nome: ap ? ap.nome : String(nome || '').replace(/\s+/g, ' ').trim().slice(0, 80), apId: ap ? ap.id : null, ts: Date.now(), obs: null };
+        if (ap && ap.rendaMin <= (Number(renda) || 0) + 0.005) {
+            x.estado = 'liberado'; x.origem = 'lista'; x.entrada = ap.entrada; x.parcelas = ap.parcelas; x.parcela = ap.parcela;
+        } else {
+            x.estado = 'aguardando'; x.origem = null;
+            if (ap) x.obs = 'Está na lista, mas pede renda a partir de ' + apRs(ap.rendaMin);
+        }
+        return x;
+    }
+    function pedNaLista(nome, apId) {
+        var alvo = pedNorm(nome), achou = false;
+        (_aps || []).forEach(function (a) { if (a.ativo && ((apId && a.id === apId) || (alvo && pedNorm(a.nome) === alvo))) achou = true; });
+        return achou;
+    }
+
+    // ── Banco ──
+    function pedTransacao(key, fn) {
+        return apFB().then(function (c) { return c.fb.runTransaction(c.fb.ref(c.db, PED_PATH + '/' + key), fn); });
+    }
+    function pedEsperarLeitura() {
+        return new Promise(function (resolve) {
+            var fim = Date.now() + 10000;
+            (function tick() { if (_pedLido || Date.now() >= fim) return resolve(); setTimeout(tick, 250); })();
+        });
+    }
+
+    function pedMetaDados(job) {
+        var d = job.dados || {};
+        var resumo = d.reprovado ? '' : String(d.resumoExec || d.rascunho || job.resumoReg || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+        return {
+            nome: String(d.nomeCompleto || nomeDoJob(job) || 'Cliente').slice(0, 80),
+            nota: Math.round(Number(d.nota) || 0), renda: Number(d.rendaEstimada) || 0,
+            resumo: resumo, tel: job.tel || '', vendedor: job.usuario || ''
+        };
+    }
+
+    // No envio: guarda o pedido (produtos ainda "analisando"). A chave e a mesma do historico, entao qualquer aparelho que
+    // termine a analise sabe qual pedido fechar.
+    function pedCriarNoEnvio(job) {
+        var prods = job.produtos || [];
+        if (!prods.length || !job.uid) return;
+        var key = fbKeyDe(job.uid), now = Date.now(), obj = {};
+        prods.forEach(function (x) { obj[pedNovoId()] = { nome: x.nome, apId: x.apId || null, estado: 'analisando', ts: now }; });
+        apFB().then(function (c) {
+            return c.fb.set(c.fb.ref(c.db, PED_PATH + '/' + key), {
+                fase: 'analisando', vendedor: job.usuario || usuarioAtual() || '', tel: job.tel || null, nome: job.nome || null,
+                ts: now, tsAtual: now, expira: now + HIST_DAYS * 86400000, produtos: obj
+            });
+        }).catch(function (e) { console.warn('[CreditoScan] nao consegui guardar o pedido:', e); });
+    }
+
+    // A analise terminou: reprovada apaga o pedido (o vendedor ve o motivo na propria analise); aprovada classifica cada produto
+    async function pedFinalizar(job) {
+        try {
+            var d = job.dados, key = job.fbKey || (job.uid ? fbKeyDe(job.uid) : '');
+            if (!d || !key) return;
+            await pedEsperarLeitura();
+            if (!_ped[key] || _ped[key].fase !== 'analisando') return;   // sem produtos no envio (ou outro aparelho ja fechou)
+            await apCarregar(false);
+            var meta = pedMetaDados(job), now = Date.now();
+            await pedTransacao(key, function (at) {
+                if (!at || at.fase !== 'analisando') return;
+                if (d.reprovado) return null;
+                var prods = at.produtos || {}, novo = {};
+                Object.keys(prods).forEach(function (k) {
+                    var x = pedClassificar(prods[k].nome, prods[k].apId, meta.renda);
+                    x.ts = prods[k].ts || now; novo[k] = x;
+                });
+                at.fase = 'ativo'; at.nome = meta.nome; at.nota = meta.nota; at.renda = meta.renda; at.resumo = meta.resumo || null;
+                at.tel = at.tel || meta.tel || null; at.tsAtual = now; at.produtos = novo;
+                return at;
+            });
+        } catch (e) { console.warn('[CreditoScan] pedido: nao consegui fechar a analise:', e); }
+    }
+
+    // Analise cancelada/descartada antes de terminar: o pedido nao tem mais o que esperar
+    function pedCancelar(job) {
+        var key = job && job.uid ? fbKeyDe(job.uid) : '';
+        if (!key || !_ped[key] || _ped[key].fase !== 'analisando') return;
+        pedTransacao(key, function (at) { return at && at.fase === 'analisando' ? null : undefined; }).catch(function () {});
+    }
+
+    // Vendedor pede produto(s): cria o pedido se a analise ainda nao tem um
+    async function pedAdicionar(key, meta, itens) {
+        await apCarregar(false);
+        var now = Date.now(), ignorados = 0;
+        var r = await pedTransacao(key, function (at) {
+            ignorados = 0;
+            if (!at) {
+                if (!meta) return;
+                at = { fase: 'ativo', nome: meta.nome, nota: meta.nota, renda: meta.renda, resumo: meta.resumo || null, vendedor: meta.vendedor || usuarioAtual() || '',
+                    tel: meta.tel || null, ts: now, expira: now + HIST_DAYS * 86400000, produtos: {} };
+            }
+            var prods = at.produtos || {}, tem = {};
+            Object.keys(prods).forEach(function (k) { var x = prods[k]; if (x && x.estado !== 'recusado') tem[pedNorm(x.nome)] = 1; });
+            itens.forEach(function (it) {
+                var n = pedNorm(it.nome);
+                if (!n || tem[n]) { ignorados++; return; }
+                tem[n] = 1;
+                prods[pedNovoId()] = at.fase === 'analisando' ? { nome: it.nome, apId: it.apId || null, estado: 'analisando', ts: now } : pedClassificar(it.nome, it.apId, at.renda);
+            });
+            at.produtos = prods; at.tsAtual = now;
+            return at;
+        });
+        return { ok: !!(r && r.committed), ignorados: ignorados };
+    }
+
+    async function pedRemoverProduto(key, pid) {
+        await pedTransacao(key, function (at) {
+            if (!at || !at.produtos || !at.produtos[pid] || at.produtos[pid].estado !== 'aguardando') return;   // ja respondido: nao tira
+            delete at.produtos[pid]; at.tsAtual = Date.now();
+            return at;
+        });
+    }
+
+    // Gestor responde: so produto que ainda esta "aguardando" (se outro gestor respondeu antes, nao sobrescreve)
+    async function pedResponder(key, resp) {
+        var now = Date.now(), quem = usuarioAtual(), conflitos = 0, aplicados = 0;
+        var r = await pedTransacao(key, function (at) {
+            conflitos = 0; aplicados = 0;
+            if (!at || !at.produtos) return;
+            Object.keys(resp).forEach(function (pid) {
+                var x = at.produtos[pid], f = resp[pid];
+                if (!x || x.estado !== 'aguardando') { conflitos++; return; }
+                if (f.dec === 'aprovar') { x.estado = 'aprovado'; x.entrada = f.entrada; x.parcelas = f.parcelas; x.parcela = f.parcela; x.motivo = null; }
+                else { x.estado = 'recusado'; x.motivo = f.motivo || null; x.entrada = null; x.parcelas = null; x.parcela = null; }
+                x.origem = 'gestor'; x.tsResp = now; x.gestor = quem || null;
+                aplicados++;
+            });
+            if (!aplicados) return;
+            at.tsResp = now; at.tsAtual = now;
+            return at;
+        });
+        return { ok: !!(r && r.committed), conflitos: conflitos, aplicados: aplicados };
+    }
+
+    // ── Leitura em tempo real + avisos ──
+    function pedIniciar() {
+        if (_pedIniciado) return;
+        _pedIniciado = true;
+        esperarFirebase(20000).then(apFB).then(function (c) {
+            c.fb.onValue(c.fb.ref(c.db, PED_PATH), function (snap) { pedRecebeu(snap.val() || {}); },
+                function (e) { console.warn('[CreditoScan] pedidos: leitura recusada:', e); });
+        }).catch(function () { _pedIniciado = false; });
+    }
+
+    function pedRecebeu(novo) {
+        var antes = _ped, primeira = !_pedLido;
+        _ped = novo; _pedLido = true;
+        if (primeira) { if (veTudo()) pedLimparExpirados(); }
+        else pedAvisar(antes, novo);
+        atualizarBadge(); renderLista();
+        if (el('cs_fila_ov') && el('cs_fila_ov').classList.contains('active')) filaRender();
+        if (_pedKey && el('cs_ped_ov') && el('cs_ped_ov').classList.contains('active') && !_pedEnviando &&
+            JSON.stringify(antes[_pedKey] || null) !== JSON.stringify(novo[_pedKey] || null)) pedRender();
+    }
+
+    function pedLimparExpirados() {
+        var agora = Date.now(), velhos = Object.keys(_ped).filter(function (k) { return _ped[k] && _ped[k].expira && _ped[k].expira < agora; });
+        if (!velhos.length) return;
+        apFB().then(function (c) { velhos.forEach(function (k) { c.fb.remove(c.fb.ref(c.db, PED_PATH + '/' + k)).catch(function () {}); }); }).catch(function () {});
+    }
+
+    function pedAvisar(antes, novo) {
+        Object.keys(novo).forEach(function (key) {
+            var p = novo[key], a = antes[key];
+            if (!pedAtivo(p)) return;
+            var ag = {}; pedAguardando(a).forEach(function (x) { ag[x.pid] = 1; });
+            if (veTudo()) {
+                var novos = pedAguardando(p).filter(function (x) { return !ag[x.pid]; });
+                if (novos.length) pedBanner(key, 'gestor', 'Pedido novo para o gestor', (p.nome || 'Cliente') + ' · ' + novos.map(function (x) { return x.nome; }).join(', '), 'Responder');
+            } else if (ehDono(p.vendedor) && p.vendedor) {
+                var respondidos = pedProdutos(p).filter(function (x) { return ag[x.pid] && (x.estado === 'aprovado' || x.estado === 'recusado'); });
+                if (respondidos.length) pedBanner(key, 'vend', 'O gestor respondeu', (p.nome || 'Cliente') + ' · ' + respondidos.map(function (x) { return x.nome; }).join(', '), 'Ver resposta');
+            }
+        });
+    }
+
+    function pedBanner(key, tipo, titulo, sub, btn) {
+        var box = caixaAvisos(), id = 'p:' + key;
+        removerBanner(id);
+        var div = document.createElement('div');
+        div.className = 'cs-banner ' + (tipo === 'gestor' ? 'warn' : 'ok'); div.setAttribute('data-job', id);
+        div.innerHTML =
+            '<div class="cs-banner-top"><span class="cs-banner-ico"><i class="bi ' + (tipo === 'gestor' ? 'bi-hourglass-split' : 'bi-check-lg') + '"></i></span>' +
+            '<div class="cs-banner-txt"><strong>' + esc(titulo) + '</strong><span>' + esc(sub) + '</span></div>' +
+            '<button type="button" class="cs-banner-x" data-bact="x" data-id="' + esc(id) + '" aria-label="Dispensar"><i class="bi bi-x-lg"></i></button></div>' +
+            '<button type="button" class="cs-btn cs-btn-pri" data-bact="pver" data-id="' + esc(id) + '">' + esc(btn) + '</button>';
+        box.appendChild(div);
+        notificarSistema(titulo, sub, 'creditoscan-ped-' + key);
+    }
+
+    function pedPendentes() {
+        var lista = [];
+        Object.keys(_ped).forEach(function (k) {
+            var p = _ped[k], ag = pedAguardando(p);
+            if (pedAtivo(p) && ag.length) lista.push({ key: k, p: p, t: Math.min.apply(null, ag.map(function (x) { return x.ts || p.ts || 0; })) });
+        });
+        lista.sort(function (a, b) { return a.t - b.t; });
+        return lista;
+    }
+    function pedRespondidos() {
+        var lista = [];
+        Object.keys(_ped).forEach(function (k) {
+            var p = _ped[k];
+            if (pedAtivo(p) && !pedAguardando(p).length && pedRespGestor(p)) lista.push({ key: k, p: p, t: p.tsResp || p.tsAtual || 0 });
+        });
+        lista.sort(function (a, b) { return b.t - a.t; });
+        return lista;
+    }
+    // Numero do selo: gestor/dev = pedidos esperando; vendedor = respostas novas do gestor
+    function pedBadgeN() {
+        if (veTudo()) return pedPendentes().length;
+        return Object.keys(_ped).filter(pedNova).length;
+    }
+
+    // ── Cartao da lista para quem NAO ve a nota ──
+    // Aprovada: so o andamento do pedido. Reprovada: a nota aparece so na propria analise, na aba "Meus". Analise de outro: so status, sem abrir.
+    function cardRestrito(o) {
+        var meu = ehDono(o.dono), mostraNota = o.reprovado && meu && filtroUsuario() === 'meus', c, sub, anel;
+        if (o.reprovado) {
+            c = 'bad'; sub = 'Reprovado' + (meu && o.extra ? o.extra : ''); anel = mostraNota ? o.nota : '<i class="bi bi-x-lg"></i>';
+        } else {
+            var st = pedStatus(o.key); c = st.cls; sub = st.txt; anel = '<i class="bi ' + st.ico + '"></i>';
+        }
+        var nova = meu && (o.nova || pedNova(o.key));
+        var info = '<span class="cs-ring-sm ' + c + '">' + anel + '</span>' +
+            '<span class="cs-job-info"><span class="cs-job-nome">' + esc(o.nome) + tagUsuario(o.dono) + '</span><span class="cs-job-sub ' + c + '">' + esc(sub) + '</span></span>';
+        if (!meu) return '<div class="cs-card cs-pronta cs-ro">' + info + '</div>';
+        return '<button type="button" class="cs-card cs-pronta" data-act="' + o.act + '" ' + o.attr + '>' + info +
+            (nova ? '<span class="cs-tag-nova">Nova</span>' : '<i class="bi bi-chevron-right cs-chev"></i>') + '</button>';
+    }
+
+    // Abrir uma analise: o vendedor so abre as proprias; aprovada abre o pedido (sem nota), reprovada abre o resultado normal
+    function pedInterceptar(job) {
+        var dono = job.usuario || '';
+        if (!ehDono(dono)) { avisar('Esta análise é de outro vendedor. Só o gestor vê o resultado dela.'); return true; }
+        if (job.dados.reprovado) return false;
+        job.visto = true; hojeMarcarVisto(job.fbKey); removerBanner(job.id);
+        var kp = job.fbKey || (job.uid ? fbKeyDe(job.uid) : '');
+        if (_ped[kp] && _ped[kp].fase === 'analisando') pedFinalizar(job);   // pedido que ficou preso (outro aparelho/sem rede): fecha agora
+        pedAbrir(job.fbKey || (job.uid ? fbKeyDe(job.uid) : ''), pedMetaDados(job));
+        return true;
+    }
+
+    // ── Seletor de produtos (tela "Nova analise" e tela do pedido) ──
+    function ppHtml(ctx) {
+        return '<div class="cs-pp" data-ctx="' + ctx + '"><div class="cs-pp-top" id="cs_pp_top_' + ctx + '"></div>' +
+            '<div class="cs-pp-row"><input id="cs_pp_in_' + ctx + '" class="cs-in" type="text" autocomplete="off" maxlength="80" placeholder="Outro produto (ex.: Redmi Note 14 Pro 256GB)" aria-label="Produto">' +
+            '<button type="button" class="cs-btn cs-btn-sec cs-btn-sm" data-act="pp-add" data-ctx="' + ctx + '"><i class="bi bi-plus-lg"></i></button></div>' +
+            '<div class="cs-pp-sug" id="cs_pp_sug_' + ctx + '"></div></div>';
+    }
+    function ppTop(ctx) {
+        var box = el('cs_pp_top_' + ctx); if (!box) return;
+        var sel = _ppSel[ctx], jaTem = {}, h = '';
+        sel.forEach(function (x) { jaTem[pedNorm(x.nome)] = 1; });
+        if (sel.length) {
+            h += '<div class="cs-pp-sel">' + sel.map(function (x, i) {
+                var na = pedNaLista(x.nome, x.apId);
+                return '<span class="cs-pp-tag' + (na ? '' : ' fora') + '"><span><b>' + esc(x.nome) + '</b><small>' + (na ? 'Na lista' : 'Fora da lista · vai para o gestor') + '</small></span>' +
+                    '<button type="button" data-act="pp-del" data-ctx="' + ctx + '" data-i="' + i + '" aria-label="Tirar"><i class="bi bi-x-lg"></i></button></span>';
+            }).join('') + '</div>';
+        }
+        var lib = (_aps || []).filter(function (a) { return a.ativo && !jaTem[pedNorm(a.nome)]; });
+        if (lib.length) {
+            h += '<div class="cs-pp-lab">Aparelhos da lista</div><div class="cs-pp-chips">' + lib.map(function (a) {
+                return '<button type="button" class="cs-pp-chip" data-act="pp-chip" data-ctx="' + ctx + '" data-id="' + esc(a.id) + '">+ ' + esc(a.nome) + '</button>';
+            }).join('') + '</div>';
+        }
+        box.innerHTML = h;
+    }
+    function ppAdicionar(ctx, nome, apId) {
+        nome = String(nome || '').replace(/\s+/g, ' ').trim();
+        if (!nome) return false;
+        var n = pedNorm(nome);
+        if (_ppSel[ctx].some(function (x) { return pedNorm(x.nome) === n; })) { avisar('Esse produto já está na lista.'); return false; }
+        if (_ppSel[ctx].length >= PED_MAX_PROD) { avisar('No máximo ' + PED_MAX_PROD + ' produtos por vez.'); return false; }
+        _ppSel[ctx].push({ nome: nome.slice(0, 80), apId: apId || null });
+        return true;
+    }
+    function ppAcao(e) {
+        var b = e.target.closest('[data-act]'); if (!b) return false;
+        var a = b.getAttribute('data-act'), ctx = b.getAttribute('data-ctx');
+        if (a.indexOf('pp-') !== 0) return false;
+        if (a === 'pp-chip') {
+            var id = b.getAttribute('data-id'), ap = null; (_aps || []).forEach(function (x) { if (x.id === id) ap = x; });
+            if (ap && ppAdicionar(ctx, ap.nome, ap.id)) { ppTop(ctx); ppAtualizarBotao(ctx); }
+        } else if (a === 'pp-del') {
+            _ppSel[ctx].splice(parseInt(b.getAttribute('data-i'), 10), 1); ppTop(ctx); ppAtualizarBotao(ctx);
+        } else if (a === 'pp-add') {
+            var inp = el('cs_pp_in_' + ctx);
+            if (inp && ppAdicionar(ctx, inp.value)) { inp.value = ''; var sg = el('cs_pp_sug_' + ctx); if (sg) sg.innerHTML = ''; ppTop(ctx); ppAtualizarBotao(ctx); }
+        } else if (a === 'pp-sug') {
+            var s = _ppSug[ctx][parseInt(b.getAttribute('data-i'), 10)];
+            if (s && ppAdicionar(ctx, s.nome)) { var i2 = el('cs_pp_in_' + ctx); if (i2) i2.value = ''; var sg2 = el('cs_pp_sug_' + ctx); if (sg2) sg2.innerHTML = ''; ppTop(ctx); ppAtualizarBotao(ctx); }
+        }
+        return true;
+    }
+    function ppDigitou(e) {
+        var t = e.target; if (!t || !t.id || t.id.indexOf('cs_pp_in_') !== 0) return false;
+        var ctx = t.id.slice(9), box = el('cs_pp_sug_' + ctx); if (!box) return true;
+        var termo = String(t.value || '').trim();
+        _ppSug[ctx] = [];
+        if (termo.length < 2) { box.innerHTML = ''; return true; }
+        var r = buscarCatalogo(termo);
+        if (!r || !r.length) { box.innerHTML = ''; return true; }
+        _ppSug[ctx] = r;
+        box.innerHTML = r.slice(0, 5).map(function (p, i) { return '<button type="button" class="cs-sug-row" data-act="pp-sug" data-ctx="' + ctx + '" data-i="' + i + '"><span>' + esc(p.nome) + '</span></button>'; }).join('');
+        return true;
+    }
+    function ppEnter(e) {
+        if (e.key !== 'Enter' || !e.target || !e.target.id || e.target.id.indexOf('cs_pp_in_') !== 0) return false;
+        e.preventDefault();
+        var ctx = e.target.id.slice(9);
+        if (ppAdicionar(ctx, e.target.value)) { e.target.value = ''; var sg = el('cs_pp_sug_' + ctx); if (sg) sg.innerHTML = ''; ppTop(ctx); ppAtualizarBotao(ctx); }
+        return true;
+    }
+    function ppAtualizarBotao(ctx) {
+        if (ctx !== 'p') return;
+        var b = el('cs_ped_enviar'); if (b) { b.disabled = !_ppSel.p.length; }
+    }
+    // Se ha texto digitado e ainda nao foi adicionado, entra junto (evita perder o que o vendedor escreveu)
+    function ppFecharTexto(ctx) {
+        var inp = el('cs_pp_in_' + ctx);
+        if (inp && inp.value.trim()) { if (ppAdicionar(ctx, inp.value)) inp.value = ''; }
+    }
+
+    // "Nova analise": o card dos produtos so aparece para quem nao e gestor/dev
+    function pedFormRender() {
+        pedFormToggle();
+        if (restrito()) { ppTop('f'); apCarregar(false).then(function () { if (restrito()) ppTop('f'); }); }
+    }
+    function pedFormToggle() {
+        var card = el('cs_prod_card'); if (!card) return;
+        card.classList.toggle('cs-h', !restrito());
+        var ip = el('cs_intro_p'); if (ip) ip.textContent = restrito() ? 'Envie os documentos do cliente. Se já souber o produto, informe abaixo.' : 'Envie os documentos do cliente. Produto e valor ficam para depois.';
+        var bf = el('cs_btn_fila');
+        if (bf) {
+            bf.classList.toggle('cs-h', !veTudo());
+            var n = pedPendentes().length, bn = el('cs_fila_n');
+            if (bn) { bn.textContent = n || ''; bn.classList.toggle('cs-h', !n); }
+        }
+    }
+
+    // ── Mensagem de WhatsApp com o que ja esta aprovado (lista + gestor) ──
+    function pedMensagem(p) {
+        var ok = pedAprovados(p); if (!ok.length) return '';
+        var nome = apPrimeiroNome(p.nome), todos = ok.every(function (x) { return apEhIphone(x.nome); });
+        var blocos = ok.map(function (x) {
+            return apEmoji(x.nome) + ' *' + x.nome + '*\n' +
+                '💰 Entrada de ' + R$(x.entrada) + ' à vista\n' +
+                '💳 + ' + x.parcelas + 'x de ' + R$(x.parcela) + ' mensais no boleto';
+        });
+        return 'Olá' + (nome ? ' ' + nome : '') + ', tudo bem? 😊📲\n' +
+            'Boa notícia: seu cadastro foi *APROVADO* aqui na Workcell! ✅\n\n' +
+            (ok.length > 1 ? 'Separei ' + (todos ? 'os iPhones' : 'os aparelhos') + ' que já estão liberados pra você 👇\n\n' : '') +
+            blocos.join('\n\n') + '\n\n' +
+            '📌 *Como funciona:* a entrada é paga à vista e o restante vem em parcelas *mensais* no boleto.\n' +
+            '✔ Aparelhos revisados e com garantia\n\n' +
+            (ok.length > 1 ? 'Qual deles mais te agradou? Me fala aqui que eu já te passo os próximos passos 🤝🚀' : 'Posso já te passar os próximos passos? 🤝🚀');
+    }
+
+    // ── Tela do pedido (vendedor e gestor) ──
+    function pedAbrir(key, meta) {
+        if (!key) return;
+        _pedKey = key; _pedMeta = meta || null; _pedAddAberto = false; _pedForm = {}; _ppSel.p = []; _pedEnviando = false;
+        openOverlay();
+        pedMarcarVisto(key);
+        el('cs_ped_ov').classList.add('active');
+        pedRender();
+        var body = el('cs_ped_body'); if (body) body.scrollTop = 0;
+        atualizarBadge(); renderLista();
+        if (restrito()) apCarregar(false).then(function () { if (_pedKey === key) ppTop('p'); });
+    }
+    function pedFechar() {
+        var ov = el('cs_ped_ov'); if (ov) ov.classList.remove('active');
+        _pedKey = null; _pedMeta = null;
+        if (el('cs_fila_ov') && el('cs_fila_ov').classList.contains('active')) filaRender();
+        renderLista();
+    }
+
+    function pedValoresHtml(x) {
+        return '<div class="cs-g-vals"><div><span>Entrada</span><b>' + R$(x.entrada) + '</b></div><div><span>Parcelas</span><b>' + x.parcelas + 'x ' + R$(x.parcela) + '</b></div></div>';
+    }
+    function pedTag(txt, cls) { return '<span class="cs-g-tag ' + cls + '">' + esc(txt) + '</span>'; }
+
+    function pedRender() {
+        var body = el('cs_ped_body'), key = _pedKey; if (!body || !key) return;
+        var p = _ped[key];
+        var tt = el('cs_ped_ttl'), ss = el('cs_ped_sub');
+        if (tt) tt.textContent = (p && p.nome) || (_pedMeta && _pedMeta.nome) || 'Cliente';
+        if (veTudo()) { if (ss) ss.textContent = 'Pedido de produtos'; body.innerHTML = pedHtmlGestor(p); pedFormPreencher(); }
+        else { if (ss) ss.textContent = 'Produtos do cliente'; body.innerHTML = pedHtmlVendedor(p); ppTop('p'); ppAtualizarBotao('p'); }
+    }
+
+    function pedHtmlVendedor(p) {
+        var h = '', prods = p ? pedProdutos(p) : [], ag = p ? pedAguardando(p) : [];
+        if (p && p.fase === 'analisando') {
+            h += '<div class="cs-g-banner warn"><i class="bi bi-hourglass-split"></i><div><b>Analisando</b><span>Os produtos entram na avaliação assim que a análise terminar.</span></div></div>';
+        } else if (ag.length) {
+            h += '<div class="cs-g-banner warn"><i class="bi bi-hourglass-split"></i><div><b>Aguardando o gestor</b><span>' + ag.length + (ag.length > 1 ? ' produtos' : ' produto') + ' · ' + pedEspera(Math.min.apply(null, ag.map(function (x) { return x.ts || 0; }))) + '</span></div></div>';
+        } else if (p && pedRespGestor(p)) {
+            h += '<div class="cs-g-banner ok"><i class="bi bi-check-lg"></i><div><b>O gestor respondeu</b><span>' + esc(pedQuando(p.tsResp)) + '</span></div></div>';
+        }
+        prods.forEach(function (x) {
+            var tag, corpo = '', cls = '';
+            if (x.estado === 'liberado') { tag = pedTag('Liberado', 'ok'); corpo = pedValoresHtml(x); }
+            else if (x.estado === 'aprovado') { tag = pedTag('Aprovado', 'ok'); corpo = pedValoresHtml(x); }
+            else if (x.estado === 'recusado') {
+                tag = pedTag('Não aprovado', 'bad'); cls = ' recusado';
+                corpo = '<span class="cs-g-note">' + (x.motivo ? 'Motivo do gestor: ' + esc(x.motivo) : 'O gestor não aprovou este aparelho.') + '</span>';
+            } else if (x.estado === 'aguardando') {
+                tag = pedTag('Com o gestor', 'warn');
+                corpo = '<span class="cs-g-note">Você recebe um aviso quando ele responder.</span>' +
+                    '<button type="button" class="cs-link bad" data-act="ped-rem" data-pid="' + esc(x.pid) + '">Cancelar este produto</button>';
+            } else { tag = pedTag('Analisando', 'warn'); corpo = '<span class="cs-g-note">Entra na avaliação quando a análise terminar.</span>'; }
+            h += '<div class="cs-card cs-g-prod' + cls + '"><div class="cs-g-prod-h"><b>' + esc(x.nome) + '</b>' + tag + '</div>' + corpo + '</div>';
+        });
+        var msg = p ? pedMensagem(p) : '';
+        if (msg) {
+            h += '<div class="cs-card cs-g-wpp"><span class="cs-lab">Mensagem para o cliente</span>' +
+                '<div class="cs-wpp-txt" style="cursor:default">' + blocoTexto(msg).replace(/\*([^*\n<]+)\*/g, '<b>$1</b>') + '</div>' +
+                '<div class="cs-ap-btns"><button type="button" class="cs-btn cs-btn-pri" data-act="ped-copy"><i class="bi bi-clipboard"></i> Copiar texto do WhatsApp</button>' +
+                '<button type="button" class="cs-btn cs-btn-ghost" data-act="ped-wpp"><i class="bi bi-whatsapp"></i> WhatsApp</button></div></div>';
+        }
+        if (!prods.length || _pedAddAberto) {
+            h += '<div class="cs-card cs-g-add"><div class="cs-up-h"><i class="bi bi-phone"></i><b>' + (prods.length ? 'Outro produto' : 'Qual produto o cliente quer?') + '</b></div>' +
+                '<div class="cs-hint left">Produto da lista responde sozinho. Os outros vão para o gestor.</div>' + ppHtml('p') +
+                '<button type="button" class="cs-btn cs-btn-pri" id="cs_ped_enviar" data-act="ped-enviar" disabled><i class="bi bi-check2-circle"></i> Enviar pedido</button>' +
+                (prods.length ? '<button type="button" class="cs-link" data-act="ped-addfechar">Fechar</button>' : '') + '</div>';
+        } else if (p && p.fase !== 'analisando') {
+            h += '<button type="button" class="cs-g-addbtn" data-act="ped-addabrir">+ Pedir outro produto</button>';
+        }
+        return h;
+    }
+
+    // Gestor: resumo da analise + um bloco por produto
+    function pedHtmlGestor(p) {
+        if (!p) return '<p class="cs-hint">Este pedido não existe mais (expira em ' + HIST_DAYS + ' dias).</p>';
+        var prods = pedProdutos(p), h = '';
+        var corN = p.nota >= 60 ? 'ok' : p.nota > NOTA_REPROVA ? 'warn' : 'bad';
+        h += '<div class="cs-card cs-g-sum"><div class="cs-g-sum-n"><div><span>Nota</span><b class="' + corN + '">' + esc(p.nota != null ? p.nota : '—') + '</b></div>' +
+            '<div class="w"><span>Renda considerada</span><b>' + (p.renda > 0 ? R$(p.renda) : '—') + '</b></div></div>' +
+            (p.resumo ? '<span class="cs-g-note">' + esc(p.resumo) + '</span>' : '') +
+            '<div class="cs-g-sum-f"><span>Vendedor: <b>' + esc(p.vendedor || '—') + '</b></span><button type="button" class="cs-link" data-act="ped-analise">Ver análise completa</button></div></div>';
+        prods.forEach(function (x) {
+            if (x.estado === 'aguardando') {
+                var f = _pedForm[x.pid] || (_pedForm[x.pid] = { dec: 'aprovar', entrada: '', parcelas: '', parcela: '', motivo: '' });
+                var ap = f.dec === 'aprovar';
+                h += '<div class="cs-card cs-g-prod" data-pid="' + esc(x.pid) + '"><div class="cs-g-prod-h"><b>' + esc(x.nome) + '</b></div>' +
+                    (x.obs ? '<span class="cs-g-note">' + esc(x.obs) + '</span>' : '<span class="cs-g-note">Fora da lista de aparelhos liberados.</span>') +
+                    '<div class="cs-g-seg"><button type="button" class="' + (ap ? 'on ok' : '') + '" data-act="ped-dec" data-pid="' + esc(x.pid) + '" data-v="aprovar">Aprovar</button>' +
+                    '<button type="button" class="' + (!ap ? 'on bad' : '') + '" data-act="ped-dec" data-pid="' + esc(x.pid) + '" data-v="recusar">Recusar</button></div>';
+                if (ap) {
+                    h += '<div class="cs-g-row"><label class="cs-g-f" style="flex:1.2"><span>Entrada (R$)</span><input class="cs-in" inputmode="decimal" autocomplete="off" placeholder="500,00" data-f="entrada" data-pid="' + esc(x.pid) + '" value="' + esc(f.entrada) + '"></label>' +
+                        '<label class="cs-g-f" style="flex:.8"><span>Parcelas</span><input class="cs-in" inputmode="numeric" autocomplete="off" placeholder="12" data-f="parcelas" data-pid="' + esc(x.pid) + '" value="' + esc(f.parcelas) + '"></label></div>' +
+                        '<label class="cs-g-f"><span>Valor de cada parcela (R$)</span><input class="cs-in" inputmode="decimal" autocomplete="off" placeholder="189,90" data-f="parcela" data-pid="' + esc(x.pid) + '" value="' + esc(f.parcela) + '"></label>';
+                } else {
+                    h += '<label class="cs-g-f"><span>Motivo (opcional)</span><input class="cs-in" type="text" maxlength="160" autocomplete="off" placeholder="Ex.: passa do que o perfil do cliente comporta" data-f="motivo" data-pid="' + esc(x.pid) + '" value="' + esc(f.motivo) + '"></label>';
+                }
+                h += '<div class="cs-g-err" id="cs_pf_err_' + esc(x.pid) + '"></div></div>';
+            } else {
+                var tag = x.estado === 'recusado' ? pedTag('Recusado', 'bad') : pedTag(x.origem === 'lista' ? 'Liberado pela lista' : 'Aprovado', 'ok');
+                var corpo = x.estado === 'recusado' ? '<span class="cs-g-note">' + (x.motivo ? 'Motivo: ' + esc(x.motivo) : 'Sem motivo informado.') + '</span>' : pedValoresHtml(x);
+                h += '<div class="cs-card cs-g-prod' + (x.estado === 'recusado' ? ' recusado' : '') + '"><div class="cs-g-prod-h"><b>' + esc(x.nome) + '</b>' + tag + '</div>' + corpo +
+                    (x.origem === 'gestor' ? '<span class="cs-g-note">Respondido por ' + esc(x.gestor || 'gestor') + ' · ' + esc(pedQuando(x.tsResp)) + '</span>' : '') + '</div>';
+            }
+        });
+        if (pedAguardando(p).length) {
+            h += '<div class="cs-g-info"><i class="bi bi-info-circle"></i><span>Vale exatamente o que você digitar: o sistema não calcula juros aqui.</span></div>' +
+                '<button type="button" class="cs-btn cs-btn-pri cs-btn-big" id="cs_ped_resp" data-act="ped-resp"><i class="bi bi-check2-circle"></i> Enviar resposta ao vendedor</button>';
+        }
+        return h;
+    }
+    function pedFormPreencher() { /* os campos ja saem com o valor guardado em _pedForm */ }
+
+    function pedNum(v) { var n = numBR(v); return isFinite(n) ? n : NaN; }
+
+    async function pedEnviarResposta() {
+        var key = _pedKey, p = _ped[key]; if (!p || _pedEnviando) return;
+        var resp = {}, erro = false, primeiro = null;
+        pedAguardando(p).forEach(function (x) {
+            var f = _pedForm[x.pid] || { dec: 'aprovar' }, msg = '';
+            if (f.dec === 'aprovar') {
+                var en = pedNum(f.entrada), np = parseInt(f.parcelas, 10), pc = pedNum(f.parcela);
+                if (!String(f.entrada || '').trim() || !isFinite(en) || en < 0) msg = 'Informe a entrada (pode ser 0).';
+                else if (!(np >= 1 && np <= 36)) msg = 'Informe o número de parcelas (1 a 36).';
+                else if (!(pc > 0)) msg = 'Informe o valor de cada parcela.';
+                else resp[x.pid] = { dec: 'aprovar', entrada: Math.round(en * 100) / 100, parcelas: np, parcela: Math.round(pc * 100) / 100 };
+            } else resp[x.pid] = { dec: 'recusar', motivo: String(f.motivo || '').trim().slice(0, 160) };
+            var eb = el('cs_pf_err_' + x.pid); if (eb) eb.textContent = msg;
+            if (msg) { erro = true; if (!primeiro) primeiro = x.pid; }
+        });
+        if (erro) { var bl = document.querySelector('#cs_ped_body [data-pid="' + primeiro + '"]'); if (bl && bl.scrollIntoView) bl.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+        var btn = el('cs_ped_resp'); if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Enviando...'; }
+        _pedEnviando = true;
+        try {
+            var r = await pedResponder(key, resp);
+            if (!r.ok && !r.aplicados) throw new Error('nao gravou');
+            avisar(r.conflitos ? 'Enviado. ' + r.conflitos + (r.conflitos > 1 ? ' produtos já tinham sido respondidos por outra pessoa.' : ' produto já tinha sido respondido por outra pessoa.') : 'Resposta enviada ao vendedor.');
+            _pedForm = {};
+        } catch (e) {
+            avisar('Não consegui enviar agora. Confira a internet e tente de novo.');
+        } finally { _pedEnviando = false; }
+        pedRender();
+        atualizarBadge();
+    }
+
+    async function pedEnviarProdutos() {
+        var key = _pedKey; if (!key || _pedEnviando) return;
+        ppFecharTexto('p');
+        var itens = _ppSel.p.slice(); if (!itens.length) return;
+        var btn = el('cs_ped_enviar'); if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Enviando...'; }
+        _pedEnviando = true;
+        try {
+            var r = await pedAdicionar(key, _pedMeta, itens);
+            if (!r.ok) throw new Error('nao gravou');
+            if (r.ignorados) avisar(r.ignorados === itens.length ? 'Esse produto já está neste pedido.' : 'Alguns produtos já estavam no pedido.');
+            _ppSel.p = []; _pedAddAberto = false;
+        } catch (e) {
+            avisar('Não consegui enviar agora. Confira a internet e tente de novo.');
+        } finally { _pedEnviando = false; }
+        pedRender();
+        atualizarBadge(); renderLista();
+    }
+
+    function pedAcao(e) {
+        if (ppAcao(e)) return;
+        var b = e.target.closest('[data-act]'); if (!b) return;
+        var a = b.getAttribute('data-act'), key = _pedKey, p = _ped[key];
+        if (a === 'ped-addabrir') { _pedAddAberto = true; _ppSel.p = []; pedRender(); var inp = el('cs_pp_in_p'); if (inp && inp.scrollIntoView) setTimeout(function () { inp.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 60); }
+        else if (a === 'ped-addfechar') { _pedAddAberto = false; _ppSel.p = []; pedRender(); }
+        else if (a === 'ped-enviar') pedEnviarProdutos();
+        else if (a === 'ped-rem') {
+            pedRemoverProduto(key, b.getAttribute('data-pid')).then(function () { pedRender(); }).catch(function () { avisar('Não consegui cancelar agora. Tente de novo.'); });
+        }
+        else if (a === 'ped-copy') copiarTexto(pedMensagem(p), b);
+        else if (a === 'ped-wpp') { var m = pedMensagem(p); if (m) window.open(linkWhatsapp(p.tel, m), '_blank'); }
+        else if (a === 'ped-dec') {
+            var f = _pedForm[b.getAttribute('data-pid')]; if (!f) return;
+            f.dec = b.getAttribute('data-v'); pedRender();
+        }
+        else if (a === 'ped-resp') pedEnviarResposta();
+        else if (a === 'ped-analise') hojeAbrir(key);
+    }
+    function pedCampo(e) {
+        var t = e.target; if (ppDigitou(e)) return;
+        if (!t || !t.getAttribute) return;
+        var campo = t.getAttribute('data-f'), pid = t.getAttribute('data-pid');
+        if (campo && pid && _pedForm[pid]) _pedForm[pid][campo] = t.value;
+    }
+
+    // ── Fila do gestor ──
+    function filaAbrir() {
+        if (!veTudo()) return;
+        openOverlay();
+        el('cs_fila_ov').classList.add('active');
+        filaRender();
+    }
+    function filaRender() {
+        var body = el('cs_fila_body'); if (!body) return;
+        var pend = pedPendentes(), resp = pedRespondidos(), lista = _pedAba === 'pend' ? pend : resp;
+        var h = '<div class="cs-seg"><button type="button" data-act="fila-aba" data-v="pend" class="' + (_pedAba === 'pend' ? 'on' : '') + '">Pendentes' + (pend.length ? ' · ' + pend.length : '') + '</button>' +
+            '<button type="button" data-act="fila-aba" data-v="resp" class="' + (_pedAba === 'resp' ? 'on' : '') + '">Respondidos</button></div>' +
+            '<p class="cs-hint left">' + (_pedAba === 'pend' ? 'Os mais antigos primeiro. Só entram análises aprovadas com produto fora da lista.' : 'Os mais recentes primeiro. Ficam por ' + HIST_DAYS + ' dias.') + '</p>';
+        if (!_pedLido) h += '<p class="cs-hint">Carregando...</p>';
+        else if (!lista.length) h += '<p class="cs-hint">' + (_pedAba === 'pend' ? 'Nenhum pedido esperando. 🎉' : 'Nenhum pedido respondido ainda.') + '</p>';
+        lista.forEach(function (it) {
+            var p = it.p, prods = _pedAba === 'pend' ? pedAguardando(p) : pedProdutos(p).filter(function (x) { return x.origem === 'gestor'; });
+            var corN = p.nota >= 60 ? 'ok' : p.nota > NOTA_REPROVA ? 'warn' : 'bad', ce = _pedAba === 'pend' ? pedCorEspera(it.t) : 'ok';
+            h += '<button type="button" class="cs-card cs-g-fila ' + ce + '" data-act="fila-abrir" data-key="' + esc(it.key) + '">' +
+                '<span class="cs-g-fila-h"><b>' + esc(p.nome || 'Cliente') + '</b><span class="cs-g-tag ' + corN + '">Nota ' + esc(p.nota != null ? p.nota : '—') + '</span></span>' +
+                prods.map(function (x) {
+                    return '<span class="cs-g-fila-p"><i class="bi bi-phone"></i>' + esc(x.nome) + (_pedAba === 'resp' ? ' · ' + (x.estado === 'recusado' ? 'recusado' : 'aprovado') : '') + '</span>';
+                }).join('') +
+                '<span class="cs-g-fila-f"><span>Vendedor: <b>' + esc(p.vendedor || '—') + '</b></span><span class="' + ce + '">' + (_pedAba === 'pend' ? 'espera ' : 'respondido ') + pedEspera(it.t) + '</span></span></button>';
+        });
+        body.innerHTML = h;
+    }
+    function filaAcao(e) {
+        var b = e.target.closest('[data-act]'); if (!b) return;
+        var a = b.getAttribute('data-act');
+        if (a === 'fila-aba') { _pedAba = b.getAttribute('data-v') === 'resp' ? 'resp' : 'pend'; filaRender(); }
+        else if (a === 'fila-abrir') pedAbrir(b.getAttribute('data-key'));
+    }
+
+    function init(){injectCSS();injectHTML();injectMenuBtns();wireEvents();apWire();filaIniciar();hojeIniciar();pedIniciar();atualizarBadge();retomarAnalises();wgIniciar();}
     if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}else{init();}
     window._creditoScanOpen=openOverlay;
     // Botao voltar do celular: fecha a camada mais de cima do CreditoScan (true = tratou)
     window._creditoScanBack=function(){
         if(upBloqueando())return true;   // enviando documentos ao servidor: o botao voltar nao faz nada
         if(document.querySelector('.cs-modal,#cs_modal_docq'))return true;
-        var ids=['cs_lote_ov','cs_cfg_ov','cs_res_ov','cs_hist_ov','cs_ov'];
+        var ids=['cs_lote_ov','cs_cfg_ov','cs_res_ov','cs_ped_ov','cs_fila_ov','cs_hist_ov','cs_ov'];
         for(var i=0;i<ids.length;i++){
             var o=el(ids[i]);
-            if(o&&o.classList.contains('active')){if(ids[i]==='cs_res_ov')fecharResultado();else o.classList.remove('active');return true;}
+            if(o&&o.classList.contains('active')){if(ids[i]==='cs_res_ov')fecharResultado();else if(ids[i]==='cs_ped_ov')pedFechar();else{o.classList.remove('active');if(ids[i]==='cs_fila_ov')renderLista();}return true;}
         }
         return false;
     };

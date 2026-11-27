@@ -89,6 +89,12 @@ function devEstado() {                             // módulo ligado e válido N
     const e = devLerLS();
     return e && e.id && e.ate > Date.now() && e.perfil === devNomePerfil() ? e : null;
 }
+// Perfil com a tag "gestor" (so o perfil dev concede, na edicao do perfil). Recebe a fila do CreditoScan e ve a nota de todas as analises.
+window.ctwPerfilGestor = function() {
+    const nome = devNomePerfil();
+    if (!nome) return false;
+    return Object.values(window.teamProfilesList || {}).some(p => p && p.gestor === true && String(p.name || '').trim().toLowerCase() === nome);
+};
 window.ctwEhDev = function() { return window.ctwPerfilDev() && !!devEstado(); };
 window.ctwDevId = () => { const e = devEstado(); return e ? e.id : ''; };
 
@@ -12667,7 +12673,7 @@ window.updateNotificationUI  = updateNotificationUI;
             card.innerHTML = `
                 <div style="width:42px;height:42px;border-radius:50%;background:${cor};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.1rem;color:#fff;flex-shrink:0;">${p.name.charAt(0).toUpperCase()}</div>
                 <div style="flex:1;min-width:0;">
-                    <div style="font-weight:700;font-size:.9rem;color:var(--text-color);">${p.name} ${p.dev === true ? '<span style="font-size:.6rem;background:#7c3aed;color:#fff;padding:1px 6px;border-radius:6px;margin-left:4px;">DEV</span>' : ''} ${isCurrent ? '<span style="font-size:.6rem;background:#10b981;color:#fff;padding:1px 6px;border-radius:999px;vertical-align:middle;">VOCÊ</span>' : ''}</div>
+                    <div style="font-weight:700;font-size:.9rem;color:var(--text-color);">${p.name} ${p.dev === true ? '<span style="font-size:.6rem;background:#7c3aed;color:#fff;padding:1px 6px;border-radius:6px;margin-left:4px;">DEV</span>' : ''} ${p.gestor === true ? '<span style="font-size:.6rem;background:#f5b84a;color:#2a1c00;padding:1px 6px;border-radius:6px;margin-left:4px;">GESTOR</span>' : ''} ${isCurrent ? '<span style="font-size:.6rem;background:#10b981;color:#fff;padding:1px 6px;border-radius:999px;vertical-align:middle;">VOCÊ</span>' : ''}</div>
                     <div style="font-size:.72rem;color:var(--text-secondary);margin-top:2px;">${temSenha ? '🔐 Senha definida' : '🔓 Sem senha'}</div>
                 </div>
                 <button data-pid="${p.id}" data-pname="${p.name}" data-psenha="${p.senha||''}" class="_gPerfisEditBtn" style="background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);color:#3b82f6;border-radius:8px;padding:6px 10px;font-size:.72rem;cursor:pointer;white-space:nowrap;">✏️ Editar</button>
@@ -12741,6 +12747,12 @@ window.updateNotificationUI  = updateNotificationUI;
                     <span style="font-size:.78rem;color:var(--text-color);line-height:1.35;"><b>🛠 Perfil Dev</b><br><span style="color:var(--text-secondary);">Não pede a senha 220390 e mostra telas extras (Sincronizar preços e Alterar no WhatsApp).</span></span>
                 </label>
 
+                ${(window.ctwPerfilDev && window.ctwPerfilDev()) ? `
+                <label style="display:flex;align-items:flex-start;gap:10px;background:rgba(245,184,74,.08);border:1px solid rgba(245,184,74,.35);border-radius:12px;padding:12px;cursor:pointer;">
+                    <input id="_editPerfilGestor" type="checkbox" ${((window.teamProfilesList || {})[pid] || {}).gestor === true ? 'checked' : ''} style="width:20px;height:20px;margin-top:2px;flex-shrink:0;">
+                    <span style="font-size:.78rem;color:var(--text-color);line-height:1.35;"><b style="color:#f5b84a;">Gestor</b><br><span style="color:var(--text-secondary);">Recebe a fila do CreditoScan, responde os produtos fora da lista e vê a nota de todas as análises.</span></span>
+                </label>` : ''}
+
                 <div style="display:flex;gap:10px;">
                     <button id="_editPerfilCancel" class="btn btn-outline-secondary flex-fill">Cancelar</button>
                     <button id="_editPerfilSave"   class="btn btn-primary flex-fill">💾 Salvar</button>
@@ -12782,6 +12794,8 @@ window.updateNotificationUI  = updateNotificationUI;
             if(!novoNome) { alert('Nome obrigatório.'); return; }
 
             var updates = { name: novoNome, dev: document.getElementById('_editPerfilDev').checked ? true : null };
+            var _gChk = document.getElementById('_editPerfilGestor');
+            if (_gChk && window.ctwPerfilDev && window.ctwPerfilDev()) updates.gestor = _gChk.checked ? true : null;   // so o dev concede/retira; sem a caixa, a tag atual fica como esta
 
             if (_removerSenha) {
                 // Remove explicitamente a senha do Firebase
