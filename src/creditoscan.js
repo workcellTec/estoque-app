@@ -6136,7 +6136,7 @@
         '.cs-hdr,.cs-hhdr{display:flex;align-items:center;gap:10px;padding:calc(14px + env(safe-area-inset-top,0px)) 16px 12px;flex-shrink:0}',
         '.cs-hdr-ttl,.cs-hhdr-ttl{font-size:18px;font-weight:700;line-height:1.2;color:var(--text-color)}',
         '.cs-hdr-sub,.cs-hhdr-sub{font-size:12px;color:var(--text-secondary)}',
-        '.cs-hlink{min-height:44px;padding:0 12px;border:0;border-radius:12px;background:transparent;color:var(--text-secondary);font:500 12px "Poppins",sans-serif;display:flex;align-items:center;gap:6px;cursor:pointer;flex-shrink:0;white-space:nowrap}.cs-hlink:active{background:var(--glass-border)}',
+        '.cs-btn-sm{width:auto;min-height:44px;padding:0 16px;font-size:13px;white-space:nowrap;flex-shrink:0}',
         '.cs-back,.cs-ibtn{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border:1px solid var(--glass-border);background:var(--card-bg);color:var(--text-color);font:500 13px "Poppins",sans-serif;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent}',
         '.cs-back{width:44px;border-radius:50%;padding:0;font-size:1.1rem}',
         '.cs-ibtn{width:44px;border-radius:14px;padding:0}',
@@ -6446,6 +6446,7 @@
         '.cs-g-sum-n span{font-size:11px;color:var(--text-secondary)}.cs-g-sum-n b{font-size:20px;font-weight:700;line-height:1.3}.cs-g-sum-n .w b{font-size:17px;font-weight:600}',
         '.cs-g-sum-n b.ok{color:var(--cs-ok)}.cs-g-sum-n b.warn{color:var(--cs-warn)}.cs-g-sum-n b.bad{color:var(--cs-bad)}',
         '.cs-g-sum-f{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-secondary)}.cs-g-sum-f b{color:var(--text-color);font-weight:600}',
+        '.cs-g-conf{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:2px 8px;border:1px dashed rgba(var(--primary-color-rgb),.5);border-radius:12px;padding:10px 12px}.cs-g-conf span{flex-basis:100%;font-size:12px;color:var(--text-secondary)}.cs-g-conf b{font-size:18px;font-weight:700;color:var(--primary-color)}.cs-g-conf small{font-size:11px;color:var(--text-secondary)}',
         '.cs-g-seg{display:flex;gap:4px;padding:4px;background:var(--input-bg);border:1px solid var(--input-border);border-radius:16px}',
         '.cs-g-seg button{flex:1;min-height:38px;border:0;border-radius:12px;background:transparent;color:var(--text-secondary);font:500 13px "Poppins",sans-serif;cursor:pointer}',
         '.cs-g-seg button.on{font-weight:700}.cs-g-seg button.on.ok{background:var(--primary-color);color:#0d1f15}.cs-g-seg button.on.bad{background:var(--cs-bad);color:#fff}',
@@ -6544,7 +6545,7 @@
 
         // ── Gestor: fila e pedido (mesma camada do historico; o resultado completo abre por cima) ──
         slot('cs_fila_ov','',
-        '<div class="cs-hhdr"><button type="button" class="cs-back" id="cs_fila_close" aria-label="Voltar"><i class="bi bi-arrow-left"></i></button><div style="flex:1"><span class="cs-hhdr-ttl">Fila do gestor</span><div class="cs-hhdr-sub">Pedidos esperando resposta</div></div><button type="button" class="cs-hlink" id="cs_fila_nova"><i class="bi bi-plus-lg"></i> Fazer análise</button></div>'+
+        '<div class="cs-hhdr"><button type="button" class="cs-back" id="cs_fila_close" aria-label="Voltar"><i class="bi bi-arrow-left"></i></button><div style="flex:1"><span class="cs-hhdr-ttl">Fila do gestor</span><div class="cs-hhdr-sub">Pedidos esperando resposta</div></div><button type="button" class="cs-btn cs-btn-pri cs-btn-sm" id="cs_fila_nova"><i class="bi bi-plus-lg"></i> Fazer análise</button></div>'+
         '<div class="cs-hbody" id="cs_fila_body" style="padding:8px 16px calc(var(--cs-nav,96px) + 12px);gap:10px"></div>');
         slot('cs_ped_ov','',
         '<div class="cs-hhdr"><button type="button" class="cs-back" id="cs_ped_close" aria-label="Voltar"><i class="bi bi-arrow-left"></i></button><div style="flex:1;min-width:0"><span class="cs-hhdr-ttl" id="cs_ped_ttl">Pedido</span><div class="cs-hhdr-sub" id="cs_ped_sub"></div></div></div>'+
@@ -7688,8 +7689,9 @@
         var corN = p.nota >= 60 ? 'ok' : p.nota > NOTA_REPROVA ? 'warn' : 'bad';
         h += '<div class="cs-card cs-g-sum"><div class="cs-g-sum-n"><div><span>Nota</span><b class="' + corN + '">' + esc(p.nota != null ? p.nota : '—') + '</b></div>' +
             '<div class="w"><span>Renda considerada</span><b>' + (p.renda > 0 ? R$(p.renda) : '—') + '</b></div></div>' +
+            (p.renda > 0 && p.nota != null ? '<div class="cs-g-conf"><span>Parcela confortável (estimativa)</span><b>até ' + R$(p.renda * tetoPct(p.nota)).replace(',00', '') + ' / mês</b><small>' + Math.round(tetoPct(p.nota) * 100) + '% da renda</small></div>' : '') +
             (p.resumo ? '<span class="cs-g-note">' + esc(p.resumo) + '</span>' : '') +
-            '<div class="cs-g-sum-f"><span>Vendedor: <b>' + esc(p.vendedor || '—') + '</b></span><button type="button" class="cs-link" data-act="ped-analise">Ver análise completa</button></div></div>';
+            '<div class="cs-g-sum-f"><span>Vendedor: <b>' + esc(p.vendedor || '—') + '</b></span><button type="button" class="cs-btn cs-btn-pri cs-btn-sm" data-act="ped-analise">Ver análise completa</button></div></div>';
         prods.forEach(function (x) {
             if (x.estado === 'aguardando') {
                 var f = _pedForm[x.pid] || (_pedForm[x.pid] = { dec: 'aprovar', entrada: '', parcelas: '', parcela: '', motivo: '' });
