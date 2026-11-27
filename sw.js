@@ -1,7 +1,7 @@
 // sw.js — Central Workcell
 // Arquivo deve ficar na raiz do repositório (mesma pasta do index.html)
 
-const CACHE = 'ctw-391'; // CreditoScan: botao Analisar credito no fim da lista (rola junto, igual ao Finalizar das Garantias)
+const CACHE = 'ctw-392'; // CreditoScan: fim de todas as telas sobe acima do menu de baixo (botao do pedido ficava escondido)
 
 // Arquivos do próprio app: baixados na instalação para o app abrir offline.
 const ARQUIVOS_DO_APP = [

@@ -3584,9 +3584,9 @@
     }
     // O menu de baixo do app fica por cima da tela: o botao fixo "Analisar credito" sobe essa altura para nao ficar escondido
     function navAltura() {
-        var ov = el('cs_ov'), nav = el('ctwBottomNav'), h = 96; if (!ov) return;
+        var nav = el('ctwBottomNav'), h = 96;
         try { if (nav && getComputedStyle(nav).display !== 'none') { var r = nav.getBoundingClientRect(); if (r.height > 0) h = Math.max(0, Math.round(window.innerHeight - r.top) + 12); } } catch (e) {}
-        ov.style.setProperty('--cs-nav', h + 'px');
+        document.documentElement.style.setProperty('--cs-nav', h + 'px');   // vale para todas as telas do CreditoScan
     }
     function closeOverlay() { el('cs_ov') && el('cs_ov').classList.remove('active'); }
 
@@ -6142,11 +6142,11 @@
         '.cs-ibtn{width:44px;border-radius:14px;padding:0}',
         '.cs-back:active,.cs-ibtn:active{transform:scale(.96)}',
         /* ── corpo rolavel (folga para o menu inferior) ── */
-        '.cs-body,.cs-hbody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 16px 28px;display:flex;flex-direction:column;gap:12px;min-height:0}',
+        '.cs-body,.cs-hbody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 16px calc(var(--cs-nav,96px) + 12px);display:flex;flex-direction:column;gap:12px;min-height:0}',
         'body.ctw-v2-active .cs-body,body.ctw-v2-active .cs-hbody{padding-bottom:calc(112px + env(safe-area-inset-bottom,0px))}',
         '.cs-body>*,.cs-hbody>*{flex-shrink:0}',
         'html.cs-kb-on body .cs-body,html.cs-kb-on body .cs-hbody{padding-bottom:calc(var(--cs-kb,0px) + 24px) !important}',
-        '.cs-hbody{padding:12px 13px 28px;gap:9px}',
+        '.cs-hbody{padding:12px 13px calc(var(--cs-nav,96px) + 12px);gap:9px}',
         '.cs-intro{text-align:left}',
         '.cs-intro h2{margin:0;font-size:22px;font-weight:700;line-height:1.25;text-align:left}',
         '.cs-intro p{margin:4px 0 0;font-size:13px;color:var(--text-secondary);line-height:1.5}',
@@ -6212,7 +6212,6 @@
         '.cs-lote-link{align-self:center;border:0;background:none;color:var(--text-secondary);font:500 12px "Poppins",sans-serif;min-height:44px;display:flex;align-items:center;gap:6px;padding:0 12px;cursor:pointer}',
         '.cs-tag-dev{border:1px solid var(--glass-border);border-radius:10px;padding:1px 7px;font-size:10px}',
         '.cs-sbar{display:flex;flex-direction:column;gap:8px;margin-top:4px}',   /* no fim do formulario, rola junto com a tela (igual ao Finalizar das Garantias) */
-        '#cs_ov .cs-body{padding-bottom:calc(var(--cs-nav,96px) + 12px)}',   /* o fim da lista sobe acima do menu de baixo */   /* o sticky ja desconta esse padding: o botao fica logo acima do menu de baixo */
         '.cs-link{background:none;border:none;font:500 13px "Poppins",sans-serif;min-height:44px;padding:0 6px;cursor:pointer;color:var(--text-secondary)}',
         '.cs-link.bad{color:var(--cs-bad)}',
         /* ── listas: em andamento / prontas ── */
@@ -6515,7 +6514,7 @@
         // ── Lote: varios documentos + varios extratos, o sistema separa por pessoa ──
         slot('cs_lote_ov','',
         '<div class="cs-hhdr"><button type="button" class="cs-back" id="cs_lote_close" aria-label="Voltar"><i class="bi bi-arrow-left"></i></button><div style="flex:1"><span class="cs-hhdr-ttl">Lote</span><div class="cs-hhdr-sub">Vários clientes de uma vez</div></div></div>'+
-        '<div class="cs-hbody" style="padding:8px 16px 28px;gap:12px">'+
+        '<div class="cs-hbody" style="padding:8px 16px calc(var(--cs-nav,96px) + 12px);gap:12px">'+
             '<button type="button" class="cs-btn cs-btn-ghost" id="cs_lt_add"><i class="bi bi-plus-lg"></i> Adicionar documentos e extratos</button>'+
             '<p class="cs-hint" id="cs_lt_status"></p>'+
             '<button type="button" class="cs-btn cs-btn-pri cs-btn-big" id="cs_lt_go" disabled><i class="bi bi-check2-circle"></i> Nada para analisar</button>'+
@@ -6546,10 +6545,10 @@
         // ── Gestor: fila e pedido (mesma camada do historico; o resultado completo abre por cima) ──
         slot('cs_fila_ov','',
         '<div class="cs-hhdr"><button type="button" class="cs-back" id="cs_fila_close" aria-label="Voltar"><i class="bi bi-arrow-left"></i></button><div style="flex:1"><span class="cs-hhdr-ttl">Fila do gestor</span><div class="cs-hhdr-sub">Pedidos esperando resposta</div></div><button type="button" class="cs-hlink" id="cs_fila_nova"><i class="bi bi-plus-lg"></i> Fazer análise</button></div>'+
-        '<div class="cs-hbody" id="cs_fila_body" style="padding:8px 16px 28px;gap:10px"></div>');
+        '<div class="cs-hbody" id="cs_fila_body" style="padding:8px 16px calc(var(--cs-nav,96px) + 12px);gap:10px"></div>');
         slot('cs_ped_ov','',
         '<div class="cs-hhdr"><button type="button" class="cs-back" id="cs_ped_close" aria-label="Voltar"><i class="bi bi-arrow-left"></i></button><div style="flex:1;min-width:0"><span class="cs-hhdr-ttl" id="cs_ped_ttl">Pedido</span><div class="cs-hhdr-sub" id="cs_ped_sub"></div></div></div>'+
-        '<div class="cs-hbody" id="cs_ped_body" style="padding:8px 16px 28px;gap:12px"></div>');
+        '<div class="cs-hbody" id="cs_ped_body" style="padding:8px 16px calc(var(--cs-nav,96px) + 12px);gap:12px"></div>');
 
         // ── Configuracoes ──
         slot('cs_cfg_ov','',
