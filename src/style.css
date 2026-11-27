@@ -4282,3 +4282,19 @@ html.ctw-at-ia-off [data-dev-atalho="ia"], html.ctw-at-precos-off [data-dev-atal
 .ps-vam { color: var(--ob-a); }
 .ps-info { border-radius: 12px; padding: 11px 13px; font-size: 13.5px; line-height: 1.4; background: var(--secondary-color); color: var(--text-color); }
 .ps-info-am { background: var(--ob-abg); color: var(--ob-a); }
+
+/* Por aparelho (dev): valor a mais em um toque + Juntos | Separados */
+.ctw-xr { display: flex; flex-direction: column; gap: 8px; max-width: 400px; margin: 0 auto 12px; }
+.ctw-xr[hidden] { display: none; }
+.ctw-xr-l { font-size: .85rem; color: var(--text-secondary); }
+.ctw-xr-l b { color: var(--primary-color); }
+.ctw-xr-b { display: flex; flex-wrap: wrap; gap: 8px; }
+.ctw-xr-b button { min-height: 44px; padding: 0 16px; border-radius: 22px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--text-color); font-weight: 600; }
+.ctw-xr-b button:active { background: rgba(var(--primary-color-rgb), .25); }
+.ctw-xr-b .zero { color: var(--text-secondary); font-weight: 500; }
+.ctw-seg { display: flex; gap: 3px; padding: 3px; border-radius: 12px; background: var(--input-bg); }
+.ctw-seg button { border: 0; background: transparent; color: var(--text-secondary); padding: 7px 12px; border-radius: 9px; font-size: .8rem; font-weight: 600; }
+.ctw-seg button.on { background: var(--primary-color); color: var(--on-primary); }
+.ctw-sep th, .ctw-sep td { font-size: .85rem; }
+.ctw-sep th { white-space: normal; word-break: break-word; }
+.ctw-sep th:first-child { white-space: nowrap; word-break: normal; }

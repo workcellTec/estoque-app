@@ -1315,6 +1315,7 @@ function openCalculatorSection(sectionId) {
     // 2. Limpeza ao entrar na aba
     if (sectionId === 'calcularPorAparelho') {
         carrinhoDeAparelhos = [];
+        ctwApModo = 'juntos';
         renderCarrinho();
         const inputEntrada = document.getElementById('entradaAparelho');
         const inputExtra = document.getElementById('valorExtraAparelho');
@@ -1809,6 +1810,104 @@ function ctwParcelaCredito(base, n, machine, brand) {
     if (safeStorage.getItem('ctwArredondarEnabled') === 'true') { parcela = Math.floor(parcela) + 0.90; total = parcela * n; }
     return { parcela, total };
 }
+// ── Por aparelho: texto de WhatsApp (um só lugar: clique simples, "Selecionar Vários" e "Separados") ──
+let ctwApModo = 'juntos';   // só no modo dev, com 2+ produtos: 'juntos' (soma do carrinho) ou 'sep' (cada produto como se fosse vendido sozinho)
+const ctwBRL = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const ctwModoSep = () => ctwApModo === 'sep' && carrinhoDeAparelhos.length >= 2 && !!(window.ctwEhDev && window.ctwEhDev());
+// Parcela e total de uma opção ('Débito' ou o número de parcelas) sobre uma base
+function ctwOpcao(base, par, machine, brand) {
+    if (par === 'Débito') {
+        const taxa = getRate(machine, brand, 0);
+        if (taxa === null || taxa === undefined) return null;
+        const v = base / (1 - taxa / 100);
+        return { parcela: v, total: v };
+    }
+    return ctwParcelaCredito(base, parseInt(par, 10), machine, brand);
+}
+// Uma opção em texto: "12x R$ 258,90" + "_(Total: R$ 3.106,80)_". Sem total informado, vale parcela x vezes
+function ctwOpcaoTexto(par, parcela, total) {
+    if (par === 'Débito') return `Débito: ${ctwBRL(parcela)}\n_(Total: ${ctwBRL(total ?? parcela)})_`;
+    return `${par}x ${ctwBRL(parcela)}\n_(Total: ${ctwBRL(total ?? parcela * parseInt(par, 10))})_`;
+}
+// Texto final: opções + entrada + nome, na ordem do perfil (ctwInvertCopyOrder). Com mais de uma opção a entrada vale para todas:
+// vai no topo, separada por "+", em vez de colada no fim da última opção (parecia só dela)
+function ctwTextoAparelho(opcoes, nome, entrada, custom, classico) {
+    const bloco = opcoes.map((t, i) => i ? `\nOu ${t}` : t).join('\n');
+    const ent = entrada > 0 ? `*_+${ctwBRL(entrada)} no dinheiro ou pix_*` : '';
+    const sims = ent && opcoes.length > 1 ? `${ent}\n\n+\n${bloco}` : bloco + (ent ? '\n' + ent : '');
+    if (safeStorage.getItem('ctwInvertCopyOrder') === 'true') return `${nome}\n${sims}${custom}`;
+    return `${sims}${classico ? '\n ' : '\n\n'}${nome}${custom}`;
+}
+function ctwNomeCarrinho() {
+    const cont = carrinhoDeAparelhos.reduce((acc, p) => { acc[p.nome] = (acc[p.nome] || 0) + 1; return acc; }, {});
+    return Object.entries(cont).map(([nome, qtd]) => qtd > 1 ? `${qtd}x ${nome}` : nome).join(' e ');
+}
+// Texto da etiqueta: só vale com um produto no carrinho
+function ctwTextoEtiqueta() {
+    const p = carrinhoDeAparelhos.length === 1 ? carrinhoDeAparelhos[0] : null;
+    return p && p.tag && p.tag !== 'Nenhuma' && tagTexts[p.tag] ? `\n\n${tagTexts[p.tag]}` : '';
+}
+// "Separados": um item por produto (iguais viram um só, "cada"). Cada um leva o extra inteiro; a entrada não entra
+function ctwSepProdutos() {
+    const extra = parseFloat(document.getElementById('valorExtraAparelho').value) || 0, avExtra = ctwAvistaCfg().extra, g = new Map();
+    carrinhoDeAparelhos.forEach(p => {
+        if (!g.has(p.nome)) g.set(p.nome, { nome: p.nome, qtd: 0, valor: parseFloat(p.valor) || 0 });
+        g.get(p.nome).qtd++;
+    });
+    return [...g.values()].map(p => ({ ...p, base: p.valor + extra, avista: p.valor + avExtra, rotulo: p.qtd > 1 ? `${p.qtd}x ${p.nome} (cada)` : p.nome }));
+}
+function ctwHtmlSeparados(entrada) {
+    const machine = document.getElementById('machine3').value, brand = document.getElementById('brand3').value, prods = ctwSepProdutos();
+    const linha = (par, rot) => {
+        const ops = prods.map(p => ctwOpcao(p.base, par, machine, brand));
+        return ops.some(o => !o) ? '' : `<tr class="copyable-row${par === 'Débito' ? ' debit-row' : ''}" data-installments="${par}"><td>${rot}</td>${ops.map(o => `<td>${ctwBRL(o.parcela)}</td>`).join('')}</tr>`;
+    };
+    let rows = `<tr class="avista-row"><td>À vista</td>${prods.map(p => `<td>${ctwBRL(p.avista)}</td>`).join('')}</tr>` + linha('Débito', 'Débito');
+    for (let i = 1; i <= ctwMaxParcelas(machine); i++) rows += linha(String(i), i + 'x');
+    const aviso = entrada > 0 ? '<div class="alert alert-info w-100 small" style="max-width: 400px;">A entrada não entra na conta separada: cada produto é calculado sozinho.</div>' : '';
+    return `${aviso}<div class="d-flex align-items-center mb-2 px-2">${ctwSeletorModo()}<div class="form-check form-switch" style="margin-left: auto;"><input class="form-check-input" type="checkbox" id="multiSelectToggle"><label class="form-check-label small" for="multiSelectToggle">Selecionar Vários</label></div></div>`
+        + `<div class="table-responsive"><table class="table results-table ctw-sep"><thead><tr><th>Parcelas</th>${prods.map(p => `<th>${escapeHtml(p.rotulo)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+// Juntos | Separados: só no modo dev e com 2+ produtos
+function ctwSeletorModo() {
+    if (carrinhoDeAparelhos.length < 2 || !(window.ctwEhDev && window.ctwEhDev())) return '';
+    const b = (m, t) => `<button type="button" data-apmodo="${m}" class="${ctwApModo === m ? 'on' : ''}" aria-pressed="${ctwApModo === m}">${t}</button>`;
+    return `<div class="ctw-seg" role="group" aria-label="Como calcular os produtos">${b('juntos', 'Juntos')}${b('sep', 'Separados')}</div>`;
+}
+// Copia as linhas tocadas (uma = clique simples, várias = "Selecionar Vários"). Separados: um bloco por produto, no mesmo texto de uma venda só
+async function ctwCopiarLinhas(rows, classico) {
+    if (!rows.length || !carrinhoDeAparelhos.length) return;
+    const machine = document.getElementById('machine3').value, brand = document.getElementById('brand3').value;
+    const entrada = parseFloat(document.getElementById('entradaAparelho').value) || 0, pares = rows.map(r => r.dataset.installments);
+    const rot = par => par === 'Débito' ? par : par + 'x';
+    let texto, titulo;
+    if (ctwModoSep()) {
+        const prods = ctwSepProdutos();
+        const blocos = prods.map(p => {
+            const ops = pares.map(par => ctwOpcao(p.base, par, machine, brand));
+            return ops.some(o => !o) ? null : ctwTextoAparelho(pares.map((par, i) => ctwOpcaoTexto(par, ops[i].parcela, ops[i].total)), p.rotulo, 0, '', classico);
+        });
+        if (blocos.some(b => !b)) { showCustomModal({ message: 'Erro ao copiar.' }); return; }
+        texto = blocos.join('\n\n');
+        titulo = `Separados • ${pares.map(rot).join(' / ')} • ${prods.map(p => p.nome).join(' e ')}`;
+    } else {
+        const nome = ctwNomeCarrinho();
+        texto = ctwTextoAparelho(rows.map(r => ctwOpcaoTexto(r.dataset.installments, parseFloat(r.dataset.parcela), classico ? parseFloat(r.dataset.total) : undefined)), nome, entrada, ctwTextoEtiqueta(), classico);
+        titulo = classico ? `${rot(pares[0])} ${ctwBRL(parseFloat(rows[0].dataset.parcela))} • ${nome}` : `Vários (${rows.length} opções) - ${nome}`;
+    }
+    if (!(await ctwCopiarTexto(texto))) { showCustomModal({ message: 'Erro ao copiar.' }); return; }
+    if (window.salvarHistoricoAparelho) window.salvarHistoricoAparelho(texto, titulo);
+    showCustomModal({ message: classico ? 'Simulação copiada!' : 'Copiado e salvo! 💾' });
+    if (!classico) { rows.forEach(r => r.classList.remove('is-selected')); ctwAtualizaFab(); }
+}
+// Botão flutuante "Copiar (N)": acompanha as linhas marcadas
+function ctwAtualizaFab() {
+    const fab = document.getElementById('fabCopyMulti'); if (!fab) return;
+    const n = document.querySelectorAll('#resultCalcularPorAparelho .copyable-row.is-selected').length;
+    fab.style.display = n ? 'block' : 'none';
+    if (n) fab.innerHTML = `<i class="bi bi-clipboard-check"></i> Copiar (${n})`;
+}
+
 // Ponte para a busca por IA (módulo carregado só para dev)
 window.ctwBuscaIaApp = {
     maxParcelas: ctwMaxParcelas,
@@ -1825,6 +1924,9 @@ function calculateAparelho() {
     const exportContainer = document.getElementById('exportAparelhoContainer');
     const entradaValue = parseFloat(document.getElementById('entradaAparelho').value) || 0;
     const extraValue = parseFloat(document.getElementById('valorExtraAparelho').value) || 0;
+    ctwAtualizaFab();   // a tabela vai ser refeita: as linhas marcadas somem junto
+    const xr = document.getElementById('extraRapido');   // valor a mais em um toque (dev)
+    if (xr) { xr.hidden = !(carrinhoDeAparelhos.length && window.ctwEhDev && window.ctwEhDev()); document.getElementById('extraRapidoValor').textContent = ctwBRL(extraValue); }
 
     if (carrinhoDeAparelhos.length === 0) {
         resultDiv.innerHTML = '<div class="alert alert-warning d-flex align-items-center mt-3 w-100" style="max-width: 400px; margin: 1rem auto;"><i class="bi bi-exclamation-triangle-fill me-3"></i>Adicione um aparelho para calcular.</div>';
@@ -1839,6 +1941,12 @@ function calculateAparelho() {
     const precoTotalDisplay = document.getElementById('aparelhoPrecoTotalDisplay');
     if(precoTotalDisplay) {
         precoTotalDisplay.innerHTML = `Preço Total (com extra): ${valorTotalAparelho.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
+    }
+
+    if (ctwModoSep()) {   // cada produto sozinho: a entrada não entra, então nem as checagens dela valem aqui
+        resultDiv.innerHTML = ctwHtmlSeparados(entradaValue);
+        exportContainer.style.display = 'block';
+        return;
     }
     
     let headerHtml = ``;
@@ -1886,8 +1994,9 @@ function calculateAparelho() {
     if(tableRows) {
         // ... (código do html da tabela) ...
         finalHtml += `
-        <div class="d-flex justify-content-end align-items-center mb-2 px-2">
-            <div class="form-check form-switch">
+        <div class="d-flex align-items-center mb-2 px-2">
+            ${ctwSeletorModo()}
+            <div class="form-check form-switch" style="margin-left: auto;">
                 <input class="form-check-input" type="checkbox" id="multiSelectToggle">
                 <label class="form-check-label small" for="multiSelectToggle">Selecionar Vários</label>
             </div>
@@ -6034,282 +6143,52 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // --- CÓDIGO DO PASSO 3: Lógica de Seleção Múltipla e Cópia (CORRIGIDO) ---
-
-    // 1. Cria o Botão Flutuante (se ainda não existir)
+    // --- Seleção múltipla e cópia do "Por aparelho" (o texto sai de ctwCopiarLinhas) ---
     let fab = document.getElementById('fabCopyMulti');
-    
     if (!fab) {
         fab = document.createElement('button');
         fab.id = 'fabCopyMulti';
         fab.className = 'btn btn-primary';
-        fab.innerHTML = '<i class="bi bi-clipboard-check"></i> Copiar Seleção';
-        fab.style.display = 'none'; // Começa invisível
+        fab.style.display = 'none';
         document.body.appendChild(fab);
-        
-        // Ação do Botão Flutuante (CORRIGIDA E COMPLETA)
-        fab.onclick = () => {
-            const selectedRows = document.querySelectorAll('#resultCalcularPorAparelho .copyable-row.is-selected');
-            if (selectedRows.length === 0) return;
-
-            // 1. Gera Texto (COM CÁLCULO DO TOTAL)
-            let simulations = [];
-            selectedRows.forEach(r => {
-                const i = r.dataset.installments; // Ex: "10" ou "Débito"
-                const valParcela = parseFloat(r.dataset.parcela); // Ex: 100.00
-                
-                // Formata Parcela
-                const p = valParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                
-                // Calcula Total (Parcela * Vezes)
-                const qtd = (i === 'Débito') ? 1 : parseInt(i);
-                const totalCalc = valParcela * qtd;
-                const t = totalCalc.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-                if (i === 'Débito') {
-                    simulations.push(`Débito: ${p}\n_(Total: ${t})_`);
-                } else {
-                    // Formato: 10x R$ 100,00 (Total: R$ 1.000,00)
-                    simulations.push(`${i}x ${p}\n_(Total: ${t})_`);
-                }
-            });
-
-            // Junta com "Ou" e quebra de linha
-            const simulationBlock = simulations.map((t, i) => i === 0 ? t : `\nOu ${t}`).join('\n');
-
-            // 2. Dados do Produto (Nome e Quantidade)
-            const productCounts = carrinhoDeAparelhos.reduce((acc, product) => {
-                acc[product.nome] = (acc[product.nome] || 0) + 1;
-                return acc;
-            }, {});
-            const produtoNome = Object.entries(productCounts)
-                .map(([nome, qtd]) => qtd > 1 ? `${qtd}x ${nome}` : nome)
-                .join(' e ');
-
-            // 3. Dados da Entrada
-            const entradaValue = parseFloat(document.getElementById('entradaAparelho').value) || 0;
-            let entradaText = '';
-            if (entradaValue > 0) {
-                const entradaFormatted = entradaValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                entradaText = `\n*_+${entradaFormatted} no dinheiro ou pix_*`;
-            }
-
-            // 4. Etiqueta Personalizada
-            let customText = '';
-            if (carrinhoDeAparelhos.length === 1) {
-                const produtoUnico = carrinhoDeAparelhos[0];
-                if (produtoUnico.tag && produtoUnico.tag !== 'Nenhuma' && tagTexts[produtoUnico.tag]) {
-                    customText = `\n\n${tagTexts[produtoUnico.tag]}`;
-                }
-            }
-
-            // 5. Montagem Final (Verifica ordem invertida)
-            let textToCopy;
-            const invertOrder = safeStorage.getItem('ctwInvertCopyOrder') === 'true';
-            
-            if (invertOrder) {
-                textToCopy = `${produtoNome}\n${simulationBlock}${entradaText}${customText}`;
-            } else {
-                textToCopy = `${simulationBlock}${entradaText}\n\n${produtoNome}${customText}`;
-            }
-
-            // 6. Copiar para área de transferência
-            const textArea = document.createElement("textarea");
-            textArea.value = textToCopy;
-            document.body.appendChild(textArea);
-            textArea.select();
-            try {
-                document.execCommand('copy');
-                
-                // Salva no histórico se a função existir
-                if(window.salvarHistoricoAparelho) {
-                    window.salvarHistoricoAparelho(textToCopy, `Vários (${selectedRows.length}) - ${produtoNome}`);
-                }
-                
-                showCustomModal({ message: 'Simulações copiadas!' });
-            } catch (err) {
-                showCustomModal({ message: 'Erro ao copiar.' });
-            }
-            document.body.removeChild(textArea);
-            
-            // Limpa a seleção visual e esconde o botão
-            selectedRows.forEach(r => r.classList.remove('is-selected'));
-            fab.style.display = 'none';
-        };
     }
+    fab.onclick = () => ctwCopiarLinhas([...document.querySelectorAll('#resultCalcularPorAparelho .copyable-row.is-selected')], false);
 
+    document.getElementById('resultCalcularPorAparelho')?.addEventListener('click', (e) => {
+        const modo = e.target.closest('[data-apmodo]');
+        if (modo) { ctwApModo = modo.dataset.apmodo; calculateAparelho(); return; }
 
-
-
-document.getElementById('resultCalcularPorAparelho')?.addEventListener('click', (e) => {
-    const toggle = document.getElementById('multiSelectToggle');
-    const isMultiMode = toggle && toggle.checked;
-
-    if (e.target.closest('.avista-row') && carrinhoDeAparelhos.length > 0) {
-        const textoAvista = ctwAvistaTexto();
-        const area = document.createElement('textarea');
-        area.value = textoAvista;
-        document.body.appendChild(area);
-        area.select();
-        try { document.execCommand('copy'); } catch (err) { /* segue: o aviso abaixo confirma o resultado */ }
-        document.body.removeChild(area);
-        if (window.salvarHistoricoAparelho) {
-            window.salvarHistoricoAparelho(textoAvista, `À vista • ${carrinhoDeAparelhos.map(p => p.nome).join(' e ')}`);
+        if (e.target.closest('.avista-row') && carrinhoDeAparelhos.length > 0) {
+            const textoAvista = ctwAvistaTexto();
+            const area = document.createElement('textarea');
+            area.value = textoAvista;
+            document.body.appendChild(area);
+            area.select();
+            try { document.execCommand('copy'); } catch (err) { /* segue: o aviso abaixo confirma o resultado */ }
+            document.body.removeChild(area);
+            if (window.salvarHistoricoAparelho) {
+                window.salvarHistoricoAparelho(textoAvista, `À vista • ${carrinhoDeAparelhos.map(p => p.nome).join(' e ')}`);
+            }
+            showCustomModal({ message: 'À vista copiado!' });
+            return;
         }
-        showCustomModal({ message: 'À vista copiado!' });
-        return;
-    }
 
-    const row = e.target.closest('.copyable-row');
-    
-    if (!row || carrinhoDeAparelhos.length === 0) return;
-
-    // =================================================================
-    // MODO 1: SELEÇÃO MÚLTIPLA
-    // =================================================================
-    if (isMultiMode) {
-        row.classList.toggle('is-selected');
-        
-        const count = document.querySelectorAll('#resultCalcularPorAparelho .copyable-row.is-selected').length;
-        const fabBtn = document.getElementById('fabCopyMulti');
-        
-        if (count > 0) {
-            fabBtn.style.display = 'block';
-            fabBtn.innerHTML = `<i class="bi bi-clipboard-check"></i> Copiar (${count})`;
-            
-            // Adiciona a ação de clique (que estava faltando no seu código original)
-            fabBtn.onclick = () => {
-                const selectedRows = document.querySelectorAll('#resultCalcularPorAparelho .copyable-row.is-selected');
-                if (selectedRows.length === 0) return;
-
-                // 1. Gera Texto (CORRIGIDO COM TOTAL E FORMATAÇÃO)
-                let simulations = [];
-                selectedRows.forEach(r => {
-                    const i = r.dataset.installments;
-                    const valParcela = parseFloat(r.dataset.parcela);
-                    
-                    // Formata valor da parcela
-                    const p = valParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                    
-                    // Calcula o total matematicamente (Parcela x Vezes)
-                    const qtd = (i === 'Débito') ? 1 : parseInt(i);
-                    const totalCalc = valParcela * qtd;
-                    const t = totalCalc.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-                    if (i === 'Débito') {
-                        simulations.push(`Débito: ${p}\n_(Total: ${t})_`);
-                    } else {
-                        // Formato: 2x R$ 1.200,00
-                        //          (Total: R$ 2.400,00)
-                        simulations.push(`${i}x ${p}\n_(Total: ${t})_`);
-                    }
-                });
-                
-                // Adiciona uma quebra de linha extra (\n) antes do "Ou"
-                const simulationBlock = simulations.map((t, i) => i === 0 ? t : `\nOu ${t}`).join('\n');
-
-                
-                // 2. Dados
-                const productCounts = carrinhoDeAparelhos.reduce((acc, product) => { acc[product.nome] = (acc[product.nome] || 0) + 1; return acc; }, {});
-                const produtoNome = Object.entries(productCounts).map(([nome, qtd]) => qtd > 1 ? `${qtd}x ${nome}` : nome).join(' e ');
-                const entradaVal = parseFloat(document.getElementById('entradaAparelho').value) || 0;
-                const entradaText = entradaVal > 0 ? `\n*_+${entradaVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} no dinheiro ou pix_*` : '';
-                
-                let customText = '';
-                if (carrinhoDeAparelhos.length === 1 && carrinhoDeAparelhos[0].tag && tagTexts[carrinhoDeAparelhos[0].tag]) {
-                    customText = `\n\n${tagTexts[carrinhoDeAparelhos[0].tag]}`;
-                }
-
-                // 3. Monta Texto Final
-                const invertOrder = typeof safeStorage !== 'undefined' ? safeStorage.getItem('ctwInvertCopyOrder') === 'true' : localStorage.getItem('ctwInvertCopyOrder') === 'true';
-                const textToCopy = invertOrder ? `${produtoNome}\n${simulationBlock}${entradaText}${customText}` : `${simulationBlock}${entradaText}\n\n${produtoNome}${customText}`;
-
-                // 4. Copia
-                const textArea = document.createElement("textarea");
-                textArea.value = textToCopy;
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-
-                // --- SALVA NO HISTÓRICO COM TÍTULO COMPLETO ---
-                if(window.salvarHistoricoAparelho) {
-                    window.salvarHistoricoAparelho(textToCopy, `Vários (${count} opções) - ${produtoNome}`);
-                }
-                
-                showCustomModal({ message: 'Copiado e salvo! 💾' });
-                selectedRows.forEach(r => r.classList.remove('is-selected'));
-                fabBtn.style.display = 'none';
-            };
-
-        } else {
-            fabBtn.style.display = 'none';
-        }
-        
-    } else {
-        // =================================================================
-        // MODO 2: CLÁSSICO (Cópia única)
-        // =================================================================
-        document.getElementById('fabCopyMulti').style.display = 'none';
+        const row = e.target.closest('.copyable-row');
+        if (!row || carrinhoDeAparelhos.length === 0) return;
+        const toggle = document.getElementById('multiSelectToggle');
+        if (toggle && toggle.checked) { row.classList.toggle('is-selected'); ctwAtualizaFab(); return; }
         document.querySelectorAll('#resultCalcularPorAparelho .copyable-row.is-selected').forEach(r => r.classList.remove('is-selected'));
+        ctwAtualizaFab();
+        ctwCopiarLinhas([row], true);
+    });
 
-        const installments = row.dataset.installments;
-        const parcelaValue = parseFloat(row.dataset.parcela);
-        const totalValue = parseFloat(row.dataset.total);
-        const entradaValue = parseFloat(document.getElementById('entradaAparelho').value) || 0;
-        
-        const parcelaFormatted = parcelaValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        const totalFormatted = totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        
-        const productCounts = carrinhoDeAparelhos.reduce((acc, product) => {
-            acc[product.nome] = (acc[product.nome] || 0) + 1;
-            return acc;
-        }, {});
-        const produtoNome = Object.entries(productCounts)
-            .map(([nome, qtd]) => qtd > 1 ? `${qtd}x ${nome}` : nome)
-            .join(' e ');
-
-        let entradaText = '';
-        if (entradaValue > 0) {
-            const entradaFormatted = entradaValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            entradaText = `\n*_+${entradaFormatted} no dinheiro ou pix_*`;
-        }
-        
-        let customText = '';
-        if (carrinhoDeAparelhos.length === 1) {
-            const produtoUnico = carrinhoDeAparelhos[0];
-            if (produtoUnico.tag && produtoUnico.tag !== 'Nenhuma' && tagTexts[produtoUnico.tag]) {
-                customText = `\n\n${tagTexts[produtoUnico.tag]}`;
-            }
-        }
-        
-        let textToCopy;
-        const invertOrder = typeof safeStorage !== 'undefined' ? safeStorage.getItem('ctwInvertCopyOrder') === 'true' : localStorage.getItem('ctwInvertCopyOrder') === 'true';
-        const simulationBlock = `${installments}x ${parcelaFormatted}\n_(Total: ${totalFormatted})_${entradaText}`;
-        
-        if (invertOrder) {
-            textToCopy = `${produtoNome}\n${simulationBlock}${customText}`;
-        } else {
-            textToCopy = `${simulationBlock}\n ${produtoNome}${customText}`;
-        }
-        
-        const textArea = document.createElement("textarea");
-        textArea.value = textToCopy;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-
-        // --- SALVA NO HISTÓRICO COM O VALOR NO TÍTULO ---
-        // Aqui está o pulo do gato: Salvamos "12x R$ 200 - iPhone" como título
-        if(window.salvarHistoricoAparelho) {
-            const tituloComValor = `${installments}x ${parcelaFormatted} • ${produtoNome}`;
-            window.salvarHistoricoAparelho(textToCopy, tituloComValor);
-        }
-
-        showCustomModal({ message: 'Simulação copiada!' });
-    }
-});
+    // Valor a mais em um toque (dev): cada botão soma ao "Valor adicional" e recalcula na hora
+    document.getElementById('extraRapido')?.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-xr]'); if (!b) return;
+        const campo = document.getElementById('valorExtraAparelho');
+        campo.value = b.dataset.xr === 'zero' ? '' : String(Math.round(((parseFloat(campo.value) || 0) + parseFloat(b.dataset.xr)) * 100) / 100);
+        calculateAparelho();
+    });
 
     ['resultRepassarValores', 'resultCalcularEmprestimo'].forEach(containerId => {
         document.getElementById(containerId)?.addEventListener('click', (e) => {
