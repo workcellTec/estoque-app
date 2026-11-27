@@ -1879,10 +1879,56 @@ function ctwHtmlSeparados(entrada) {
     let rows = `<tr class="avista-row"><td>À vista</td>${prods.map(p => `<td>${ctwBRL(p.avista)}</td>`).join('')}</tr>` + linha('Débito', 'Débito');
     for (let i = 1; i <= ctwMaxParcelas(machine); i++) rows += linha(String(i), i + 'x');
     const aviso = entrada > 0 ? '<div class="alert alert-info w-100 small" style="max-width: 400px;">A entrada não entra na conta separada: cada produto é calculado sozinho.</div>' : '';
-    return `${aviso}<div class="d-flex align-items-center mb-2 px-2">${ctwSeletorModo()}<div class="form-check form-switch" style="margin-left: auto;"><input class="form-check-input" type="checkbox" id="multiSelectToggle"><label class="form-check-label small" for="multiSelectToggle">Selecionar Vários</label></div></div>`
+    return `${aviso}${ctwCabecalhoTabela()}`
         + `<div class="table-responsive"><table class="table results-table ctw-sep"><thead><tr><th>Parcelas</th>${prods.map(p => `<th>${escapeHtml(p.rotulo)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 // Juntos | Separados: só no modo dev e com 2+ produtos
+// ── Atalhos de "valor a mais" (modo dev) ──
+// Os valores são do próprio usuário (nascem vazios), guardados neste aparelho. "Ocultar" esconde os botões; 4 toques seguidos
+// (até 2s entre eles) na linha "Valor a mais" trazem de volta.
+const CTW_XR_KEY = 'ctwExtraRapido', CTW_XR_MAX = 8;
+function ctwXrCfg() {
+    let c = {};
+    try { c = JSON.parse(safeStorage.getItem(CTW_XR_KEY) || '{}') || {}; } catch (e) { c = {}; }
+    const vals = [...new Set((Array.isArray(c.vals) ? c.vals : []).map(Number).filter(v => v > 0 && v <= 99999).map(v => Math.round(v * 100) / 100))].sort((a, b) => a - b).slice(0, CTW_XR_MAX);
+    return { vals, oculto: c.oculto === true };
+}
+const ctwXrSalvar = cfg => safeStorage.setItem(CTW_XR_KEY, JSON.stringify(cfg));
+const ctwXrRotulo = v => `<span class="pl">+</span>R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
+function ctwXrRender(extra) {
+    const xr = document.getElementById('extraRapido'); if (!xr) return;
+    const ativo = carrinhoDeAparelhos.length > 0 && !!(window.ctwEhDev && window.ctwEhDev());
+    xr.hidden = !ativo; if (!ativo) return;
+    if (extra === undefined) extra = parseFloat(document.getElementById('valorExtraAparelho').value) || 0;
+    const cfg = ctwXrCfg();
+    const topo = `<div class="ctw-xr-top"><span class="ctw-xr-l" data-xr-tap>Valor a mais: <b id="extraRapidoValor">${ctwBRL(extra)}</b></span>`
+        + (cfg.oculto ? '' : `<span class="ctw-xr-ic"><button type="button" data-xr-act="cfg" aria-label="Configurar atalhos"><i class="bi bi-gear"></i></button><button type="button" data-xr-act="hide" aria-label="Ocultar atalhos"><i class="bi bi-eye-slash"></i></button></span>`) + '</div>';
+    const pills = cfg.oculto ? '' : `<div class="ctw-xr-b">${cfg.vals.length
+        ? cfg.vals.map(v => `<button type="button" data-xr="${v}">${ctwXrRotulo(v)}</button>`).join('') + '<button type="button" class="zero" data-xr="zero"><i class="bi bi-arrow-counterclockwise"></i> Zerar</button>'
+        : '<button type="button" class="cfg" data-xr-act="cfg"><i class="bi bi-plus-lg"></i> Configurar atalhos</button>'}</div>`;
+    xr.innerHTML = topo + pills;
+}
+function ctwXrCfgLista() {
+    const cfg = ctwXrCfg();
+    document.getElementById('xrCfgLista').innerHTML = cfg.vals.length
+        ? cfg.vals.map(v => `<span class="ctw-xrc-chip"><span>${ctwXrRotulo(v)}</span><button type="button" data-xrc-del="${v}" aria-label="Remover"><i class="bi bi-x-lg"></i></button></span>`).join('')
+        : '<span class="small" style="color: var(--text-secondary);">Nenhum atalho ainda.</span>';
+    document.getElementById('xrCfgAdd').disabled = cfg.vals.length >= CTW_XR_MAX;
+}
+function ctwXrAdicionar() {
+    const campo = document.getElementById('xrCfgInput'), cfg = ctwXrCfg();
+    const v = Math.round((parseFloat(String(campo.value).replace(/\./g, '').replace(',', '.')) || 0) * 100) / 100;
+    if (!(v > 0 && v <= 99999)) { showCustomModal({ message: 'Digite um valor entre R$ 0,01 e R$ 99.999.' }); return; }
+    if (cfg.vals.includes(v)) { showCustomModal({ message: 'Esse valor já está nos atalhos.' }); return; }
+    if (cfg.vals.length >= CTW_XR_MAX) { showCustomModal({ message: `No máximo ${CTW_XR_MAX} atalhos.` }); return; }
+    cfg.vals.push(v); ctwXrSalvar(cfg); campo.value = ''; ctwXrCfgLista(); ctwXrRender();
+}
+let _xrToques = 0, _xrUltimo = 0;
+
+// Faixa acima da tabela: [Juntos | Separados] (dev, 2+ produtos) e a linha "Selecionar vários"
+function ctwCabecalhoTabela() {
+    return `<div class="ctw-tb-head">${ctwSeletorModo()}<label class="ctw-selrow" for="multiSelectToggle"><span><i class="bi bi-check2-square"></i> Selecionar vários</span><span class="form-check form-switch"><input class="form-check-input" type="checkbox" id="multiSelectToggle"></span></label></div>`;
+}
 function ctwSeletorModo() {
     if (carrinhoDeAparelhos.length < 2 || !(window.ctwEhDev && window.ctwEhDev())) return '';
     const b = (m, t) => `<button type="button" data-apmodo="${m}" class="${ctwApModo === m ? 'on' : ''}" aria-pressed="${ctwApModo === m}">${t}</button>`;
@@ -1939,8 +1985,7 @@ function calculateAparelho() {
     const entradaValue = parseFloat(document.getElementById('entradaAparelho').value) || 0;
     const extraValue = parseFloat(document.getElementById('valorExtraAparelho').value) || 0;
     ctwAtualizaFab();   // a tabela vai ser refeita: as linhas marcadas somem junto
-    const xr = document.getElementById('extraRapido');   // valor a mais em um toque (dev)
-    if (xr) { xr.hidden = !(carrinhoDeAparelhos.length && window.ctwEhDev && window.ctwEhDev()); document.getElementById('extraRapidoValor').textContent = ctwBRL(extraValue); }
+    ctwXrRender(extraValue);   // atalhos de "valor a mais" (dev)
 
     if (carrinhoDeAparelhos.length === 0) {
         resultDiv.innerHTML = '<div class="alert alert-warning d-flex align-items-center mt-3 w-100" style="max-width: 400px; margin: 1rem auto;"><i class="bi bi-exclamation-triangle-fill me-3"></i>Adicione um aparelho para calcular.</div>';
@@ -2007,14 +2052,7 @@ function calculateAparelho() {
     let finalHtml = headerHtml;
     if(tableRows) {
         // ... (código do html da tabela) ...
-        finalHtml += `
-        <div class="d-flex align-items-center mb-2 px-2">
-            ${ctwSeletorModo()}
-            <div class="form-check form-switch" style="margin-left: auto;">
-                <input class="form-check-input" type="checkbox" id="multiSelectToggle">
-                <label class="form-check-label small" for="multiSelectToggle">Selecionar Vários</label>
-            </div>
-        </div>`;
+        finalHtml += ctwCabecalhoTabela();
         finalHtml += `<div class="table-responsive"><table class="table results-table"><thead><tr><th>Parcelas</th><th>Valor da Parcela</th><th>Total a Passar</th></tr></thead><tbody>${tableRows}</tbody></table></div>`;
     }
     resultDiv.innerHTML = finalHtml;
@@ -5285,7 +5323,7 @@ function ctwAvistaTexto() {
     const cfg = ctwAvistaCfg(), off = ctwAvistaTagsOff();
     const brl = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     const linhas = ctwAvistaLinhas();
-    const corpo = linhas.map(l => `*${l.nome}* sai por *${brl(l.valor)}* a vista no dinheiro ou pix`).join('\n');
+    const corpo = linhas.map(l => `*${l.nome}* sai por *${brl(l.valor)}* a vista no dinheiro ou pix`).join('\n\n');   // linha em branco entre produtos: no WhatsApp cada um fica no seu bloco
     // antes/depois só some quando TODOS os produtos do carrinho são de etiquetas desligadas
     const semTexto = linhas.length > 0 && linhas.every(l => l.tag && off[l.tag]);
     let texto = corpo;
@@ -6212,10 +6250,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Valor a mais em um toque (dev): cada botão soma ao "Valor adicional" e recalcula na hora
     document.getElementById('extraRapido')?.addEventListener('click', (e) => {
-        const b = e.target.closest('[data-xr]'); if (!b) return;
-        const campo = document.getElementById('valorExtraAparelho');
-        campo.value = b.dataset.xr === 'zero' ? '' : String(Math.round(((parseFloat(campo.value) || 0) + parseFloat(b.dataset.xr)) * 100) / 100);
-        calculateAparelho();
+        const b = e.target.closest('[data-xr]');
+        if (b) {
+            const campo = document.getElementById('valorExtraAparelho');
+            campo.value = b.dataset.xr === 'zero' ? '' : String(Math.round(((parseFloat(campo.value) || 0) + parseFloat(b.dataset.xr)) * 100) / 100);
+            calculateAparelho();
+            return;
+        }
+        const act = e.target.closest('[data-xr-act]');
+        if (act && act.dataset.xrAct === 'hide') {
+            const cfg = ctwXrCfg(); cfg.oculto = true; ctwXrSalvar(cfg); ctwXrRender();
+            showCustomModal({ message: 'Atalhos ocultos. Toque 4x em "Valor a mais" para voltar.' });
+        } else if (act && act.dataset.xrAct === 'cfg') {
+            ctwXrCfgLista(); document.getElementById('xrCfgInput').value = '';
+            document.getElementById('xrCfgModalOverlay').classList.add('active');
+        } else if (e.target.closest('[data-xr-tap]') && ctwXrCfg().oculto) {
+            // 4 toques seguidos (até 2s entre eles) na linha "Valor a mais" trazem os atalhos de volta
+            const agora = Date.now();
+            _xrToques = agora - _xrUltimo > 2000 ? 1 : _xrToques + 1; _xrUltimo = agora;
+            if (_xrToques >= 4) { _xrToques = 0; const cfg = ctwXrCfg(); cfg.oculto = false; ctwXrSalvar(cfg); ctwXrRender(); }
+        }
+    });
+    const xrOverlay = document.getElementById('xrCfgModalOverlay');
+    const xrFechar = () => { xrOverlay.classList.remove('active'); ctwXrRender(); };
+    document.getElementById('xrCfgAdd')?.addEventListener('click', ctwXrAdicionar);
+    document.getElementById('xrCfgInput')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ctwXrAdicionar(); } });
+    document.getElementById('xrCfgOk')?.addEventListener('click', xrFechar);
+    xrOverlay?.addEventListener('click', (e) => { if (e.target === xrOverlay) xrFechar(); });
+    document.getElementById('xrCfgLista')?.addEventListener('click', (e) => {
+        const d = e.target.closest('[data-xrc-del]'); if (!d) return;
+        const cfg = ctwXrCfg(); cfg.vals = cfg.vals.filter(v => v !== parseFloat(d.dataset.xrcDel)); ctwXrSalvar(cfg); ctwXrCfgLista(); ctwXrRender();
     });
 
     ['resultRepassarValores', 'resultCalcularEmprestimo'].forEach(containerId => {

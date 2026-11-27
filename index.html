@@ -701,12 +701,7 @@
                             <input class="form-control" id="entradaAparelho" min="0" placeholder="Opcional" step="0.01" type="number"/>
                         </div>
                     </div>
-                    <div class="ctw-xr" id="extraRapido" hidden>
-                        <span class="ctw-xr-l">Valor a mais: <b id="extraRapidoValor">R$ 0,00</b></span>
-                        <div class="ctw-xr-b">
-                            <button type="button" data-xr="10">+10</button><button type="button" data-xr="20">+20</button><button type="button" data-xr="30">+30</button><button type="button" data-xr="50">+50</button><button type="button" data-xr="100">+100</button><button type="button" class="zero" data-xr="zero">Zerar</button>
-                        </div>
-                    </div>
+                    <div class="ctw-xr" id="extraRapido" hidden></div>
                     <div class="extra-value-toggle mx-auto">
                         <button class="btn-toggle-extra" id="toggleValorExtraBtn" aria-label="Adicionar valor extra">
                             <i class="bi bi-chevron-down"></i>
@@ -1590,6 +1585,22 @@
             <div class="d-flex gap-2 justify-content-center mt-3">
                 <button class="btn btn-secondary" id="cancelEditPriceBtn">Cancelar</button>
                 <button class="btn btn-primary" id="confirmEditPriceBtn">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: atalhos de "valor a mais" (modo dev) -->
+    <div class="custom-modal-overlay" id="xrCfgModalOverlay">
+        <div class="custom-modal-content">
+            <h4>Atalhos de valor a mais</h4>
+            <p class="small mb-3" style="color: var(--text-secondary);">Os valores que aparecem como botões na calculadora. Até 8. Ficam salvos neste aparelho.</p>
+            <div class="ctw-xrc-list" id="xrCfgLista"></div>
+            <div class="ctw-xrc-add">
+                <input class="form-control" id="xrCfgInput" type="text" inputmode="decimal" placeholder="Ex.: 15 ou 25,50" autocomplete="off"/>
+                <button class="btn btn-primary" id="xrCfgAdd" type="button">Adicionar</button>
+            </div>
+            <div class="d-flex justify-content-center mt-3">
+                <button class="btn btn-secondary" id="xrCfgOk" type="button">Concluído</button>
             </div>
         </div>
     </div>
