@@ -6929,7 +6929,7 @@ document.getElementById('admin-nav-buttons')?.addEventListener('click', e => {
     document.getElementById('cancelColorPicker')?.addEventListener('click', () => colorPickerModal.classList.remove('active'));
         // --- CORREÇÃO: SALVAR COR E ATUALIZAR O CARRINHO IMEDIATAMENTE ---
     document.getElementById('saveColorPicker')?.addEventListener('click', () => {
-        if (currentEditingProductId && ctwPodeEditarSistema()) {
+        if (currentEditingProductId) {
             const newTimestamp = Date.now();
             
             // 1. Atualiza no Banco de Dados (Para o futuro)
